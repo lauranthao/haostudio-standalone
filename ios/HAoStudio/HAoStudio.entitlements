@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- INTENTIONALLY EMPTY (standalone v1): the App Group
+     `group.com.haostudio.standalone` (com.apple.security.application-groups)
+     is a PAID-team-only capability. With a free certificate (LCSign) the app
+     cannot be installed at all while it is present ("无法安装"), even though
+     the certificate itself is valid. The widget is not shipped in v1, so no
+     code needs the group. Re-add the group here (and in the widget
+     entitlements) only with a paid developer account. -->
+<dict>
+</dict>
+</plist>

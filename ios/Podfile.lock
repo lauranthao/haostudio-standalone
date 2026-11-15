@@ -1,0 +1,16 @@
+PODS:
+  - IJKMediaFramework (0.1.5)
+
+DEPENDENCIES:
+  - IJKMediaFramework (= 0.1.5)
+
+SPEC REPOS:
+  trunk:
+    - IJKMediaFramework
+
+SPEC CHECKSUMS:
+  IJKMediaFramework: f1119f6324c96bc4654f3045a5beaa95ba0596c0
+
+PODFILE CHECKSUM: 9f98867e792fdc935d6e430c90bb86de07d3076e
+
+COCOAPODS: 1.17.0

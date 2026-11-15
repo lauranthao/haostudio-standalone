@@ -1,0 +1,22 @@
+# 本地工作区与补丁脚本（留在本地，不进仓库）
+__pycache__/
+*.pyc
+work/
+ios-base/
+BACKUP_SPEC.md
+INTEGRATION_NOTES.md
+WORKSTREAMS.md
+test-backup.js
+integrate_live_lines.py
+revert_live_lines.py
+patch_settings_phase*.py
+patch-phase1-settings.py
+ios/add_updater_pbxproj.py
+ios/patch_pbxproj.py
+# 小组件代码仅存档，不在任何 target 内
+ios/HAoStudioWidget/
+# 构建产物
+ios/build/
+Pods/
+*.xcuserdata/
+.DS_Store

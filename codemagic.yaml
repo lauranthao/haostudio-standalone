@@ -1,0 +1,70 @@
+# HAo Studio 独立版 — Codemagic 工作流
+#
+# 仓库根目录结构（父级新建 Gitee 仓库后确认）：
+#   codemagic.yaml   <- 本文件，仓库根
+#   ios/             <- Xcode 工程（HAoStudio.xcodeproj + Podfile）
+#   web/             <- 前端源码（(a) 线拥有；构建时同步进包内）
+#   work/            <- 各线工作区（不进包）
+#
+# REPO / BRANCH 占位：Gitee 仓库由父级新建后，在 Codemagic 里添加该仓库
+# 并选 ios-unsigned 工作流；本文件不写死 repo 地址。
+# TMDB_API_KEY：在 Codemagic 网页端 Environment variables 里设置，
+# 不要写进仓库（包内默认是空 key，App 会跳过 TMDB enrichment）。
+workflows:
+  ios-unsigned:
+    name: iOS Unsigned IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      xcode: latest
+    scripts:
+      - name: Sync local web frontend into bundle
+        script: |
+          # (a) 线的 web/ 是前端唯一来源；每次构建都同步进包内，
+          # 这样改前端不用改工程文件。
+          if [ -d web ]; then
+            rm -rf ios/HAoStudio/web
+            cp -R web ios/HAoStudio/web
+            echo "web/ synced into bundle"
+          else
+            echo "no top-level web/; using ios/HAoStudio/web snapshot"
+          fi
+          ls ios/HAoStudio/web/
+      - name: Inject TMDB API key
+        script: |
+          # TMDB_API_KEY 来自 Codemagic 环境变量（仓库里只留空 key 占位）。
+          # 未设置时保持空 key，App 跳过 TMDB enrichment，影视只用 CMS 数据。
+          python3 -c "import json, os; json.dump({'tmdb_api_key': os.environ.get('TMDB_API_KEY', '')}, open('ios/HAoStudio/tmdb-config.json', 'w'))"
+          if [ -n "${TMDB_API_KEY:-}" ]; then echo "TMDB key injected"; else echo "No TMDB_API_KEY set; shipping empty key"; fi
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios
+          if ! command -v pod >/dev/null 2>&1; then
+            echo "CocoaPods not found, installing..."
+            sudo gem install cocoapods --no-document
+          fi
+          pod --version
+          pod install
+      - name: Build unsigned app
+        script: |
+          cd ios
+          xcodebuild -workspace HAoStudio.xcworkspace \
+            -scheme HAoStudio \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO
+      - name: Package IPA
+        script: |
+          cd ios
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "App: $APP_PATH"
+          rm -rf Payload HAoStudio.ipa
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r HAoStudio.ipa Payload
+          ls -lh HAoStudio.ipa
+    artifacts:
+      - ios/HAoStudio.ipa
