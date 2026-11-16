@@ -8,5 +8,5 @@ target 'HAoStudio' do
   # ijkplayer (FFmpeg). Replaces MobileVLCKit (Huya's CDN blocks VLC's
   # HTTP client with 403) and AVPlayer (cannot decode FLV). One engine,
   # one UI, no double loading — like Pure Live.
-  pod 'IJKMediaFramework', '0.1.5'
+  pod 'IJKMediaFramework', :git => 'https://github.com/lauranthao/IJKMediaFramework.git', :tag => '0.1.5'
 end

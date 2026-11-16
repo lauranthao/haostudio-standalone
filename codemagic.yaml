@@ -1,13 +1,13 @@
 # HAo Studio 独立版 — Codemagic 工作流
 #
-# 仓库根目录结构（父级新建 Gitee 仓库后确认）：
+# 仓库根目录结构（GitHub 仓库 lauranthao/haostudio-standalone）：
 #   codemagic.yaml   <- 本文件，仓库根
 #   ios/             <- Xcode 工程（HAoStudio.xcodeproj + Podfile）
 #   web/             <- 前端源码（(a) 线拥有；构建时同步进包内）
 #   work/            <- 各线工作区（不进包）
 #
-# REPO / BRANCH 占位：Gitee 仓库由父级新建后，在 Codemagic 里添加该仓库
-# 并选 ios-unsigned 工作流；本文件不写死 repo 地址。
+# REPO / BRANCH：GitHub 仓库 lauranthao/haostudio-standalone，分支 master；
+# 已在 Codemagic 里添加该仓库并选 ios-unsigned 工作流；本文件不写死 repo 地址。
 # TMDB_API_KEY：在 Codemagic 网页端 Environment variables 里设置，
 # 不要写进仓库（包内默认是空 key，App 会跳过 TMDB enrichment）。
 workflows:
@@ -17,6 +17,8 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       xcode: latest
+      groups:
+        - haostudio
     scripts:
       - name: Sync local web frontend into bundle
         script: |
