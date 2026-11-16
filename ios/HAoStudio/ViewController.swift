@@ -363,6 +363,16 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         webView.evaluateJavaScript("typeof haoBgPlay==='function'?haoBgPlay():true") { result, _ in
             if let on = result as? Bool { NativeMusicPlayer.shared.setBackgroundPlayEnabled(on) }
         }
+        // Crash breadcrumb (live crash 2026-11-16): the last live-entry
+        // stage is in UserDefaults "hao_live_entry_stage" (live-msg ->
+        // live-present -> live-viewDidLoad -> live-ijk-ok -> live-prepared
+        // -> live-first-frame -> live-playing -> live-closed). The web
+        // cannot read UserDefaults, so inject it into localStorage on
+        // every launch; Settings > About shows it (v1.0.3 — chen could
+        // not find the record because it was never displayed anywhere).
+        let crashStage = UserDefaults.standard.string(forKey: "hao_live_entry_stage") ?? ""
+        let crashEsc = crashStage.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        webView.evaluateJavaScript("try{localStorage.setItem('hao_crash_stage','\(crashEsc)');window.__haoCrashStage='\(crashEsc)';}catch(e){}", completionHandler: nil)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
