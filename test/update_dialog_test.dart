@@ -307,20 +307,18 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('跳过此版本'));
-      // The skip handler awaits a real Hive disk write before popping
-      // the dialog; a single pumpAndSettle can return while that write
-      // is still in flight (it schedules no frames), leaving `action`
-      // null at the expect below. Keep pumping (each pump yields to
-      // the real event loop, so the write can finish) until the dialog
-      // has popped, then drain the pop animation. Deliberately no
-      // tester.runAsync here: runAsync left the tester wedged before
-      // the next test started (runs 7 + dialog-only repro).
-      for (var i = 0; i < 50 && action == null; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
+      // The dialog pops synchronously on tap now (the skip is
+      // recorded in the background), so pumpAndSettle deterministically
+      // closes it and `action` is set — no disk I/O in this path.
       await tester.pumpAndSettle();
 
       expect(action, UpdateDialogAction.skipped);
+      // The background Hive write still needs real time to land
+      // before the persistence asserts below; pumps alone do not
+      // yield real time to disk I/O.
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(seconds: 2));
+      });
       expect(
         HiveStore.getString(HiveKeys.skippedVersion, ''),
         '1.0.5',

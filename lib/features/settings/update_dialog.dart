@@ -13,6 +13,7 @@
 // never a hardcoded colour; no purple anywhere. Frosted-glass card in
 // the same style as the audio-quality sheet.
 
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -138,10 +139,14 @@ Future<UpdateDialogAction?> showUpdateDialog(
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: () async {
-                          await service.skipVersion(info.version);
-                          if (!ctx.mounted) return;
+                        // Pop first so the dialog dismisses instantly;
+                        // record the skip in the background. Awaiting
+                        // the Hive disk write before popping held the
+                        // dialog open on a slow write (and made the
+                        // dismiss timing depend on disk I/O).
+                        onPressed: () {
                           Navigator.of(ctx).pop(UpdateDialogAction.skipped);
+                          unawaited(service.skipVersion(info.version));
                         },
                         child: Text(
                           '跳过此版本',

@@ -18,11 +18,16 @@
 //   LIVE badge), and the empty / error states render with a retry.
 
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/models/live_models.dart';
+import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/domains/live/presentation/live_tab_controller.dart';
 import 'package:standalone/domains/live/presentation/live_tab_page.dart';
@@ -126,6 +131,42 @@ class FakeLiveSite extends LiveSite {
 }
 
 void main() {
+  late Directory hiveDir;
+
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    hiveDir = await Directory.systemTemp.createTemp('hao-live-tab-test-');
+    // HiveStore.init() goes through path_provider; point it at a temp
+    // dir so the live tab page (follow/history stores) can use Hive.
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return hiveDir.path;
+      }
+      return null;
+    });
+    await HiveStore.init();
+    // Memory-backed box for the whole file: a Hive file write issued
+    // inside a widget test's fake-async zone never completes within
+    // that test, so fire-and-forget writes wedge hive_ce's serialized
+    // write lock and the NEXT test's Hive put hangs forever.
+    final memBox = await Hive.openBox<dynamic>(
+      'test_settings',
+      bytes: Uint8List(0),
+    );
+    HiveStore.setTestBox(memBox);
+  });
+
+  tearDownAll(() async {
+    await HiveStore.box.close();
+    await hiveDir.delete(recursive: true);
+  });
+
+  tearDown(() {
+    Get.reset();
+  });
+
   group('LiveTabController — first load', () {
     test('rooms + categories land, status ready, full page means more', () async {
       final site = FakeLiveSite(
