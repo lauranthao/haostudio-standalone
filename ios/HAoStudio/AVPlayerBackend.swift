@@ -106,10 +106,10 @@ final class AVPlayerBackend: NSObject, PlayerBackend {
         itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] _, _ in
             self?.itemStatusChanged()
         }
-        itemBufferEmptyObservation = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] _, _ in
+        itemBufferEmptyObservation = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] (_: AVPlayerItem, _: NSKeyValueObservedChange<Bool>) in
             self?.bufferChanged()
         }
-        itemLikelyObservation = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] _, _ in
+        itemLikelyObservation = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] (_: AVPlayerItem, _: NSKeyValueObservedChange<Bool>) in
             self?.bufferChanged()
         }
         NotificationCenter.default.addObserver(self, selector: #selector(itemDidPlayToEndTime), name: .AVPlayerItemDidPlayToEndTime, object: item)
