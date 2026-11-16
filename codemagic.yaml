@@ -1,0 +1,35 @@
+# HAo Studio 独立版 Flutter 1.0.4 — Codemagic 工作流（草稿，未验证、未推送）
+#
+# Flutter 版本就是 v1.0.4（version 1.0.4+5）。Swift+web v1.0.4 已取消，不再构建。
+# 本文件放在 Flutter 工程根目录 ~/workspace/deploy/standalone-app-flutter/codemagic.yaml。
+# 仓库：与 Swift 版共用 GitHub lauranthao/haostudio-standalone 仍待定（勿擅自推送），
+# 本工作流名 ios-flutter-unsigned，与现有的 ios-unsigned（Swift）工作流并存，互不干扰。
+# 注意：Codemagic 上需新建或复用应用并选择 ios-flutter-unsigned 工作流；本文件只是草稿，
+# 首次构建前须在 Codemagic 网页端核对 flutter/xcode 版本与产物路径。
+workflows:
+  ios-flutter-unsigned:
+    name: iOS Flutter Unsigned IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: 3.47.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Build iOS unsigned
+        script: |
+          flutter build ios --release --no-codesign
+      - name: Package IPA
+        script: |
+          APP_PATH=$(find build/ios/iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "App: $APP_PATH"
+          rm -rf Payload HAoStudio.ipa
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r HAoStudio.ipa Payload
+          ls -lh HAoStudio.ipa
+    artifacts:
+      - HAoStudio.ipa

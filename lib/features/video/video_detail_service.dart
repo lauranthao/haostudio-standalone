@@ -1,0 +1,257 @@
+// Video detail service — fast open (fix 4).
+//
+// Port of the web detail race (app.js `renderVideoDetail` + `vodDetGet`
+// + `detDirectP`, fix 4):
+// - Result cache 300 s + pending-promise cache (30 s): a pointer-down
+//   prefetch and the detail render share one request instead of
+//   fetching twice.
+// - Prefetch: at most 3 inflight.
+// - Fast open: race the first detail fetch against a 3.5 s timer. If
+//   it has not returned in 3.5 s, fetch the same title from alternate
+//   sources in parallel; the first usable detail (has lines with
+//   episodes) wins, for another 3.5 s. Never stare at a skeleton for
+//   12 s. The error card shows as soon as the race resolves empty
+//   (≤ ~4 s after open), never later.
+// - Direct detail fetch: one retry on fast (non-timeout) failures
+//   only — a timeout means the CMS host is slow; a blind second
+//   attempt just doubles the wait.
+// - The winning alt result is cached under its own source+id, and the
+//   caller is told the detail switched sources (page shows a
+//   "正在换源播放…" toast and opens the winning source+id).
+//
+// The fetch functions are injectable so the race/timeout behaviour is
+// unit-testable without the network; production wires [CmsClient].
+
+import 'dart:async';
+
+import '../../services/video/cms_client.dart';
+import 'video_models.dart';
+
+/// Outcome of [VideoDetailService.loadWithRace].
+class DetailRaceResult {
+  const DetailRaceResult({
+    required this.detail,
+    required this.sourceId,
+    required this.vodId,
+    required this.switchedSource,
+  });
+
+  /// The usable detail (has lines with episodes).
+  final VideoDetail detail;
+
+  /// Source/id the detail actually came from (may differ from the
+  /// requested ones when the alt-source race won).
+  final dynamic sourceId;
+  final String vodId;
+
+  /// True when the alt-source race won (caller shows the switch toast
+  /// and re-opens under the winning source+id).
+  final bool switchedSource;
+}
+
+typedef DetailFetcher = Future<VideoDetail> Function(
+  dynamic sourceId,
+  String vodId,
+);
+
+typedef AltSourcesFetcher = Future<List<AltVideoSource>> Function(
+  String title,
+  String year,
+  dynamic excludeSourceId,
+);
+
+class _CachedDetail {
+  _CachedDetail({required this.at, this.result, this.pending});
+
+  final DateTime at;
+  final VideoDetail? result;
+  final Future<VideoDetail>? pending;
+}
+
+class VideoDetailService {
+  VideoDetailService({
+    DetailFetcher? fetchDetail,
+    AltSourcesFetcher? findAlts,
+    CmsClient? cms,
+  })  : _fetchDetail = fetchDetail ??
+            ((sourceId, vodId) => (cms ?? CmsClient()).detail(sourceId, vodId)),
+        _findAlts = findAlts ??
+            ((title, year, exclude) =>
+                (cms ?? CmsClient()).altSources(title, year, exclude));
+
+  final DetailFetcher _fetchDetail;
+  final AltSourcesFetcher _findAlts;
+
+  final Map<String, _CachedDetail> _cache = {};
+
+  static const Duration resultTtl = Duration(seconds: 300);
+  static const Duration pendingTtl = Duration(seconds: 30);
+  static const int maxPrefetchInflight = 3;
+
+  /// First fetch: 3.5 s timer. Alt race: a further 3.5 s.
+  static const Duration firstRace = Duration(milliseconds: 3500);
+  static const Duration altRace = Duration(milliseconds: 3500);
+
+  String _key(dynamic sourceId, String vodId) => '$sourceId|$vodId';
+
+  /// One direct detail fetch with the web's retry rule: one retry on
+  /// fast (non-timeout) failures only.
+  Future<VideoDetail> _directFetch(dynamic sourceId, String vodId) async {
+    try {
+      final r = await _fetchDetail(sourceId, vodId);
+      if (!r.usable) throw StateError('direct detail fail');
+      return r;
+    } on CmsTimeoutException {
+      rethrow;
+    } catch (_) {
+      // Fast failure — one retry, then give up.
+      final r = await _fetchDetail(sourceId, vodId);
+      if (!r.usable) throw StateError('direct detail fail');
+      return r;
+    }
+  }
+
+  /// `vodDetGet(sid, vid)`: resolved results live 5 min; in-flight
+  /// futures are shared (30 s window).
+  Future<VideoDetail> get(dynamic sourceId, String vodId) {
+    final k = _key(sourceId, vodId);
+    final now = DateTime.now();
+    final c = _cache[k];
+    if (c != null) {
+      if (c.result != null && now.difference(c.at) < resultTtl) {
+        return Future.value(c.result);
+      }
+      if (c.result == null &&
+          c.pending != null &&
+          now.difference(c.at) < pendingTtl) {
+        return c.pending!;
+      }
+    }
+    late final Future<VideoDetail> p;
+    p = _directFetch(sourceId, vodId).then((r) {
+      if (_cache[k]?.pending == p) {
+        _cache[k] = _CachedDetail(at: DateTime.now(), result: r, pending: p);
+      }
+      return r;
+    }, onError: (Object e) {
+      if (_cache[k]?.pending == p) _cache.remove(k);
+      throw e;
+    });
+    _cache[k] = _CachedDetail(at: now, pending: p);
+    return p;
+  }
+
+  /// Cache a winning alt-source detail under its own source+id.
+  void cacheResult(dynamic sourceId, String vodId, VideoDetail detail) {
+    final k = _key(sourceId, vodId);
+    _cache[k] = _CachedDetail(
+      at: DateTime.now(),
+      result: detail,
+      pending: Future.value(detail),
+    );
+  }
+
+  /// `vodDetPrefetch(sid, vid)`: head start on pointer-down of a poster
+  /// card; at most 3 inflight prefetches.
+  void prefetch(dynamic sourceId, String vodId) {
+    if (sourceId == null || vodId.isEmpty) return;
+    var inflight = 0;
+    for (final c in _cache.values) {
+      if (c.result == null && c.pending != null) inflight++;
+    }
+    if (inflight >= maxPrefetchInflight) return;
+    unawaited(get(sourceId, vodId).then((_) {}, onError: (_) {}));
+  }
+
+  /// Fast-open race (fix 4). Returns null when nothing usable arrives
+  /// within the race windows — the caller shows the error card with
+  /// retry (retry re-runs the whole race).
+  ///
+  /// [preload] is the list item the user tapped (cover + title on
+  /// screen instantly; its title/year drive the alt-source race).
+  Future<DetailRaceResult?> loadWithRace(
+    dynamic sourceId,
+    String vodId, {
+    VideoItem? preload,
+  }) async {
+    final first = get(sourceId, vodId);
+    VideoDetail? r;
+    try {
+      r = await first.timeout(firstRace);
+    } on TimeoutException {
+      r = null;
+    } catch (_) {
+      r = null;
+    }
+    if (r != null) {
+      return DetailRaceResult(
+        detail: r,
+        sourceId: sourceId,
+        vodId: vodId,
+        switchedSource: false,
+      );
+    }
+
+    // First source is slow — try another source carrying the same
+    // title while the first fetch keeps running; first usable wins.
+    final title = preload?.name ?? '';
+    final year = preload?.year ?? '';
+    if (title.isNotEmpty) {
+      Future<DetailRaceResult?> altFuture() async {
+        try {
+          final alts = await _findAlts(title, year, sourceId);
+          for (final a in alts) {
+            try {
+              final d = await _fetchDetail(a.source, a.vodId);
+              if (d.usable) {
+                cacheResult(a.source, a.vodId, d);
+                return DetailRaceResult(
+                  detail: d,
+                  sourceId: a.source,
+                  vodId: a.vodId,
+                  switchedSource: true,
+                );
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      final firstAsResult = first.then<DetailRaceResult?>(
+        (d) => DetailRaceResult(
+          detail: d,
+          sourceId: sourceId,
+          vodId: vodId,
+          switchedSource: false,
+        ),
+        onError: (_) => null,
+      );
+      final alt = await Future.any([
+        firstAsResult,
+        altFuture(),
+        Future<DetailRaceResult?>.delayed(altRace, () => null),
+      ]);
+      if (alt != null) return alt;
+    } else {
+      // No title to race alts with — give the first fetch the second
+      // window too.
+      try {
+        r = await first.timeout(altRace);
+      } on TimeoutException {
+        r = null;
+      } catch (_) {
+        r = null;
+      }
+      if (r != null) {
+        return DetailRaceResult(
+          detail: r,
+          sourceId: sourceId,
+          vodId: vodId,
+          switchedSource: false,
+        );
+      }
+    }
+    return null;
+  }
+}
