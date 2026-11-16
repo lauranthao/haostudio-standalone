@@ -49,7 +49,8 @@ workflows:
           cd ios/Vendor/libmpv
           curl -L --fail -o libmpv-ios.tar.gz "$LIBMPV_URL"
           echo "$LIBMPV_SHA256  libmpv-ios.tar.gz" | shasum -a 256 -c -
-          tar -xzf --strip-components=1 libmpv-ios.tar.gz
+          tar -xzf libmpv-ios.tar.gz --strip-components=1
+          test -d Mpv.xcframework || { echo "libmpv extract failed: Mpv.xcframework missing"; exit 1; }
           rm libmpv-ios.tar.gz
           ls
       - name: Install CocoaPods dependencies
