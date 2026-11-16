@@ -1,20 +1,29 @@
 // HAo Studio standalone — app constants (v1.0.4).
 //
 // Version rules (fixes spec fix 8): version constant is '1.0.4', build 5,
-// pubspec 1.0.4+5, update URL is the GitHub raw URL (NOT Gitee — the old
-// Gitee URL returned "Repository or file not found"). Semver comparison is
-// NUMERIC, part by part — never lexicographic, never against a changelog
-// date tag or a cache-buster.
+// pubspec 1.0.4+5. Update check fetches version.json from the shop server
+// FIRST (reachable from mainland China — GitHub raw is blocked/slow there)
+// and falls back to the GitHub raw URL. Semver comparison is NUMERIC,
+// part by part — never lexicographic, never against a changelog date tag
+// or a cache-buster.
 
 /// Current app version (CFBundleShortVersionString).
-const String kAppVersion = '1.0.4';
+const String kAppVersion = '1.0.5';
 
 /// Current build number (CFBundleVersion).
-const int kAppBuild = 5;
+const int kAppBuild = 6;
 
-/// Online-update manifest. The published version.json in the repo root must
-/// be bumped to version 1.0.4 / build 5 with the new IPA URL at release time.
+/// Online-update manifest (primary). Served from the shop server, which
+/// is reachable from mainland China. The published version.json in the
+/// shop's public/ must be bumped to version 1.0.4 / build 5 with the new
+/// IPA URL at release time.
 const String kVersionUrl =
+    'https://chen-hao-shop-production.up.railway.app/version.json';
+
+/// Online-update manifest (fallback). GitHub raw is slow/blocked in
+/// mainland China and its CDN cache lags hours behind a push, so it is
+/// only tried when the shop server fails.
+const String kVersionUrlFallback =
     'https://raw.githubusercontent.com/lauranthao/haostudio-standalone/master/version.json';
 
 /// Compare two dotted semver strings numerically, part by part.

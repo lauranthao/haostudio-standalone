@@ -104,7 +104,7 @@ VideoItem parseCmsVideoItem(VideoSource source, Map<String, dynamic> x) {
     sourceName: source.name,
     vodId: (x['vod_id'] ?? '').toString(),
     name: (x['vod_name'] as String?) ?? '',
-    pic: (x['vod_pic'] as String?) ?? '',
+    pic: toHttps((x['vod_pic'] as String?) ?? ''),
     year: (x['vod_year'] ?? '').toString(),
     type: (x['type_name'] as String?) ?? '',
     area: (x['vod_area'] as String?) ?? '',
@@ -135,7 +135,14 @@ List<PlayLine> parsePlayLines(String playUrl, String playFrom) {
       if (di < 0) continue;
       final nm = part.substring(0, di).trim();
       final u = part.substring(di + 1).trim();
-      if (u.isNotEmpty) eps.add(PlayEpisode(name: nm.isEmpty ? '正片' : nm, url: u));
+      if (u.isNotEmpty) {
+        eps.add(PlayEpisode(
+          name: nm.isEmpty ? '正片' : nm,
+          // CMS play URLs are often bare http:// — force https so ATS
+          // and the AVPlayer backend don't reject them outright.
+          url: toHttps(u),
+        ));
+      }
     }
     if (eps.isEmpty) continue;
     final rawName = gi < names.length ? names[gi] : '';
@@ -164,7 +171,12 @@ List<PlayLine> parsePlayLinesWithContentFallback(
     r'[\$]?(https?://[^\s"<>]+[.]m3u8[^\s"<>]*)',
   ).firstMatch(content);
   if (m != null) {
-    return [PlayLine(name: '直链', episodes: [PlayEpisode(name: '正片', url: m.group(1)!)])];
+    return [
+      PlayLine(
+        name: '直链',
+        episodes: [PlayEpisode(name: '正片', url: toHttps(m.group(1)!))],
+      )
+    ];
   }
   return lines;
 }
@@ -191,7 +203,7 @@ VideoDetail? parseCmsDetail(
     vodId: vodId,
     meta: VideoMeta(
       name: (d['vod_name'] as String?) ?? '',
-      pic: (d['vod_pic'] as String?) ?? '',
+      pic: toHttps((d['vod_pic'] as String?) ?? ''),
       year: (d['vod_year'] ?? '').toString(),
       type: (d['type_name'] as String?) ?? '',
       area: (d['vod_area'] as String?) ?? '',

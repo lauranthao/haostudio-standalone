@@ -864,4 +864,90 @@ void main() {
       );
     });
   });
+
+  group('categories (bussLive)', () {
+    test('parseHuyaCategories handles double/int/Map/String gids', () {
+      final areas = HuyaSite.parseHuyaCategories(<String, dynamic>{
+        'status': 200,
+        'data': [
+          {'gid': 1.0, 'gameFullName': '英雄联盟'},
+          {'gid': 862, 'gameFullName': 'CS2'},
+          {
+            'gid': {'value': '5937,5938'},
+            'gameFullName': '无畏契约',
+          },
+          {'gid': '4', 'gameFullName': '穿越火线'},
+          {'gid': '', 'gameFullName': 'NoId'},
+          {'gid': 7, 'gameFullName': ''},
+          {'gameFullName': 'NoGid'},
+        ],
+      });
+      expect(
+        areas.map((a) => a.areaId),
+        ['1', '862', '5937', '4'],
+      );
+      expect(
+        areas.map((a) => a.areaName),
+        ['英雄联盟', 'CS2', '无畏契约', '穿越火线'],
+      );
+      expect(areas.first.areaPic, contains('1-MS.jpg'));
+      expect(areas.every((a) => a.platform == 'huya'), isTrue);
+    });
+
+    test('parseHuyaCategories returns empty on a bad payload', () {
+      expect(HuyaSite.parseHuyaCategories(null), isEmpty);
+      expect(HuyaSite.parseHuyaCategories({'data': 'nope'}), isEmpty);
+    });
+
+    test('getCategories merges bussLive types, falls back when all fail',
+        () async {
+      final stubDio = Dio();
+      stubDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.path.contains('bussLive')) {
+              if (options.queryParameters['bussType'] == '1') {
+                return handler.resolve(
+                  Response<dynamic>(
+                    requestOptions: options,
+                    statusCode: 200,
+                    data: {
+                      'status': 200,
+                      'data': [
+                        {'gid': 1.0, 'gameFullName': '英雄联盟'},
+                      ],
+                    },
+                  ),
+                );
+              }
+              return handler.reject(
+                DioException(requestOptions: options),
+              );
+            }
+            return handler.next(options);
+          },
+        ),
+      );
+      final site = HuyaSite(dio: stubDio);
+      final areas = await site.getCategories();
+      // One live type is enough; the three dead ones must not kill it.
+      expect(areas.map((a) => a.areaName), contains('英雄联盟'));
+
+      final deadDio = Dio();
+      deadDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) =>
+              handler.reject(DioException(requestOptions: options)),
+        ),
+      );
+      final fallback = await HuyaSite(dio: deadDio).getCategories();
+      // Verified-popular gids, never blank.
+      expect(fallback, isNotEmpty);
+      expect(
+        fallback.every((a) => int.tryParse(a.areaId) != null),
+        isTrue,
+      );
+      expect(fallback.map((a) => a.areaName), contains('英雄联盟'));
+    });
+  });
 }

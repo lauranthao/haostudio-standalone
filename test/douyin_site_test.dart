@@ -392,6 +392,19 @@ void main() {
       expect(DouyinSite.parseCategories('<html></html>'), isEmpty);
     });
 
+        test('parseCategories from the real escaped SSR blob', () {
+      // The live page embeds the blob with every quote escaped as
+      // backslash-backslash-quote, the form Pure Live matches.
+      // Built with char codes so the test source carries no escapes.
+      const inner =
+          '{"pathname":"/","categoryData":[{"partition":{"id_str":"1","type":1,"title":"游戏"},"sub_partition":[{"partition":{"id_str":"2","type":1,"title":"英雄联盟"}}]}]}';
+      final bs = String.fromCharCode(92);
+      final page = 'prefix ${inner.replaceAll('"', '$bs$bs"')} suffix';
+      final areas = DouyinSite.parseCategories(page);
+      expect(areas.map((a) => a.areaId), ['1,1', '2,1']);
+      expect(areas.map((a) => a.areaName), ['游戏', '英雄联盟']);
+    });
+
     test('parseCategoryRooms maps data.data[]', () {
       final rooms = DouyinSite.parseCategoryRooms(<String, dynamic>{
         'status_code': 0,

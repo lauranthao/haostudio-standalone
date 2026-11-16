@@ -15,16 +15,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'core/storage/hive_store.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/live/live_breadcrumb.dart';
 import 'features/settings/update_dialog.dart';
+import 'features/splash/splash_page.dart';
 import 'services/update_service.dart';
-import 'widgets/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // media_kit native library MUST be initialised before any Player()
+  // is created. Without this, NativeLibrary.path throws on first
+  // Player() construction (music tab blank, live/video stuck loading).
+  // Idempotent: media_kit guards with an internal _initialized flag.
+  MediaKit.ensureInitialized();
 
   // Crash breadcrumb: read before anything else (fix 1).
   await HiveStore.init();
@@ -67,7 +74,7 @@ class HAoApp extends StatelessWidget {
         theme: themeController.lightTheme,
         darkTheme: themeController.darkTheme,
         themeMode: themeController.themeMode.value,
-        home: const AppShell(),
+        home: const SplashPage(),
       ),
     );
   }

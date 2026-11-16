@@ -18,6 +18,11 @@ import 'player_kernel.dart';
 
 class MpvBackend implements PlayerBackend {
   MpvBackend() {
+    // Defensive: the native media_kit library must be initialised
+    // before Player() is created. main() does this, but backends can
+    // be constructed from tests or before runApp — ensureInitialized
+    // is idempotent, so calling it again is safe.
+    MediaKit.ensureInitialized();
     _player = Player(
       configuration: const PlayerConfiguration(title: 'HAo Studio'),
     );
@@ -75,6 +80,16 @@ class MpvBackend implements PlayerBackend {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     if (!_opened) return false;
+    // R1: read the CURRENT state before subscribing. media_kit's
+    // width/position streams are plain broadcast StreamControllers
+    // with no replay: if mpv decoded the first frame during open()
+    // (before this method ran), the width event was already emitted
+    // and a fresh subscription would wait forever for the next one.
+    // A width > 0 means a video frame was decoded; a position > 0
+    // means the playback clock is moving — either proves playback.
+    final state = _player.state;
+    if ((state.width ?? 0) > 0) return true;
+    if (state.position > Duration.zero) return true;
     final completer = Completer<bool>();
     late final StreamSubscription<int?> widthSub;
     late final StreamSubscription<Duration> posSub;

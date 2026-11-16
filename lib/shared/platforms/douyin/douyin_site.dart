@@ -956,20 +956,56 @@ class DouyinSite extends LiveSite {
           responseType: ResponseType.plain,
         ),
       );
-      return parseCategories(response.data ?? '');
+      final areas = parseCategories(response.data ?? '');
+      if (areas.isNotEmpty) return areas;
     } catch (_) {
-      return const <LiveArea>[];
+      // Fall through to the fallback below.
     }
+    // Homepage blocked (bot check) or the SSR blob moved: never leave
+    // the tab without categories. areaIds are the repo's on-record
+    // partition ids (canned fixture in douyin_site_test.dart).
+    return _fallbackDouyinCategories;
   }
+
+  static const List<LiveArea> _fallbackDouyinCategories = <LiveArea>[
+    LiveArea(areaId: '1,1', areaName: '游戏', platform: 'douyin'),
+    LiveArea(areaId: '2,1', areaName: '英雄联盟', platform: 'douyin'),
+  ];
 
   /// Parses the homepage `categoryData` blob into areas. areaId is
   /// "id,type" — the exact shape getCategoryRooms splits on.
+  /// Parses the homepage `categoryData` blob into areas. areaId is
+  /// "id,type" - the exact shape getCategoryRooms splits on.
+  ///
+  /// The blob escaping varies by page generation (raw, singly- or
+  /// doubly-escaped JSON), so extraction is retried on the HTML
+  /// unescaped 0..3 times; the first attempt yielding a
+  /// `categoryData` list wins. This covers the Pure Live escaped
+  /// form as well as the raw form.
   static List<LiveArea> parseCategories(String html) {
-    final extracted = extractCategoryDataJson(html);
-    if (extracted.isEmpty) return const <LiveArea>[];
-    final renderDataJson = _decodeJson(extracted);
-    final data = renderDataJson is Map ? renderDataJson['categoryData'] : null;
-    if (data is! List) return const <LiveArea>[];
+    var text = html;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final extracted = extractCategoryDataJson(text);
+      if (extracted.isNotEmpty) {
+        final renderDataJson = _decodeJson(extracted);
+        final data =
+            renderDataJson is Map ? renderDataJson['categoryData'] : null;
+        if (data is List) return _areasFromCategoryData(data);
+      }
+      text = _unescapeOnce(text);
+    }
+    return const <LiveArea>[];
+  }
+
+  /// One JSON-unescape pass: backslash-quote becomes a quote, then
+  /// a doubled backslash becomes one. Built from char codes so no
+  /// escape sequences appear in source.
+  static String _unescapeOnce(String s) {
+    final bs = String.fromCharCode(92);
+    return s.replaceAll('$bs"', '"').replaceAll('$bs$bs', bs);
+  }
+
+  static List<LiveArea> _areasFromCategoryData(List<dynamic> data) {
     final areas = <LiveArea>[];
     for (final item in data) {
       final itemMap = _asMap(item);
@@ -1000,21 +1036,26 @@ class DouyinSite extends LiveSite {
   }
 
   static String extractCategoryDataJson(String source) {
-    const startPattern = r'{"pathname":"/","categoryData":';
-    final startIndex = source.indexOf(startPattern);
-    if (startIndex == -1) return '';
-    var openBraces = 0;
-    var foundFirstBrace = false;
-    for (var i = startIndex; i < source.length; i++) {
-      if (source[i] == '{') {
-        openBraces++;
-        foundFirstBrace = true;
-      } else if (source[i] == '}') {
-        openBraces--;
-      }
-      if (foundFirstBrace && openBraces == 0) {
-        final rawData = source.substring(startIndex, i + 1);
-        return rawData.replaceAll('\\"', '"').replaceAll(r'\\', r'\');
+    const startPatterns = <String>[
+      r'{\"pathname\":\"/\",\"categoryData\":',
+      r'{"pathname":"/","categoryData":',
+    ];
+    for (final startPattern in startPatterns) {
+      final startIndex = source.indexOf(startPattern);
+      if (startIndex == -1) continue;
+      var openBraces = 0;
+      var foundFirstBrace = false;
+      for (var i = startIndex; i < source.length; i++) {
+        if (source[i] == '{') {
+          openBraces++;
+          foundFirstBrace = true;
+        } else if (source[i] == '}') {
+          openBraces--;
+        }
+        if (foundFirstBrace && openBraces == 0) {
+          final rawData = source.substring(startIndex, i + 1);
+          return rawData.replaceAll('\\"', '"').replaceAll(r'\\', r'\');
+        }
       }
     }
     return '';

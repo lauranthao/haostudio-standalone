@@ -352,6 +352,20 @@ class DoubanService {
         );
         mp = parseDoubanMPage(html);
       } catch (_) {}
+      // Desktop page: cast avatar photos (best effort — a slow or
+      // failed fetch must never kill the detail).
+      var castPhotos = const <String>[];
+      try {
+        final desktopHtml = await _text(
+          'https://movie.douban.com/subject/$id/',
+          kDoubanHeaders,
+          timeout: const Duration(seconds: 6),
+        ).timeout(const Duration(seconds: 6));
+        final byName = parseDoubanDesktopCast(desktopHtml);
+        if (byName.isNotEmpty) {
+          castPhotos = ab.castNames.map((n) => byName[n] ?? '').toList();
+        }
+      } catch (_) {}
       final d = DoubanDetail(
         id: id,
         media: ab.media,
@@ -365,6 +379,7 @@ class DoubanService {
         countries: ab.countries,
         director: ab.director,
         castNames: ab.castNames.take(10).toList(),
+        castPhotos: castPhotos,
         episodes: ab.episodes,
       );
       _cache.setDetail(id, d);

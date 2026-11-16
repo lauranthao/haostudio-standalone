@@ -368,6 +368,80 @@ List<LiveRoom> parseKuaishouRecommendRooms(dynamic json) {
   return rooms;
 }
 
+/// Parse a `live_api/category/data` response (`data.list[]` of
+/// `{id, name, poster}`) into flat areas.
+List<LiveArea> parseKuaishouCategories(dynamic json) {
+  final data = json is Map ? json['data'] : null;
+  final list = data is Map ? data['list'] : null;
+  if (list is! List) return const [];
+  final areas = <LiveArea>[];
+  for (final item in list) {
+    if (item is! Map) continue;
+    final id = item['id']?.toString() ?? '';
+    final name = item['name']?.toString() ?? '';
+    if (id.isEmpty || name.isEmpty) continue;
+    areas.add(
+      LiveArea(
+        areaId: id,
+        areaName: name,
+        areaPic: item['poster']?.toString() ?? '',
+        platform: PlatformIds.kuaishou,
+      ),
+    );
+  }
+  return areas;
+}
+
+/// Parse a `live_api/gameboard/list` / `non-gameboard/list` response
+/// into rooms. Items are FLAT here (author/caption/poster/playUrls on
+/// the item itself), unlike the nested `gameLiveInfo[].liveInfo[]`
+/// shape of the recommend feed — hence a separate parser. Field
+/// mapping mirrors `parseKuaishouRecommendRooms`: room id is
+/// `author.id`, never the live-stream id.
+List<LiveRoom> parseKuaishouCategoryRooms(dynamic json) {
+  final data = json is Map ? json['data'] : null;
+  final list = data is Map ? data['list'] : null;
+  if (list is! List) return const [];
+  final rooms = <LiveRoom>[];
+  for (final item in list) {
+    if (item is! Map) continue;
+    final author = _asMap(item['author']);
+    final gameInfo = _asMap(item['gameInfo']);
+    final authorId = author['id']?.toString() ?? '';
+    if (authorId.isEmpty) continue;
+    final liveStreamId = item['id']?.toString() ?? '';
+    final caption = item['caption']?.toString() ?? '';
+    final description = author['description']?.toString() ?? '';
+    final title = caption.isNotEmpty ? caption : description;
+    final streamPoster = item['poster']?.toString() ?? '';
+    final gamePoster = gameInfo['poster']?.toString() ?? '';
+    final cover = streamPoster.isNotEmpty ? streamPoster : gamePoster;
+    final living = item['living'];
+    final live = living is bool ? living : true;
+    final playUrls = item['playUrls'];
+    rooms.add(
+      LiveRoom(
+        roomId: authorId,
+        platform: PlatformIds.kuaishou,
+        title: title.replaceAll('\n', ' '),
+        cover: _posterUrl(cover),
+        nick: author['name']?.toString() ?? '',
+        avatar: author['avatar']?.toString() ?? '',
+        watching: _asInt(item['watchingCount']) ?? 0,
+        liveStatus: live,
+        link: liveStreamId,
+        data: playUrls == null
+            ? null
+            : <String, dynamic>{'playUrls': playUrls},
+        danmakuData: liveStreamId.isEmpty
+            ? null
+            : <String, dynamic>{'liveStreamId': liveStreamId},
+      ),
+    );
+  }
+  return rooms;
+}
+
 /// Parse the `live_api/search/author` response into anchor rooms.
 ///
 /// The endpoint returns ANCHORS, not rooms: no viewer count, only a

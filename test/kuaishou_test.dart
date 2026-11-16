@@ -721,4 +721,165 @@ void main() {
       expect(site.getDanmaku().runtimeType.toString(), 'KuaishouDanmaku');
     });
   });
+
+  group('categories (category/data + gameboard)', () {
+    test('parseKuaishouCategories maps data.list[]', () {
+      final areas = parseKuaishouCategories(<String, dynamic>{
+        'data': {
+          'list': [
+            {
+              'id': '2',
+              'name': '穿越火线',
+              'poster': 'https://example.com/cf.jpg',
+            },
+            {'id': '21', 'name': '绝地求生', 'poster': ''},
+            {'id': '', 'name': 'NoId'},
+            {'id': '1', 'name': ''},
+          ],
+        },
+      });
+      expect(areas.map((a) => a.areaId), ['2', '21']);
+      expect(
+        areas.map((a) => a.areaName),
+        ['穿越火线', '绝地求生'],
+      );
+      expect(areas.first.areaPic, 'https://example.com/cf.jpg');
+      expect(areas.every((a) => a.platform == 'kuaishou'), isTrue);
+    });
+
+    test('parseKuaishouCategories returns empty on a bad payload', () {
+      expect(parseKuaishouCategories(null), isEmpty);
+      expect(parseKuaishouCategories({'data': 'nope'}), isEmpty);
+    });
+
+    test('parseKuaishouCategoryRooms maps flat gameboard items', () {
+      final rooms = parseKuaishouCategoryRooms(<String, dynamic>{
+        'data': {
+          'list': [
+            {
+              'id': 'G62A-d41LDo',
+              'poster': 'https://example.com/shot',
+              'caption': '玖玖怀旧今天开区',
+              'living': true,
+              'watchingCount': 59,
+              'author': {
+                'id': '3xbb94e8xcuqtv6',
+                'name': '蓝冰雨',
+                'avatar': 'https://example.com/av.jpg',
+              },
+              'gameInfo': {
+                'id': 1,
+                'name': '英雄联盟',
+                'poster': 'https://example.com/game.jpg',
+              },
+              'playUrls': [],
+            },
+            {
+              'id': 'other',
+              'author': {'name': 'NoId'},
+            },
+          ],
+        },
+      });
+      expect(rooms.length, 1);
+      final room = rooms.first;
+      expect(room.roomId, '3xbb94e8xcuqtv6');
+      expect(room.title, '玖玖怀旧今天开区');
+      expect(room.nick, '蓝冰雨');
+      expect(room.watching, 59);
+      expect(room.liveStatus, isTrue);
+      expect(room.link, 'G62A-d41LDo');
+      expect(
+        (room.danmakuData ?? const {})['liveStreamId'],
+        'G62A-d41LDo',
+      );
+    });
+
+    test('getCategories merges types, falls back when all fail', () async {
+      final stubDio = Dio();
+      stubDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.path.contains('live_api/category/data')) {
+              if (options.queryParameters['type'] == '2') {
+                return handler.resolve(
+                  Response<dynamic>(
+                    requestOptions: options,
+                    statusCode: 200,
+                    data: {
+                      'data': {
+                        'list': [
+                          {
+                            'id': '2',
+                            'name': '穿越火线',
+                            'poster': 'https://example.com/cf.jpg',
+                          },
+                        ],
+                      },
+                    },
+                  ),
+                );
+              }
+              return handler.resolve(
+                Response<dynamic>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {
+                    'data': {'list': []},
+                  },
+                ),
+              );
+            }
+            return handler.next(options);
+          },
+        ),
+      );
+      final areas = await KuaishouSite(dio: stubDio).getCategories();
+      expect(areas.map((a) => a.areaName), contains('穿越火线'));
+
+      final deadDio = Dio();
+      deadDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) =>
+              handler.reject(DioException(requestOptions: options)),
+        ),
+      );
+      final fallback = await KuaishouSite(dio: deadDio).getCategories();
+      expect(fallback, isNotEmpty);
+      expect(fallback.map((a) => a.areaName), contains('王者荣耀'));
+    });
+
+    test('getCategoryRooms picks gameboard vs non-gameboard by id length',
+        () async {
+      final seen = <String>[];
+      final stubDio = Dio();
+      stubDio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            seen.add(options.path);
+            return handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'data': {'list': []},
+                },
+              ),
+            );
+          },
+        ),
+      );
+      final site = KuaishouSite(dio: stubDio);
+      await site.getCategoryRooms(
+        const LiveArea(areaId: '2', areaName: '穿越火线'),
+      );
+      await site.getCategoryRooms(
+        const LiveArea(areaId: '1000004', areaName: '才艺'),
+      );
+      expect(seen, [
+        contains('gameboard/list'),
+        contains('non-gameboard/list'),
+      ]);
+    });
+  });
 }

@@ -37,6 +37,7 @@ import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../../../core/models/live_models.dart';
+import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../features/settings/source_stores.dart';
@@ -100,6 +101,16 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   bool _failed = false;
   bool _showingStallNotice = false;
   String? _errorMessage;
+  // Ladder progress text ("正在尝试 MPV…") shown under the spinner
+  // while the session is trying engines; null when no attempt ran yet.
+  String? _ladderHint;
+  // Automatic-recovery budget: consecutive session-error retries in
+  // this episode. advanceLine() wraps around and never returns null
+  // for >= 2 lines, so without a bound a failing room retries lines
+  // forever and saturates the UI isolate — the app looks frozen
+  // (spinner stuck, taps ignored, failure card never reachable).
+  // Reset on healthy playback and on every user-initiated (re)open.
+  int _consecutiveAutoFailures = 0;
   Timer? _prefetchTimer;
 
   final List<LiveMessage> _danmaku = [];
@@ -150,11 +161,19 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     _session.onStallNotice.listen((_) {
       if (mounted) setState(() => _showingStallNotice = true);
     });
+    _session.onLadderAttempt.listen((engine) {
+      if (mounted) {
+        setState(() => _ladderHint = '正在尝试 ${engine.displayName}…');
+      }
+    });
     _session.onStatus.listen((status) {
       if (status == PlaybackStatus.playing && mounted) {
         setState(() {
           _loading = false;
           _showingStallNotice = false;
+          _ladderHint = null;
+          // Healthy playback resets the auto-recovery budget.
+          _consecutiveAutoFailures = 0;
         });
       }
     });
@@ -353,6 +372,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
 
   Future<void> _resolveAndPlay() async {
     final epoch = ++_selectionEpoch;
+    _consecutiveAutoFailures = 0; // new episode, fresh retry budget
     final quality = _qualities.isEmpty ? null : _qualities[_currentQuality];
     final resolution = await _site.resolvePlayUrls(
       liveRoom: _room,
@@ -399,6 +419,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       setState(() {
         _loading = false;
         _failed = true;
+        _ladderHint = null;
       });
     }
   }
@@ -431,6 +452,21 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   void _onSessionError(String message) {
     if (!mounted) return;
     // Order: next line first (no request), then fresh re-parse.
+    // BOUND: after every line has failed once in this episode, stop
+    // and show the failure card. advanceLine() wraps around, so
+    // without this the room retries lines forever — the retry storm
+    // saturates the UI isolate and the whole app looks frozen
+    // (spinner stuck, taps ignored, failure card never reachable).
+    // The initial open already tried one line, so lines.length - 1
+    // further advances cover every line exactly once.
+    if (_consecutiveAutoFailures >= _recovery.lines.length - 1) {
+      setState(() {
+        _failed = true;
+        _errorMessage = message;
+      });
+      return;
+    }
+    _consecutiveAutoFailures++;
     final next = _recovery.advanceLine();
     if (next != null) {
       unawaited(_session.open(
@@ -453,6 +489,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     if (index == _recovery.currentLineIndex) return; // no-op
     if (index < 0 || index >= _recovery.lines.length) return;
     final epoch = ++_selectionEpoch;
+    _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     _recovery.currentLineIndex = index;
     setState(() => _loading = true);
     final ok = await _session.open(
@@ -473,6 +510,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   Future<void> _switchQuality(int index) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
+    _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     final before = List<String>.of(_recovery.lines);
     final quality = _qualities[index];
     final resolution = await _site.resolvePlayUrlsForRecovery(
@@ -534,6 +572,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       _failed = false;
       _loading = true;
       _errorMessage = null;
+      _ladderHint = null;
+      _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     });
     final next = _recovery.advanceLine();
     if (next != null) {
@@ -754,8 +794,25 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                       ),
                     ),
                     if (_loading)
-                      const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+                      Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                            if (_ladderHint != null) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                _ladderHint!,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     if (_failed)
                       _FailureCard(

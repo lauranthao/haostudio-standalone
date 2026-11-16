@@ -750,6 +750,122 @@ class HuyaSite extends LiveSite {
     return parseHuyaCacheList(_decodeJson(response.data));
   }
 
+  /// Categories — port of Pure Live 3.x `getCategores` + `getSubCategores`.
+  ///
+  /// The four top types are fixed upstream (网游 1 / 单机 2 / 娱乐 8 /
+  /// 手游 3); each one's games come from
+  /// `live.cdn.huya.com/liveconfig/game/bussLive?bussType=<id>`
+  /// (probed live 2026-11-16: 105/134/19/127 games). The four fetches
+  /// run in parallel and one dead type never kills the other three.
+  /// When every fetch fails, the verified-popular fallback below is
+  /// returned so the tab never shows a blank category row — the gids
+  /// are real (same live probe) and `getCategoryRooms` accepts them
+  /// as `gameId`.
+  @override
+  Future<List<LiveArea>> getCategories({
+    int page = 1,
+    int pageSize = 30,
+  }) async {
+    final results = await Future.wait(
+      _huyaCategoryTypes.map((type) async {
+        try {
+          final response = await _dio.get<dynamic>(
+            'https://live.cdn.huya.com/liveconfig/game/bussLive',
+            queryParameters: <String, dynamic>{'bussType': type},
+            options: Options(
+              headers: <String, String>{'User-Agent': _browserUa},
+            ),
+          );
+          return parseHuyaCategories(_decodeJson(response.data));
+        } catch (_) {
+          return const <LiveArea>[];
+        }
+      }),
+    );
+    final areas = results.expand((list) => list).toList(growable: false);
+    if (areas.isNotEmpty) return areas;
+    return _fallbackHuyaCategories;
+  }
+
+  /// Pure Live's top-type order: 网游 / 单机 / 娱乐 / 手游.
+  static const List<String> _huyaCategoryTypes = <String>['1', '2', '8', '3'];
+
+  /// Verified-popular games per top type (live probe 2026-11-16,
+  /// `bussLive` top entries by heat). Only used when all four live
+  /// fetches fail; areaId is the real gid, so category rooms load.
+  static const List<LiveArea> _fallbackHuyaCategories = <LiveArea>[
+    // 网游
+    LiveArea(areaId: '1', areaName: '英雄联盟', platform: PlatformIds.huya),
+    LiveArea(areaId: '862', areaName: 'CS2', platform: PlatformIds.huya),
+    LiveArea(areaId: '5937', areaName: '无畏契约', platform: PlatformIds.huya),
+    LiveArea(areaId: '5485', areaName: 'lol云顶之弈', platform: PlatformIds.huya),
+    LiveArea(areaId: '393', areaName: '炉石传说', platform: PlatformIds.huya),
+    LiveArea(areaId: '4', areaName: '穿越火线', platform: PlatformIds.huya),
+    LiveArea(areaId: '7', areaName: 'DOTA2', platform: PlatformIds.huya),
+    LiveArea(areaId: '8', areaName: '魔兽世界', platform: PlatformIds.huya),
+    // 单机
+    LiveArea(areaId: '2793', areaName: '天天吃鸡', platform: PlatformIds.huya),
+    LiveArea(areaId: '100032', areaName: '主机游戏', platform: PlatformIds.huya),
+    LiveArea(areaId: '1732', areaName: '我的世界', platform: PlatformIds.huya),
+    LiveArea(areaId: '70953', areaName: '失控进化-RUST', platform: PlatformIds.huya),
+    LiveArea(areaId: '485', areaName: '植物大战僵尸', platform: PlatformIds.huya),
+    LiveArea(areaId: '1318', areaName: '部落：上升', platform: PlatformIds.huya),
+    LiveArea(areaId: '5907', areaName: '互动点播', platform: PlatformIds.huya),
+    LiveArea(areaId: '4375', areaName: "精灵宝可梦Let's Go", platform: PlatformIds.huya),
+    // 娱乐
+    LiveArea(areaId: '2165', areaName: '户外', platform: PlatformIds.huya),
+    LiveArea(areaId: '1663', areaName: '星秀', platform: PlatformIds.huya),
+    LiveArea(areaId: '6861', areaName: '原创', platform: PlatformIds.huya),
+    LiveArea(areaId: '2356', areaName: '体育', platform: PlatformIds.huya),
+    LiveArea(areaId: '2135', areaName: '一起看', platform: PlatformIds.huya),
+    LiveArea(areaId: '4079', areaName: '交友', platform: PlatformIds.huya),
+    LiveArea(areaId: '2633', areaName: '二次元', platform: PlatformIds.huya),
+    LiveArea(areaId: '2168', areaName: '颜值', platform: PlatformIds.huya),
+    // 手游
+    LiveArea(areaId: '2336', areaName: '王者荣耀', platform: PlatformIds.huya),
+    LiveArea(areaId: '9449', areaName: '三角洲行动', platform: PlatformIds.huya),
+    LiveArea(areaId: '3203', areaName: '和平精英', platform: PlatformIds.huya),
+    LiveArea(areaId: '7185', areaName: '金铲铲之战', platform: PlatformIds.huya),
+    LiveArea(areaId: '2928', areaName: 'QQ飞车手游', platform: PlatformIds.huya),
+    LiveArea(areaId: '4769', areaName: 'COD手游', platform: PlatformIds.huya),
+    LiveArea(areaId: '2429', areaName: '火影忍者手游', platform: PlatformIds.huya),
+    LiveArea(areaId: '6909', areaName: '蛋仔派对', platform: PlatformIds.huya),
+  ];
+
+  /// Parse a `bussLive` response (`data[]` of `{gid, gameFullName}`)
+  /// into flat areas. `gid` has four historical shapes (Pure Live):
+  /// Map (comma-separated value, take first), double, int, String.
+  static List<LiveArea> parseHuyaCategories(dynamic decoded) {
+    final areas = <LiveArea>[];
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! List) return areas;
+    for (final item in data) {
+      if (item is! Map) continue;
+      final gid = _huyaGid(item['gid']);
+      if (gid.isEmpty) continue;
+      final name = item['gameFullName']?.toString() ?? '';
+      if (name.isEmpty) continue;
+      areas.add(
+        LiveArea(
+          areaId: gid,
+          areaName: name,
+          areaPic: 'https://huyaimg.msstatic.com/cdnimage/game/$gid-MS.jpg',
+          platform: PlatformIds.huya,
+        ),
+      );
+    }
+    return areas;
+  }
+
+  static String _huyaGid(dynamic rawGid) {
+    if (rawGid is Map) {
+      return rawGid['value']?.toString().split(',').first ?? '';
+    }
+    if (rawGid is double) return rawGid.toInt().toString();
+    if (rawGid is int) return rawGid.toString();
+    return rawGid?.toString() ?? '';
+  }
+
   @override
   Future<List<LiveRoom>> getCategoryRooms(
     LiveArea area, {

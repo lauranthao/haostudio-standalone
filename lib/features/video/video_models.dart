@@ -303,23 +303,35 @@ class VideoMeta {
 
 /// Marker that the score/poster came from Douban (renders a 豆瓣 mark).
 class DoubanMark {
-  const DoubanMark({required this.id, this.score, this.poster = ''});
+  const DoubanMark({
+    required this.id,
+    this.score,
+    this.poster = '',
+    this.castPhotos = const [],
+  });
 
   factory DoubanMark.fromJson(Map<String, dynamic> json) => DoubanMark(
         id: (json['id'] as String?) ?? '',
         score: (json['score'] as String?) ?? '',
         poster: (json['poster'] as String?) ?? '',
+        castPhotos: (json['castPhotos'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'score': score,
         'poster': poster,
+        'castPhotos': castPhotos,
       };
 
   final String id;
   final String? score;
   final String poster;
+
+  /// Cast avatar URLs (parallel to the merged cast names).
+  final List<String> castPhotos;
 }
 
 /// Full detail result: meta + playable lines.
@@ -437,6 +449,7 @@ class DoubanDetail {
     this.countries = const [],
     this.director = '',
     this.castNames = const [],
+    this.castPhotos = const [],
     this.episodes,
   });
 
@@ -459,6 +472,9 @@ class DoubanDetail {
         castNames: (json['castNames'] as List<dynamic>? ?? const [])
             .map((e) => e.toString())
             .toList(),
+        castPhotos: (json['castPhotos'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
         episodes: (json['episodes'] as String?) ?? '',
       );
 
@@ -475,6 +491,7 @@ class DoubanDetail {
         'countries': countries,
         'director': director,
         'castNames': castNames,
+        'castPhotos': castPhotos,
         'episodes': episodes,
       };
 
@@ -492,6 +509,10 @@ class DoubanDetail {
   final List<String> countries;
   final String director;
   final List<String> castNames;
+
+  /// Avatar URLs parallel to [castNames] (same order, '' when unknown),
+  /// from the Douban desktop subject page's celebrities section.
+  final List<String> castPhotos;
   final String? episodes;
 }
 

@@ -139,22 +139,34 @@ class MusicPlayerController extends GetxController
       queue.assignAll(savedQueue.songs);
       currentIndex.value = savedQueue.index;
     }
-    _playerA = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
-    _playerB = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
-    _active = _playerA;
-    _playersReady = true;
-    unawaited(_active.setVolume(volume.value * 100));
-    unawaited(_active.setRate(speed.value));
-    unawaited(_standby.setVolume(0));
-    unawaited(_standby.setRate(speed.value));
+    // Two crossfade players (A/B). Player() throws if the native
+    // media_kit library was never initialised (MediaKit.ensureInitialized
+    // missing) — catch it so a player failure only disables playback
+    // (_playersReady stays false, rate/play calls no-op) instead of
+    // crashing the whole music tab during build.
+    try {
+      _playerA = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
+      _playerB = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
+      _active = _playerA;
+      _playersReady = true;
+    } catch (e) {
+      debugPrint('[HAo] music players failed to initialise: $e');
+      _playersReady = false;
+    }
+    if (_playersReady) {
+      unawaited(_active.setVolume(volume.value * 100));
+      unawaited(_active.setRate(speed.value));
+      unawaited(_standby.setVolume(0));
+      unawaited(_standby.setRate(speed.value));
+    }
     WidgetsBinding.instance.addObserver(this);
-    _attach(_active);
+    if (_playersReady) _attach(_active);
     _nowPlaying = _nowPlayingOverride ?? NowPlayingService();
     _nowPlaying.onRemoteCommand = _onRemoteCommand;
     _sleepTimer = SleepTimer(
       onFire: () {
         // Wall-clock timer fired: STOP playback and clear the timer.
-        unawaited(_active.pause());
+        if (_playersReady) unawaited(_active.pause());
         _syncSleepState();
       },
       onChanged: _syncSleepState,
@@ -180,8 +192,12 @@ class MusicPlayerController extends GetxController
     unawaited(_playingSub?.cancel());
     unawaited(_errorSub?.cancel());
     unawaited(_completedSub?.cancel());
-    unawaited(_playerA.dispose());
-    unawaited(_playerB.dispose());
+    // Players are late final: only dispose when they were created
+    // (onInit try/catch may have left them uninitialised).
+    if (_playersReady) {
+      unawaited(_playerA.dispose());
+      unawaited(_playerB.dispose());
+    }
     super.onClose();
   }
 

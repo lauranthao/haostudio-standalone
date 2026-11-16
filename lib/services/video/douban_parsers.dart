@@ -123,6 +123,34 @@ String? parseDoubanSuggestId(dynamic json) {
   return null;
 }
 
+/// Desktop page `movie.douban.com/subject/<id>/` cast section →
+/// `{actor name: avatar URL}`.
+///
+/// The celebrities list renders each person as `<li class="celebrity">`
+/// with the avatar as a
+/// `background-image:url(https://imgN.doubanio.com/view/celebrity/s_ratio_celebrity/public/p....jpg)`
+/// and the name in `<span class="name"><a>…</a></span>`.
+/// Directors are in the list too; callers match by name against the
+/// abstract's actor list, so they are ignored there.
+Map<String, String> parseDoubanDesktopCast(String? html) {
+  final out = <String, String>{};
+  if (html == null || html.isEmpty) return out;
+  final blockRe = RegExp(r'<li class="celebrity">(.*?)</li>', dotAll: true);
+  final avatarRe = RegExp(
+    r'https://img\d+\.doubanio\.com/view/celebrity/s_ratio_celebrity/public/p[\w.]+?\.jpg',
+  );
+  final nameRe = RegExp(r'<span class="name">\s*<a[^>]*>([^<]+)</a>');
+  for (final block in blockRe.allMatches(html)) {
+    final body = block.group(1) ?? '';
+    final avatar = avatarRe.firstMatch(body)?.group(0);
+    final name = nameRe.firstMatch(body)?.group(1)?.trim();
+    if (avatar != null && name != null && name.isNotEmpty) {
+      out.putIfAbsent(name, () => avatar);
+    }
+  }
+  return out;
+}
+
 /// Desktop search fallback: `www.douban.com/search?cat=1002&q=<title>` —
 /// HTML regex `sid:\s*(\d+)` else `movie.douban.com/subject/(\d+)`.
 String? parseDoubanSearchPageId(String? html) {
@@ -178,5 +206,10 @@ void mergeDoubanIntoMeta(VideoMeta meta, DoubanDetail? dd) {
     }
     meta.pic = dd.poster;
   }
-  meta.douban = DoubanMark(id: dd.id, score: dd.score, poster: dd.poster);
+  meta.douban = DoubanMark(
+    id: dd.id,
+    score: dd.score,
+    poster: dd.poster,
+    castPhotos: dd.castPhotos,
+  );
 }

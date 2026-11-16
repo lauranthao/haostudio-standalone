@@ -15,9 +15,9 @@
 // - NO Douban enrichment before first paint. No totals strip (Infuse
 //   H7 — library size is not home-screen content). No "在线影视" page
 //   title (Infuse H2): a search pill + favourites button instead.
-// - Row order: Continue Watching → Daily Picks → category rows →
-//   My Media collections (poster-style, last). No TMDB Trending —
-//   TMDB is OUT of the standalone.
+// - Row order: My Media collections (poster-style, first) →
+//   Continue Watching → Daily Picks → category rows. No TMDB
+//   Trending — TMDB is OUT of the standalone.
 // - Poster cards prefetch the detail on pointer-down (max 3 inflight).
 
 import 'dart:async';
@@ -297,6 +297,37 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                     ),
                                   ),
                                 ),
+                              // My Media first (user request), poster-style (H6/H8).
+                              if (_home != null &&
+                                  _home!.collections.isNotEmpty) ...[
+                                _SectionHead(
+                                  title: '我的媒体',
+                                  onMore: null,
+                                ),
+                                SizedBox(
+                                  height: 212,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    itemCount: _home!.collections.length,
+                                    itemBuilder: (context, i) {
+                                      final row =
+                                          _home!.collections[i];
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 12),
+                                        child: _CollectionCard(
+                                          row: row,
+                                          onTap: () =>
+                                              _openType(row.name),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
                               // Continue Watching first (Infuse H5).
                               if (_history.isNotEmpty) ...[
                                 _SectionHead(
@@ -385,37 +416,6 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                     ),
                                   ),
                                 ],
-                              // Collections last, poster-style (H6/H8).
-                              if (_home != null &&
-                                  _home!.collections.isNotEmpty) ...[
-                                _SectionHead(
-                                  title: '我的媒体',
-                                  onMore: null,
-                                ),
-                                SizedBox(
-                                  height: 196,
-                                  child: ListView.builder(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    itemCount: _home!.collections.length,
-                                    itemBuilder: (context, i) {
-                                      final row =
-                                          _home!.collections[i];
-                                      return Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 12),
-                                        child: _CollectionCard(
-                                          row: row,
-                                          onTap: () =>
-                                              _openType(row.name),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
                               const SizedBox(height: 28),
                             ],
                           ),

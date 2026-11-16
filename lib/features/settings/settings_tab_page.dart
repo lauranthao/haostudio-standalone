@@ -6,8 +6,8 @@
 //   immediate switching, persisted. Light / dark / follow-system.
 // - Preferred engine picker (MPV / IJK / AVPlayer): stored immediately;
 //   the live session picks the new preferred engine up on next open.
-// - Version row (1.0.4, build 5) + manual update check (GitHub raw,
-//   numeric semver) + skip logic.
+// - Version row (1.0.4, build 5) + manual update check (shop server
+//   first, GitHub raw fallback, numeric semver) + skip logic.
 // - Live crash record row (fix 1): last breadcrumb stage, or 无记录.
 // - Backup export/import (step 7): whole-box JSON shared via the
 //   system share sheet (share_plus) / picked with the system file
@@ -259,7 +259,27 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         await _updateService.clearKnownUpdate();
         Get.snackbar('提示', '已是最新版本');
       case UpdateCheckResult.unavailable:
-        Get.snackbar('提示', '检查失败，请检查网络后重试');
+        Get.snackbar('提示', _updateFailureMessage());
+    }
+  }
+
+  /// Error message for a failed manual update check, by failure kind.
+  /// Timeout → retry hint; HTTP → status code; bad manifest → data error;
+  /// network/other → the generic network hint.
+  String _updateFailureMessage() {
+    switch (_updateService.lastFetchError) {
+      case UpdateFetchError.timeout:
+        return '连接超时，请重试';
+      case UpdateFetchError.http:
+        final status = _updateService.lastHttpStatus;
+        return status != null
+            ? '服务器返回错误（HTTP $status），请稍后重试'
+            : '服务器返回错误，请稍后重试';
+      case UpdateFetchError.parse:
+        return '版本信息异常';
+      case UpdateFetchError.network:
+      case null:
+        return '检查失败，请检查网络后重试';
     }
   }
 

@@ -229,6 +229,154 @@ class KuaishouSite extends LiveSite {
     return rooms.sublist(start, end);
   }
 
+  /// Categories — port of Pure Live 3.x `getCategores` +
+  /// `getSubCategores`: eight fixed top types (热门 1 / 网游 2 / 单机 3 /
+  /// 手游 4 / 棋牌 5 / 娱乐 6 / 综合 7 / 文化 8) from
+  /// `live_api/category/data?type=<id>&page=&size=` (probed live
+  /// 2026-11-16). All types fetch in parallel; a full first page
+  /// pulls one more page, capped at two. One dead type never kills
+  /// the others; when every fetch fails, the verified-popular
+  /// fallback below is returned so the tab never shows a blank
+  /// category row.
+  @override
+  Future<List<LiveArea>> getCategories({
+    int page = 1,
+    int pageSize = 30,
+  }) async {
+    final first = await Future.wait(
+      _kuaishouCategoryTypes
+          .map((type) => _fetchKuaishouCategoryPage(type, 1)),
+    );
+    final areas = first.expand((list) => list).toList();
+    final fullTypes = <String>[];
+    for (var i = 0; i < _kuaishouCategoryTypes.length; i++) {
+      if (first[i].length >= _kuaishouCategoryPageSize) {
+        fullTypes.add(_kuaishouCategoryTypes[i]);
+      }
+    }
+    if (fullTypes.isNotEmpty) {
+      final second = await Future.wait(
+        fullTypes.map((type) => _fetchKuaishouCategoryPage(type, 2)),
+      );
+      areas.addAll(second.expand((list) => list));
+    }
+    if (areas.isNotEmpty) return areas;
+    return _fallbackKuaishouCategories;
+  }
+
+  /// Pure Live's top-type order: 热门 / 网游 / 单机 / 手游 / 棋牌 /
+  /// 娱乐 / 综合 / 文化.
+  static const List<String> _kuaishouCategoryTypes = <String>[
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+  ];
+
+  static const int _kuaishouCategoryPageSize = 50;
+
+  Future<List<LiveArea>> _fetchKuaishouCategoryPage(
+    String type,
+    int page,
+  ) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        'https://live.kuaishou.com/live_api/category/data',
+        queryParameters: <String, dynamic>{
+          'type': type,
+          'page': page,
+          'size': _kuaishouCategoryPageSize,
+        },
+        options: Options(headers: _headers),
+      );
+      return parseKuaishouCategories(_decodeJson(response.data));
+    } catch (_) {
+      return const <LiveArea>[];
+    }
+  }
+
+  /// Verified-popular categories per top type (live probe 2026-11-16,
+  /// `category/data` first-page entries). Only used when all live
+  /// fetches fail; ids are real, so category rooms load.
+  static const List<LiveArea> _fallbackKuaishouCategories = <LiveArea>[
+    // 热门
+    LiveArea(areaId: '22008', areaName: '和平精英', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1001', areaName: '王者荣耀', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22484', areaName: '暗区突围', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22744', areaName: '格斗游戏', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '2', areaName: '穿越火线', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '21', areaName: '绝地求生', platform: PlatformIds.kuaishou),
+    // 网游
+    LiveArea(areaId: '1', areaName: '英雄联盟', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1009', areaName: '我的世界', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '3', areaName: '地下城与勇士', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '13', areaName: '守望先锋', platform: PlatformIds.kuaishou),
+    // 单机
+    LiveArea(areaId: '22762', areaName: '黑神话悟空', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22088', areaName: '经典单机', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '15', areaName: '街机游戏', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22193', areaName: '植物大战僵尸', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22189', areaName: '红警', platform: PlatformIds.kuaishou),
+    // 手游
+    LiveArea(areaId: '22181', areaName: '原神', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1054', areaName: 'QQ飞车手游', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22337', areaName: '蛋仔派对', platform: PlatformIds.kuaishou),
+    // 棋牌
+    LiveArea(areaId: '1018', areaName: 'JJ斗地主', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '22185', areaName: '天天象棋', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '20', areaName: '三国杀', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '6', areaName: '斗地主', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '10', areaName: '象棋', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1017', areaName: '欢乐斗地主', platform: PlatformIds.kuaishou),
+    // 娱乐
+    LiveArea(areaId: '1000004', areaName: '才艺', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000003', areaName: '音乐', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000006', areaName: '颜值', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000002', areaName: '舞蹈', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000007', areaName: '情感', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000005', areaName: '脱口秀', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000001', areaName: '明星', platform: PlatformIds.kuaishou),
+    // 综合
+    LiveArea(areaId: '1000024', areaName: '其他', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000020', areaName: '购物', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000016', areaName: '健康', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000021', areaName: '媒体', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000011', areaName: '美妆', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000008', areaName: '汽车', platform: PlatformIds.kuaishou),
+    // 文化
+    LiveArea(areaId: '1000023', areaName: '科普', platform: PlatformIds.kuaishou),
+    LiveArea(areaId: '1000022', areaName: '教育', platform: PlatformIds.kuaishou),
+  ];
+
+  /// Category rooms — port of Pure Live 3.x: game boards
+  /// (`gameboard/list`, short numeric ids) vs non-game boards
+  /// (`non-gameboard/list`, long 10000xx ids), split on id length < 7.
+  @override
+  Future<List<LiveRoom>> getCategoryRooms(
+    LiveArea area, {
+    int page = 1,
+    int pageSize = 30,
+  }) async {
+    final api = area.areaId.length < 7
+        ? 'https://live.kuaishou.com/live_api/gameboard/list'
+        : 'https://live.kuaishou.com/live_api/non-gameboard/list';
+    final response = await _dio.get<dynamic>(
+      api,
+      queryParameters: <String, dynamic>{
+        'filterType': 0,
+        'pageSize': 20,
+        'gameId': area.areaId,
+        'page': page,
+      },
+      options: Options(headers: _headers),
+    );
+    return parseKuaishouCategoryRooms(_decodeJson(response.data));
+  }
+
   /// Author search — returns ANCHORS as rooms (no viewer count, only a
   /// `living` flag). The web search page never lists rooms, so finding
   /// the anchor and opening their room is the whole flow.

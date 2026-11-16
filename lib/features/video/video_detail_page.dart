@@ -38,6 +38,7 @@ import '../../services/video/douban_service.dart';
 import 'native_video_player_page.dart';
 import 'video_detail_service.dart';
 import 'video_history_store.dart';
+import 'widgets/referer_image.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
 
@@ -294,6 +295,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final d = _detail!;
     final m = d.meta;
     final castNames = m.castNames;
+    final castPhotos = m.douban?.castPhotos ?? const [];
     final genreChips = m.genreChips;
     final lines = d.lines;
     final episodes = lines[_lineIdx].episodes;
@@ -580,6 +582,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     itemCount: castNames.length,
                     itemBuilder: (context, i) {
                       final name = castNames[i];
+                      final photo =
+                          i < castPhotos.length ? castPhotos[i] : '';
                       return Padding(
                         padding: const EdgeInsets.only(right: 12),
                         child: SizedBox(
@@ -594,12 +598,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                   color: theme.surface,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Text(
-                                  name.isEmpty ? '?' : name[0],
-                                  style: TextStyle(
-                                    color: theme.textMuted,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
+                                clipBehavior: Clip.antiAlias,
+                                child: RefererImage(
+                                  url: photo,
+                                  width: 84,
+                                  height: 112,
+                                  fallback: Text(
+                                    name.isEmpty ? '?' : name[0],
+                                    style: TextStyle(
+                                      color: theme.textMuted,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -659,10 +669,10 @@ class _CoverHero extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (pic.isNotEmpty)
-            Image.network(
-              pic,
+            RefererImage(
+              url: pic,
               fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _CoverFallback(theme: theme),
+              fallback: _CoverFallback(theme: theme),
             )
           else
             _CoverFallback(theme: theme),

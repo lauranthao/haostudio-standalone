@@ -86,6 +86,7 @@ class PlaybackSession {
   final _stallNoticeController = StreamController<void>.broadcast();
   final _positionController = StreamController<Duration>.broadcast();
   final _durationController = StreamController<Duration>.broadcast();
+  final _ladderAttemptController = StreamController<PlayerEngine>.broadcast();
 
   PlaybackStatus get status => _status;
   PlayerEngine? get activeEngine => _backend?.engine;
@@ -97,6 +98,11 @@ class PlaybackSession {
 
   /// Fired at 4 s of position stall (UI shows "重新连接").
   Stream<void> get onStallNotice => _stallNoticeController.stream;
+
+  /// Fired when the ladder starts trying an engine — the room shows
+  /// "正在尝试 MPV…/IJK…" instead of a bare spinner.
+  Stream<PlayerEngine> get onLadderAttempt =>
+      _ladderAttemptController.stream;
 
   /// Raw playback position (forwarded from the active backend). VOD
   /// uses it to save resume positions (throttled by the caller); live
@@ -195,9 +201,20 @@ class PlaybackSession {
     final ladder = RecoveryLadder(
       engines: engines,
       urls: [url],
+      onAttempt: (engine, url) {
+        if (!_ladderAttemptController.isClosed) {
+          _ladderAttemptController.add(engine);
+        }
+      },
       attempt: ({required PlayerEngine engine, required String url}) async {
-        final candidate = _buildBackend(engine);
+        // A backend whose CONSTRUCTION throws (missing native library,
+        // unregistered plugin) must fail just this attempt, not abort
+        // the whole ladder — the next engine may still play. The catch
+        // never disposes a backend that was already swapped in as live
+        // (candidate == _backend after the swap).
+        PlayerBackend? candidate;
         try {
+          candidate = _buildBackend(engine);
           // sourceOpen 18 s (study §1.3): a backend whose open() never
           // returns must not stall the ladder. TimeoutException is
           // caught below and the candidate is disposed.
@@ -209,9 +226,18 @@ class PlaybackSession {
                 declaredFormat: declaredFormat,
               )
               .timeout(const Duration(seconds: 18));
-          final ok = await candidate.waitForFirstFrame();
+          // First-frame wait is 8 s per engine (was 15 s): with the 18 s
+          // open() timeout, 3 engines serially cost at most ~78 s and
+          // typically fail fast; 15 s made the worst case ~99 s of
+          // silent spinner on a dead URL.
+          final ok = await candidate.waitForFirstFrame(
+            timeout: const Duration(seconds: 8),
+          );
           if (!ok) {
             await candidate.dispose();
+            // Tell the page the ladder is moving to the next kernel
+            // instead of leaving it on a bare spinner.
+            _emitStatus(PlaybackStatus.buffering);
             return false;
           }
           // Staged swap: only now does the new backend replace the old.
@@ -219,7 +245,10 @@ class PlaybackSession {
           unawaited(LiveBreadcrumb.write('live-first-frame'));
           return true;
         } catch (_) {
-          await candidate.dispose();
+          if (candidate != null && candidate != _backend) {
+            await candidate.dispose();
+          }
+          _emitStatus(PlaybackStatus.buffering);
           return false;
         }
       },
@@ -365,6 +394,7 @@ class PlaybackSession {
     await _stallNoticeController.close();
     await _positionController.close();
     await _durationController.close();
+    await _ladderAttemptController.close();
     unawaited(LiveBreadcrumb.write('live-closed'));
   }
 }

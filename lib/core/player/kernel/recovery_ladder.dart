@@ -31,6 +31,7 @@ class RecoveryLadder {
     required this.engines,
     required this.urls,
     required this.attempt,
+    this.onAttempt,
     this.retryDelays = const [
       Duration(milliseconds: 750),
       Duration(seconds: 2),
@@ -45,6 +46,10 @@ class RecoveryLadder {
   final List<String> urls;
 
   final LadderAttempt attempt;
+
+  /// Called before each attempt (engine + url), so the UI can show
+  /// ladder progress ("正在尝试 MPV…") instead of a bare spinner.
+  final void Function(PlayerEngine engine, String url)? onAttempt;
 
   /// Bounded retry delays between ladder passes (750 ms, 2 s).
   final List<Duration> retryDelays;
@@ -67,6 +72,7 @@ class RecoveryLadder {
           final key = _attemptKey(engine, url);
           if (_tried.contains(key)) continue;
           _tried.add(key);
+          onAttempt?.call(engine, url);
           final ok = await attempt(engine: engine, url: url);
           if (ok) {
             status = RecoveryLadderStatus.completed;
@@ -82,6 +88,7 @@ class RecoveryLadder {
             final key = _attemptKey(engine, url);
             if (_tried.contains(key)) continue;
             _tried.add(key);
+            onAttempt?.call(engine, url);
             final ok = await attempt(engine: engine, url: url);
             if (ok) {
               status = RecoveryLadderStatus.completed;

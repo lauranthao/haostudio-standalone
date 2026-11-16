@@ -28,6 +28,7 @@ import 'package:get/get.dart';
 import '../../core/theme/hao_themes.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
+import 'cms_sources.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
@@ -97,6 +98,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
   bool _loading = true;
   bool _failed = false;
+  String _loadingHint = '正在加载…';
   bool _ended = false;
   bool _showControls = true;
   bool _playing = false;
@@ -140,6 +142,11 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
         });
       } else if (status == PlaybackStatus.paused) {
         setState(() => _playing = false);
+      } else if (status == PlaybackStatus.buffering && _loading) {
+        // An engine attempt just failed its first frame and the
+        // ladder is trying the next kernel — say so instead of
+        // leaving the user staring at a bare spinner.
+        setState(() => _loadingHint = '正在切换播放内核…');
       } else if (status == PlaybackStatus.error) {
         setState(() {
           _loading = false;
@@ -185,11 +192,30 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     return '';
   }
 
+  /// Headers for the VOD stream request: many CMS CDNs 403 without a
+  /// Referer, and several upstreams key behaviour off the UA.
+  /// Referer is the origin of the CMS source this video came from.
+  Map<String, String> _playHeaders() {
+    final headers = <String, String>{'User-Agent': kDirectVideoUa};
+    final sourceId = _detail.source.toString();
+    for (final s in VideoSourcesStore.getAll()) {
+      if (s.idKey == sourceId && s.apiUrl.isNotEmpty) {
+        final origin = Uri.tryParse(toHttps(s.apiUrl))?.origin;
+        if (origin != null && origin.isNotEmpty) {
+          headers['Referer'] = origin;
+        }
+        break;
+      }
+    }
+    return headers;
+  }
+
   Future<void> _openCurrent() async {
     final epoch = ++_openEpoch;
     setState(() {
       _loading = true;
       _failed = false;
+      _loadingHint = '正在加载…';
       _ended = false;
       _position = 0;
       _duration = 0;
@@ -200,6 +226,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
       url: url,
       isLive: false,
       declaredFormat: _declaredFormat(url),
+      headers: _playHeaders(),
     );
     if (epoch != _openEpoch || !mounted) return;
     if (!ok) {
@@ -448,8 +475,21 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
             children: [
               _session.buildVideoWidget(),
               if (_loading)
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: Colors.white),
+                      const SizedBox(height: 12),
+                      Text(
+                        _loadingHint,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               if (_failed)
                 _FailureCard(onRetry: _retry),
