@@ -381,6 +381,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
+    _recovery.quality = quality;
     _recovery.currentLineIndex = 0;
     // Arm the ~100 s proactive prefetch for this resolution (fix 3):
     // the initial resolve never goes through fetchFresh, so without
@@ -502,6 +503,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
+    _recovery.quality = quality;
     _recovery.currentLineIndex = 0;
     _recovery.schedulePrefetch(); // new resolution, new 100 s prefetch
     final ok = await _session.open(

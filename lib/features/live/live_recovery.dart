@@ -34,7 +34,17 @@ class LiveRecovery {
 
   final LiveSite site;
   final LiveRoom room;
-  final LivePlayQuality? quality;
+
+  /// The quality the current lines were resolved for. Mutable on
+  /// purpose: the room page re-resolves on quality switch, and every
+  /// fresh re-parse (prefetch / session refresh / manual retry) must
+  /// use the CURRENT quality. It was `final` and only ever set from
+  /// the constructor — which the room page calls without a quality —
+  /// so fetchFresh re-parsed with quality null and platforms that key
+  /// URLs by quality id returned an empty list: the ~100 s prefetch
+  /// "succeeded" (recovery call made) but opened nothing, and the
+  /// stale URL kept playing until its hard expiry.
+  LivePlayQuality? quality;
 
   /// Current resolved lines, in platform order. Index = line.
   List<String> lines = [];
