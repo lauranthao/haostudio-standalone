@@ -27,6 +27,14 @@ private final class AVPlayerContainerView: UIView {
     }
 }
 
+// KVO observe on AVPlayerItem needs the key-path type pinned explicitly:
+// this Xcode version cannot infer Value from `item.observe(\.status, ...)`
+// (nor from the Bool key paths), so all three route through this helper
+// where KeyPath<AVPlayerItem, Value> is explicit.
+private func observePlayerItem<Value>(_ item: AVPlayerItem, _ keyPath: KeyPath<AVPlayerItem, Value>, handler: @escaping () -> Void) -> NSKeyValueObservation {
+    return item.observe(keyPath, options: [.new]) { _, _ in handler() }
+}
+
 final class AVPlayerBackend: NSObject, PlayerBackend {
     var onEvent: ((PlayerBackendEvent) -> Void)?
     var onVideoSize: ((CGSize) -> Void)?
@@ -101,15 +109,18 @@ final class AVPlayerBackend: NSObject, PlayerBackend {
         currentURL = url
         didEmitFirstFrame = false
         didEmitPrepared = false
-        let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPHeaderFieldsKey: headers])
+        // NOTE: AVURLAssetHTTPHeaderFieldsKey is NOT in scope on this Xcode
+        // version (same as NativeMusicPlayer.swift) — use the literal string
+        // key; AVURLAsset options is [String: Any].
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         let item = AVPlayerItem(asset: asset)
-        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] _, _ in
+        itemStatusObservation = observePlayerItem(item, \.status) { [weak self] in
             self?.itemStatusChanged()
         }
-        itemBufferEmptyObservation = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { [weak self] (_: AVPlayerItem, _: NSKeyValueObservedChange<Bool>) in
+        itemBufferEmptyObservation = observePlayerItem(item, \.isPlaybackBufferEmpty) { [weak self] in
             self?.bufferChanged()
         }
-        itemLikelyObservation = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { [weak self] (_: AVPlayerItem, _: NSKeyValueObservedChange<Bool>) in
+        itemLikelyObservation = observePlayerItem(item, \.isPlaybackLikelyToKeepUp) { [weak self] in
             self?.bufferChanged()
         }
         NotificationCenter.default.addObserver(self, selector: #selector(itemDidPlayToEndTime), name: .AVPlayerItemDidPlayToEndTime, object: item)
