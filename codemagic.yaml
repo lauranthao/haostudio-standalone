@@ -38,6 +38,20 @@ workflows:
           # 未设置时保持空 key，App 跳过 TMDB enrichment，影视只用 CMS 数据。
           python3 -c "import json, os; json.dump({'tmdb_api_key': os.environ.get('TMDB_API_KEY', '')}, open('ios/HAoStudio/tmdb-config.json', 'w'))"
           if [ -n "${TMDB_API_KEY:-}" ]; then echo "TMDB key injected"; else echo "No TMDB_API_KEY set; shipping empty key"; fi
+      - name: Download libmpv frameworks (MPV player backend)
+        script: |
+          # libmpv is NOT in the repo (18 xcframeworks, ~57MB): download the
+          # Predidit 0.6.8 iOS release tarball, verify sha256, extract into
+          # ios/Vendor/libmpv (the path the Xcode project references).
+          LIBMPV_URL="https://github.com/Predidit/libmpv-darwin-build/releases/download/0.6.8/libmpv-xcframeworks_0.6.8_ios-universal-video-default.tar.gz"
+          LIBMPV_SHA256="d428641cc6c100de8234eae04e229966e46949eb73fcabd526a008a02e9bf968"
+          mkdir -p ios/Vendor/libmpv
+          cd ios/Vendor/libmpv
+          curl -L --fail -o libmpv-ios.tar.gz "$LIBMPV_URL"
+          echo "$LIBMPV_SHA256  libmpv-ios.tar.gz" | shasum -a 256 -c -
+          tar -xzf --strip-components=1 libmpv-ios.tar.gz
+          rm libmpv-ios.tar.gz
+          ls
       - name: Install CocoaPods dependencies
         script: |
           cd ios

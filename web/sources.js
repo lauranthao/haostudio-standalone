@@ -17,7 +17,6 @@
   var KEY_MUSIC = LS_PREFIX + 'music';
   var KEY_LIVE = LS_PREFIX + 'live';
   var KEY_DANMAKU = LS_PREFIX + 'danmaku';
-  var KEY_TMDB = LS_PREFIX + 'tmdb';
 
   var _mem = {}; // localStorage 不可用时（Node/隐私模式）的内存兜底
   function lsGet(k) {
@@ -232,10 +231,8 @@
   function getLivePlatforms() { return loadList(KEY_LIVE, DEFAULT_LIVE).slice().sort(bySort); }
   function getDanmakuEndpoint() { return lsGet(KEY_DANMAKU) || ''; }
   function setDanmakuEndpoint(url) { lsSet(KEY_DANMAKU, String(url || '').trim()); return getDanmakuEndpoint(); }
-  function getTmdbKey() { return lsGet(KEY_TMDB) || ''; }
-  function setTmdbKey(key) { lsSet(KEY_TMDB, String(key || '').trim()); return getTmdbKey(); }
   function resetAll() {
-    lsDel(KEY_VIDEO); lsDel(KEY_MUSIC); lsDel(KEY_LIVE); lsDel(KEY_DANMAKU); lsDel(KEY_TMDB);
+    lsDel(KEY_VIDEO); lsDel(KEY_MUSIC); lsDel(KEY_LIVE); lsDel(KEY_DANMAKU);
     return true;
   }
   function resetKind(kind) {
@@ -459,17 +456,6 @@
         .then(function (r) { return r.status === 200 || r.ok ? done(true, '弹幕端点连通', null) : done(false, null, 'HTTP ' + r.status); })
         .catch(function (e) { return done(false, null, '连接失败：' + (e && e.message ? e.message : e)); });
     }
-    if (kind === 'tmdb') {
-      var key = String((def && def.key) || getTmdbKey() || '');
-      if (!key) return Promise.resolve(done(false, null, '未填写 TMDB key'));
-      return haoFetch('https://api.themoviedb.org/3/configuration?api_key=' + encodeURIComponent(key), {}, 8000)
-        .then(function (r) {
-          if (r.json && r.json.images) return done(true, 'TMDB key 有效', null);
-          if (r.status === 401) return done(false, null, 'TMDB key 无效（401）');
-          return done(false, null, 'HTTP ' + r.status);
-        })
-        .catch(function (e) { return done(false, null, '连接失败：' + (e && e.message ? e.message : e)); });
-    }
     return Promise.resolve(done(false, null, '未知 kind：' + kind));
   }
 
@@ -556,7 +542,7 @@
     return JSON.stringify({
       format: 'hao-sa-backup/1', app: 'HAo Studio', exportedAt: new Date().toISOString(), version: 1,
       video: getVideoSources(), music: loadList(KEY_MUSIC, DEFAULT_MUSIC), live: getLivePlatforms(),
-      danmakuEndpoint: getDanmakuEndpoint(), tmdbKey: getTmdbKey(), keys: keys
+      danmakuEndpoint: getDanmakuEndpoint(), keys: keys
     }, null, 2);
   }
   function importBackup(obj) {
@@ -571,7 +557,6 @@
       }
     });
     if (typeof obj.danmakuEndpoint === 'string') setDanmakuEndpoint(obj.danmakuEndpoint);
-    if (typeof obj.tmdbKey === 'string') setTmdbKey(obj.tmdbKey);
     if (obj.keys && typeof obj.keys === 'object') {
       BACKUP_KEY_NAMES.forEach(function (k) { if (typeof obj.keys[k] === 'string') lsSet(k, obj.keys[k]); });
     }
@@ -677,8 +662,8 @@
       srcSave: '保存', srcCancel: '取消', srcImport: '导入', srcExport: '导出备份', srcImportBackup: '导入备份',
       srcPasteJson: '粘贴 JSON（单个源或完整备份）', srcPasteUrl: '或粘贴源 URL（.json）', srcPickFile: '或选择 .json 文件',
       srcTestOk: '测试通过', srcTestFail: '测试失败', srcDeleted: '已删除', srcSaved: '已保存', srcImported: '导入成功',
-      srcKeepOne: '至少保留一个影视源', srcDanmaku: '弹幕端点（默认空 = 仅 Bilibili 直连）', srcTmdb: 'TMDB Key（默认空 = 跳过 TMDB）',
-      srcDanmakuPh: '如 https://你的域名（留空则不连服务器）', srcTmdbPh: '粘贴 TMDB API Key',
+      srcKeepOne: '至少保留一个影视源', srcDanmaku: '弹幕端点（默认空 = 仅 Bilibili 直连）',
+      srcDanmakuPh: '如 https://你的域名（留空则不连服务器）',
       srcBackupTip: '源存在本机，重装 App 会丢失；请定期导出备份。', srcLxNote: 'LX Music 脚本仅解析声明，不执行代码；解析失败会明确报错。',
       srcConfirmDel: '确定删除该源吗？', srcNoSources: '暂无源', srcSort: '排序', srcEnabled: '已启用', srcDisabled: '已停用' },
     tw: { srcTitle: '源管理', srcVideo: '影視源', srcMusic: '音樂解析器', srcLive: '直播平台', srcOther: '其他設定',
@@ -689,8 +674,8 @@
       srcSave: '儲存', srcCancel: '取消', srcImport: '匯入', srcExport: '匯出備份', srcImportBackup: '匯入備份',
       srcPasteJson: '貼上 JSON（單個源或完整備份）', srcPasteUrl: '或貼上源 URL（.json）', srcPickFile: '或選擇 .json 檔案',
       srcTestOk: '測試通過', srcTestFail: '測試失敗', srcDeleted: '已刪除', srcSaved: '已儲存', srcImported: '匯入成功',
-      srcKeepOne: '至少保留一個影視源', srcDanmaku: '彈幕端點（預設空 = 僅 Bilibili 直連）', srcTmdb: 'TMDB Key（預設空 = 跳過 TMDB）',
-      srcDanmakuPh: '如 https://你的網域（留空則不連伺服器）', srcTmdbPh: '貼上 TMDB API Key',
+      srcKeepOne: '至少保留一個影視源', srcDanmaku: '彈幕端點（預設空 = 僅 Bilibili 直連）',
+      srcDanmakuPh: '如 https://你的網域（留空則不連伺服器）',
       srcBackupTip: '源存在本機，重裝 App 會遺失；請定期匯出備份。', srcLxNote: 'LX Music 腳本僅解析宣告，不執行程式碼；解析失敗會明確報錯。',
       srcConfirmDel: '確定刪除該源嗎？', srcNoSources: '暫無源', srcSort: '排序', srcEnabled: '已啟用', srcDisabled: '已停用' },
     en: { srcTitle: 'Sources', srcVideo: 'Video sources', srcMusic: 'Music resolvers', srcLive: 'Live platforms', srcOther: 'Other settings',
@@ -701,8 +686,8 @@
       srcSave: 'Save', srcCancel: 'Cancel', srcImport: 'Import', srcExport: 'Export backup', srcImportBackup: 'Import backup',
       srcPasteJson: 'Paste JSON (one source or full backup)', srcPasteUrl: 'Or paste a source URL (.json)', srcPickFile: 'Or pick a .json file',
       srcTestOk: 'Test passed', srcTestFail: 'Test failed', srcDeleted: 'Deleted', srcSaved: 'Saved', srcImported: 'Imported',
-      srcKeepOne: 'Keep at least one video source', srcDanmaku: 'Danmaku endpoint (empty = Bilibili direct only)', srcTmdb: 'TMDB key (empty = skip TMDB)',
-      srcDanmakuPh: 'e.g. https://your-domain (empty = no server)', srcTmdbPh: 'Paste TMDB API key',
+      srcKeepOne: 'Keep at least one video source', srcDanmaku: 'Danmaku endpoint (empty = Bilibili direct only)',
+      srcDanmakuPh: 'e.g. https://your-domain (empty = no server)',
       srcBackupTip: 'Sources live on this device and are lost on reinstall; export a backup regularly.', srcLxNote: 'LX Music scripts are parsed for declarations only, never executed; parse failures report an explicit error.',
       srcConfirmDel: 'Delete this source?', srcNoSources: 'No sources', srcSort: 'Sort', srcEnabled: 'Enabled', srcDisabled: 'Disabled' }
   };
@@ -758,8 +743,6 @@
     else {
       html += '<div class="card" style="padding:14px;margin:8px 0"><label style="font-size:13px">' + t('srcDanmaku') + '</label>'
         + '<input id="haoDanmaku" type="text" value="' + esc(getDanmakuEndpoint()) + '" placeholder="' + esc(t('srcDanmakuPh')) + '" style="width:100%;margin:6px 0;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg)"/>'
-        + '<label style="font-size:13px">' + t('srcTmdb') + '</label>'
-        + '<input id="haoTmdb" type="text" value="' + esc(getTmdbKey()) + '" placeholder="' + esc(t('srcTmdbPh')) + '" style="width:100%;margin:6px 0;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg)"/>'
         + '<button class="ghost-btn" data-act="saveOther">' + t('srcSave') + '</button></div>';
     }
     html += '<p style="font-size:12px;color:var(--muted)">' + t('srcBackupTip') + ' ' + t('srcLxNote') + '</p></div>';
@@ -880,9 +863,8 @@
       if (act === 'export') { downloadExport(); toast(t('srcExport')); return; }
       if (act === 'reset') { openImportDialog(); return; }
       if (act === 'saveOther') {
-        var d = document.getElementById('haoDanmaku'); var k = document.getElementById('haoTmdb');
+        var d = document.getElementById('haoDanmaku');
         if (d) setDanmakuEndpoint(d.value);
-        if (k) setTmdbKey(k.value);
         toast(t('srcSaved')); return;
       }
       var card = actBtn.closest('.card');
@@ -917,7 +899,6 @@
     DEFAULT_VIDEO: DEFAULT_VIDEO, DEFAULT_MUSIC: DEFAULT_MUSIC, DEFAULT_LIVE: DEFAULT_LIVE,
     getVideoSources: getVideoSources, getMusicResolvers: getMusicResolvers, getLivePlatforms: getLivePlatforms,
     getDanmakuEndpoint: getDanmakuEndpoint, setDanmakuEndpoint: setDanmakuEndpoint,
-    getTmdbKey: getTmdbKey, setTmdbKey: setTmdbKey,
     addSource: addSource, updateSource: updateSource, deleteSource: deleteSource, setSourceEnabled: setSourceEnabled,
     testSource: testSource, resolveWithTemplate: resolveWithTemplate,
     parseSourceText: parseSourceText, importSourceText: importSourceText,

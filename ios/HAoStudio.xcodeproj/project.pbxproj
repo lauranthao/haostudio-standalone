@@ -22,6 +22,46 @@
 		B20000010000000000000003 /* LyricsAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000020000000000000001 /* LyricsAttributes.swift */; };
 		B20000010000000000000004 /* LyricsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000020000000000000004 /* LyricsLiveActivity.swift */; };
 		B20000010000000000000005 /* HAoStudioLyrics.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B20000020000000000000005 /* HAoStudioLyrics.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D4000101 /* PlayerKernel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000001 /* PlayerKernel.swift */; };
+		D4000102 /* IJKPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000002 /* IJKPlayerBackend.swift */; };
+		D4000103 /* AVPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000003 /* AVPlayerBackend.swift */; };
+		D4000104 /* MpvPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000004 /* MpvPlayerBackend.swift */; };
+		D4000111 /* Mpv.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000011 /* Mpv.xcframework */; };
+		D4000112 /* Ass.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000012 /* Ass.xcframework */; };
+		D4000113 /* Avcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000013 /* Avcodec.xcframework */; };
+		D4000114 /* Avfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000014 /* Avfilter.xcframework */; };
+		D4000115 /* Avformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000015 /* Avformat.xcframework */; };
+		D4000116 /* Avutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000016 /* Avutil.xcframework */; };
+		D4000117 /* Swresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000017 /* Swresample.xcframework */; };
+		D4000118 /* Swscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000018 /* Swscale.xcframework */; };
+		D4000119 /* Uchardet.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000019 /* Uchardet.xcframework */; };
+		D4000120 /* Dav1d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000020 /* Dav1d.xcframework */; };
+		D4000121 /* Freetype.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000021 /* Freetype.xcframework */; };
+		D4000122 /* Fribidi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000022 /* Fribidi.xcframework */; };
+		D4000123 /* Harfbuzz.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000023 /* Harfbuzz.xcframework */; };
+		D4000124 /* Mbedtls.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000024 /* Mbedtls.xcframework */; };
+		D4000125 /* Mbedcrypto.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000025 /* Mbedcrypto.xcframework */; };
+		D4000126 /* Mbedx509.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000026 /* Mbedx509.xcframework */; };
+		D4000127 /* Png16.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000027 /* Png16.xcframework */; };
+		D4000128 /* Xml2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D4000028 /* Xml2.xcframework */; };
+		D4000131 /* Mpv.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000011 /* Mpv.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000132 /* Ass.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000012 /* Ass.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000133 /* Avcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000013 /* Avcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000134 /* Avfilter.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000014 /* Avfilter.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000135 /* Avformat.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000015 /* Avformat.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000136 /* Avutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000016 /* Avutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000137 /* Swresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000017 /* Swresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000138 /* Swscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000018 /* Swscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000139 /* Uchardet.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000019 /* Uchardet.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000140 /* Dav1d.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000020 /* Dav1d.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000141 /* Freetype.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000021 /* Freetype.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000142 /* Fribidi.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000022 /* Fribidi.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000143 /* Harfbuzz.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000023 /* Harfbuzz.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000144 /* Mbedtls.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000024 /* Mbedtls.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000145 /* Mbedcrypto.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000025 /* Mbedcrypto.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000146 /* Mbedx509.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000026 /* Mbedx509.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000147 /* Png16.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000027 /* Png16.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		D4000148 /* Xml2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D4000028 /* Xml2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,16 +83,76 @@
 		B20000020000000000000004 /* LyricsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsLiveActivity.swift; sourceTree = "<group>"; };
 		B20000020000000000000005 /* HAoStudioLyrics.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HAoStudioLyrics.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C30000020000000000000008 /* HAoStudio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HAoStudio.entitlements; sourceTree = "<group>"; };
+		D4000001 /* PlayerKernel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerKernel.swift; sourceTree = "<group>"; };
+		D4000002 /* IJKPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IJKPlayerBackend.swift; sourceTree = "<group>"; };
+		D4000003 /* AVPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVPlayerBackend.swift; sourceTree = "<group>"; };
+		D4000004 /* MpvPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpvPlayerBackend.swift; sourceTree = "<group>"; };
+		D4000011 /* Mpv.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mpv.xcframework; sourceTree = "<group>"; };
+		D4000012 /* Ass.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Ass.xcframework; sourceTree = "<group>"; };
+		D4000013 /* Avcodec.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Avcodec.xcframework; sourceTree = "<group>"; };
+		D4000014 /* Avfilter.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Avfilter.xcframework; sourceTree = "<group>"; };
+		D4000015 /* Avformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Avformat.xcframework; sourceTree = "<group>"; };
+		D4000016 /* Avutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Avutil.xcframework; sourceTree = "<group>"; };
+		D4000017 /* Swresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Swresample.xcframework; sourceTree = "<group>"; };
+		D4000018 /* Swscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Swscale.xcframework; sourceTree = "<group>"; };
+		D4000019 /* Uchardet.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Uchardet.xcframework; sourceTree = "<group>"; };
+		D4000020 /* Dav1d.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Dav1d.xcframework; sourceTree = "<group>"; };
+		D4000021 /* Freetype.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Freetype.xcframework; sourceTree = "<group>"; };
+		D4000022 /* Fribidi.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Fribidi.xcframework; sourceTree = "<group>"; };
+		D4000023 /* Harfbuzz.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Harfbuzz.xcframework; sourceTree = "<group>"; };
+		D4000024 /* Mbedtls.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mbedtls.xcframework; sourceTree = "<group>"; };
+		D4000025 /* Mbedcrypto.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mbedcrypto.xcframework; sourceTree = "<group>"; };
+		D4000026 /* Mbedx509.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mbedx509.xcframework; sourceTree = "<group>"; };
+		D4000027 /* Png16.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Png16.xcframework; sourceTree = "<group>"; };
+		D4000028 /* Xml2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Xml2.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A10000030000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
+				D4000111 /* Mpv.xcframework in Frameworks */,
+				D4000112 /* Ass.xcframework in Frameworks */,
+				D4000113 /* Avcodec.xcframework in Frameworks */,
+				D4000114 /* Avfilter.xcframework in Frameworks */,
+				D4000115 /* Avformat.xcframework in Frameworks */,
+				D4000116 /* Avutil.xcframework in Frameworks */,
+				D4000117 /* Swresample.xcframework in Frameworks */,
+				D4000118 /* Swscale.xcframework in Frameworks */,
+				D4000119 /* Uchardet.xcframework in Frameworks */,
+				D4000120 /* Dav1d.xcframework in Frameworks */,
+				D4000121 /* Freetype.xcframework in Frameworks */,
+				D4000122 /* Fribidi.xcframework in Frameworks */,
+				D4000123 /* Harfbuzz.xcframework in Frameworks */,
+				D4000124 /* Mbedtls.xcframework in Frameworks */,
+				D4000125 /* Mbedcrypto.xcframework in Frameworks */,
+				D4000126 /* Mbedx509.xcframework in Frameworks */,
+				D4000127 /* Png16.xcframework in Frameworks */,
+				D4000128 /* Xml2.xcframework in Frameworks */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 		B20000030000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		D4000300 /* Embed Frameworks */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = (
+				D4000131 /* Mpv.xcframework in Embed Frameworks */,
+				D4000132 /* Ass.xcframework in Embed Frameworks */,
+				D4000133 /* Avcodec.xcframework in Embed Frameworks */,
+				D4000134 /* Avfilter.xcframework in Embed Frameworks */,
+				D4000135 /* Avformat.xcframework in Embed Frameworks */,
+				D4000136 /* Avutil.xcframework in Embed Frameworks */,
+				D4000137 /* Swresample.xcframework in Embed Frameworks */,
+				D4000138 /* Swscale.xcframework in Embed Frameworks */,
+				D4000139 /* Uchardet.xcframework in Embed Frameworks */,
+				D4000140 /* Dav1d.xcframework in Embed Frameworks */,
+				D4000141 /* Freetype.xcframework in Embed Frameworks */,
+				D4000142 /* Fribidi.xcframework in Embed Frameworks */,
+				D4000143 /* Harfbuzz.xcframework in Embed Frameworks */,
+				D4000144 /* Mbedtls.xcframework in Embed Frameworks */,
+				D4000145 /* Mbedcrypto.xcframework in Embed Frameworks */,
+				D4000146 /* Mbedx509.xcframework in Embed Frameworks */,
+				D4000147 /* Png16.xcframework in Embed Frameworks */,
+				D4000148 /* Xml2.xcframework in Embed Frameworks */,
+		); name = "Embed Frameworks"; runOnlyForDeploymentPostprocessing = 0; };
 		B20000060000000000000003 /* Embed App Extensions */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (
 				B20000010000000000000005 /* HAoStudioLyrics.appex in Embed App Extensions */,
 			); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
@@ -62,9 +162,14 @@
 		A10000040000000000000001 = {isa = PBXGroup; children = (
 				A10000040000000000000002 /* HAoStudio */,
 				B20000040000000000000001 /* HAoStudioLyrics */,
+				D4000200 /* Vendor */,
 				A10000040000000000000003 /* Products */,
 			); sourceTree = "<group>"; };
 		A10000040000000000000002 /* HAoStudio */ = {isa = PBXGroup; children = (
+				D4000001 /* PlayerKernel.swift */,
+				D4000002 /* IJKPlayerBackend.swift */,
+				D4000003 /* AVPlayerBackend.swift */,
+				D4000004 /* MpvPlayerBackend.swift */,
 				A10000020000000000000001 /* AppDelegate.swift */,
 				A10000020000000000000002 /* SceneDelegate.swift */,
 				A10000020000000000000003 /* ViewController.swift */,
@@ -88,6 +193,29 @@
 				A10000020000000000000007 /* HAoStudio.app */,
 				B20000020000000000000005 /* HAoStudioLyrics.appex */,
 			); name = Products; sourceTree = "<group>"; };
+		D4000200 /* Vendor */ = {isa = PBXGroup; children = (
+				D4000201 /* libmpv */,
+			); path = Vendor; sourceTree = "<group>"; };
+		D4000201 /* libmpv */ = {isa = PBXGroup; children = (
+				D4000011 /* Mpv.xcframework */,
+				D4000012 /* Ass.xcframework */,
+				D4000013 /* Avcodec.xcframework */,
+				D4000014 /* Avfilter.xcframework */,
+				D4000015 /* Avformat.xcframework */,
+				D4000016 /* Avutil.xcframework */,
+				D4000017 /* Swresample.xcframework */,
+				D4000018 /* Swscale.xcframework */,
+				D4000019 /* Uchardet.xcframework */,
+				D4000020 /* Dav1d.xcframework */,
+				D4000021 /* Freetype.xcframework */,
+				D4000022 /* Fribidi.xcframework */,
+				D4000023 /* Harfbuzz.xcframework */,
+				D4000024 /* Mbedtls.xcframework */,
+				D4000025 /* Mbedcrypto.xcframework */,
+				D4000026 /* Mbedx509.xcframework */,
+				D4000027 /* Png16.xcframework */,
+				D4000028 /* Xml2.xcframework */,
+		); path = libmpv; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -95,6 +223,7 @@
 				A10000030000000000000001 /* Frameworks */,
 				A10000060000000000000001 /* Sources */,
 				A10000060000000000000002 /* Resources */,
+				D4000300 /* Embed Frameworks */,
 				B20000060000000000000003 /* Embed App Extensions */,
 			); buildRules = (
 			); dependencies = (
@@ -134,6 +263,10 @@
 				A10000010000000000000010 /* updater.swift in Sources */,
 				B20000010000000000000003 /* LyricsAttributes.swift in Sources */,
 				B20000010000000000000004 /* LyricsLiveActivity.swift in Sources */,
+				D4000101 /* PlayerKernel.swift in Sources */,
+				D4000102 /* IJKPlayerBackend.swift in Sources */,
+				D4000103 /* AVPlayerBackend.swift in Sources */,
+				D4000104 /* MpvPlayerBackend.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 		B20000060000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 				B20000010000000000000001 /* LyricsAttributes.swift in Sources */,
@@ -150,8 +283,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
-		A10000090000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ( "DEBUG=1", "$(inherited)", ); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudio/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
-		A10000090000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudio/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; VALIDATE_PRODUCT = YES; }; name = Release; };
+		A10000090000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ( "DEBUG=1", "$(inherited)", ); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudio/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(PROJECT_DIR)/Vendor/libmpv", ); LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); }; name = Debug; };
+		A10000090000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudio/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 15.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(PROJECT_DIR)/Vendor/libmpv", ); LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); VALIDATE_PRODUCT = YES; }; name = Release; };
 		B20000090000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; APPLICATION_EXTENSION_API_ONLY = YES; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ( "DEBUG=1", "$(inherited)", ); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudioLyrics/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone.lyrics; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
 		B20000090000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; APPLICATION_EXTENSION_API_ONLY = YES; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudioLyrics/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone.lyrics; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; VALIDATE_PRODUCT = YES; }; name = Release; };
 		A10000090000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ( "DEBUG=1", "$(inherited)", ); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; IPHONEOS_DEPLOYMENT_TARGET = 15.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
