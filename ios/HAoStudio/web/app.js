@@ -5055,7 +5055,7 @@ function playLiveNative(data) {
   if(liveKey===lastNativeLiveKey&&Date.now()-lastNativeLiveAt<2000) return false;
   lastNativeLiveKey=liveKey; lastNativeLiveAt=Date.now();
   try {
-    window.webkit.messageHandlers.nativePlayer.postMessage({ kind: 'live', format: data.type, url: url, title: (liveRoom && liveRoom.title) || '', platform: data.platform, qualities: liveNativeQualities(data), cover:(liveRoom&&liveRoom.cover)||'', dm: { enabled: dmEnabled, opacity: dmOpacity, speed: dmSpeed, pos: dmPos } });
+    window.webkit.messageHandlers.nativePlayer.postMessage({ kind: 'live', format: data.type, url: url, title: (liveRoom && liveRoom.title) || '', platform: data.platform, roomId: (liveRoom && liveRoom.roomId) || data.room || '', qualities: liveNativeQualities(data), cover:(liveRoom&&liveRoom.cover)||'', dm: { enabled: dmEnabled, opacity: dmOpacity, speed: dmSpeed, pos: dmPos } });
   } catch (e) { return false; }
   const now = document.getElementById('liveNow');
   if (now) now.textContent = t('liveNativePlaying');

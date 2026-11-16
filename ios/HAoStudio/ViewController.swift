@@ -294,9 +294,13 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             sub.text = "本地页面缺失（web/index.html 未打进包）"
         }
 
-        // In-app update check (standalone only): one GET to the Gitee
-        // Pages version.json, at most once a day, silent on failure.
-        HaoUpdater.scheduleLaunchCheck()
+        // NOTE: no native launch update check here on purpose. The web
+        // page owns the single auto-check channel (haoAutoCheckUpdate:
+        // 20h throttle, skip-aware via hao_skip_update). A native
+        // launch check would double-prompt and ignore a version the
+        // user skipped in Settings. Manual check still works via the
+        // `haoUpdate` bridge -> HaoUpdater.checkManually.
+        // HaoUpdater.scheduleLaunchCheck()  // intentionally disabled (S1)
     }
 
     // The app page is a local file:// document: everything local
@@ -1108,12 +1112,13 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
         viewController?.presentNativePlayer(url: url, title: title, platform: platform, qualities: parseLiveQualities(body["qualities"]), format: body["format"] as? String ?? "", coverURL: coverURL, danmaku: liveDanmaku, roomId: Self.dmString(body["roomId"], default: Self.dmString(body["room"], default: "")))
     }
 
-    // qualities: [{id, name, url}] — may be missing or empty.
+    // qualities: [{id, name, url, urls[]}] — may be missing or empty.
     private func parseLiveQualities(_ raw: Any?) -> [LiveQuality] {
         guard let arr = raw as? [[String: Any]] else { return [] }
         return arr.compactMap { d in
             guard let urlString = d["url"] as? String, let url = URL(string: urlString) else { return nil }
-            return LiveQuality(id: d["id"] as? String ?? "", name: d["name"] as? String ?? "", url: url)
+            let urls = (d["urls"] as? [String] ?? []).compactMap { URL(string: $0) }
+            return LiveQuality(id: d["id"] as? String ?? "", name: d["name"] as? String ?? "", url: url, urls: urls.isEmpty ? [url] : urls)
         }
     }
 }

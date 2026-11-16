@@ -53,6 +53,11 @@ struct LiveQuality {
     var id: String
     var name: String
     var url: URL
+    // Every CDN line for this quality (the web always sends urls[];
+    // falls back to [url] when missing).
+    var urls: [URL] = []
+    /// Normalized lines — always non-empty ([url] fallback).
+    var lines: [URL] { urls.isEmpty ? [url] : urls }
 }
 
 struct NativePlayerConfig {
@@ -399,7 +404,7 @@ final class NativePlayerViewController: UIViewController {
         self.coverURL = config.coverURL
         self.playbackSpeed = config.playbackSpeed
         self.liveQualities = config.qualities
-        self.currentQualityId = config.qualities.first(where: { $0.url == config.url })?.id
+        self.currentQualityId = config.qualities.first(where: { $0.url == config.url || $0.lines.contains(config.url) })?.id
         super.init(nibName: nil, bundle: nil)
         self.modalPresentationStyle = .fullScreen
     }
@@ -1074,14 +1079,14 @@ final class NativePlayerViewController: UIViewController {
         self.qualityButton = qButton
         updateQualityButton()
 
-        // Line switch (live, landscape only): asks the web page for
-        // the next CDN line (its __nativeLiveFailed tries the next
-        // line first). The web posts one URL per quality, so the
-        // player cannot show a numbered 线路1/2/3 menu yet -- that
-        // needs the web to post each quality's urls array.
-        let lineButton = makeVideoTextButton(title: "线路", action: #selector(lineButtonTapped))
+        // Line switch (live, landscape only): a menu of the current
+        // quality's CDN lines (线路1/2/3, playing line checked),
+        // built by updateLineButton(). Hidden when the current
+        // quality has a single line (see updateBottomBarItems).
+        let lineButton = makeVideoTextButton(title: "线路", action: nil)
         bottomStack.addArrangedSubview(lineButton)
         self.lineButton = lineButton
+        updateLineButton()
 
         // AirPlay (landscape only): the system route picker. Pure
         // Live's cast is DLNA/Chromecast, which iOS does not have;
@@ -1803,8 +1808,9 @@ final class NativePlayerViewController: UIViewController {
         if let p = platform { self.platform = p }
         if let r = roomId { self.roomId = r }
         liveQualities = qualities
-        currentQualityId = qualities.first(where: { $0.url == url })?.id
+        currentQualityId = qualities.first(where: { $0.url == url || $0.lines.contains(url) })?.id
         updateQualityButton()
+        updateLineButton()
         // New stream: it has not started playing yet, so the loading
         // spinner may show again until its time starts advancing.
         hasStartedPlaying = false
@@ -1836,6 +1842,37 @@ final class NativePlayerViewController: UIViewController {
             actions.append(UIAction(title: title, state: isCurrent ? .on : .off) { [weak self] _ in
                 guard let self = self else { return }
                 self.updateStream(url: q.url, qualities: self.liveQualities)
+                self.scheduleControlsHide()
+            })
+        }
+        b.menu = UIMenu(title: "", children: actions)
+        b.showsMenuAsPrimaryAction = true
+        updateBottomBarItems()
+    }
+
+    /// CDN lines of the current quality (empty when live has no qualities).
+    private var currentQualityLines: [URL] {
+        guard let q = liveQualities.first(where: { $0.id == currentQualityId }) else { return [] }
+        return q.lines
+    }
+
+    /// Index of the playing URL within the current quality's lines.
+    private var currentLineIndex: Int {
+        currentQualityLines.firstIndex(of: streamURL) ?? 0
+    }
+
+    // Line menu (live only): the current quality's CDN lines, numbered
+    // 线路1/2/3 with the playing line checked; tap switches the stream
+    // in place on the same quality. Mirrors updateQualityButton.
+    private func updateLineButton() {
+        guard !isVod, let b = lineButton else { return }
+        let lines = currentQualityLines
+        b.setTitle(lines.count > 1 ? "线路\(currentLineIndex + 1) ⌄" : "线路", for: .normal)
+        var actions: [UIAction] = []
+        for (i, u) in lines.enumerated() {
+            actions.append(UIAction(title: "线路\(i + 1)", state: i == currentLineIndex ? .on : .off) { [weak self] _ in
+                guard let self = self else { return }
+                self.updateStream(url: u, qualities: self.liveQualities)
                 self.scheduleControlsHide()
             })
         }
@@ -2573,12 +2610,10 @@ final class NativePlayerViewController: UIViewController {
         onRequestRoomSwitch?(1)
     }
 
-    // Ask the web page for the next CDN line (its __nativeLiveFailed
-    // tries the next line first; only a fresh URL is throttled to 60s).
-    @objc private func lineButtonTapped() {
-        switchLineTapped()
-    }
-
+    // Failure recovery (status layer "换线路"): ask the web page for
+    // the next CDN line (its __nativeLiveFailed tries the next line
+    // first; only a fresh URL is throttled to 60s). The bottom-bar
+    // 线路 button is a manual menu now (updateLineButton), not this.
     private func switchLineTapped() {
         scheduleControlsHide()
         showLoadingUI()
@@ -2889,7 +2924,7 @@ final class NativePlayerViewController: UIViewController {
         let live = !isVod
         liveChip?.isHidden = !live || !land
         followButton?.isHidden = !live || !land
-        lineButton?.isHidden = !live || !land
+        lineButton?.isHidden = !live || !land || currentQualityLines.count <= 1
         airPlayView?.isHidden = !land
         refreshButton?.isHidden = !live
         qualityButton?.isHidden = !live || liveQualities.count <= 1
