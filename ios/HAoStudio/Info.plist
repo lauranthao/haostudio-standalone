@@ -91,5 +91,13 @@
 			</array>
 		</dict>
 	</array>
+	<!-- 120Hz lock (chen 2026-11-16: 锁定120hz): remove the 60fps cap so
+	     ProMotion devices (iPhone Air) can render up to 120Hz. The
+	     AppDelegate holds a display link pinned to 120fps to keep the
+	     display locked at 120Hz instead of adapting down. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CADisableMinimumFrameDuration</key>
+	<true/>
 </dict>
 </plist>

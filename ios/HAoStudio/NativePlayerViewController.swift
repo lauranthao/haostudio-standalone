@@ -79,7 +79,7 @@ struct NativePlayerConfig {
     // Poster / room cover for the lock screen + Control Center artwork.
     // Optional: no cover just means no artwork, never a failure.
     var coverURL: URL? = nil
-    // Playback speed chosen on the web page (0.5–3x, default 1). The web
+    // Playback speed chosen on the web page (0.5–2x, default 1). The web
     // page sends it in the nativePlayer message; the player applies it to
     // ijkplayer and reports changes back via onSpeedChanged.
     var playbackSpeed: Double = 1
@@ -89,6 +89,18 @@ struct NativePlayerConfig {
     // one — the key then falls back to the room title (weak: titles
     // change per broadcast, so the memory may miss; see liveVolumeKey).
     var roomId: String = ""
+    // Current theme accent as a CSS hex string (e.g. "#0071e3"),
+    // sent as `accent` in the nativePlayer message. The player's
+    // chrome is Pure Live's white-on-black; only the accent tint
+    // (active states, orbit ring) follows the theme. Empty = Pure
+    // Live's own #FFD166.
+    var themeAccent: String = ""
+    // Whole-app landscape on open (VOD only): the web page sends
+    // startLandscape when the user taps the [ ] brackets on the inline
+    // video — the player then presents ALREADY in landscape (the whole
+    // app rotates, like Bilibili fullscreen). Live never sends it:
+    // live rooms always open portrait; [ ] inside the player toggles.
+    var startLandscape: Bool = false
 }
 
 private struct DanmakuItem {
@@ -98,8 +110,8 @@ private struct DanmakuItem {
 }
 
 // Gradient shade under a control bar (Pure Live OnVideoColors.shade):
-// 60% black at the screen edge fading to transparent into the picture,
-// stops [0, 0.55, 1]. Replaces the frosted UIVisualEffectView bars --
+// black45 at the screen edge fading to transparent into the picture.
+// Replaces the frosted UIVisualEffectView bars --
 // a shade looks like the video itself darkening at the edges, while a
 // blur bar looks like a settings panel floating over the video.
 private final class BarShadeView: UIView {
@@ -107,10 +119,9 @@ private final class BarShadeView: UIView {
     init(down: Bool) {
         super.init(frame: .zero)
         backgroundColor = .clear
-        gradient.colors = [UIColor(white: 0, alpha: 0.6).cgColor,
-                           UIColor(white: 0, alpha: 0.3).cgColor,
+        gradient.colors = [UIColor(white: 0, alpha: 0.45).cgColor,
                            UIColor(white: 0, alpha: 0).cgColor]
-        gradient.locations = [0, 0.55, 1]
+        gradient.locations = [0, 1]
         if down {
             gradient.startPoint = CGPoint(x: 0.5, y: 0)
             gradient.endPoint = CGPoint(x: 0.5, y: 1)
@@ -239,12 +250,21 @@ final class NativePlayerViewController: UIViewController {
     // Reset in updateStream for a new live stream.
     private var hasStartedPlaying = false
     private var didReportClose = false
-    var onClose: ((Double) -> Void)?
+    // (position, duration): duration is 0 / unknown for live; the web
+    // page needs the VOD duration to save resume progress now that the
+    // detail page has no inline <video> to read it from.
+    var onClose: ((Double, Double) -> Void)?
     // Live only: called when ijkplayer finally gives up on a live
     // stream (its one same-URL auto-retry already failed). The web
     // page fetches a FRESH play URL and re-posts it — retrying the
     // same expired URL can never work. VOD never calls this.
     var onLiveFailed: (() -> Void)?
+    // VOD only: called with the file duration when ijkplayer reports a
+    // clean end-of-file (.playbackEnded). The web page marks the episode
+    // done and auto-plays the next one (vodAutoNext -> playVideoEp ->
+    // openNativeVideoPlayer, landscape); without this the player just
+    // sat on "已播完". Live never calls this (its EOFs mean retry/end).
+    var onVodEnded: ((Double) -> Void)?
     // Pure Live style: the top/bottom bars fade out on their own after
     // a few idle seconds (tap the video to bring them back).
     private var controlsHideTimer: Timer?
@@ -256,15 +276,23 @@ final class NativePlayerViewController: UIViewController {
     private var liveDanmakuTimer: Timer?
     private var fullscreenButton: UIButton?
 
-    // Visual landscape (see setVisualLandscape): the whole player UI
-    // lives in contentView; rotating it 90° shows landscape video
-    // without touching the system orientation, so it works even with
-    // the iPhone orientation lock on.
+    // Whole-app landscape (chen 2026-11-16: "横屏是整个app跟着横屏"):
+    // the SYSTEM orientation rotates, so the entire interface — player,
+    // bars, danmaku, status bar — goes landscape like Bilibili
+    // fullscreen. The old setVisualLandscape only rotated the player's
+    // contentView inside a portrait app; that is gone. `wantsLandscape`
+    // is the requested state ([ ] button, or startLandscape on open);
+    // the real state is the view bounds (width > height).
     private var contentView: UIView!
-    private var visualLandscape = false
-    private var didApplyOpenLandscape = false
+    private var wantsLandscape = false
+    // One-shot safety net for VOD [ ] opens (see viewDidAppear).
+    private var didEnsureStartLandscape = false
     private var topBarTopConstraint: NSLayoutConstraint?
     private var bottomBarBottomConstraint: NSLayoutConstraint?
+    private var topBarLeadingConstraint: NSLayoutConstraint?
+    private var topBarTrailingConstraint: NSLayoutConstraint?
+    private var bottomBarLeadingConstraint: NSLayoutConstraint?
+    private var bottomBarTrailingConstraint: NSLayoutConstraint?
 
     // VOD seek UI.
     private var seekSlider: UISlider?
@@ -294,10 +322,41 @@ final class NativePlayerViewController: UIViewController {
     // the player, so the web page can persist it (localStorage) and
     // the next player open uses the same values.
     var onDanmakuSettingsChanged: ((String, Double, Double) -> Void)?
-    // Playback speed (VOD, 0.5–3x). Set from the web page's vodSpeed on
+    // Playback speed (VOD, 0.5–2x). Set from the web page's vodSpeed on
     // open; changed in the settings panel or by long-press 2x. Reported
     // back via onSpeedChanged so the web page stays in step.
     private var playbackSpeed: Double = 1
+    // Theme accent (CSS hex from the web page's --accent, via
+    // NativePlayerConfig.themeAccent). Pure Live's own active tint is
+    // #FFD166; the theme rule says the accent follows our 4 themes,
+    // so every place that used #FFD166 reads accentColor instead.
+    // The chrome itself stays Pure Live white-on-black in all themes.
+    private var themeAccentHex: String = ""
+    private var accentColor: UIColor {
+        Self.color(fromHex: themeAccentHex) ?? UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1)
+    }
+    private static func color(fromHex hex: String) -> UIColor? {
+        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt64(s, radix: 16) else { return nil }
+        return UIColor(red: CGFloat((v >> 16) & 0xff) / 255,
+                       green: CGFloat((v >> 8) & 0xff) / 255,
+                       blue: CGFloat(v & 0xff) / 255, alpha: 1)
+    }
+    // Re-apply the accent to already-built controls (room switch
+    // reuses this player via updateStream, so a theme change made on
+    // the web page between rooms must reach the open player).
+    func applyThemeAccent(_ hex: String) {
+        themeAccentHex = hex
+        syncDanmakuToggleButton()
+        updateFollowButton()
+        syncAudioOnlyButton()
+        danmakuPosSegment?.selectedSegmentTintColor = accentColor
+        danmakuOpacitySlider?.tintColor = accentColor
+        danmakuSpeedSlider?.tintColor = accentColor
+        playbackSpeedSegment?.selectedSegmentTintColor = accentColor
+        updateOrbitAccent()
+    }
     private var playbackSpeedSegment: UISegmentedControl?
     var onSpeedChanged: ((Double) -> Void)?
     // Long-press 2x: while held, the speed is temporarily 2x; on release
@@ -311,7 +370,33 @@ final class NativePlayerViewController: UIViewController {
     // Live quality list (from the web page) + current selection.
     private var liveQualities: [LiveQuality]
     private var currentQualityId: String?
-    private var qualityButton: UIButton?
+    // Pure Live FullscreenStreamSelectorButton: ONE pill showing
+    // "画质 · 线路N" (tune icon), opening a menu with a 画质 section
+    // and a 线路 section -- not two separate buttons.
+    private var streamSelectorButton: UIButton?
+    // Pure Live PlayerVideoFitButton: cycles the picture fit.
+    // Pure Live has 6 fits; ijkplayer exposes 3 scaling modes, so
+    // the cycle is 适应 / 裁剪 / 拉伸 (aspectFit / aspectFill / fill).
+    private var fitButton: UIButton?
+    private var videoFitIndex = 0
+    private static let videoFits: [(label: String, mode: IJKMPMovieScalingMode)] = [
+        ("适应", .aspectFit), ("裁剪", .aspectFill), ("拉伸", .fill)
+    ]
+    // Pure Live AudioOnlyButton (top bar, live only): headphones
+    // icon; on = picture off, audio keeps playing.
+    private var audioOnlyButton: UIButton?
+    private var isAudioOnly = false
+    private var audioCoverView: UIImageView?
+    private var audioCoverLoaded = false
+    // Pure Live room-history button (top bar, fullscreen only):
+    // asks the web page for the next room, same as the status layer's
+    // "换房间" button.
+    private var roomSwitchButton: UIButton?
+    // VOD centre play button, our own HAo orbit glass disc (chen):
+    // shown when a VOD is paused / ended, hidden while playing.
+    private var centerPlayButton: UIButton?
+    private var orbitArcLayer: CAShapeLayer?
+    private var orbitDotView: UIView?
     private var switchingStream = false
 
     // Pure Live player copy (Phase A): gestures, lock, HUD, follow.
@@ -329,12 +414,10 @@ final class NativePlayerViewController: UIViewController {
     private var lockButton: UIButton?
     private var followButton: UIButton?
     private var refreshButton: UIButton?
-    private var lineButton: UIButton?
     private var liveChip: UIView?
     private var airPlayView: AVRoutePickerView?
     private var bottomStack: UIStackView?
     private var panGesture: UIPanGestureRecognizer?
-    private var doubleTapGesture: UITapGestureRecognizer?
     private var volumeView: MPVolumeView?
     // KVO on the system volume (hardware buttons / Control Center):
     // while a live room is on screen, any change is saved for the
@@ -402,17 +485,20 @@ final class NativePlayerViewController: UIViewController {
         self.streamFormat = config.format
         self.lyricsText = config.lyrics
         self.coverURL = config.coverURL
+        self.themeAccentHex = config.themeAccent
         self.playbackSpeed = config.playbackSpeed
         self.liveQualities = config.qualities
         self.currentQualityId = config.qualities.first(where: { $0.url == config.url || $0.lines.contains(config.url) })?.id
+        self.wantsLandscape = config.startLandscape
         super.init(nibName: nil, bundle: nil)
         self.modalPresentationStyle = .fullScreen
     }
 
-    convenience init(streamURL: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "") {
+    convenience init(streamURL: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "") {
         var config = NativePlayerConfig(url: streamURL, title: title, platform: platform, kind: "live", startPosition: 0, danmaku: danmaku, qualities: qualities, format: format)
         config.coverURL = coverURL
         config.roomId = roomId
+        config.themeAccent = accent
         self.init(config: config)
     }
 
@@ -437,12 +523,16 @@ final class NativePlayerViewController: UIViewController {
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        // Live rooms must open in portrait — landscape only via the
-        // player's fullscreen button (visual rotation). Returning .all
-        // here let the system rotate a live room to landscape on entry,
-        // even though the visual-landscape transform is VOD-only.
-        // VOD keeps .all: it goes landscape on open by design.
-        return isVod ? .all : .portrait
+        // Whole-app landscape (chen 2026-11-16): ONLY the [ ]
+        // fullscreen button triggers landscape, for live AND VOD — but
+        // when it does, the SYSTEM orientation rotates, so the whole
+        // app (not just the player) goes landscape like Bilibili
+        // fullscreen. The mask follows wantsLandscape: portrait
+        // normally, landscapeRight only while fullscreen is on. The
+        // root ViewController is portrait-only, so the web UI can never
+        // rotate; this player is a fullScreen modal, so its mask
+        // governs while it is on screen.
+        return wantsLandscape ? .landscapeRight : .portrait
     }
 
     // THE missing half of the portrait-on-entry rule (v1.0.0 bug:
@@ -452,22 +542,26 @@ final class NativePlayerViewController: UIViewController {
     // once the player is on screen — it does NOT pick the orientation
     // the player is FIRST presented in. That comes from
     // preferredInterfaceOrientationForPresentation, whose default is
-    // the CURRENT interface orientation. The main ViewController
-    // (web) supports all orientations, so if the phone is held
-    // sideways / the interface is landscape when a room is tapped
-    // (orientation lock off), the player was presented in landscape
-    // and nothing ever rotated it back — no device-rotation event
-    // fires while the phone sits still. Overriding this to .portrait
-    // for live makes the presentation itself start in portrait,
-    // whatever the interface orientation was before. VOD keeps the
-    // default: it goes visual-landscape on open by design.
+    // the CURRENT interface orientation. Overriding this to .portrait
+    // makes the presentation itself start in portrait, whatever the
+    // interface orientation was before — for live AND VOD (VOD no
+    // longer goes landscape on open; it plays inline portrait and
+    // only the [ ] button enlarges it). The one exception is VOD
+    // startLandscape ([ ] on the inline video): then it returns
+    // .landscapeRight, so the player presents ALREADY landscape.
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        return isVod ? super.preferredInterfaceOrientationForPresentation : .portrait
+        return wantsLandscape ? .landscapeRight : .portrait
     }
 
-    // Explicit (the default): rotation is allowed, so a live room
-    // still rotates back to portrait on the next orientation event,
-    // and VOD keeps rotating with the device.
+    // Always true: the MASK (supportedInterfaceOrientations) is the
+    // gate, not this flag. In portrait the mask is .portrait, so
+    // rotating the phone can never rotate the player — lock on or off.
+    // In landscape the mask is .landscapeRight only, so rotating the
+    // phone cannot rotate it back either; only the [ ] button toggles.
+    // The flag must stay true or the system ignores the programmatic
+    // rotation request in BOTH directions (exiting landscape sets the
+    // mask to .portrait first — if this were false then, the rotate-
+    // back request would be dropped and the app would stay landscape).
     override var shouldAutorotate: Bool {
         return true
     }
@@ -530,66 +624,81 @@ final class NativePlayerViewController: UIViewController {
         super.viewDidLayoutSubviews()
         // Re-derive the player frame from the LIVE view bounds on
         // every layout pass (rotation, split view, different device).
+        // Bracket-only fullscreen (chen 2026-11-16): NO auto-landscape
+        // on open — VOD opens inline portrait and plays inline, live
+        // rooms stay portrait; ONLY the [ ] button goes landscape.
         layoutContentView()
-        if !didApplyOpenLandscape {
-            didApplyOpenLandscape = true
-            // VOD opened from the ▶ 播放 button: go landscape on open.
-            // Live rooms stay portrait — landscape only via the
-            // fullscreen button.
-            if isVod && view.bounds.width < view.bounds.height {
-                visualLandscape = true
-                layoutContentView()
-            }
-        }
         guard let videoView = videoView else { return }
         ijkPlayer?.view.frame = videoView.bounds
     }
 
-    // MARK: - Visual landscape (device-adaptive, lock-proof)
+    // MARK: - Whole-app landscape layout (system orientation)
 
-    // Sizes and rotates contentView from the LIVE view bounds — read
-    // fresh on every call, never hardcoded, no device-model checks.
-    // Portrait bounds (W×H) become a landscape layout (H×W) rotated
-    // -90°, so the video fills the screen edge-to-edge on any iPhone
-    // (390×844 iPhone Air, larger phones, split view alike). Called
-    // from viewDidLayoutSubviews, so any bounds change while the
-    // player is open re-derives the frame automatically.
+    // contentView always fills the LIVE view bounds with an identity
+    // transform — the SYSTEM rotates the whole interface now, so the
+    // bounds themselves are landscape when fullscreen is on and the
+    // video fills the screen edge-to-edge on any iPhone (390×844
+    // iPhone Air, larger phones alike). Called from
+    // viewDidLayoutSubviews, so a rotation re-derives the frame
+    // automatically. The bars also inset by the live safe area on
+    // every pass: in landscape the Dynamic Island sits on a side
+    // edge, so the leading/trailing insets keep the close / settings
+    // buttons out from under it (0 in portrait, no change).
     private func layoutContentView() {
         guard let contentView = contentView else { return }
         let b = view.bounds
-        let wantVisual = visualLandscape && b.width < b.height
-        if wantVisual {
-            // Landscape layout sized from the real device bounds:
-            // width = portrait height, height = portrait width.
-            contentView.transform = .identity
-            contentView.bounds = CGRect(x: 0, y: 0, width: b.height, height: b.width)
-            contentView.center = CGPoint(x: b.midX, y: b.midY)
-            // -90°: the layout's top stays at the top after the user
-            // rotates the phone clockwise (landscapeRight).
-            contentView.transform = CGAffineTransform(rotationAngle: -.pi / 2)
-            topBarTopConstraint?.constant = 0
-            bottomBarBottomConstraint?.constant = 0
-        } else {
-            contentView.transform = .identity
-            contentView.frame = b
-            // Root-view safe area is always in unrotated coordinates,
-            // so the bars clear the Dynamic Island / home indicator
-            // in portrait exactly as before.
-            topBarTopConstraint?.constant = view.safeAreaInsets.top
-            bottomBarBottomConstraint?.constant = -view.safeAreaInsets.bottom
-        }
+        contentView.transform = .identity
+        contentView.frame = b
+        topBarTopConstraint?.constant = view.safeAreaInsets.top
+        bottomBarBottomConstraint?.constant = -view.safeAreaInsets.bottom
+        topBarLeadingConstraint?.constant = view.safeAreaInsets.left
+        topBarTrailingConstraint?.constant = -view.safeAreaInsets.right
+        bottomBarLeadingConstraint?.constant = view.safeAreaInsets.left
+        bottomBarTrailingConstraint?.constant = -view.safeAreaInsets.right
         contentView.layoutIfNeeded()
         updateLandscapeOnlyViews()
     }
 
-    private func setVisualLandscape(_ on: Bool) {
-        guard visualLandscape != on else { return }
-        visualLandscape = on
+    // Whole-app landscape (chen 2026-11-16: "横屏是整个app跟着横屏"):
+    // the [ ] button flips wantsLandscape and asks the SYSTEM to
+    // rotate the whole interface. The system animates the rotation
+    // itself (smooth, like Bilibili) — no manual transform, so there
+    // is no "unnatural" hard cut and no second landscape path to
+    // fight with. The old setVisualLandscape (rotate contentView 90°
+    // inside a portrait app) is deleted.
+    private func setFullscreenLandscape(_ on: Bool) {
+        guard wantsLandscape != on else { return }
         // Leaving fullscreen releases the lock (Pure Live).
         if !on && isLocked { setLocked(false) }
-        view.setNeedsLayout()
-        view.layoutIfNeeded()
+        wantsLandscape = on
+        requestSystemRotation(toLandscape: on)
         updateFullscreenButton()
+    }
+
+    // Ask the system to rotate the whole interface. Works with the
+    // orientation lock ON (chen's phone): the lock only blocks
+    // sensor-driven rotation, not an explicit programmatic request.
+    // iOS 16+: the official requestGeometryUpdate API. iOS 15 (and
+    // any geometry-update failure): the UIDevice setValue trick —
+    // setting the device orientation value directly, then
+    // attemptRotationToDeviceOrientation. Either way the top view
+    // controller must allow the target orientation, which is why
+    // supportedInterfaceOrientations follows wantsLandscape.
+    private func requestSystemRotation(toLandscape on: Bool) {
+        let target: UIInterfaceOrientationMask = on ? .landscapeRight : .portrait
+        if #available(iOS 16.0, *), let scene = view.window?.windowScene {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: target)) { [weak self] _ in
+                guard let self = self, self.wantsLandscape == on else { return }
+                self.requestLegacyRotation(toLandscape: on)
+            }
+        } else {
+            requestLegacyRotation(toLandscape: on)
+        }
+    }
+
+    private func requestLegacyRotation(toLandscape on: Bool) {
+        UIDevice.current.setValue((on ? UIInterfaceOrientation.landscapeRight : .portrait).rawValue, forKey: "orientation")
+        UIViewController.attemptRotationToDeviceOrientation()
     }
 
     private var platformName: String {
@@ -612,10 +721,13 @@ final class NativePlayerViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        UserDefaults.standard.set("live-viewDidLoad", forKey: "hao_live_entry_stage")
         view.backgroundColor = .black
         buildUI()
         danmakuView.isHidden = !danmakuEnabled
-        startPlayback()
+        // Loading UI shows during the present animation; the player
+        // itself starts in viewDidAppear (see below).
+        showLoadingUI()
         if !isVod {
             startLiveDanmakuPull()
             // Per-room volume memory: save the level whenever the
@@ -641,9 +753,33 @@ final class NativePlayerViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // Start playback here, not in viewDidLoad: the view is now in
+        // a window and laid out, so the ijkplayer video view is
+        // created with a real (non-zero) frame and prepareToPlay/play
+        // run against a live window. Starting in viewDidLoad meant
+        // the player opened while videoView.bounds was still .zero
+        // and the view had no window — the one pre-first-frame
+        // window where the native GL/FFmpeg setup could crash.
+        // Once-only: viewDidAppear also fires on return from a
+        // system popup / presented sheet; ijkPlayer is non-nil after
+        // the first start, and didStop blocks a restart after close.
+        if ijkPlayer == nil && !didStop {
+            startPlayback()
+        }
         // Live rooms restore their remembered volume once the view is
         // on screen (the MPVolumeView slider exists by now).
         applyRememberedLiveVolume()
+        // VOD [ ] open safety net: preferredInterfaceOrientationFor-
+        // Presentation normally lands the player in landscape already,
+        // but if the system ignored it (e.g. a rotation already in
+        // flight), force it once here — never again, so a later user
+        // toggle is not overridden.
+        if wantsLandscape && !didEnsureStartLandscape {
+            didEnsureStartLandscape = true
+            if view.bounds.width < view.bounds.height {
+                requestSystemRotation(toLandscape: true)
+            }
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -678,6 +814,23 @@ final class NativePlayerViewController: UIViewController {
             videoView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         ])
         self.videoView = videoView
+
+        // Audio-only cover (Pure Live pictureCover): when audio-only
+        // is on, the video view hides and this shows the room/poster
+        // cover instead of a black hole. Hidden until then.
+        let audioCover = UIImageView()
+        audioCover.backgroundColor = .black
+        audioCover.contentMode = .scaleAspectFit
+        audioCover.isHidden = true
+        audioCover.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(audioCover)
+        NSLayoutConstraint.activate([
+            audioCover.topAnchor.constraint(equalTo: contentView.topAnchor),
+            audioCover.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            audioCover.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            audioCover.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
+        ])
+        self.audioCoverView = audioCover
 
         // Danmaku layer: above the video, below the bars. It never takes
         // touches, so taps still reach the video view's gesture recognizer.
@@ -725,20 +878,44 @@ final class NativePlayerViewController: UIViewController {
                 ind.heightAnchor.constraint(equalToConstant: 28)
             ])
             self.speed2xLabel = ind
+        } else {
+            // Live: long-press pins the danmaku under the finger
+            // (Pure Live onLongPressStart -> pauseDanmakuAt); release
+            // resumes it. Same 0.5s press as the VOD 2x gesture.
+            let lp = UILongPressGestureRecognizer(target: self, action: #selector(longPressDanmaku(_:)))
+            lp.minimumPressDuration = 0.5
+            lp.cancelsTouchesInView = false
+            videoView.addGestureRecognizer(lp)
+        }
+
+        // VOD centre play button: our own HAo orbit glass disc (chen,
+        // 2026-11-16 -- the VOD play button follows our own style, not
+        // Pure Live's bare icon). Shown when a VOD is paused / ended,
+        // hidden while playing. Live has none (Pure Live: the bar's
+        // play button is the only play control).
+        if isVod {
+            let centerBtn = makeOrbitPlayButton()
+            centerBtn.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
+            centerBtn.isHidden = true
+            contentView.addSubview(centerBtn)
+            NSLayoutConstraint.activate([
+                centerBtn.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+                centerBtn.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                centerBtn.widthAnchor.constraint(equalToConstant: 76),
+                centerBtn.heightAnchor.constraint(equalToConstant: 76)
+            ])
+            self.centerPlayButton = centerBtn
         }
 
         // Gestures (Pure Live player_gestures): vertical drag left =
         // brightness, right = volume, with a centred pill indicator;
-        // horizontal drag seeks (VOD); double-tap toggles fullscreen.
-        // No require(toFail:) on the single tap: Pure Live fires the
-        // tap immediately, and a double-tap's two toggles cancel out.
+        // horizontal drag seeks (VOD). No double-tap fullscreen:
+        // bracket-only rule (chen 2026-11-16) — ONLY the [ ] button
+        // triggers landscape fullscreen. No require(toFail:) on the
+        // single tap: Pure Live fires the tap immediately.
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         videoView.addGestureRecognizer(pan)
         self.panGesture = pan
-        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapFullscreen))
-        doubleTap.numberOfTapsRequired = 2
-        videoView.addGestureRecognizer(doubleTap)
-        self.doubleTapGesture = doubleTap
 
         // Loading spinner + status text, centered.
         let spinner = UIActivityIndicatorView(style: .large)
@@ -811,18 +988,23 @@ final class NativePlayerViewController: UIViewController {
         let topBar = BarShadeView(down: true)
         topBar.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(topBar)
+        let topBarLeading = topBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor)
+        let topBarTrailing = topBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            topBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            topBar.heightAnchor.constraint(equalToConstant: 52)
+            topBarLeading,
+            topBarTrailing,
+            topBar.heightAnchor.constraint(equalToConstant: 56)
         ])
         // Top offset is a stored constraint: layoutContentView() sets
-        // it from the root view's safe area in portrait, or 0 in
-        // visual landscape (the physical top edge maps to the
-        // landscape left edge, so there is no top notch there).
+        // it from the live safe area on every pass. The leading /
+        // trailing offsets are stored too: in landscape the Dynamic
+        // Island sits on a side edge, so they keep the close /
+        // settings buttons out from under it (0 in portrait).
         let topBarTop = topBar.topAnchor.constraint(equalTo: contentView.topAnchor)
         topBarTop.isActive = true
         topBarTopConstraint = topBarTop
+        topBarLeadingConstraint = topBarLeading
+        topBarTrailingConstraint = topBarTrailing
         self.topBar = topBar
 
         let closeButton = makeVideoIconButton(systemName: "xmark", pointSize: 22, action: #selector(closeTapped))
@@ -832,15 +1014,29 @@ final class NativePlayerViewController: UIViewController {
             closeButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor)
         ])
 
-        // Danmaku settings (gear): opens the in-player danmaku panel
-        // (position / opacity / speed). Bare white icon, top-right.
-        let dmSettingsButton = makeVideoIconButton(systemName: "gearshape", pointSize: 22, action: #selector(danmakuSettingsTapped))
-        topBar.addSubview(dmSettingsButton)
+        // Audio-only (Pure Live AudioOnlyButton, top bar, live only):
+        // headphones icon; on = picture off, audio keeps playing.
+        // Active tint is the theme accent (Pure Live: #FFD166).
+        let audioButton = makeVideoIconButton(systemName: "headphones", pointSize: 22, action: #selector(audioOnlyTapped))
+        topBar.addSubview(audioButton)
         NSLayoutConstraint.activate([
-            dmSettingsButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -4),
-            dmSettingsButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor)
+            audioButton.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -4),
+            audioButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor)
         ])
-        self.danmakuSettingsButton = dmSettingsButton
+        audioButton.isHidden = isVod
+        self.audioOnlyButton = audioButton
+
+        // Room switch (Pure Live roomHistory, top bar, fullscreen
+        // only): asks the web page for the next room, same action as
+        // the status layer's "换房间" button.
+        let roomButton = makeVideoIconButton(systemName: "arrow.left.arrow.right", pointSize: 22, action: #selector(statusRoomTapped))
+        topBar.addSubview(roomButton)
+        NSLayoutConstraint.activate([
+            roomButton.trailingAnchor.constraint(equalTo: audioButton.leadingAnchor, constant: -4),
+            roomButton.centerYAnchor.constraint(equalTo: topBar.centerYAnchor)
+        ])
+        roomButton.isHidden = true
+        self.roomSwitchButton = roomButton
 
         // HUD clock + battery (Pure Live PlaybackHud): landscape only,
         // phones in portrait use the system clock. Sits between the
@@ -895,7 +1091,7 @@ final class NativePlayerViewController: UIViewController {
         badge.translatesAutoresizingMaskIntoConstraints = false
         badgeContainer.addSubview(badge)
         NSLayoutConstraint.activate([
-            badgeContainer.trailingAnchor.constraint(equalTo: dmSettingsButton.leadingAnchor, constant: -8),
+            badgeContainer.trailingAnchor.constraint(equalTo: roomButton.leadingAnchor, constant: -8),
             badgeContainer.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
             badgeContainer.heightAnchor.constraint(equalToConstant: 20),
             badge.leadingAnchor.constraint(equalTo: badgeContainer.leadingAnchor, constant: 8),
@@ -923,7 +1119,7 @@ final class NativePlayerViewController: UIViewController {
         ])
         if isVod {
             NSLayoutConstraint.activate([
-                titleLabel.trailingAnchor.constraint(equalTo: dmSettingsButton.leadingAnchor, constant: -8)
+                titleLabel.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -8)
             ])
         } else {
             NSLayoutConstraint.activate([
@@ -942,15 +1138,20 @@ final class NativePlayerViewController: UIViewController {
         let bottomBar = BarShadeView(down: false)
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(bottomBar)
+        let bottomBarLeading = bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor)
+        let bottomBarTrailing = bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)
         NSLayoutConstraint.activate([
-            bottomBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            bottomBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            bottomBarLeading,
+            bottomBarTrailing,
             bottomBar.heightAnchor.constraint(equalToConstant: 56)
         ])
         // Bottom offset is a stored constraint (see topBarTop above).
+        // Leading / trailing are stored too (see topBarLeading above).
         let bottomBarBottom = bottomBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         bottomBarBottom.isActive = true
         bottomBarBottomConstraint = bottomBarBottom
+        bottomBarLeadingConstraint = bottomBarLeading
+        bottomBarTrailingConstraint = bottomBarTrailing
         self.bottomBar = bottomBar
 
         let bottomStack = UIStackView()
@@ -1048,7 +1249,7 @@ final class NativePlayerViewController: UIViewController {
         bottomStack.addArrangedSubview(durLabel)
         self.durTimeLabel = durLabel
 
-        // Danmaku toggle: bare white icon + text. On = yellow #FFD166
+        // Danmaku toggle: bare white icon + text. On = theme accent
         // (Pure Live active), off = white 38%. The old red/grey filled
         // pill is gone.
         let dmButton = UIButton(type: .system)
@@ -1057,7 +1258,7 @@ final class NativePlayerViewController: UIViewController {
         dmCfg.title = "弹幕"
         dmCfg.imagePlacement = .leading
         dmCfg.imagePadding = 4
-        dmCfg.baseForegroundColor = danmakuEnabled ? UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1) : UIColor(white: 1, alpha: 0.38)
+        dmCfg.baseForegroundColor = danmakuEnabled ? accentColor : UIColor(white: 1, alpha: 0.38)
         dmCfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
             var outgoing = incoming
             outgoing.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
@@ -1071,22 +1272,27 @@ final class NativePlayerViewController: UIViewController {
         bottomStack.addArrangedSubview(dmButton)
         self.danmakuButton = dmButton
 
-        // Quality switch (live only): plain text button "原画 ⌄"
-        // opening a small menu above it (Pure Live stream_menu).
-        // Hidden when there are 0 or 1 qualities.
-        let qButton = makeVideoTextButton(title: "画质", action: nil)
-        bottomStack.addArrangedSubview(qButton)
-        self.qualityButton = qButton
-        updateQualityButton()
+        // Danmaku settings (gear): opens the in-player danmaku panel
+        // (position / opacity / speed). Pure Live puts it in the
+        // bottom bar next to the danmaku toggle, not in the top bar.
+        let dmSettingsButton = makeVideoIconButton(systemName: "gearshape", pointSize: 22, action: #selector(danmakuSettingsTapped))
+        bottomStack.addArrangedSubview(dmSettingsButton)
+        self.danmakuSettingsButton = dmSettingsButton
 
-        // Line switch (live, landscape only): a menu of the current
-        // quality's CDN lines (线路1/2/3, playing line checked),
-        // built by updateLineButton(). Hidden when the current
-        // quality has a single line (see updateBottomBarItems).
-        let lineButton = makeVideoTextButton(title: "线路", action: nil)
-        bottomStack.addArrangedSubview(lineButton)
-        self.lineButton = lineButton
-        updateLineButton()
+        // Stream selector (live only): ONE pill, "画质 · 线路N"
+        // (Pure Live FullscreenStreamSelectorButton -- tune icon,
+        // white 13% fill, radius 18). One menu with a 画质 section
+        // and a 线路 section; hidden when there is nothing to switch.
+        let streamBtn = makeStreamSelectorButton()
+        bottomStack.addArrangedSubview(streamBtn)
+        self.streamSelectorButton = streamBtn
+
+        // Video fit (Pure Live PlayerVideoFitButton): tap cycles the
+        // picture fit. Live and VOD alike.
+        let fitBtn = makeVideoTextButton(title: "适应", action: #selector(fitTapped))
+        bottomStack.addArrangedSubview(fitBtn)
+        self.fitButton = fitBtn
+        updateStreamSelector()
 
         // AirPlay (landscape only): the system route picker. Pure
         // Live's cast is DLNA/Chromecast, which iOS does not have;
@@ -1203,15 +1409,32 @@ final class NativePlayerViewController: UIViewController {
         let options = IJKFFOptions.byDefault() ?? IJKFFOptions()
         // Hardware decoding (VideoToolbox) — smooth 1080p on iPhone.
         options.setPlayerOptionIntValue(1, forKey: "videotoolbox")
+        // Real-time live buffer (Pure Live's LiveBufferPolicy, FFmpeg
+        // equivalents — the old code set NO buffer options at all, so a
+        // lagging decoder just fell further and further behind live and
+        // the picture froze / stalled instead of catching up):
+        // - framedrop=1: drop non-reference frames when behind, so the
+        //   picture stays LIVE instead of building seconds of delay.
+        //   This is what keeps a small window / PiP real-time.
+        // - packet-buffering=1 + max-buffer-size=32MiB: bounded
+        //   memory-only packet buffer (Pure Live: cache-secs 6,
+        //   demuxer-max-bytes 32MiB, cache-on-disk no) — the buffer may
+        //   not grow without bound and delay the live edge.
+        // - infbuf=0: never buffer infinitely (same bound).
+        options.setPlayerOptionIntValue(1, forKey: "framedrop")
+        options.setPlayerOptionIntValue(1, forKey: "packet-buffering")
+        options.setPlayerOptionIntValue(32 * 1024 * 1024, forKey: "max-buffer-size")
+        options.setPlayerOptionIntValue(0, forKey: "infbuf")
         // Live streams: let FFmpeg reconnect instead of failing when
         // a flaky overseas CDN drops the HTTP connection.
         options.setFormatOptionIntValue(1, forKey: "reconnect")
         options.setFormatOptionIntValue(1, forKey: "reconnect_streamed")
         options.setFormatOptionIntValue(5, forKey: "reconnect_delay_max")
-        // Fast open + fast failure on a dead line (Pure Live's probe /
-        // buffer policy: 1 MiB probe, 1 s analyze, 15 s network
-        // timeout; its cache is 6 s memory-only, smooth-first, so no
-        // nobuffer / low-latency flag — smoothness beats latency here).
+        // Fast open + fast failure on a dead line (Pure Live's probe
+        // policy: 1 MiB probe, 1 s analyze, 15 s network timeout).
+        // No nobuffer / low-latency flag: the bounded buffer above
+        // (framedrop + max-buffer-size) keeps it live without the
+        // stutter a zero-buffer policy causes on flaky lines.
         options.setFormatOptionIntValue(1048576, forKey: "probesize")
         options.setFormatOptionIntValue(1000000, forKey: "analyzeduration")
         options.setFormatOptionIntValue(15000000, forKey: "timeout")
@@ -1267,13 +1490,15 @@ final class NativePlayerViewController: UIViewController {
             if !isVod { onLiveFailed?() }
             return
         }
-        p.scalingMode = IJKMPMovieScalingMode.aspectFit
+        // Crash breadcrumb: the IJK player object exists past here.
+        UserDefaults.standard.set("live-ijk-ok", forKey: "hao_live_entry_stage")
+        p.scalingMode = Self.videoFits[videoFitIndex].1
         p.shouldAutoplay = true
         p.shouldShowHudView = false
         p.setPauseInBackground(false)
         // Playback speed chosen on the web page (or the default 1x).
         // ijkplayer applies it live; there is no pitch correction in
-        // IJKFFMoviePlayerController, so 2x/3x sound higher-pitched —
+        // IJKFFMoviePlayerController, so 2x sounds higher-pitched —
         // that is the engine's behaviour, not a bug in this player.
         p.playbackRate = Float(playbackSpeed)
         p.view.frame = videoView.bounds
@@ -1507,8 +1732,8 @@ final class NativePlayerViewController: UIViewController {
 
     private func showLoadingUI() {
         spinner.startAnimating()
-        statusLabel.text = "正在加载…"
-        statusLabel.isHidden = false
+        // Pure Live VideoLoading: black + spinner only, no text.
+        statusLabel.isHidden = true
         updateStatusActions()
     }
 
@@ -1548,15 +1773,18 @@ final class NativePlayerViewController: UIViewController {
                 self.hideLoadingUI()
                 self.playPauseButton.setImage(self.playPauseImage(named: "pause.fill"), for: .normal)
                 if self.isVod { self.resumeDanmakuAnimations() }
+                self.syncCenterPlayButton()
                 self.scheduleControlsHide()
             case .paused:
                 self.hideLoadingUI()
                 self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
                 if self.isVod { self.pauseDanmakuAnimations() }
+                self.syncCenterPlayButton()
                 self.showControls()
             case .interrupted:
                 self.hideLoadingUI()
                 self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
+                self.syncCenterPlayButton()
             case .stopped, .seekingForward, .seekingBackward:
                 break
             @unknown default:
@@ -1583,6 +1811,13 @@ final class NativePlayerViewController: UIViewController {
                     self.updateStatusActions()
                     self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
                     self.pauseDanmakuAnimations()
+                    // Tell the web page the episode finished (with its
+                    // duration): it marks this episode done and, when a
+                    // next episode exists, opens it in a fresh landscape
+                    // player. The "已播完" state above stays as the
+                    // last-episode end state.
+                    self.onVodEnded?(p.duration)
+                    self.syncCenterPlayButton()
                     break
                 }
                 // Live: a clean EOF is usually NOT the room going
@@ -1633,6 +1868,7 @@ final class NativePlayerViewController: UIViewController {
                 self.statusLabel.isHidden = false
                 self.updateStatusActions()
                 self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
+                self.syncCenterPlayButton()
                 // Final live failure: ask the web page for a fresh URL
                 // instead of leaving the user on a dead stream. The
                 // web side throttles this to once per 60s.
@@ -1649,6 +1885,7 @@ final class NativePlayerViewController: UIViewController {
         guard let obj = note.object as? IJKFFMoviePlayerController else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let p = self.ijkPlayer, obj === p, p.isPreparedToPlay else { return }
+            UserDefaults.standard.set("live-prepared", forKey: "hao_live_entry_stage")
             self.seekToStartPositionIfNeeded()
             if !p.isPlaying() { p.play() }
         }
@@ -1658,6 +1895,7 @@ final class NativePlayerViewController: UIViewController {
         guard let obj = note.object as? IJKFFMoviePlayerController else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.ijkPlayer === obj else { return }
+            UserDefaults.standard.set("live-first-frame", forKey: "hao_live_entry_stage")
             self.hasStartedPlaying = true
             self.hideLoadingUI()
         }
@@ -1681,6 +1919,19 @@ final class NativePlayerViewController: UIViewController {
         guard let p = ijkPlayer else { return }
         let t = p.currentPlaybackTime
         let now = Date()
+        // Background: the picture cannot advance (no screen) — that is
+        // NOT a stall. Do not let a backgrounded player trip the 4 s
+        // line-switch / fresh-URL retry; it would swap the stream while
+        // the user is away (or while a small window / PiP is showing)
+        // and the return would land mid-switch instead of live. Just
+        // keep the clock fresh so a stall is only ever judged on
+        // foreground time. The stream itself keeps pulling in the
+        // background (setPauseInBackground(false)); framedrop catches
+        // it up to the live edge on return.
+        if UIApplication.shared.applicationState != .active {
+            lastAdvanceDate = now
+            return
+        }
         if t.isFinite, t > lastPlaybackTime + 0.05 {
             lastPlaybackTime = t
             lastAdvanceDate = now
@@ -1691,6 +1942,9 @@ final class NativePlayerViewController: UIViewController {
             liveEndedRetries = 0
             if !hasStartedPlaying {
                 hasStartedPlaying = true
+                // Crash breadcrumb: first frame / time advance — the
+                // player is actually playing past here.
+                UserDefaults.standard.set("live-playing", forKey: "hao_live_entry_stage")
                 seekToStartPositionIfNeeded()
             }
             hideLoadingUI()
@@ -1714,12 +1968,9 @@ final class NativePlayerViewController: UIViewController {
                 onLiveFailed?()
             }
         }
-        // Slow open: still no first frame after 4s -- say so instead
-        // of spinning on "正在加载…" forever (Pure Live's 加载较慢).
-        if !hasStartedPlaying, !playFailed,
-           now.timeIntervalSince(playbackStartedAt) > 4.0 {
-            statusLabel.text = "加载较慢…"
-        }
+        // Slow open: still no first frame after 4s. Pure Live's
+        // loading state is a spinner only (VideoLoading), so no text
+        // is shown here either -- the spinner keeps spinning.
         // Live reconnect safety net: a clean EOF already asked the web
         // for a fresh URL (liveEndedRetries > 0), but no new stream
         // ever started playing — e.g. the web was inside its 60s
@@ -1809,8 +2060,7 @@ final class NativePlayerViewController: UIViewController {
         if let r = roomId { self.roomId = r }
         liveQualities = qualities
         currentQualityId = qualities.first(where: { $0.url == url || $0.lines.contains(url) })?.id
-        updateQualityButton()
-        updateLineButton()
+        updateStreamSelector()
         // New stream: it has not started playing yet, so the loading
         // spinner may show again until its time starts advancing.
         hasStartedPlaying = false
@@ -1824,28 +2074,46 @@ final class NativePlayerViewController: UIViewController {
         applyRememberedLiveVolume()
     }
 
-    private func updateQualityButton() {
-        guard !isVod, let b = qualityButton else { return }
+    // Stream selector pill (live only, Pure Live
+    // FullscreenStreamSelectorButton): label "画质 · 线路N", one menu
+    // with a 画质 section and a 线路 section. The two panes of Pure
+    // Live's dialog become the menu's two submenus -- same content,
+    // same checked current item, same in-place switch. VOD never
+    // gets this button (no quality to switch: one URL per episode).
+    private func updateStreamSelector() {
+        guard !isVod, let b = streamSelectorButton else { return }
         var name = "画质"
         if let id = currentQualityId,
            let q = liveQualities.first(where: { $0.id == id }),
            !q.name.isEmpty {
             name = q.name
         }
-        b.setTitle(name + " ⌄", for: .normal)
-        // Small menu opening above the button (Pure Live stream_menu):
-        // current quality checked, tap switches the stream in place.
-        var actions: [UIAction] = []
+        if var cfg = b.configuration {
+            cfg.title = "\(name) · 线路\(currentLineIndex + 1)"
+            b.configuration = cfg
+        }
+        var qualityActions: [UIAction] = []
         for q in liveQualities {
             let title = q.name.isEmpty ? q.id : q.name
             let isCurrent = q.id == currentQualityId
-            actions.append(UIAction(title: title, state: isCurrent ? .on : .off) { [weak self] _ in
+            qualityActions.append(UIAction(title: title, state: isCurrent ? .on : .off) { [weak self] _ in
                 guard let self = self else { return }
                 self.updateStream(url: q.url, qualities: self.liveQualities)
                 self.scheduleControlsHide()
             })
         }
-        b.menu = UIMenu(title: "", children: actions)
+        var lineActions: [UIAction] = []
+        for (i, u) in currentQualityLines.enumerated() {
+            lineActions.append(UIAction(title: "线路\(i + 1)", state: i == currentLineIndex ? .on : .off) { [weak self] _ in
+                guard let self = self else { return }
+                self.updateStream(url: u, qualities: self.liveQualities)
+                self.scheduleControlsHide()
+            })
+        }
+        b.menu = UIMenu(title: "", children: [
+            UIMenu(title: "画质", children: qualityActions),
+            UIMenu(title: "线路", children: lineActions)
+        ])
         b.showsMenuAsPrimaryAction = true
         updateBottomBarItems()
     }
@@ -1861,32 +2129,90 @@ final class NativePlayerViewController: UIViewController {
         currentQualityLines.firstIndex(of: streamURL) ?? 0
     }
 
-    // Line menu (live only): the current quality's CDN lines, numbered
-    // 线路1/2/3 with the playing line checked; tap switches the stream
-    // in place on the same quality. Mirrors updateQualityButton.
-    private func updateLineButton() {
-        guard !isVod, let b = lineButton else { return }
-        let lines = currentQualityLines
-        b.setTitle(lines.count > 1 ? "线路\(currentLineIndex + 1) ⌄" : "线路", for: .normal)
-        var actions: [UIAction] = []
-        for (i, u) in lines.enumerated() {
-            actions.append(UIAction(title: "线路\(i + 1)", state: i == currentLineIndex ? .on : .off) { [weak self] _ in
-                guard let self = self else { return }
-                self.updateStream(url: u, qualities: self.liveQualities)
-                self.scheduleControlsHide()
-            })
+    // Video fit (Pure Live PlayerVideoFitButton): tap cycles the
+    // picture fit and applies it to the engine immediately.
+    @objc private func fitTapped() {
+        scheduleControlsHide()
+        videoFitIndex = (videoFitIndex + 1) % Self.videoFits.count
+        applyVideoFit()
+    }
+
+    private func applyVideoFit() {
+        let fit = Self.videoFits[videoFitIndex]
+        fitButton?.setTitle(fit.label, for: .normal)
+        ijkPlayer?.scalingMode = fit.mode
+    }
+
+    // Audio-only (Pure Live AudioOnlyButton): picture off, audio on.
+    // The cover shows in place of the video when one was sent.
+    @objc private func audioOnlyTapped() {
+        scheduleControlsHide()
+        isAudioOnly.toggle()
+        videoView.isHidden = isAudioOnly
+        if isAudioOnly { loadAudioCoverIfNeeded() }
+        audioCoverView?.isHidden = !isAudioOnly
+        syncAudioOnlyButton()
+    }
+
+    private func syncAudioOnlyButton() {
+        guard let b = audioOnlyButton else { return }
+        b.tintColor = isAudioOnly ? accentColor : .white
+    }
+
+    private func loadAudioCoverIfNeeded() {
+        guard !audioCoverLoaded, let url = coverURL else { return }
+        audioCoverLoaded = true
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let data = data, let img = UIImage(data: data) else { return }
+            DispatchQueue.main.async { self?.audioCoverView?.image = img }
+        }.resume()
+    }
+
+    // Live long-press: pin the danmaku under the finger (Pure Live
+    // onLongPressStart -> pauseDanmakuAt); releasing resumes it.
+    @objc private func longPressDanmaku(_ gesture: UILongPressGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            let point = gesture.location(in: danmakuView)
+            if let label = danmakuView.subviews.compactMap({ $0 as? UILabel }).first(where: { $0.frame.contains(point) }) {
+                pinDanmaku(label)
+            }
+        case .ended, .cancelled, .failed:
+            releasePinnedDanmaku()
+            suppressTapUntil = Date().addingTimeInterval(0.35)
+        default:
+            break
         }
-        b.menu = UIMenu(title: "", children: actions)
-        b.showsMenuAsPrimaryAction = true
-        updateBottomBarItems()
+    }
+
+    private func pinDanmaku(_ label: UILabel) {
+        let layer = label.layer
+        guard layer.speed != 0 else { return }
+        layer.timeOffset = layer.convertTime(CACurrentMediaTime(), from: nil)
+        layer.speed = 0
+    }
+
+    private func releasePinnedDanmaku() {
+        for label in danmakuView.subviews.compactMap({ $0 as? UILabel }) {
+            let layer = label.layer
+            guard layer.speed == 0 else { continue }
+            let pausedTime = layer.timeOffset
+            layer.speed = 1
+            layer.timeOffset = 0
+            layer.beginTime = 0
+            let timeSincePause = layer.convertTime(CACurrentMediaTime(), from: nil) - pausedTime
+            layer.beginTime = timeSincePause
+        }
     }
 
     private func stopPlayback() {
         guard !didStop else { return }
         didStop = true
-        // Next open starts clean (portrait unless it is VOD).
-        visualLandscape = false
-        contentView?.transform = .identity
+        // Next open starts clean (portrait, unless it is a VOD [ ]
+        // open with startLandscape). The interface rotation back to
+        // portrait is requested in closeTapped before dismiss, so the
+        // web page behind never flashes landscape.
+        wantsLandscape = false
         playbackTimer?.invalidate()
         playbackTimer = nil
         controlsHideTimer?.invalidate()
@@ -1901,8 +2227,12 @@ final class NativePlayerViewController: UIViewController {
     private func reportClose() {
         guard !didReportClose else { return }
         didReportClose = true
+        // Crash breadcrumb: clean close — a later launch reading any
+        // other stage means the app died mid live-entry/playback.
+        UserDefaults.standard.set("live-closed", forKey: "hao_live_entry_stage")
         let pos = ijkPlayer?.currentPlaybackTime ?? 0
-        onClose?(pos)
+        let dur = ijkPlayer?.duration ?? 0
+        onClose?(pos, dur)
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -1919,10 +2249,29 @@ final class NativePlayerViewController: UIViewController {
 
     @objc private func closeTapped() {
         reportClose()
-        stopPlayback()
-        dismiss(animated: true, completion: nil)
+        if wantsLandscape {
+            // Rotate the whole app back to portrait FIRST, so the web
+            // page behind never flashes landscape during the dismiss.
+            // stopPlayback clears wantsLandscape; the dismiss waits
+            // for the rotation to land.
+            wantsLandscape = false
+            requestSystemRotation(toLandscape: false)
+            stopPlayback()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.dismiss(animated: true, completion: nil)
+            }
+        } else {
+            stopPlayback()
+            dismiss(animated: true, completion: nil)
+        }
     }
 
+    // Tap semantics, Pure Live video_controller_panel onTap (mobile):
+    // a tap while playing with the bars visible hides them; any other
+    // tap shows the bars, and a tap on a paused surface resumes
+    // playback as well. A tap inside a bar never reaches here (the
+    // bars are above the video view). Locked: a tap only shows /
+    // hides the unlock button.
     @objc private func toggleControls(_ gesture: UITapGestureRecognizer) {
         // Ignore the finger-lift tap right after a long-press 2x ends,
         // or the controls would toggle every time the user releases 2x.
@@ -1940,33 +2289,31 @@ final class NativePlayerViewController: UIViewController {
             toggleDanmakuPin(label)
             return
         }
-        controlsVisible = !controlsVisible
-        if controlsVisible {
-            topBar.isHidden = false
-            bottomBar.isHidden = false
-            UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState], animations: {
-                self.topBar.alpha = 1
-                self.bottomBar.alpha = 1
-            })
+        guard let p = ijkPlayer else {
+            // No player yet (still opening): just show the bars.
+            showControls()
+            scheduleControlsHide()
+            return
+        }
+        if p.isPlaying(), controlsVisible {
+            hideControls()
+            return
+        }
+        showControls()
+        if p.isPlaying() {
             scheduleControlsHide()
         } else {
-            controlsHideTimer?.invalidate()
-            controlsHideTimer = nil
-            UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState], animations: {
-                self.topBar.alpha = 0
-                self.bottomBar.alpha = 0
-            }, completion: { _ in
-                self.topBar.isHidden = true
-                self.bottomBar.isHidden = true
-            })
+            // Paused surface: showing the bars also resumes playback.
+            playPauseTapped()
         }
     }
 
-    // Pure Live: bars fade out on their own after 4s idle. Any tap on
-    // a control resets the timer (button handlers call this).
+    // Pure Live: bars fade out on their own after 5s idle
+    // (VideoController._controllerHideDelay). Any tap on a control
+    // resets the timer (button handlers call this).
     private func scheduleControlsHide() {
         controlsHideTimer?.invalidate()
-        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
+        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
             self?.hideControls()
         }
     }
@@ -2024,18 +2371,18 @@ final class NativePlayerViewController: UIViewController {
 
     // MARK: - Fullscreen (Pure Live: expand = straight to landscape)
 
-    // The expand button toggles visual landscape (and back to
-    // portrait). Visual rotation only — the system orientation is
-    // never touched, so it works with orientation lock on.
+    // The expand button toggles whole-app landscape (and back to
+    // portrait). The system rotates the entire interface — this is
+    // the ONLY trigger (entry, play, and phone rotation never do).
     @objc private func fullscreenTapped() {
         scheduleControlsHide()
-        setVisualLandscape(!visualLandscape)
+        setFullscreenLandscape(!wantsLandscape)
     }
 
     private func updateFullscreenButton() {
-        // Icon follows the effective landscape state: the visual
-        // rotation, or a real system rotation if the lock is off.
-        let isLandscape = visualLandscape || view.bounds.width > view.bounds.height
+        // Icon follows the effective landscape state: the requested
+        // fullscreen, or the real bounds once the rotation lands.
+        let isLandscape = wantsLandscape || view.bounds.width > view.bounds.height
         let name = isLandscape ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
         fullscreenButton?.setImage(UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .semibold)), for: .normal)
     }
@@ -2140,11 +2487,11 @@ final class NativePlayerViewController: UIViewController {
         }
     }
 
-    // Danmaku toggle look: bare icon + text, yellow #FFD166 when on
+    // Danmaku toggle look: bare icon + text, theme accent when on
     // (Pure Live active), white 38% when off.
     private func syncDanmakuToggleButton() {
         guard let b = danmakuButton, var cfg = b.configuration else { return }
-        cfg.baseForegroundColor = danmakuEnabled ? UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1) : UIColor(white: 1, alpha: 0.38)
+        cfg.baseForegroundColor = danmakuEnabled ? accentColor : UIColor(white: 1, alpha: 0.38)
         b.configuration = cfg
     }
 
@@ -2197,7 +2544,7 @@ final class NativePlayerViewController: UIViewController {
         let done = UIButton(type: .system)
         done.setTitle("完成", for: .normal)
         done.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        done.setTitleColor(UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1), for: .normal)
+        done.setTitleColor(accentColor, for: .normal)
         done.addTarget(self, action: #selector(danmakuSettingsDone), for: .touchUpInside)
         titleRow.addArrangedSubview(done)
         stack.addArrangedSubview(titleRow)
@@ -2208,7 +2555,7 @@ final class NativePlayerViewController: UIViewController {
         posLabel.textColor = UIColor(white: 1, alpha: 0.7)
         stack.addArrangedSubview(posLabel)
         let seg = UISegmentedControl(items: ["全部", "顶部", "中部", "底部"])
-        seg.selectedSegmentTintColor = UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1)
+        seg.selectedSegmentTintColor = accentColor
         seg.setTitleTextAttributes([.foregroundColor: UIColor(red: 0.098, green: 0.11, blue: 0.125, alpha: 1)], for: .selected)
         seg.setTitleTextAttributes([.foregroundColor: UIColor(white: 1, alpha: 0.75)], for: .normal)
         seg.addTarget(self, action: #selector(danmakuPosChanged(_:)), for: .valueChanged)
@@ -2227,7 +2574,7 @@ final class NativePlayerViewController: UIViewController {
         let opSlider = UISlider()
         opSlider.minimumValue = 0.3
         opSlider.maximumValue = 1.0
-        opSlider.tintColor = UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1)
+        opSlider.tintColor = accentColor
         opSlider.addTarget(self, action: #selector(danmakuOpacityChanged(_:)), for: .valueChanged)
         opRow.addArrangedSubview(opSlider)
         let opVal = UILabel()
@@ -2252,7 +2599,7 @@ final class NativePlayerViewController: UIViewController {
         let spSlider = UISlider()
         spSlider.minimumValue = 0.5
         spSlider.maximumValue = 2.0
-        spSlider.tintColor = UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1)
+        spSlider.tintColor = accentColor
         spSlider.addTarget(self, action: #selector(danmakuSpeedChanged(_:)), for: .valueChanged)
         spRow.addArrangedSubview(spSlider)
         let spVal = UILabel()
@@ -2265,7 +2612,7 @@ final class NativePlayerViewController: UIViewController {
         danmakuSpeedSlider = spSlider
         danmakuSpeedValueLabel = spVal
 
-        // Playback speed (VOD only): 0.5–3x. Hidden for live rooms —
+        // Playback speed (VOD only): 0.5–2x. Hidden for live rooms —
         // a live stream cannot be sped up. Changing it applies to
         // ijkplayer immediately and syncs back to the web page.
         if isVod {
@@ -2274,8 +2621,8 @@ final class NativePlayerViewController: UIViewController {
             rateLabel.font = .systemFont(ofSize: 13)
             rateLabel.textColor = UIColor(white: 1, alpha: 0.7)
             stack.addArrangedSubview(rateLabel)
-            let rateSeg = UISegmentedControl(items: ["0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x", "3x"])
-            rateSeg.selectedSegmentTintColor = UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1)
+            let rateSeg = UISegmentedControl(items: ["0.5x", "0.75x", "1x", "1.25x", "1.5x", "2x"])
+            rateSeg.selectedSegmentTintColor = accentColor
             rateSeg.setTitleTextAttributes([.foregroundColor: UIColor(red: 0.098, green: 0.11, blue: 0.125, alpha: 1)], for: .selected)
             rateSeg.setTitleTextAttributes([.foregroundColor: UIColor(white: 1, alpha: 0.75)], for: .normal)
             rateSeg.addTarget(self, action: #selector(playbackSpeedChanged(_:)), for: .valueChanged)
@@ -2341,7 +2688,9 @@ final class NativePlayerViewController: UIViewController {
 
     // MARK: - Playback speed (VOD)
     // The supported speeds, shared with the web page's VOD_SPEEDS.
-    private static let playbackSpeeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2, 3]
+    // Pure Live LocalVideoPlayerController.defaultRates: 0.5 / 0.75 /
+    // 1 / 1.25 / 1.5 / 2.0 -- no 3x.
+    private static let playbackSpeeds: [Double] = [0.5, 0.75, 1, 1.25, 1.5, 2]
     private func setPlaybackSpeed(_ rate: Double, notify: Bool = true) {
         guard Self.playbackSpeeds.contains(rate) else { return }
         playbackSpeed = rate
@@ -2438,7 +2787,7 @@ final class NativePlayerViewController: UIViewController {
         let viewWidth = danmakuView.bounds.width
         let viewHeight = danmakuView.bounds.height
         guard viewWidth > 0, viewHeight > 0, let cfg = danmakuConfig else { return }
-        let laneHeight: CGFloat = 30
+        let laneHeight: CGFloat = 25
         let laneCount = max(1, Int(viewHeight / laneHeight))
         let zone: Range<Int>
         switch cfg.position {
@@ -2540,6 +2889,129 @@ final class NativePlayerViewController: UIViewController {
         return b
     }
 
+    // Stream selector pill (Pure Live FullscreenStreamSelectorButton):
+    // tune icon + "画质 · 线路N", white 13% fill, radius 18, 48pt.
+    private func makeStreamSelectorButton() -> UIButton {
+        let b = UIButton(type: .system)
+        var cfg = UIButton.Configuration.plain()
+        cfg.image = UIImage(systemName: "slider.horizontal.3", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+        cfg.title = "画质"
+        cfg.imagePlacement = .leading
+        cfg.imagePadding = 6
+        cfg.baseForegroundColor = .white
+        cfg.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 11, bottom: 0, trailing: 11)
+        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+            return outgoing
+        }
+        b.configuration = cfg
+        b.backgroundColor = UIColor(white: 1, alpha: 0.13)
+        b.layer.cornerRadius = 18
+        b.clipsToBounds = true
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        return b
+    }
+
+    // VOD centre play button: our own HAo orbit glass disc, the same
+    // language as the web cover's #vodBigPlay (chen 2026-11-16 -- the
+    // VOD play button follows our own style). Glass disc + outer
+    // orbit ring (white 32% + a 90° theme-accent arc at top-right +
+    // an accent dot at its tail) + white play triangle. The arc and
+    // dot follow the theme accent; updateOrbitAccent re-tints them
+    // when the accent changes.
+    private func makeOrbitPlayButton() -> UIButton {
+        let b = UIButton(type: .system)
+        b.translatesAutoresizingMaskIntoConstraints = false
+        b.backgroundColor = .clear
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialDark))
+        blur.isUserInteractionEnabled = false
+        blur.layer.cornerRadius = 38
+        blur.clipsToBounds = true
+        blur.layer.borderWidth = 1
+        blur.layer.borderColor = UIColor(white: 1, alpha: 0.45).cgColor
+        blur.translatesAutoresizingMaskIntoConstraints = false
+        b.addSubview(blur)
+        NSLayoutConstraint.activate([
+            blur.topAnchor.constraint(equalTo: b.topAnchor),
+            blur.bottomAnchor.constraint(equalTo: b.bottomAnchor),
+            blur.leadingAnchor.constraint(equalTo: b.leadingAnchor),
+            blur.trailingAnchor.constraint(equalTo: b.trailingAnchor)
+        ])
+        // Orbit ring: 90x90, centred on the 76pt disc (7pt outside).
+        let ring = UIView()
+        ring.isUserInteractionEnabled = false
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        b.addSubview(ring)
+        NSLayoutConstraint.activate([
+            ring.centerXAnchor.constraint(equalTo: b.centerXAnchor),
+            ring.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+            ring.widthAnchor.constraint(equalToConstant: 90),
+            ring.heightAnchor.constraint(equalToConstant: 90)
+        ])
+        let base = CAShapeLayer()
+        base.path = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 90, height: 90)).cgPath
+        base.fillColor = UIColor.clear.cgColor
+        base.strokeColor = UIColor(white: 1, alpha: 0.32).cgColor
+        base.lineWidth = 2.5
+        ring.layer.addSublayer(base)
+        let arc = CAShapeLayer()
+        arc.path = UIBezierPath(arcCenter: CGPoint(x: 45, y: 45), radius: 45, startAngle: -.pi / 2, endAngle: 0, clockwise: true).cgPath
+        arc.fillColor = UIColor.clear.cgColor
+        arc.strokeColor = accentColor.cgColor
+        arc.lineWidth = 2.5
+        ring.layer.addSublayer(arc)
+        self.orbitArcLayer = arc
+        let dot = UIView()
+        dot.backgroundColor = accentColor
+        dot.layer.cornerRadius = 3.5
+        dot.isUserInteractionEnabled = false
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        b.addSubview(dot)
+        NSLayoutConstraint.activate([
+            dot.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: 3),
+            dot.centerYAnchor.constraint(equalTo: b.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 7),
+            dot.heightAnchor.constraint(equalToConstant: 7)
+        ])
+        self.orbitDotView = dot
+        let icon = UIImageView(image: UIImage(systemName: "play.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .semibold)))
+        icon.tintColor = .white
+        icon.isUserInteractionEnabled = false
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        b.addSubview(icon)
+        NSLayoutConstraint.activate([
+            icon.centerXAnchor.constraint(equalTo: b.centerXAnchor, constant: 3),
+            icon.centerYAnchor.constraint(equalTo: b.centerYAnchor)
+        ])
+        return b
+    }
+
+    private func updateOrbitAccent() {
+        orbitArcLayer?.strokeColor = accentColor.cgColor
+        orbitDotView?.backgroundColor = accentColor
+    }
+
+    // The centre orbit button shows only for a paused / ended VOD
+    // (never while playing, never for live, never on failure -- the
+    // status layer owns the failure state).
+    private func syncCenterPlayButton() {
+        guard let b = centerPlayButton, isVod else { return }
+        let show: Bool
+        if playFailed {
+            show = false
+        } else if didEnd {
+            show = true
+        } else if let p = ijkPlayer {
+            show = !p.isPlaying() && hasStartedPlaying
+        } else {
+            show = false
+        }
+        b.isHidden = !show
+        if show { contentView.bringSubviewToFront(b) }
+    }
+
     // Soft shadow under icons and text on the video (Pure Live
     // OnVideoColors.shadows: 60% black, blur 6).
     private func videoShadow(_ view: UIView) {
@@ -2613,7 +3085,7 @@ final class NativePlayerViewController: UIViewController {
     // Failure recovery (status layer "换线路"): ask the web page for
     // the next CDN line (its __nativeLiveFailed tries the next line
     // first; only a fresh URL is throttled to 60s). The bottom-bar
-    // 线路 button is a manual menu now (updateLineButton), not this.
+    // stream selector pill is a manual menu now, not this.
     private func switchLineTapped() {
         scheduleControlsHide()
         showLoadingUI()
@@ -2644,7 +3116,7 @@ final class NativePlayerViewController: UIViewController {
         guard let b = followButton else { return }
         if isFollowed {
             b.setTitle("✓ 已关注", for: .normal)
-            b.setTitleColor(UIColor(red: 1, green: 0.82, blue: 0.4, alpha: 1), for: .normal)
+            b.setTitleColor(accentColor, for: .normal)
         } else {
             b.setTitle("关注", for: .normal)
             b.setTitleColor(.white, for: .normal)
@@ -2697,7 +3169,6 @@ final class NativePlayerViewController: UIViewController {
         lockButtonHiddenByTap = false
         lockButton?.setImage(UIImage(systemName: locked ? "lock" : "lock.open", withConfiguration: UIImage.SymbolConfiguration(pointSize: 28, weight: .semibold)), for: .normal)
         panGesture?.isEnabled = !locked
-        doubleTapGesture?.isEnabled = !locked
         if locked {
             controlsVisible = false
             controlsHideTimer?.invalidate()
@@ -2714,16 +3185,11 @@ final class NativePlayerViewController: UIViewController {
 
     private func updateLockButtonVisibility() {
         guard let b = lockButton else { return }
-        let land = visualLandscape || view.bounds.width > view.bounds.height
+        let land = view.bounds.width > view.bounds.height
         b.isHidden = !land || (isLocked && lockButtonHiddenByTap)
     }
 
     // MARK: - Gestures (Pure Live player_gestures)
-
-    @objc private func doubleTapFullscreen() {
-        guard !isLocked else { return }
-        setVisualLandscape(!visualLandscape)
-    }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard !isLocked, let videoView = videoView else { return }
@@ -2732,6 +3198,15 @@ final class NativePlayerViewController: UIViewController {
         switch gesture.state {
         case .began:
             panStartPoint = gesture.location(in: videoView)
+            // Pure Live systemHomeGestureZoneHeight (48pt): a drag
+            // started in the launcher home-gesture strip never starts
+            // a brightness/volume change -- the system cancels it
+            // mid-drag and the level is left half-applied.
+            if panStartPoint.y >= size.height - min(48, size.height / 3) {
+                panDecided = true
+                panKind = .none
+                break
+            }
             panStartBrightness = UIScreen.main.brightness
             panStartVolume = AVAudioSession.sharedInstance().outputVolume
             if isVod, let p = ijkPlayer {
@@ -2770,11 +3245,14 @@ final class NativePlayerViewController: UIViewController {
             }
             switch panKind {
             case .brightness:
-                let level = max(0, min(1, Double(panStartBrightness) + Double(-t.y / size.height) * 1.2))
+                // Pure Live PlayerGestureLayer: full travel of the
+                // surface maps to a quarter of the level range
+                // (_sensitivity = 0.25 over half the height).
+                let level = max(0, min(1, Double(panStartBrightness) + Double(-t.y / size.height) * 0.5))
                 UIScreen.main.brightness = CGFloat(level)
                 showLevelPill(kind: .brightness, level: level)
             case .volume:
-                let level = max(0, min(1, Double(panStartVolume) + Double(-t.y / size.height) * 1.2))
+                let level = max(0, min(1, Double(panStartVolume) + Double(-t.y / size.height) * 0.5))
                 systemVolumeSlider()?.value = Float(level)
                 showLevelPill(kind: .volume, level: level)
                 // Remember it for this room (live only).
@@ -2907,11 +3385,11 @@ final class NativePlayerViewController: UIViewController {
 
     // Which bottom-bar items show, whether the HUD / lock button show,
     // and which title leading constraint is active. Called from
-    // layoutContentView on every layout pass, so rotation and the
-    // visual-landscape transform both re-derive it. Idempotent:
-    // setting a flag to its current value changes nothing.
+    // layoutContentView on every layout pass, so a system rotation
+    // re-derives it. Idempotent: setting a flag to its current value
+    // changes nothing.
     private func updateLandscapeOnlyViews() {
-        let land = visualLandscape || view.bounds.width > view.bounds.height
+        let land = view.bounds.width > view.bounds.height
         hudStack?.isHidden = !land
         titleLeadingClose?.isActive = !land
         titleLeadingHUD?.isActive = land
@@ -2920,14 +3398,24 @@ final class NativePlayerViewController: UIViewController {
     }
 
     private func updateBottomBarItems() {
-        let land = visualLandscape || view.bounds.width > view.bounds.height
+        let land = view.bounds.width > view.bounds.height
         let live = !isVod
         liveChip?.isHidden = !live || !land
         followButton?.isHidden = !live || !land
-        lineButton?.isHidden = !live || !land || currentQualityLines.count <= 1
+        // The stream selector pill is visible in PORTRAIT too
+        // (v1.0.2): chen reported "一个都没拿" — v1.0.1 had no line
+        // menu at all, and the old line button was landscape-only,
+        // so in portrait (how rooms open) there was no way to see or
+        // switch lines. The web really sends urls[] (Huya 9
+        // qualities x 3 lines, Bili 1 x 6, Douyu 4 x 3 — verified
+        // 2026-11-16); the menu just never showed.
+        streamSelectorButton?.isHidden = !live || (liveQualities.count <= 1 && currentQualityLines.count <= 1)
+        // Room switch lives in the top bar and only shows in
+        // fullscreen (Pure Live roomHistory), when the web page can
+        // actually switch rooms.
+        roomSwitchButton?.isHidden = !land || !live || onRequestRoomSwitch == nil
         airPlayView?.isHidden = !land
         refreshButton?.isHidden = !live
-        qualityButton?.isHidden = !live || liveQualities.count <= 1
         curTimeLabel?.isHidden = live
         seekSlider?.isHidden = live
         durTimeLabel?.isHidden = live

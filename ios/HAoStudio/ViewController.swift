@@ -3,6 +3,15 @@ import WebKit
 import AVFoundation
 
 class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+    // Whole-app landscape (chen 2026-11-16): the web UI NEVER rotates
+    // — the entire app stays portrait except the fullscreen native
+    // player, which is a fullScreen modal whose own orientation mask
+    // governs while it is on screen. Without this lock, the web page
+    // (which inherits the Info.plist portrait+landscape set) could
+    // rotate with the phone when the orientation lock is off.
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
+    override var shouldAutorotate: Bool { false }
+
     private var webView: WKWebView!
     private var loadingView: UIView!
     // Launch splash state (standalone v1, animation #4 — gentle
@@ -192,8 +201,22 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Overscroll lock (chen 2026-11-16: swiping up/down showed
+        // BLACK): the main web view must never bounce past its content
+        // — the rubber-band reveal exposed the black view behind it.
+        // bounces=false + alwaysBounceVertical/Horizontal=false lock
+        // the scroll to the content range (a short page must not scroll
+        // at all, a long page only within its content); inner
+        // page scrolling (lists, playlists) is unaffected, only the
+        // out-of-bounds bounce is gone. The background colours below
+        // are a fallback matching the page's night base (#0e0e11), so
+        // even if any bounce still occurs it does not flash black.
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
         webView.isOpaque = false
-        webView.backgroundColor = .clear
+        webView.backgroundColor = UIColor(red: 0.055, green: 0.055, blue: 0.067, alpha: 1)
+        webView.scrollView.backgroundColor = UIColor(red: 0.055, green: 0.055, blue: 0.067, alpha: 1)
         // Let the shop's own long-press / swipe gestures work.
         webView.allowsLinkPreview = false
         self.webView = webView
@@ -508,14 +531,24 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     // the same view). `format` is 'hls' or 'flv' from the web page; it
     // is accepted for compatibility but no longer picks an engine —
     // ijkplayer plays both.
-    func presentNativePlayer(url: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "") {
+    func presentNativePlayer(url: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "") {
+        // UIKit presentation must run on the main thread; the web
+        // bridge normally calls on main, but a background retry path
+        // presenting here used to be a crash risk — bounce to main.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+            }
+            return
+        }
+        UserDefaults.standard.set("live-present", forKey: "hao_live_entry_stage")
         if let existing = presentedViewController as? NativePlayerViewController, existing.isLive {
             if existing.isBeingDismissed {
                 // Old player is mid-dismiss (user just closed it and tapped
                 // a room at once). Don't drop the request — retry after the
                 // dismiss animation finishes so the new room actually opens.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
                 }
                 return
             }
@@ -523,6 +556,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             // page's current danmaku settings too, so a position change
             // made on the web page is not lost on the switch.
             if let d = danmaku { existing.applyDanmakuSettings(d) }
+            existing.applyThemeAccent(accent)
             existing.updateStream(url: url, qualities: qualities, format: format, title: title, platform: platform, roomId: roomId)
             return
         }
@@ -533,20 +567,22 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             // on screen fails silently in UIKit.
             if existing.isBeingDismissed {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
                 }
             } else {
                 existing.dismiss(animated: true) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
                 }
             }
             return
         }
-        let playerVC = NativePlayerViewController(streamURL: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId)
+        let playerVC = NativePlayerViewController(streamURL: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
         // When the live player closes, tell the web page so it clears
         // the native-post dedupe key — otherwise reopening the same
         // room within 10s is blocked and the room "can't be entered".
-        playerVC.onClose = { [weak self] seconds in
+        // (Second tuple value is the stream duration: meaningless for
+        // live, ignored here.)
+        playerVC.onClose = { [weak self] seconds, _ in
             guard let self = self, let webView = self.webView else { return }
             // Player gone: the screen may lock again.
             self.applyIdleTimer()
@@ -703,7 +739,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     // landscape button inside the app: plays the episode's HLS stream in
     // the native player, with native danmaku. When the player closes, the
     // web page's video is re-synced to where the native player stopped.
-    func presentNativeVODPlayer(url: URL, title: String, startPosition: Double, danmaku: DanmakuConfig, lyrics: String = "", coverURL: URL? = nil, speed: Double = 1) {
+    func presentNativeVODPlayer(url: URL, title: String, startPosition: Double, danmaku: DanmakuConfig, lyrics: String = "", coverURL: URL? = nil, speed: Double = 1, startLandscape: Bool = false, accent: String = "") {
         if let existing = presentedViewController as? NativePlayerViewController {
             // A player is already on screen (a live room, or a
             // double-tapped VOD): presenting a second one fails
@@ -711,26 +747,29 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             // the new one after the dismiss.
             if existing.isBeingDismissed {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                    self?.presentNativeVODPlayer(url: url, title: title, startPosition: startPosition, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed)
+                    self?.presentNativeVODPlayer(url: url, title: title, startPosition: startPosition, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed, startLandscape: startLandscape, accent: accent)
                 }
             } else {
                 existing.dismiss(animated: true) { [weak self] in
-                    self?.presentNativeVODPlayer(url: url, title: title, startPosition: startPosition, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed)
+                    self?.presentNativeVODPlayer(url: url, title: title, startPosition: startPosition, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed, startLandscape: startLandscape, accent: accent)
                 }
             }
             return
         }
         var config = NativePlayerConfig(url: url, title: title, platform: "video", kind: "vod", startPosition: startPosition, danmaku: danmaku)
         config.lyrics = lyrics
+        config.startLandscape = startLandscape
         config.coverURL = coverURL
         config.playbackSpeed = speed
+        config.themeAccent = accent
         let playerVC = NativePlayerViewController(config: config)
-        playerVC.onClose = { [weak self] seconds in
+        playerVC.onClose = { [weak self] seconds, duration in
             guard let self = self, let webView = self.webView else { return }
             // Player gone: the screen may lock again.
             self.applyIdleTimer()
             let t = String(format: "%.1f", seconds)
-            webView.evaluateJavaScript("if(window.syncNativePlayerPosition){window.syncNativePlayerPosition(\(t));}", completionHandler: nil)
+            let d = String(format: "%.1f", duration)
+            webView.evaluateJavaScript("if(window.syncNativePlayerPosition){window.syncNativePlayerPosition(\(t), \(d));}", completionHandler: nil)
             // The native player clears Now Playing info on teardown;
             // re-publish the web track after the dismiss so the car /
             // lock screen keep showing the music (delayed past teardown).
@@ -752,6 +791,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         playerVC.onSpeedChanged = { [weak self] rate in
             guard let webView = self?.webView else { return }
             webView.evaluateJavaScript("if(window.__setVodSpeed){window.__setVodSpeed(\(rate));}", completionHandler: nil)
+        }
+        // VOD finished the episode: ask the web page to auto-play the
+        // next one (it re-posts a fresh 'vod' message; this presenter
+        // dismisses the ended player first, then presents the new one).
+        playerVC.onVodEnded = { [weak self] duration in
+            guard let webView = self?.webView else { return }
+            let d = String(format: "%.1f", duration)
+            webView.evaluateJavaScript("if(window.__nativeVodEnded){window.__nativeVodEnded(\(d));}", completionHandler: nil)
         }
         present(playerVC, animated: true)
         applyIdleTimer()
@@ -1065,19 +1112,24 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
             return
         }
         guard let urlString = body["url"] as? String,
-              let url = URL(string: urlString) else { return }
+              let url = URL(string: urlString),
+              Self.isPlayableStreamURL(url) else { return }
         let title = body["title"] as? String ?? ""
         let platform = body["platform"] as? String ?? ""
         // Optional cover / poster URL for lock screen artwork.
         let coverURL = (body["cover"] as? String).flatMap { URL(string: $0) }
+        // Current theme accent (CSS hex from --accent), so the native
+        // player's accent tint follows the web theme.
+        let accent = Self.dmString(body["accent"], default: "")
         if (body["kind"] as? String) == "vod" {
             // Online video (VOD): HLS episode + native danmaku.
             let dm = body["dm"] as? [String: Any] ?? [:]
             let position = (body["position"] as? NSNumber)?.doubleValue ?? 0
-            // Playback speed chosen on the web page (0.5–3x). Clamped to
+            // Playback speed chosen on the web page (0.5–2x, Pure Live
+            // LocalVideoPlayerController.defaultRates). Clamped to
             // the supported range; anything else falls back to 1x.
             let webSpeed = Self.dmDouble(body["speed"], default: 1)
-            let speed = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0].contains(webSpeed) ? webSpeed : 1
+            let speed = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].contains(webSpeed) ? webSpeed : 1
             let baseURL = viewController?.danmakuBaseURL(from: dm) ?? URL(string: "https://localhost/")!
             let danmaku = DanmakuConfig(
                 baseURL: baseURL,
@@ -1093,7 +1145,11 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
             // for movies — VOD has danmaku, not song lyrics — but the
             // contract carries it for whatever the web page passes).
             let lyrics = body["lyrics"] as? String ?? ""
-            viewController?.presentNativeVODPlayer(url: url, title: title, startPosition: position, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed)
+            // [ ] brackets on the inline video: open ALREADY in
+            // whole-app landscape (see NativePlayerConfig.startLandscape).
+            // Anything else (episode tap) opens portrait, inline-style.
+            let startLandscape = Self.dmBool(body["startLandscape"], default: false)
+            viewController?.presentNativeVODPlayer(url: url, title: title, startPosition: position, danmaku: danmaku, lyrics: lyrics, coverURL: coverURL, speed: speed, startLandscape: startLandscape, accent: accent)
             return
         }
         // Live takes the SAME danmaku settings the web page uses
@@ -1109,15 +1165,38 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
             opacity: Self.dmDouble(dm["opacity"], default: 0.9),
             speed: Self.dmDouble(dm["speed"], default: 1),
             position: Self.dmString(dm["pos"], default: "full"))
-        viewController?.presentNativePlayer(url: url, title: title, platform: platform, qualities: parseLiveQualities(body["qualities"]), format: body["format"] as? String ?? "", coverURL: coverURL, danmaku: liveDanmaku, roomId: Self.dmString(body["roomId"], default: Self.dmString(body["room"], default: "")))
+        // Crash breadcrumb (live crash 2026-11-16, root cause still
+        // unproven by static review): last stage before the app died
+        // is left in UserDefaults key "hao_live_entry_stage" — read it
+        // on next launch to see how far live entry got (live-msg ->
+        // live-present -> live-viewDidLoad -> live-ijk-ok ->
+        // live-playing -> live-closed).
+        UserDefaults.standard.set("live-msg", forKey: "hao_live_entry_stage")
+        viewController?.presentNativePlayer(url: url, title: title, platform: platform, qualities: parseLiveQualities(body["qualities"]), format: body["format"] as? String ?? "", coverURL: coverURL, danmaku: liveDanmaku, roomId: Self.dmString(body["roomId"], default: Self.dmString(body["room"], default: "")), accent: accent)
+    }
+
+    // A stream URL must be an absolute http(s) URL with a host.
+    // The web page normally sends one, but a platform returning a
+    // protocol-relative ("//...") or bare-path URL used to pass the
+    // parse-only guard and reach ijkplayer's native open, where a
+    // schemeless URL can crash the native FFmpeg layer instead of
+    // failing gracefully. Reject it here (the room just doesn't
+    // open) rather than crashing mid-load, before the first frame.
+    private static func isPlayableStreamURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
+        guard let host = url.host, !host.isEmpty else { return false }
+        return true
     }
 
     // qualities: [{id, name, url, urls[]}] — may be missing or empty.
     private func parseLiveQualities(_ raw: Any?) -> [LiveQuality] {
         guard let arr = raw as? [[String: Any]] else { return [] }
         return arr.compactMap { d in
-            guard let urlString = d["url"] as? String, let url = URL(string: urlString) else { return nil }
-            let urls = (d["urls"] as? [String] ?? []).compactMap { URL(string: $0) }
+            guard let urlString = d["url"] as? String, let url = URL(string: urlString), Self.isPlayableStreamURL(url) else { return nil }
+            let urls = (d["urls"] as? [String] ?? []).compactMap { s -> URL? in
+                guard let u = URL(string: s), Self.isPlayableStreamURL(u) else { return nil }
+                return u
+            }
             return LiveQuality(id: d["id"] as? String ?? "", name: d["name"] as? String ?? "", url: url, urls: urls.isEmpty ? [url] : urls)
         }
     }

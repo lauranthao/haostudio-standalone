@@ -150,7 +150,7 @@ main{max-width:760px}
 .menu-lang .lang-pill button.on{background:var(--accent-soft);color:var(--accent)}
 
 /* --- floating player sheet --- */
-.player-sheet{position:fixed;left:12px;right:12px;bottom:12px;max-width:760px;margin:0 auto;background:rgba(75,75,83,.6);backdrop-filter:blur(32px) saturate(1.4);-webkit-backdrop-filter:blur(32px) saturate(1.4);color:#fff;border-radius:28px;z-index:10002;padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.4);transform:translateY(120%);transition:transform .3s ease;max-height:82vh;overflow-y:auto}
+.player-sheet{position:fixed;left:12px;right:12px;bottom:12px;max-width:760px;margin:0 auto;background:rgba(75,75,83,.6);backdrop-filter:blur(32px) saturate(1.4);-webkit-backdrop-filter:blur(32px) saturate(1.4);color:#fff;border-radius:28px;z-index:10002;padding:22px;box-shadow:0 16px 48px rgba(0,0,0,.4);transform:translateY(120%);transition:transform .35s cubic-bezier(.32,.72,.35,1);max-height:82vh;overflow-y:auto}
 .player-sheet.open{transform:translateY(0)}
 .player-sheet.closing{opacity:0;transform:translateY(8%);transition:transform .35s ease,opacity .35s ease}
 .cover-fly{position:fixed;z-index:10003;pointer-events:none;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.5);transition:transform .35s cubic-bezier(.32,.72,.35,1),border-radius .35s ease}
@@ -292,9 +292,21 @@ main{max-width:760px}
 .am-title{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .am-sub{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .am-act{flex:0 0 auto}
-.am-add{width:30px;height:30px;border-radius:50%;background:#fa2d48;color:var(--on-accent);border:none;font-size:18px;line-height:1;padding:0}
+.am-add{width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--on-accent);border:none;font-size:18px;line-height:1;padding:0}
 .am-play{width:30px;height:30px;border-radius:50%;background:rgba(120,130,150,.18);border:none;font-size:13px;padding:0}
 .am-count{font-size:13px;color:var(--muted);font-weight:400}
+/* 搜歌结果行（视频样式）：专辑行 + 爱心/圆形播放按钮 + 无限滚动哨兵 */
+.src-album{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.am-act.src-act{display:flex;align-items:center;gap:4px}
+/* 图标按钮不受主题的通用按钮 padding 影响（薄荷/鎏金的 button padding 会把 36px 圆钮撑成 56px 宽 pill，挤掉歌名） */
+.am-act.src-act .src-fav,.am-act.src-act .src-play,.am-act.src-act .am-add{padding:0!important;min-width:0!important;border-radius:50%!important}
+.src-fav{width:36px;height:36px;border-radius:50%;background:transparent;border:none;box-shadow:none;color:var(--muted);display:flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto}
+.src-fav .ic{width:21px;height:21px}
+.src-fav.on{color:var(--accent)}
+.src-play{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent);box-shadow:none;display:flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto}
+.src-play .ic{width:18px;height:18px;margin-left:2px}
+.src-more{padding:16px 0 8px;text-align:center;cursor:pointer}
+.src-end{padding:14px 0 4px;text-align:center;font-size:12px}
 
 .sheet-lyrics{max-height:180px;overflow-y:auto;text-align:center;margin:6px 0;padding:4px 0}
 .lyr-line{padding:9px 10px;color:rgba(255,255,255,.72);font-size:22px;line-height:2.0}
@@ -416,17 +428,43 @@ body.has-mini{padding-bottom:calc(156px + env(safe-area-inset-bottom))}
 
 .tabbar{touch-action:pan-y}
 
+/* ---- 歌单广场：参考图风格，大标题 + 横向卡片 ---- */
+.plaza-page{padding-top:22px}
+.plaza-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.plaza-title{font-size:30px;font-weight:800;letter-spacing:.5px;margin:0;line-height:1.2}
+.plaza-head-right{display:flex;align-items:center;gap:10px}
+.plaza-hist-btn{width:40px;height:40px;border-radius:50%;border:1px solid var(--glass-brd);background:var(--glass-bg);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+/* 主题里的通用 button 规则（gold/mint 的大 padding）会压扁这个 40px 图标钮，id 选择器盖过它 */
+#plazaHistBtn{padding:0;border-radius:50%}
+.plaza-hist-btn svg{width:22px;height:22px}
+.plaza-hist-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.plaza-select{appearance:none;-webkit-appearance:none;border:1px solid var(--glass-brd);background:var(--glass-bg);color:var(--text);font-size:14px;font-weight:600;padding:9px 30px 9px 14px;border-radius:999px;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);max-width:150px;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+.plaza-select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.plaza-subrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 6px}
+.plaza-sorts{display:flex;gap:20px;align-items:center}
+.plaza-sort{font-size:15px;color:var(--muted);cursor:pointer;font-weight:500;padding:2px 0}
+.plaza-sort.on{color:var(--text);font-weight:700}
+.plaza-list{display:flex;flex-direction:column;gap:14px;margin-top:14px}
+.plaza-card{display:flex;gap:16px;align-items:center;background:var(--card-solid);border-radius:20px;padding:14px;cursor:pointer;min-width:0;box-shadow:var(--shadow-sm);transition:transform .25s var(--ease),box-shadow .25s var(--ease)}
+.plaza-card:active{transform:scale(.985)}
+.plaza-cover{width:100px;height:100px;flex:0 0 100px;object-fit:cover;border-radius:12px;display:block;box-shadow:var(--shadow-sm)}
+.plaza-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.plaza-name{font-size:16px;font-weight:700;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.plaza-creator{font-size:13px;color:var(--muted)}
+.plaza-stats{font-size:13px;color:var(--muted);letter-spacing:.2px}
+/* 搜索页（歌手/歌单搜索）仍用旧的三列网格，与广场横向卡片互不干扰 */
 .plaza-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.plaza-card{cursor:pointer;min-width:0}
-.plaza-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;display:block}
-.plaza-name{font-size:13px;font-weight:600;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.plaza-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.plaza-grid .plaza-card{display:block;background:none;box-shadow:none;padding:0;border-radius:0}
+.plaza-grid .plaza-card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;display:block}
+.plaza-grid .plaza-name{font-size:13px;font-weight:600;margin-top:6px}
+.plaza-grid .plaza-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.plaza-grid .plaza-card:hover img{transform:scale(1.03)}
 .video-daily-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .video-daily-card{flex:0 0 120px;min-width:0;cursor:pointer}
 .video-daily-card img{width:120px;aspect-ratio:3/4;height:auto;object-fit:cover;border-radius:12px;display:block}
 .video-daily-name{font-size:13px;font-weight:600;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .video-daily-meta{font-size:11px;color:var(--muted);margin-top:2px}
-@media(min-width:900px){.plaza-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(min-width:900px){.plaza-list{max-width:720px;margin-left:auto;margin-right:auto}.plaza-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
 
 .qa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
 .qa-tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 6px;border-radius:18px;background:var(--accent-soft);border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;color:var(--text)}
@@ -436,7 +474,18 @@ body.has-mini{padding-bottom:calc(156px + env(safe-area-inset-bottom))}
 .add-list-btn{background:transparent;color:var(--muted);border:1px dashed var(--border);box-shadow:none;padding:6px 14px;font-size:13px}
 
 html,body{overflow-x:hidden;touch-action:pan-y}
-.player-sheet,.lp-sheet,.side-menu{overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain}
+html{overscroll-behavior:none}
+.player-sheet,.lp-sheet,.side-menu{overflow-x:hidden;touch-action:pan-y;overscroll-behavior:none}
+/* --- Scroll lock, whole app (chen 2026-11-16: 全app锁死) ---
+   Root lock lives on `html` ONLY: `overscroll-behavior` on `body`
+   together with overflow-x:hidden breaks ALL root touch scrolling
+   in Chromium (verified 2026-11-16: body=none/contain blocks it,
+   html-only does not); native bounces=false is the other half.
+   Inner scrollers use `none` (not `contain`) so they don't
+   rubber-band at their own edges either — only the out-of-bounds
+   direction is locked, in-range scrolling is untouched. */
+.chat-box,.sheet-lyrics,.cover-lyrics,.sheet-content,.comments-body,.live-dm-list,.od-box,.set-pre,.video-wrap.fs .dm-settings{overscroll-behavior:none}
+.hot-scroll,.video-daily-row,.live-tabs,.live-cat-strip,.live-plat-tabs,.vod-wide-row,.vod-coll-row,.vod-poster-row,.vod-ep-cards,.vod-cast-row,.vod-filter-group,.table-wrap{overscroll-behavior-x:none}
 .lp-sheet{z-index:10005}
 body:has(.lp-sheet:not([style*="none"])) #vinyl{display:none!important}
 .ic{width:1em;height:1em;vertical-align:-.14em;flex:none}
@@ -762,9 +811,9 @@ body.bars-hidden .mini-player{transform:translateY(56px) scale(.86);opacity:1}
 .pl-cover{border-radius:12px;box-shadow:var(--shadow-sm)}
 .pl-name{font-size:17px}
 .pl-count{font-size:13px}
-.plaza-card img{border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);transition:transform .35s var(--ease)}
-.plaza-name{font-size:13px;line-height:1.4}
-.plaza-meta{font-size:11px;color:var(--muted)}
+.plaza-cover{border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);transition:transform .35s var(--ease)}
+.plaza-name{font-size:16px;line-height:1.4}
+.plaza-creator,.plaza-stats{font-size:13px;color:var(--muted)}
 .am-row{border-radius:12px;padding:10px 6px;transition:background-color .2s}
 .am-row:hover{background:var(--hover)}
 .am-art{border-radius:12px;box-shadow:var(--shadow-sm)}
@@ -829,7 +878,7 @@ main .card{animation:fadeUp .35s var(--ease) both}
 @media (hover:hover){
   .product:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
   .product:hover img{transform:scale(1.05)}
-  .plaza-card:hover img{transform:scale(1.03)}
+  .plaza-card:hover .plaza-cover{transform:scale(1.03)}
   .video-card:hover{transform:translateY(-2px)}
   .video-card:hover .video-poster{transform:scale(1.02);box-shadow:var(--shadow-lg)}
   .pl-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
@@ -848,7 +897,7 @@ main .card{animation:fadeUp .35s var(--ease) both}
   .hero-card h1{font-size:48px}
   .product img{height:200px}
   .hot-scroll .product{flex-basis:260px}
-  .plaza-grid{gap:16px}
+  .plaza-list{gap:16px}
   .video-grid{gap:16px}
   main{padding-bottom:160px}
 }
@@ -952,11 +1001,24 @@ main .card{animation:fadeUp .35s var(--ease) both}
 /* ========== 全屏自定义控制层 + 歌词高级感 (bz) ========== */
 .fs-ctl{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s}
 .video-wrap.fs .fs-ctl.show{opacity:1;visibility:visible}
-.fs-ctl-top{display:flex;justify-content:flex-end;gap:6px;padding:10px 12px;background:linear-gradient(rgba(0,0,0,.5),transparent);pointer-events:auto}
+.fs-ctl-top{display:flex;justify-content:flex-end;gap:6px;padding:10px 12px;background:linear-gradient(rgba(0,0,0,.45),transparent);pointer-events:auto}
 .fs-ctl-center{flex:1;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .fs-center-btn{pointer-events:auto;width:66px;height:66px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:0;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:0}
 .fs-center-btn svg{width:30px;height:30px}
-.fs-ctl-bottom{display:flex;align-items:center;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.65));pointer-events:auto}
+.fs-ctl-bottom{display:flex;align-items:center;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.45));pointer-events:auto}
+/* Inline VOD player controls (Bilibili-style, detail page top) */
+#videoWrap .vod-topbar{position:absolute;top:0;left:0;right:0;z-index:8;display:flex;align-items:center;gap:8px;padding:10px 12px;background:linear-gradient(rgba(0,0,0,.55),transparent);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s;pointer-events:none}
+#videoWrap .vod-ctl{position:absolute;left:0;right:0;bottom:0;z-index:8;display:flex;align-items:center;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.65));opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s;pointer-events:none}
+#videoWrap.show .vod-topbar,#videoWrap.show .vod-ctl{opacity:1;visibility:visible;pointer-events:auto}
+#videoWrap .vod-topbar .vod-top-title{flex:1;min-width:0;display:block;color:#fff;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.vod-big-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:7;width:66px;height:66px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:0;display:flex;align-items:center;justify-content:center;padding:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.vod-big-play svg{width:30px;height:30px}
+.vod-ctl-btn{background:none;border:0;color:#fff;padding:4px;display:flex;align-items:center;flex:none;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.vod-ctl-btn svg{width:20px;height:20px}
+.vod-ctl-btn.on{color:var(--accent)}
+.vod-ctl-time{color:#fff;font-size:12px;flex:none;text-shadow:0 1px 2px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
+.vod-seek{flex:1;min-width:0;accent-color:var(--accent);height:4px}
+.video-wrap.fs .vod-topbar,.video-wrap.fs .vod-ctl,.video-wrap.fs .vod-big-play{display:none!important}
 .fs-pp{background:none;border:0;color:#fff;padding:4px;display:flex;align-items:center}
 .fs-pp svg{width:20px;height:20px}
 .fs-time{color:#fff;font-size:12px;flex:none;text-shadow:0 1px 2px rgba(0,0,0,.7);font-variant-numeric:tabular-nums}
@@ -1074,7 +1136,8 @@ main .card{animation:fadeUp .35s var(--ease) both}
 .video-wrap.live-native .live-native-ph{display:flex;align-items:center;justify-content:center}
 .live-native-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.4}
 .live-native-ph span{position:relative;color:#fff;font-size:15px;background:rgba(0,0,0,.5);padding:8px 16px;border-radius:22px}
-.live-ctl{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:2px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.65));z-index:7;border-radius:0 0 12px 12px}
+.live-ctl{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:2px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.45));z-index:7;border-radius:0 0 12px 12px;transition:opacity .25s ease,visibility .25s}
+.live-ctl.hide{opacity:0;visibility:hidden;pointer-events:none}
 .live-ctl-btn{background:none;border:0;color:#fff;font-size:15px;padding:8px 10px;border-radius:8px;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.7);display:flex;align-items:center}
 .live-ctl-btn svg{width:20px;height:20px}
 .live-ctl-btn.on{color:#7fb8ff}
@@ -1100,6 +1163,14 @@ main .card{animation:fadeUp .35s var(--ease) both}
 #liveLineSheet .live-q-item{display:block;width:100%;text-align:left;background:none;border:0;color:#ddd;font-size:14px;padding:8px 10px;border-radius:8px;cursor:pointer}
 #liveLineSheet .live-q-item.on{color:#fff;background:rgba(255,255,255,.14)}
 #liveLineSheet .live-q-item:hover{background:rgba(255,255,255,.12)}
+/* Combined quality + line sheet (Pure Live two-pane stream selector) */
+#liveStreamSheet{position:absolute;top:44px;right:8px;z-index:30;background:rgba(20,20,20,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;padding:6px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+#liveStreamSheet .live-q-title{color:#fff;font-size:12px;font-weight:700;padding:6px 10px 4px}
+#liveStreamSheet .live-q-item{display:block;width:100%;text-align:left;background:none;border:0;color:#ddd;font-size:14px;padding:8px 10px;border-radius:8px;cursor:pointer}
+#liveStreamSheet .live-q-item.on{color:#fff;background:rgba(255,255,255,.14)}
+#liveStreamSheet .live-q-item:hover{background:rgba(255,255,255,.12)}
+/* Stream selector pill (Pure Live FullscreenStreamSelectorButton): white 13% fill, radius 18 */
+.live-stream-pill{flex:none;background:rgba(255,255,255,.13);border:0;color:#fff;font-size:13px;font-weight:600;padding:8px 11px;border-radius:18px;cursor:pointer;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5)}
 /* ========== 直播搜索 (ce) ========== */
 .live-search{display:flex;gap:8px;margin:10px 0}
 .live-search input{flex:1;min-width:0;padding:10px 14px;border-radius:14px;border:1px solid var(--hairline);background:var(--hover);color:var(--text);font-size:15px;outline:none}
@@ -1201,9 +1272,17 @@ main{padding-top:calc(10px + env(safe-area-inset-top,0px))}
 .vod-grid .vod-poster-card{flex:none}
 .vod-pager{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
 .vod-detail{overflow:hidden;margin:12px 0;padding:0}
-.vod-hero{position:relative;height:46vh;min-height:300px;background:linear-gradient(90deg,var(--hover),var(--bubble),var(--hover));background-size:200% 100%;animation:vodshim 1.4s infinite}
-.vod-hero img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s}
-.vod-hero img.ld{opacity:1}
+.vod-hero{position:relative;height:46vh;min-height:300px;overflow:hidden;background:linear-gradient(90deg,var(--hover),var(--bubble),var(--hover));background-size:200% 100%;animation:vodshim 1.4s infinite}
+.vod-hero img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .6s ease,transform .6s ease;transform:scale(1.03)}
+.vod-hero img.ld{opacity:1;transform:scale(1)}
+/* Detail entrance (issue 8): Infuse-style fade-up on open. Preview and full
+   detail are both fresh innerHTML, so the animation replays for each stage.
+   The hero keeps its shimmer (vodshim) alongside the fade. */
+@keyframes vodFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.vod-detail .vod-hero{animation:vodFadeUp .5s cubic-bezier(.22,.61,.36,1) both,vodshim 1.4s infinite}
+.vod-detail .vod-meta{animation:vodFadeUp .5s cubic-bezier(.22,.61,.36,1) .06s both}
+.vod-detail .vod-lines,.vod-detail .vod-eps,.vod-detail .vod-syn,.vod-detail .vod-syn-wrap,.vod-detail .vod-cast-sec{animation:vodFadeUp .5s ease-out .12s both}
+@media (prefers-reduced-motion:reduce){.vod-detail .vod-hero,.vod-detail .vod-meta,.vod-detail .vod-lines,.vod-detail .vod-eps,.vod-detail .vod-syn,.vod-detail .vod-syn-wrap,.vod-detail .vod-cast-sec{animation:none}.vod-hero img{transition:none;transform:none}}
 .vod-hero-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.28) 0%,transparent 22%,transparent 45%,var(--bg) 100%),linear-gradient(0deg,var(--bg) 0%,transparent 30%)}
 .vod-hero-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;padding:14px}
 .vod-glass-btn{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.22);backdrop-filter:blur(12px);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;text-decoration:none;border:none;cursor:pointer}
@@ -1214,16 +1293,8 @@ h2.vod-title{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.
 .vod-meta-line{font-size:14px;color:var(--muted);display:flex;gap:10px;justify-content:flex-start;align-items:center;flex-wrap:wrap}
 .vod-score{font-weight:700;color:var(--text)}
 .vod-star{color:var(--accent)}
-/* TMDB attribution (terms of use): official blue_short logo is a light
-   green->blue gradient, readable on light and dark themes alike, so no
-   theme variant is needed. Score badges only carry the TMDB mark when
-   the score really came from TMDB (server sets x.tmdb / meta.tmdb). */
-.tmdb-logo{display:inline-flex;align-items:center;flex:0 0 auto}
-.tmdb-logo img{height:14px;width:auto;display:block}
 .vod-score-badge i{font-style:normal;font-size:9px;font-weight:600;letter-spacing:.03em;opacity:.85;margin-left:3px}
-.tmdb-mark{font-style:normal;font-size:10px;font-weight:600;letter-spacing:.03em;color:var(--muted);margin-left:4px}
-.tmdb-attr{display:flex;align-items:center;gap:8px;margin:20px 2px 4px;color:var(--muted);font-size:11px;line-height:1.5}
-.tmdb-attr .tmdb-logo img{height:12px}
+.score-mark{font-style:normal;font-size:10px;font-weight:600;letter-spacing:.03em;color:var(--muted);margin-left:4px}
 .vod-remarks{font-size:14px;color:var(--muted);margin-top:6px}
 .vod-director{font-size:14px;color:var(--muted);margin-top:4px}
 .vod-genres{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
@@ -1322,7 +1393,7 @@ h2.vod-title{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.
 [data-theme="gold"] .card{background:var(--card);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(212,175,55,.5);border-top:2px solid rgba(212,175,55,.8);border-radius:6px;box-shadow:0 10px 28px rgba(0,0,0,.5);padding:22px 24px}
 [data-theme="gold"] .card h1,[data-theme="gold"] .card h2{color:#d4af37;letter-spacing:.12em;text-transform:uppercase}
 [data-theme="gold"] .card h3{color:#e8dcc0;letter-spacing:.08em}
-[data-theme="gold"] button:not(.ghost-btn):not(.chip):not(.set-chip){border-radius:4px;border:1px solid rgba(212,175,55,.75);letter-spacing:.08em;text-transform:uppercase;box-shadow:none;padding:11px 22px}
+[data-theme="gold"] button:not(.ghost-btn):not(.chip):not(.set-chip):not(.ad-topbtn):not(.ad-round-btn):not(.ad-play-btn):not(.album-glass-btn):not(.album-circle-btn):not(.album-play-btn):not(.album-cap-btn){border-radius:4px;border:1px solid rgba(212,175,55,.75);letter-spacing:.08em;text-transform:uppercase;box-shadow:none;padding:11px 22px}
 [data-theme="gold"] .pill-red{background:var(--accent);border-color:transparent;color:#fff}
 [data-theme="gold"] .top-circle,[data-theme="gold"] .menu-close,[data-theme="gold"] .mini-btn{border-radius:50%}
 [data-theme="gold"] header{background:var(--card);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-bottom:1px solid rgba(212,175,55,.45)}
@@ -1336,7 +1407,7 @@ h2.vod-title{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.
 [data-theme="mint"] .card{background:var(--card);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(13,148,136,.10);border-radius:32px;box-shadow:0 16px 40px rgba(13,148,136,.10);padding:32px 28px}
 [data-theme="mint"] .card h1{letter-spacing:0}
 [data-theme="mint"] .card h2{color:#0d9488;letter-spacing:.02em}
-[data-theme="mint"] button:not(.ghost-btn):not(.chip):not(.set-chip):not(.live-home-tab):not(.live-tab):not(.live-tab2):not(.live-cat):not(.live-cat-chip):not(.live-search-btn):not(.live-search-clear):not(.live-search-scope){border-radius:20px;box-shadow:0 8px 20px rgba(13,148,136,.28);padding:13px 28px}
+[data-theme="mint"] button:not(.ghost-btn):not(.chip):not(.set-chip):not(.live-home-tab):not(.live-tab):not(.live-tab2):not(.live-cat):not(.live-cat-chip):not(.live-search-btn):not(.live-search-clear):not(.live-search-scope):not(.ad-topbtn):not(.ad-round-btn):not(.ad-play-btn):not(.album-glass-btn):not(.album-circle-btn):not(.album-play-btn):not(.album-cap-btn){border-radius:20px;box-shadow:0 8px 20px rgba(13,148,136,.28);padding:13px 28px}
 [data-theme="mint"] header{background:rgba(255,255,255,.68);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-bottom:1px solid rgba(13,148,136,.12)}
 [data-theme="mint"] header .logo{color:#0d9488}
 [data-theme="mint"] .topbar{background:var(--card);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid rgba(13,148,136,.08);border-radius:32px;box-shadow:0 10px 28px rgba(13,148,136,.10);padding:14px 20px}
@@ -1347,7 +1418,7 @@ h2.vod-title{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.
 /* ---- neon 极夜冰蓝：最暗、最亮、最未来 ---- */
 [data-theme="neon"] .card{background:var(--card);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid rgba(56,189,248,.45);border-radius:16px;box-shadow:0 0 18px rgba(14,165,233,.35),0 10px 32px rgba(0,0,0,.45)}
 [data-theme="neon"] .card h1,[data-theme="neon"] .card h2{color:#fff;text-shadow:0 0 12px rgba(56,189,248,.5)}
-[data-theme="neon"] button:not(.ghost-btn):not(.chip):not(.set-chip){border-radius:10px;font-weight:700;box-shadow:0 0 16px rgba(56,189,248,.55),0 4px 14px rgba(56,189,248,.35)}
+[data-theme="neon"] button:not(.ghost-btn):not(.chip):not(.set-chip):not(.ad-topbtn):not(.ad-round-btn):not(.ad-play-btn):not(.album-glass-btn):not(.album-circle-btn):not(.album-play-btn):not(.album-cap-btn){border-radius:10px;font-weight:700;box-shadow:0 0 16px rgba(56,189,248,.55),0 4px 14px rgba(56,189,248,.35)}
 [data-theme="neon"] .top-circle,[data-theme="neon"] .menu-close,[data-theme="neon"] .mini-btn{border-radius:50%}
 [data-theme="neon"] header{background:var(--card);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-bottom:1px solid rgba(56,189,248,.45);box-shadow:0 1px 18px rgba(14,165,233,.35)}
 [data-theme="neon"] header .logo{color:#fff;text-shadow:0 0 14px rgba(56,189,248,.7)}
@@ -1505,7 +1576,7 @@ h2.vod-title{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1.
 @keyframes phshim{from{background-position:200% 0}to{background-position:-200% 0}}
 .vod-poster-img,.vod-wide-img,.vod-ep-still,.vod-cast-photo,.live-cover-wrap{background-image:linear-gradient(100deg,rgba(255,255,255,.05) 30%,rgba(255,255,255,.14) 50%,rgba(255,255,255,.05) 70%);background-size:200% 100%;animation:phshim 1.8s linear infinite}
 .tabbar a{font-size:12px}
-.video-src,.plaza-meta,.video-daily-meta,.cats-parent,.live-online,.vod-coll-en{font-size:12px}
+.video-src,.video-daily-meta,.cats-parent,.live-online,.vod-coll-en{font-size:12px}
 /* notifications (bell + center) */
 .notif-badge{position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;line-height:18px;text-align:center;padding:0 4px;font-weight:700;box-sizing:border-box}
 .notif-item{display:flex;gap:10px;padding:12px 4px;border-bottom:1px solid var(--hairline);cursor:pointer;align-items:flex-start}
@@ -1838,6 +1909,36 @@ html[data-pureblack="1"]{--bg:#000;--bg-grad:none;--card:rgba(0,0,0,.55);--card-
 /* ---- style: immersive (default, LX Vertical pager) ---- */
 #playerSheet.pl-style-immersive.playing #sheetCover{border-radius:16px;animation:none}
 #playerSheet.pl-style-immersive.playing .sheet-cover-big{animation:none}
+/* ---- player redo per chen reference (2026-11-16: deep-blue cover-tinted, bare controls) ---- */
+#playerSheet.pl-style-immersive{background:linear-gradient(180deg,rgba(8,18,38,.38),rgba(4,10,24,.66)),radial-gradient(130% 55% at 50% 0%,rgba(0,113,227,.10),transparent 62%),linear-gradient(180deg,#202027,#151517 55%,#101012);color:#fff}
+#playerSheet.pl-style-immersive .sheet-bg{opacity:1;filter:blur(70px) brightness(.5) saturate(1.45)}
+#playerSheet.pl-style-immersive .sheet-title{color:#fff;font-size:26px;font-weight:800;letter-spacing:.2px}
+#playerSheet.pl-style-immersive .sheet-artist{color:rgba(255,255,255,.62);font-size:16px}
+#playerSheet.pl-style-immersive .sheet-title-actions{gap:22px}
+#playerSheet.pl-style-immersive .sheet-icon-btn{background:none;color:#fff;font-size:28px}
+#playerSheet.pl-style-immersive .sheet-icon-btn .ic{width:28px;height:28px}
+#playerSheet.pl-style-immersive #sheetFav.faved{color:#fff}
+#playerSheet.pl-style-immersive .sheet-qbadge{background:none;border:0;color:rgba(255,255,255,.55);font-size:11px;padding:0;min-height:0}
+#playerSheet.pl-style-immersive .player-progress span{color:rgba(255,255,255,.6)}
+#playerSheet.pl-style-immersive .player-bar{background:rgba(255,255,255,.28)}
+#playerSheet.pl-style-immersive .player-bar-fill{background:#fff}
+#playerSheet.pl-style-immersive .player-controls{gap:56px}
+#playerSheet.pl-style-immersive .player-controls .player-play{width:76px;height:76px;background:none;box-shadow:none;font-size:44px;color:#fff}
+#playerSheet.pl-style-immersive .player-controls .player-skip{width:64px;height:64px;background:none;box-shadow:none;font-size:34px;color:#fff}
+#playerSheet.pl-style-immersive .sheet-cover-big{border-radius:20px}
+#playerSheet.pl-style-immersive .sheet-status{color:rgba(255,255,255,.75)}
+#playerSheet.pl-style-immersive .sheet-bottom-row{background:none;border:0;border-radius:0}
+#playerSheet.pl-style-immersive .sheet-bottom-btn{color:rgba(255,255,255,.85)}
+/* volume row restored (chen reference: speaker icons + thin slider) */
+.player-sheet .sheet-vol{display:flex;align-items:center;gap:10px;margin-top:18px;color:rgba(255,255,255,.75)}
+.player-sheet .sheet-vol .ic{width:20px;height:20px;flex:none}
+#sheetVol{flex:1;-webkit-appearance:none;appearance:none;height:4px;min-height:4px;padding:0;border:0;border-radius:99px;background:rgba(255,255,255,.28);outline:none;cursor:pointer}
+#sheetVol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer}
+#sheetVol::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:#fff;cursor:pointer}
+/* bottom row: no pill, 3 bare icons (chen reference) */
+.player-sheet .sheet-bottom-row{background:none;border:0;border-radius:0;margin-top:16px;padding:6px 2px}
+#playerSheet .sheet-bottom-btn .ic{width:26px;height:26px}
+#playerSheet .sheet-bottom-btn{color:rgba(255,255,255,.85)}
 /* ---- style: vinyl (NetEase disc — spinning record, tap disc for lyrics) ---- */
 #playerSheet.pl-style-vinyl .pl-cover-box{border-radius:50%;background:#0b0b0d;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 18px 44px rgba(0,0,0,.55)}
 #playerSheet.pl-style-vinyl .pl-cover-box::before{content:'';position:absolute;inset:0;border-radius:50%;background:repeating-radial-gradient(circle at 50% 50%,rgba(255,255,255,.055) 0 1px,transparent 1px 4px)}
@@ -1964,8 +2065,8 @@ html[data-pureblack="1"]{--bg:#000;--bg-grad:none;--card:rgba(0,0,0,.55);--card-
 body.sheet-open .tabbar{transform:translateY(calc(100% + 24px));opacity:0;pointer-events:none}
 body.sheet-open .mini-player{opacity:0;pointer-events:none}
 /* expanding: controls fade in late (0.08s after the cover lands) */
-#playerSheet .sheet-title-row,#playerSheet .player-progress,#playerSheet .sheet-qbadge-row,#playerSheet .player-controls,#playerSheet .sheet-vol,#playerSheet .sheet-bottom-row,#playerSheet .player-sheet-head{transition:opacity .25s ease .08s}
-#playerSheet.expanding .sheet-title-row,#playerSheet.expanding .player-progress,#playerSheet.expanding .sheet-qbadge-row,#playerSheet.expanding .player-controls,#playerSheet.expanding .sheet-vol,#playerSheet.expanding .sheet-bottom-row,#playerSheet.expanding .player-sheet-head{opacity:0;transition:none}
+#playerSheet .sheet-title-row,#playerSheet .player-progress,#playerSheet .sheet-qbadge-row,#playerSheet .player-controls,#playerSheet .sheet-vol,#playerSheet .sheet-bottom-row,#playerSheet .player-sheet-head,#playerSheet #playerNow{transition:opacity .25s ease .08s}
+#playerSheet.expanding .sheet-title-row,#playerSheet.expanding .player-progress,#playerSheet.expanding .sheet-qbadge-row,#playerSheet.expanding .player-controls,#playerSheet.expanding .sheet-vol,#playerSheet.expanding .sheet-bottom-row,#playerSheet.expanding .player-sheet-head,#playerSheet.expanding #playerNow{opacity:0;transition:none}
 /* tab capsule: spring slide (scaleX stretch done by JS animate) */
 .tabbar .tab-ind{transition:transform .35s cubic-bezier(.32,.72,.35,1)}
 /* scroll: bars-compact (iOS 26) — tabbar shrinks to a capsule, mini player slides down beside it */
@@ -1996,10 +2097,10 @@ body.bars-compact .mini-player .mini-btn:not(#miniPlay){display:none}
 
 #sheetQBadge{font-size:11px;padding:3px 8px;border-radius:999px;white-space:nowrap}
 #sheetQBadge .ic{width:12px;height:12px}
-.pl-cover-box{width:min(72vw,280px)}
-#playerNow{flex:none;height:min(72vw,280px)}
+.pl-cover-box{width:min(76vw,340px)}
+#playerNow{flex:1 1 auto;min-height:0;height:auto}
 #playerSheet.pl-style-compact #playerNow{flex:1 1 auto;height:auto;min-height:0}
-#playerSheet.pl-style-split #playerNow{flex:none;height:min(50vw,200px)}
+#playerSheet.pl-style-split #playerNow{flex:1 1 auto;height:auto;min-height:200px}
 #playerSheet.pl-style-immersive #plLyricPage #coverLyrics,#playerSheet.pl-style-vinyl #plLyricPage #coverLyrics{padding:70px 6px}
 .player-controls{gap:30px;margin:14px 0}
 .player-controls .player-play{width:64px;height:64px;font-size:30px}
@@ -2016,14 +2117,14 @@ body.bars-compact .mini-player .mini-btn:not(#miniPlay){display:none}
 .sheet-bottom-row{margin-top:14px;padding:6px}
 .sheet-bottom-btn{font-size:14px;padding:6px 2px;min-height:40px}
 .sheet-bottom-btn[onclick="openSongInfo()"]{display:none}
-.sheet-bottom-btn[onclick="openUpNext()"]{display:none}
+#playModeBtn{display:none}
+.sheet-bottom-btn[onclick="openUpNext()"] span{display:none}
 .sheet-handle{margin:2px auto 8px}
 .pl-dots{padding:8px 0 2px}
 
 /* patch J2: kill the 40px sheet scroll (bg inset:-40px bleed) + balance compact/split */
 .player-sheet{display:flex;flex-direction:column;overflow:hidden}
 .sheet-content{overflow-y:auto}
-#playerSheet.pl-style-compact #playerNow{max-height:340px}
 #playerSheet.pl-style-split #playerNow{height:300px}
 
 /* patch J2b: short screens keep the scrolling sheet (must come after J2's overflow:hidden) */
@@ -2089,3 +2190,201 @@ body.bars-compact .mini-player .mini-btn:not(#miniPlay){display:none}
 #playerSheet .sheet-qbadge-row{text-align:center;margin:10px 0 0}
 #playerSheet .sheet-qbadge{padding:4px 12px;min-height:28px;font-size:12px;border-radius:999px}
 #playerSheet .sheet-qbadge .ic{width:12px;height:12px}
+/* settings sub-pages: entry rows on the main page + back button */
+.set-nav-row{cursor:pointer}
+.set-nav-row:active{background:var(--hover)}
+.set-nav-row .set-title .ic{width:18px;height:18px;vertical-align:-3px;margin-right:8px;color:var(--accent)}
+.set-nav-chev{font-size:22px;line-height:1;color:var(--muted);flex:none}
+.set-back-btn{flex:none}
+
+/* ---- daily mix + music home (v1.0.2): air, clear type scale, restrained cards ---- */
+.daily-card{padding-top:28px}
+.card p.daily-back{margin:0 0 20px;font-size:14px}
+.daily-back a{color:var(--muted);text-decoration:none}
+.daily-eyebrow{font-size:13px;font-weight:600;letter-spacing:.4px;color:var(--muted);margin:0 0 6px}
+.card h2.daily-title{font-size:30px;line-height:1.2;font-weight:800;letter-spacing:.2px;margin:0 0 8px}
+.card p.daily-sub{font-size:14px;line-height:1.6;color:var(--muted);margin:0 0 20px}
+.daily-play-row{margin:0 0 22px}
+.daily-play-all{width:100%;justify-content:center;padding:13px 22px}
+.daily-note{margin:0 0 14px;padding:11px 14px;border-radius:14px;background:var(--accent-soft);font-size:13px;line-height:1.55;color:var(--text)}
+.home-card{padding-top:28px}
+.home-greet{font-size:30px;font-weight:800;line-height:1.2;letter-spacing:.2px;margin:0 0 6px}
+.home-date{font-size:13px;color:var(--muted);margin:0 0 22px}
+.qa-grid4{grid-template-columns:repeat(4,1fr);gap:10px}
+.qa-grid4 .qa-tile{padding:16px 4px 14px;font-size:12px;gap:8px}
+.home-sec{margin-top:30px}
+.home-sec-head{font-size:17px;font-weight:700;letter-spacing:.2px;margin:0 0 12px}
+.home-sec-head-row{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 12px}
+.home-sec-head-row .home-sec-head{margin:0}
+.home-more{font-size:13px;color:var(--muted);text-decoration:none;flex:none}
+.home-import{display:flex;gap:8px}
+.home-import input{flex:1;min-width:0}
+.home-import-hint{font-size:12px;margin:8px 0 4px}
+.am-row{padding:10px 2px}
+.am-art{border-radius:12px}
+/* daily/home rows: the + button follows the theme accent instead of a fixed red */
+.daily-card .am-add,.home-card .am-add{background:var(--accent-soft);color:var(--accent);font-weight:700}
+
+/* ============ Liquid Glass 液态玻璃 (iOS 26 风格, 2026-11-16) ============
+   玻璃 = 半透明 tint + 强模糊 + 饱和度提升(折射感) + 上亮下暗的 1px 内高光。
+   色调走 CSS 变量, 四套主题只换 tint, 质感标准一致(透明度/高光/圆角逻辑相同)。
+   只上在浮层/常驻条/卡片/弹窗这类"浮在内容上"的组件; 大面积滚动列表的行、
+   已有渐变背景的展开播放器 / hero 不上(会糊 / 会卡)。常驻条 blur ≤24px,
+   卡片 ≤26px, 小控件 ≤12px; 行级元素一律不加 backdrop-filter。
+   选择器带 [data-theme] 前缀(与主题覆写同级, 靠文件顺序取胜), 别改成 !important。 */
+:root{--spring:cubic-bezier(.32,.72,.35,1);--glass-bg:rgba(255,255,255,.52);--glass-tint:rgba(255,255,255,.30);--glass-hi:rgba(255,255,255,.55);--glass-lo:rgba(90,120,150,.10);--glass-brd:rgba(255,255,255,.55)}
+[data-theme="gold"]{--glass-bg:rgba(48,40,26,.55);--glass-tint:rgba(212,175,55,.10);--glass-hi:rgba(232,205,120,.38);--glass-lo:rgba(0,0,0,.18);--glass-brd:rgba(212,175,55,.42)}
+[data-theme="mint"]{--glass-bg:rgba(255,255,255,.58);--glass-tint:rgba(13,148,136,.07);--glass-hi:rgba(255,255,255,.65);--glass-lo:rgba(13,148,136,.08);--glass-brd:rgba(255,255,255,.70)}
+[data-theme="neon"]{--glass-bg:rgba(16,34,54,.55);--glass-tint:rgba(56,189,248,.10);--glass-hi:rgba(125,211,252,.35);--glass-lo:rgba(0,0,0,.16);--glass-brd:rgba(56,189,248,.38)}
+[data-mode="night"]{--glass-bg:rgba(36,36,44,.56);--glass-tint:rgba(255,255,255,.06);--glass-hi:rgba(255,255,255,.26);--glass-lo:rgba(0,0,0,.14);--glass-brd:rgba(255,255,255,.14)}
+
+/* ---- 常驻浮条: tab 栏 + 迷你播放器 (最优先, blur 22px, 弹簧过渡) ---- */
+[data-theme] .tabbar{background:var(--glass-bg);backdrop-filter:blur(22px) saturate(1.7);-webkit-backdrop-filter:blur(22px) saturate(1.7);box-shadow:0 10px 28px rgba(0,0,0,.12),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo);transition:transform .35s var(--spring),opacity .35s var(--spring),box-shadow .3s var(--spring)}
+[data-theme] .tabbar a{transition:color .2s,background-color .25s var(--spring)}
+[data-theme] .tabbar a.on{background:var(--accent-soft);border-radius:14px;margin:3px 2px}
+[data-theme] .mini-player{background:var(--glass-bg);backdrop-filter:blur(22px) saturate(1.7);-webkit-backdrop-filter:blur(22px) saturate(1.7);box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo);transition:transform .35s var(--spring),opacity .35s var(--spring),box-shadow .3s var(--spring)}
+
+/* ---- 顶栏 / 顶栏条 / 侧边菜单 ---- */
+[data-theme] header{background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.7);-webkit-backdrop-filter:blur(24px) saturate(1.7);border-bottom-color:var(--glass-brd);box-shadow:0 8px 24px rgba(0,0,0,.06),inset 0 -1px 0 var(--glass-lo)}
+[data-theme] .topbar{background:var(--glass-bg);backdrop-filter:blur(20px) saturate(1.7);-webkit-backdrop-filter:blur(20px) saturate(1.7);border:1px solid var(--glass-brd);box-shadow:0 10px 28px rgba(0,0,0,.08),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo)}
+.side-menu{background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.7);-webkit-backdrop-filter:blur(24px) saturate(1.7);box-shadow:0 0 40px rgba(0,0,0,.2),inset 0 1px 0 var(--glass-hi);transition:transform .32s var(--spring)}
+
+/* ---- 卡片: 玻璃卡 (blur 26px)。整页容器卡(.daily-card/.plaza-page/.live-plat-page/.home-card)
+   及深色/渐变卡(.player-dark/.hero)排除: 前者是大面积容器(糊+卡), 后者自有背景 ---- */
+[data-theme] .card:not(.daily-card):not(.plaza-page):not(.live-plat-page):not(.home-card):not(.player-dark):not(.hero){background:var(--glass-bg);backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7);box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo)}
+
+/* ---- 弹窗/抽屉: 底部 sheet + 遮罩轻模糊 + 小菜单 + 聊天输入条 ---- */
+.lp-sheet{background:rgba(0,0,0,.45);backdrop-filter:blur(4px) saturate(1.2);-webkit-backdrop-filter:blur(4px) saturate(1.2)}
+.lp-box{background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.7);-webkit-backdrop-filter:blur(24px) saturate(1.7);border:1px solid var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo)}
+/* ---- 音质菜单: 居中液态玻璃浮层 (按截图, 非底部抽屉; 仅 #qualitySheet) ---- */
+@keyframes qGlassIn{from{transform:scale(.94) translateY(10px);opacity:0}to{transform:none;opacity:1}}
+#qualitySheet{align-items:center;justify-content:center;background:rgba(0,0,0,.16);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+#qualitySheet .lp-box{width:62%;min-width:236px;max-width:300px;background:var(--glass-bg);border:1px solid var(--glass-brd);border-radius:26px;padding:10px 12px;margin:0;gap:2px;animation:qGlassIn .3s var(--spring);backdrop-filter:blur(28px) saturate(1.8);-webkit-backdrop-filter:blur(28px) saturate(1.8);box-shadow:0 24px 56px rgba(0,0,0,.28),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo)}
+#qualitySheet .lp-box::before{display:none}
+#qualitySheet .lp-box button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:52px;padding:12px 14px;background:transparent;border:0;border-radius:16px;box-shadow:none;text-align:left;font-size:17px;color:var(--text)}
+#qualitySheet .lp-box button:hover{background:var(--hover)}
+#qualitySheet .lp-box button:active{transform:scale(.98)}
+#qualitySheet .lp-box button.q-on{background:var(--accent-soft);color:var(--accent);font-weight:700}
+#qualitySheet .q-check{float:none;flex:0 0 auto;font-size:17px}
+.live-ham-menu,.live-room-menu{background:var(--glass-bg);backdrop-filter:blur(20px) saturate(1.7);-webkit-backdrop-filter:blur(20px) saturate(1.7);border-color:var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi)}
+[data-theme] .chat-inputbar{background:var(--glass-bg);backdrop-filter:blur(20px) saturate(1.7);-webkit-backdrop-filter:blur(20px) saturate(1.7);box-shadow:inset 0 1px 0 var(--glass-hi)}
+
+/* ---- 设置组: 轻玻璃 (blur 16px, 行不上模糊, 只给按压态 tint) ---- */
+.set-group{background:var(--glass-bg);backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);border-color:var(--glass-brd);box-shadow:0 1px 6px rgba(0,0,0,.06),inset 0 1px 0 var(--glass-hi)}
+.set-row:active{background:var(--glass-tint)}
+.dm-settings{background:var(--glass-bg);backdrop-filter:blur(14px) saturate(1.6);-webkit-backdrop-filter:blur(14px) saturate(1.6);border-color:var(--glass-brd)}
+
+/* ---- 玻璃按钮 / chip (小面积, blur ≤12px; 激活态用 accent 半透明, 不是饱和色块) ---- */
+.chip{background:var(--glass-tint);backdrop-filter:blur(10px) saturate(1.6);-webkit-backdrop-filter:blur(10px) saturate(1.6);border-color:var(--glass-brd)}
+.chip.on{background:var(--accent-soft);backdrop-filter:blur(10px) saturate(1.6);-webkit-backdrop-filter:blur(10px) saturate(1.6);color:var(--accent);border-color:transparent}
+.pill:not(.pill-red){background:var(--glass-bg);backdrop-filter:blur(12px) saturate(1.6);-webkit-backdrop-filter:blur(12px) saturate(1.6);border-color:var(--glass-brd);box-shadow:0 4px 14px rgba(0,0,0,.06),inset 0 1px 0 var(--glass-hi)}
+.lang-pill,.mode-seg{background:var(--glass-bg);backdrop-filter:blur(12px) saturate(1.6);-webkit-backdrop-filter:blur(12px) saturate(1.6);border:1px solid var(--glass-brd);box-shadow:0 4px 14px rgba(0,0,0,.06),inset 0 1px 0 var(--glass-hi)}
+.type-btn{background:var(--glass-bg);backdrop-filter:blur(10px) saturate(1.6);-webkit-backdrop-filter:blur(10px) saturate(1.6);border-color:var(--glass-brd)}
+.list-tab{background:var(--glass-tint);backdrop-filter:blur(10px) saturate(1.6);-webkit-backdrop-filter:blur(10px) saturate(1.6)}
+.list-tab.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.set-btn{background:var(--glass-tint);backdrop-filter:blur(10px) saturate(1.6);-webkit-backdrop-filter:blur(10px) saturate(1.6)}
+
+/* ---- toast: 小浮层轻玻璃 ---- */
+#toast{background:rgba(20,20,24,.72);backdrop-filter:blur(14px) saturate(1.6);-webkit-backdrop-filter:blur(14px) saturate(1.6)}
+
+/* ---- artist detail: Apple Music style hero ---- */
+#artistDetailWrap{margin:-16px -40px 0}
+.ad-topbar{position:relative;z-index:200;display:flex;align-items:center;gap:8px;padding:6px;height:52px;margin:0 12px -52px;will-change:transform;transition:background-color .3s,box-shadow .3s,border-color .3s}
+.ad-topbar.scrolled{background:var(--glass-bg);backdrop-filter:blur(24px) saturate(1.8);-webkit-backdrop-filter:blur(24px) saturate(1.8);border:1px solid var(--glass-brd);border-radius:999px;box-shadow:0 10px 28px rgba(0,0,0,.08),inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 var(--glass-lo)}
+.ad-topname{flex:1;min-width:0;text-align:center;font-weight:800;font-size:16px;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.45);opacity:0;transition:opacity .3s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-topbar.scrolled .ad-topname{opacity:1;color:var(--text);text-shadow:none}
+.ad-topbtn{width:40px;height:40px;border-radius:50%;background:var(--glass-bg);border:1px solid var(--glass-brd);backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);color:var(--text);font-size:24px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 var(--glass-hi);flex:0 0 auto}
+.ad-topbtn .ic{width:20px;height:20px}
+.ad-topcapsule{display:flex;align-items:center;gap:2px;background:var(--glass-bg);border:1px solid var(--glass-brd);backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);border-radius:999px;padding:2px;box-shadow:inset 0 1px 0 var(--glass-hi)}
+.ad-topbtn-in{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+.ad-topbar.scrolled .ad-topbtn{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--text)}
+.ad-topbar.scrolled .ad-topcapsule{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+.ad-hero{position:relative;z-index:1;height:clamp(430px,118vw,560px);overflow:hidden;background:var(--bg);will-change:transform}
+.ad-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:50% 0;will-change:transform}
+.ad-hero-dim{position:absolute;inset:0;background:#000;opacity:.28;pointer-events:none}
+.ad-hero-info{position:absolute;left:0;right:0;bottom:0;padding:0 20px 52px;text-align:center;will-change:transform,opacity}
+.ad-hero-name{color:#fff;font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.15;text-shadow:0 2px 16px rgba(0,0,0,.45)}
+.ad-hero-sub{color:rgba(255,255,255,.85);font-size:13px;margin-top:6px;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.ad-hero-btns{display:flex;align-items:center;justify-content:center;gap:28px;margin-top:18px}
+.ad-round-btn{width:52px;height:52px;border-radius:50%;background:var(--glass-bg);border:1px solid var(--glass-brd);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:var(--text);font-size:22px;font-weight:700;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 var(--glass-hi)}
+.ad-round-btn .ic{width:22px;height:22px}
+.ad-play-btn{width:78px;height:78px;border-radius:50%;background:#fff;color:#111;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 28px rgba(0,0,0,.35)}
+.ad-play-btn .ic{width:34px;height:34px;margin-left:4px}
+.ad-body{position:relative;z-index:2;background:var(--bg);border-radius:28px 28px 0 0;margin-top:-32px;padding:20px 16px 8px}
+.ad-sec{margin:6px 0 26px}
+.ad-sec-head{display:flex;align-items:baseline;gap:4px;font-size:21px;font-weight:800;color:var(--text);margin:0 0 10px}
+.ad-sec-head .ad-chev{font-size:21px;color:var(--muted);font-weight:400}
+.ad-hrow{display:flex;gap:14px;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;scrollbar-width:none}
+.ad-hrow::-webkit-scrollbar{display:none}
+.ad-alb{flex:0 0 150px;cursor:pointer}
+.ad-alb img{width:150px;height:150px;border-radius:12px;object-fit:cover;background:var(--hover);display:block}
+.ad-alb-name{font-size:14px;font-weight:700;line-height:1.35;margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ad-alb-meta{font-size:12px;color:var(--muted);margin-top:2px}
+@media (min-width:700px){.ad-alb{flex-basis:170px}.ad-alb img{width:170px;height:170px}}
+@media (prefers-reduced-motion:reduce){.ad-hero-img,.ad-hero-info{transition:none}}
+/* ---- album detail page (Apple Music style) ---- */
+.album-detail{padding:6px 4px 8px}
+.album-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.album-glass-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);color:var(--text);font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0 0 2px;box-shadow:var(--shadow-sm);cursor:pointer}
+.album-top-capsule{display:flex;align-items:center;gap:2px;height:44px;padding:0 6px;border-radius:999px;border:1px solid var(--border);background:var(--card);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);box-shadow:var(--shadow-sm)}
+.album-cap-btn{width:40px;height:36px;border:0;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;padding:0;box-shadow:none;cursor:pointer}
+.album-cap-btn .ic{width:21px;height:21px}
+.album-cap-sep{width:1px;height:20px;background:var(--hairline)}
+.album-cover{display:block;width:min(60vw,280px);aspect-ratio:1;object-fit:cover;border-radius:12px;margin:0 auto;box-shadow:var(--shadow-lg)}
+.album-name{text-align:center;font-size:24px;font-weight:800;line-height:1.3;margin:20px 8px 0;color:var(--text)}
+.album-artist{text-align:center;font-size:18px;font-weight:500;margin:6px 8px 0;color:var(--text)}
+.album-meta{text-align:center;font-size:13px;color:var(--muted);margin:8px 8px 0}
+.album-actions{display:flex;align-items:center;justify-content:center;gap:18px;margin:20px 0 22px}
+.album-circle-btn{width:56px;height:56px;border-radius:50%;border:1px solid var(--border);background:var(--card);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);color:var(--text);font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:var(--shadow-sm);cursor:pointer}
+.album-circle-btn .ic{width:24px;height:24px}
+.album-play-btn{display:flex;align-items:center;justify-content:center;gap:8px;min-width:170px;height:56px;padding:0 30px;border-radius:999px;border:1px solid var(--border);background:var(--text);color:var(--card-solid);font-size:17px;font-weight:700;box-shadow:var(--shadow);cursor:pointer}
+.album-play-btn .ic{width:20px;height:20px}
+.album-div{height:1px;background:var(--hairline);margin:0 2px 4px}
+.album-track-list{display:flex;flex-direction:column}
+.album-track{display:flex;align-items:center;gap:14px;padding:13px 4px;border-bottom:1px solid var(--hairline)}
+.album-track:last-child{border-bottom:0}
+.album-num{width:22px;text-align:center;font-size:16px;color:var(--muted);flex:none}
+.album-track-meta{flex:1;min-width:0}
+.album-track-title{font-size:16px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.album-track-sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.album-track-more{flex:none;width:36px;height:36px;border:0;background:transparent;color:var(--muted);font-size:18px;letter-spacing:1px;padding:0;box-shadow:none;cursor:pointer}
+
+/* ============ 视频播放按钮 · HAo orbit (我们自己的风格, 2026-11-16) ============
+   不抄 Bilibili(裸白三角)/Apple Music(白底黑三角)/Infuse(白圆盘):
+   玻璃圆盘 + 外圈轨道环(白 30% 细环 + 右上 90° 主题 accent 弧段 + 弧尾 accent 圆点),
+   呼应黑胶/行星轨道, 一眼是播放, 长相是我们自己的。accent 走 var(--accent),
+   四主题自动跟色; 盘面带暗色打底 + 白边 + 白字阴影, 亮/暗画面都看得清。
+   只改样式, 不动播放逻辑; 轨道弧与弧尾圆点静止对齐(不转, 免得喧宾夺主)。
+   大按钮用 #id 选择器: 主题的 button 通用规则(金/薄荷/霓虹, 0,2,1)会改圆角/阴影/
+   内边距, 类选择器压不住(金主题下曾把圆盘压成方角)。 */
+#vodBigPlay,#fsCenterBtn{width:76px;height:76px;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(18,18,24,.34) 70%);backdrop-filter:blur(16px) saturate(1.6);-webkit-backdrop-filter:blur(16px) saturate(1.6);color:#fff;padding:0;box-shadow:0 10px 30px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(0,0,0,.18);transition:transform .3s var(--spring),box-shadow .3s var(--spring),filter .2s}
+.fs-center-btn{position:relative}
+#vodBigPlay svg,#fsCenterBtn svg{width:32px;height:32px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.55))}
+#vodBigPlay::before,#fsCenterBtn::before{content:'';position:absolute;inset:-7px;border-radius:50%;border:2.5px solid rgba(255,255,255,.32);border-top-color:var(--accent);border-right-color:var(--accent);pointer-events:none}
+#vodBigPlay::after,#fsCenterBtn::after{content:'';position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);pointer-events:none}
+#vodBigPlay:active{transform:translate(-50%,-50%) scale(.94);filter:brightness(1.12)}
+#fsCenterBtn:active{transform:scale(.94);filter:brightness(1.12)}
+/* 控制条播放/暂停: 同款小圆盘 (44px, 轨道环静止, 与大按钮同一视觉语言) */
+#vodPPBtn,#fsPlayBtn{position:relative;width:44px;height:44px;flex:none;border-radius:50%;border:1px solid rgba(255,255,255,.45);background:linear-gradient(145deg,rgba(255,255,255,.32),rgba(18,18,24,.32) 70%);backdrop-filter:blur(14px) saturate(1.6);-webkit-backdrop-filter:blur(14px) saturate(1.6);color:#fff;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.5);transition:transform .3s var(--spring),box-shadow .3s var(--spring),filter .2s}
+#vodPPBtn svg,#fsPlayBtn svg{width:22px;height:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.55))}
+#vodPPBtn::before,#fsPlayBtn::before{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(255,255,255,.32);border-top-color:var(--accent);border-right-color:var(--accent);pointer-events:none}
+#vodPPBtn::after,#fsPlayBtn::after{content:'';position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 7px var(--accent);pointer-events:none}
+#vodPPBtn:active,#fsPlayBtn:active{transform:scale(.92);filter:brightness(1.12)}
+
+/* ============ 影视详情页封面海报 · VOD 直通横屏 (2026-11-16) ============
+   详情页顶部不再是内联播放器: 16:9 海报 + 中央复用 #vodBigPlay orbit
+   按钮(样式在上面, 不重写) + 集数/续播 chips + 下方整宽 .vod-play-btn。
+   点封面/大按钮/整宽按钮/选集 = 直接原生横屏全屏播。
+   颜色全部走主题变量(--card/--text/--accent/--border/--bg), 4 主题 ×
+   明暗 8 种组合都对; 海报上下只有中性压暗(照 .vod-hero-fade 的做法),
+   底部渐隐到 var(--bg), 跟主题走。 */
+.vod-cover{position:relative;aspect-ratio:16/9;border-radius:var(--radius-md);overflow:hidden;background:var(--bubble);cursor:pointer;box-shadow:var(--shadow-lg)}
+.vod-cover img{width:100%;height:100%;object-fit:cover;display:block}
+.vod-cover-fade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.30) 0%,transparent 24%,transparent 58%,var(--bg) 100%)}
+.vod-cover .vod-topbar{position:absolute;top:0;left:0;right:0;z-index:8;display:flex;align-items:center;gap:8px;padding:10px 12px;background:linear-gradient(rgba(0,0,0,.45),transparent);pointer-events:none}
+.vod-cover .vod-topbar .vod-top-title{flex:1;min-width:0;display:block;color:#fff;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.vod-cover .vod-topbar a{pointer-events:auto}
+.vod-cover-chip{position:absolute;left:12px;bottom:12px;z-index:6;max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--card);color:var(--text);border:1px solid var(--border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:600}
+.vod-cover-chip.vod-cover-resume{left:auto;right:12px;background:var(--card);color:var(--accent)}
+.vod-cover-chip .ic{width:12px;height:12px;vertical-align:-1px}
+.vod-web-close{position:absolute;top:10px;right:10px;z-index:9;width:32px;height:32px;border-radius:50%;background:var(--card);color:var(--text);border:1px solid var(--border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}

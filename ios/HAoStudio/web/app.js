@@ -1,8 +1,8 @@
 // HAo Studio SPA
 const I18N = {
- 'zh-CN': {noSong:'还没有选歌',tapSong:'点下面歌单里的歌就能播放',playlistEmpty:'歌单为空，请在后台音乐管理里添加。',quality:'音质',songInfoT:'歌曲信息',albumT:'专辑',releaseT:'发行',durationT:'时长',sourceT:'音源',favRemoved:'已取消收藏',qStd:'标准 128k',qHigh:'高品质 320k',qLossless:'无损 FLAC',qHires:'Hi-Res 24bit',qFallback:'无损暂不可用，已降级播放',night:'夜晚',day:'白天',clearCacheT:'清除缓存',vodSpeedT:'倍速',clearCacheConfirm:'确定要清除缓存吗？清除后页面会刷新，登录状态不受影响。',cacheCleared:'缓存已清除',tmdbAttrT:'本站使用 TMDB API，但未经 TMDB 背书或认证。',upNextT:'继续播放',copy:'复制',copied:'已复制',modeT:'模式',modeSystemT:'跟随系统',menuT:'菜单',langT:'语言',fsExitT:'退出全屏',searchSongPh:'搜索歌曲 / 歌手…',loading:'加载中…',retryT:'重试',loadFailT:'加载失败',videoSrcDownT:'影视源暂时连不上，请稍后再试',videoStaleT:'内容可能不是最新',noItemsT:'暂无内容',saveChanges:'保存修改',searchBtn:'搜索',joinPlaylist:'加入歌单',style1:'苹果毛玻璃',style2:'暗夜鎏金',style3:'清新薄荷',style4:'极夜冰蓝',lineSwitchT:'本线路播不了，已换线路',lineSwitchingT:'正在切换线路…',lineSwitchFailT:'该线路播不了，已切回原线路',videoFavEmptyT:'还没有收藏的影视',videoFavEmptySub:'看到喜欢的影片，点 ♥ 就能收藏到这里',videoFavBrowseT:'去逛逛影视',videoHomeEmptyT:'影视分类暂时为空',videoHomeEmptySub:'稍后再来看看，或直接搜索想看的影片',videoUnfavT:'取消收藏',switchSourceT:'正在换源播放…',filterAreaT:'地区',filterYearT:'年份',filterSortT:'排序',filterAll:'全部',filterOther:'其他',filterEarlier:'更早',sortTime:'最新',sortHits:'最热',sortScore:'评分最高',totMoviesT:'电影总数',totShowsT:'节目总数',totEpsT:'集数总数',prevPage:'上一页',nextPage:'下一页',recentT:'最近播放',noRecent:'还没有播放记录，搜首歌播一下吧',clearRecent:'清空',confirmClearRecent:'确定清空最近播放吗？',recentSearchT:'最近搜索',hotSearchT:'热门搜索',renameList:'重命名歌单',listRenamed:'歌单已重命名',moveUp:'上移',moveDown:'下移',clearQueue:'清空队列',confirmClearQueue:'确定清空播放队列吗？',queueCleared:'队列已清空',queueEmptyT:'队列为空',sharedSongT:'分享的歌曲',songNotFound:'这首歌找不到了，换一首试试',videoT:'在线影视',searchVideoPh:'搜电影、电视剧…',videoSearchT:'搜索影片',videoHotT:'热门搜索',videoHistT:'搜索历史',videoClearHistT:'清空',videoNoResT:'没找到相关影片',videoNoResTip1:'换个关键词试试，也可以只搜片名的一部分',videoNoResTip2:'检查一下有没有错别字',videoNoResTip3:'也可以去分类里逛逛，或看看热门推荐',videoBrowseCatsT:'分类浏览',videoDoneT:'已看完',vodRemainMinT:'还剩 {n} 分钟',vodCollCountT:'{n} 部',videoDelHistT:'删除这条记录',episodesT:'选集',noVideo:'没找到相关影片，换个关键词试试',playFailedV:'播放失败，请检查网络后重试',playFailedAllV:'所有线路都播不了，请稍后再试',videoLine:'线路',nowPlayingV:'正在播放',continueWatch:'继续播放',noVideoHistory:'还没有看过影片，搜一部看看吧',clearHistory:'清空记录',confirmClearVideoHistory:'确定清空播放记录吗？',resumeHint:'已从上次位置继续播放',dailyT:'每日推荐',plazaT:'歌单广场',searchTypeSong:'歌曲',searchTypePl:'歌单',searchTypeUserPl:'用户歌单',userPlEmptyT:'没搜到用户歌单，换个关键词试试',userPlImportT:'收藏歌单',userPlPlayAllT:'播放全部',searchTypeArtist:'歌手',songsUnit:'首歌曲',delList:'删除歌单',noAirplay:'当前设备不支持隔空播放',shareList:'分享歌单',batchDel:'批量删除歌曲',selAll:'全选',delSel:'删除所选',selCount:'已选',confirmDelSel:'确定删除选中的',songsSel:'首歌吗？',shareCopiedList:'已复制歌单分享链接',listOptsT:'歌单选项',playAllT:'播放全部',searchInListPh:'在歌单中搜索歌曲/歌手',noSearchResult:'歌单里没有这首歌，换个关键词试试',songsUnit:'首歌曲',delList:'删除歌单',artistSongsT:'歌曲',artistAlbumsT:'专辑',artistNoSongs:'这个歌手还没有歌曲',artistNoAlbums:'这个歌手还没有专辑',albumSongsT:'专辑歌曲',artistBackT:'歌手',loadMoreT:'加载更多',plTotalT:'共 {n} 个歌单',plazaSub:'各大音乐平台的热门歌单，点进去就能听，也能一键导入到我的歌单',importAllT:'一键导入',dailyVideoT:'每日推荐',tmdbTrendT:'TMDB 热门',runtimeMinT:'分钟',dailySub:'根据你的听歌习惯推荐',createList:'新建歌单',newListName:'新歌单的名字',chooseList:'选择歌单',confirmDelList:'确定删除这个歌单吗？里面的歌也会一起删除。',listCreated:'歌单已创建',listDeleted:'歌单已删除',noDaily:'多听几首歌，明天就有推荐啦',becauseListen:'因为你常听 ',hotPick:'热门推荐',searchPageT:'搜歌',seqMode:'顺序播放',musicTabT:'音乐',liveTabT:'直播',videoTabT:'影视',shuffleMode:'随机播放',playFailedSwitch:'这首歌播不了，已切到下一首',songUnplayable:'这首歌播不了，换一首试试',switchingSource:'正在换音源…',delSong:'删除',del:'删除',fsT:'全屏',dmOn:'弹幕开',dmOff:'弹幕关',dmSettingsT:'弹幕设置',dmPosT:'弹幕位置',dmPosTop:'顶部',dmPosMid:'中部',dmPosBot:'底部',dmPosFull:'全屏',dmOpacityT:'透明度',dmSpeedT:'速度',shareSong:'分享',cancelOp:'取消',okBtn:'确定',confirmDelSong:'确定删除这首歌吗？',shareCopied:'已复制分享内容',commentsT:'评论',hotCommentsT:'精彩评论',latestCommentsT:'最新评论',allLoadedT:'已加载全部',noComments:'暂无评论',commentsFailT:'评论加载失败',loadingComments:'评论加载中…',tapCoverLyric:'左滑封面看歌词',swipeCoverBack:'右滑返回封面',lyricT:'歌词',noLyric:'暂无歌词',lyricFailT:'歌词加载失败，点我重试',importPh:'粘贴网易云 / QQ / 酷我歌单链接',importBtn:'一键导入',importSongs:'首',importFail:'导入失败：',importHint:'支持网易云、QQ、酷我公开歌单链接；酷狗歌单暂不支持导入，可搜歌单首添加。',myPlaylistCount:'首歌',myPlaylistT:'我的歌单',myPlaylistEmpty:'歌单还是空的，搜一首歌加进来吧',myPlaylistFull:'歌单已满（200首）',importOk:'导入成功',joinedPlaylist:'已加入歌单',alreadyIn:'已在歌单中',back:'返回',liveT:'观看直播',liveSub:'哔哩哔哩、抖音、虎牙、斗鱼、快手直播，打开就能看。',liveCatsT:'分区',liveCatsSub:'按平台和分区找直播，点一个游戏就看这个分区的直播。',livePlatBili:'哔哩哔哩',livePlatDouyin:'抖音',livePlatHuya:'虎牙',livePlatDouyu:'斗鱼',livePlatKs:'快手',liveAll:'全部',liveMyFollows:'我的关注',liveNoFollows:'还没有关注的主播，在直播间点“关注”就能在这里看到。',liveFollowsTotal:'共 {n} 位关注',liveFollowsLive:'{m} 位直播中',liveRefreshT:'刷新状态',liveFollowStatusErr:'直播状态暂时查不到',liveUnfollowT:'取消关注',liveFollow:'关注',liveFollowed:'已关注',liveFollowErr:'关注失败，请重试',liveShareT:'分享直播间',liveBackT:'返回直播',liveSwipeFirst:'已经是第一个直播间',liveSwipeLast:'已经是最后一个直播间',liveNoRooms:'这个分类下暂时没有直播间',liveLoadFail:'直播列表加载失败，稍后再试',livePlayFail:'这个直播间暂时播不了，换一个试试',liveFailRetryHint:'可能是主播刚下播或线路问题，点重试会换一条新线路再试一次。',rotLandT:'横屏',rotPortT:'竖屏',liveTapPlay:'点 ▶ 开始播放',verTitle:'版本更新',verCurT:'当前版本',verShowLog:'查看更新日志',verHideLog:'收起',liveDanmuBili:'弹幕：B站实时弹幕已连接',liveDanmuKs:'弹幕：快手实时评论已连接',liveDanmuDouyu:'弹幕：斗鱼弹幕连接中（实验）',liveDanmuDouyuOk:'弹幕：斗鱼实时弹幕已连接',liveDanmuDouyinNone:'弹幕：抖音弹幕需官方签名暂未接通，先看直播',liveDanmuHuya:'弹幕：虎牙弹幕连接中',liveDanmuHuyaOk:'弹幕：虎牙实时弹幕已连接',liveDanmuNone:'弹幕：该平台弹幕第二批支持',liveWatching:'人',liveCopied:'已复制直播间链接',liveQualityT:'画质',liveSwitchingQ:'正在切换画质…',liveSwitchingLine:'正在切换线路…',liveQUnavailable:'该画质暂不可用',livePlayingDirect:'正在播放（直连）',liveErrManifest:'播放列表取不到',liveErrFrag:'分片加载失败',liveErrLevel:'清晰度列表取不到',liveErrStall:'加载超时',liveErrKey:'密钥加载失败',liveViaDirect:'直连',liveDmListT:'弹幕列表',liveDmSettingsT:'弹幕设置',liveDmHlT:'醒目留言',liveDmBlockT:'屏蔽管理',liveDmLocalPh:'发送一条本地字幕',liveDmMe:'我',liveDmSwitchT:'弹幕开关',liveHotT:'热度',liveLineT:'线路',liveLineSheetT:'选择线路',liveOnlyOneQuality:'只有这一个画质',liveLiveNow:'直播中',liveNoDm:'暂无弹幕',liveSearchPh:'搜主播名或房间标题…',liveSearchAll:'全部平台',liveSearchOnly:'仅{platform}',liveSearchNoResult:'没找到相关直播间',liveSearchFound:'找到 {n} 个相关直播间',liveSearchTryT:'换个关键词试试：',liveSearchBackHot:'看看热门直播',liveNativePlaying:'正在 App 播放器中播放',liveNativeOnly:'请在 App 内观看',favAdded:'已加入收藏',playBtn:'播放',seasonT:'Season',castT:'演职人员',myMedia:'我的媒体',continueWatching:'继续观看',epSkipT:'第{n}集播不了，已换下一集',favT:'收藏',watchedT:'已看过',directorT:'导演',actorT:'演员',liveOfflineT:'未开播'},
- 'zh-TW': {noSong:'還沒有選歌',tapSong:'點下面歌單裡的歌就能播放',playlistEmpty:'歌單為空，請在後台音樂管理裡添加。',quality:'音質',songInfoT:'歌曲資訊',albumT:'專輯',releaseT:'發行',durationT:'時長',sourceT:'音源',favRemoved:'已取消收藏',qStd:'標準 128k',qHigh:'高品質 320k',qLossless:'無損 FLAC',qHires:'Hi-Res 24bit',qFallback:'無損暫不可用，已降級播放',night:'夜晚',day:'白天',clearCacheT:'清除快取',vodSpeedT:'倍速',clearCacheConfirm:'確定要清除快取嗎？清除後頁面會重新整理，登錄狀態不受影響。',cacheCleared:'快取已清除',tmdbAttrT:'本站使用 TMDB API，但未經 TMDB 背書或認證。',upNextT:'繼續播放',copy:'複製',copied:'已複製',modeT:'模式',modeSystemT:'跟隨系統',menuT:'菜單',langT:'語言',fsExitT:'退出全屏',searchSongPh:'搜索歌曲 / 歌手…',loading:'載入中…',retryT:'重試',loadFailT:'載入失敗',videoSrcDownT:'影視源暫時連不上，請稍後再試',videoStaleT:'內容可能不是最新',noItemsT:'暫無內容',saveChanges:'保存修改',searchBtn:'搜索',joinPlaylist:'加入歌單',style1:'蘋果毛玻璃',style2:'暗夜鎏金',style3:'清新薄荷',style4:'極夜冰藍',lineSwitchT:'本線路播不了，已換線路',lineSwitchingT:'正在切換線路…',lineSwitchFailT:'該線路播不了，已切回原線路',videoFavEmptyT:'還沒有收藏的影視',videoFavEmptySub:'看到喜歡的影片，點 ♥ 就能收藏到這裡',videoFavBrowseT:'去逛逛影視',videoHomeEmptyT:'影視分類暫時為空',videoHomeEmptySub:'稍後再來看看，或直接搜尋想看的影片',videoUnfavT:'取消收藏',switchSourceT:'正在換源播放…',filterAreaT:'地區',filterYearT:'年份',filterSortT:'排序',filterAll:'全部',filterOther:'其他',filterEarlier:'更早',sortTime:'最新',sortHits:'最熱',sortScore:'評分最高',totMoviesT:'電影總數',totShowsT:'節目總數',totEpsT:'集數總數',prevPage:'上一頁',nextPage:'下一頁',recentT:'最近播放',noRecent:'還沒有播放記錄，搜首歌播一下吧',clearRecent:'清空',confirmClearRecent:'確定清空最近播放嗎？',recentSearchT:'最近搜尋',hotSearchT:'熱門搜尋',renameList:'重新命名歌單',listRenamed:'歌單已重新命名',moveUp:'上移',moveDown:'下移',clearQueue:'清空佇列',confirmClearQueue:'確定清空播放佇列嗎？',queueCleared:'佇列已清空',queueEmptyT:'佇列為空',sharedSongT:'分享的歌曲',songNotFound:'這首歌找不到了，換一首試試',videoT:'在線影視',searchVideoPh:'搜電影、電視劇…',videoSearchT:'搜索影片',videoHotT:'熱門搜索',videoHistT:'搜索歷史',videoClearHistT:'清空',videoNoResT:'沒找到相關影片',videoNoResTip1:'換個關鍵詞試試，也可以只搜片名的一部分',videoNoResTip2:'檢查一下有沒有錯別字',videoNoResTip3:'也可以去分類裡逛逛，或看看熱門推薦',videoBrowseCatsT:'分類瀏覽',videoDoneT:'已看完',vodRemainMinT:'還剩 {n} 分鐘',vodCollCountT:'{n} 部',videoDelHistT:'刪除這條記錄',episodesT:'選集',noVideo:'沒找到相關影片，換個關鍵詞試試',playFailedV:'播放失敗，請檢查網絡後重試',playFailedAllV:'所有線路都播不了，請稍後再試',videoLine:'線路',nowPlayingV:'正在播放',continueWatch:'繼續播放',noVideoHistory:'還沒有看過影片，搜一部看看吧',clearHistory:'清空記錄',confirmClearVideoHistory:'確定清空播放記錄嗎？',resumeHint:'已從上次位置繼續播放',dailyT:'每日推薦',plazaT:'歌單廣場',searchTypeSong:'歌曲',searchTypePl:'歌單',searchTypeUserPl:'用戶歌單',userPlEmptyT:'沒搜到用戶歌單，換個關鍵詞試試',userPlImportT:'收藏歌單',userPlPlayAllT:'播放全部',searchTypeArtist:'歌手',songsUnit:'首歌曲',delList:'刪除歌單',noAirplay:'目前裝置不支援 AirPlay',shareList:'分享歌單',batchDel:'批量刪除歌曲',selAll:'全選',delSel:'刪除所選',selCount:'已選',confirmDelSel:'確定刪除選中的',songsSel:'首歌嗎？',shareCopiedList:'已複製歌單分享連結',listOptsT:'歌單選項',playAllT:'播放全部',searchInListPh:'在歌單中搜索歌曲/歌手',noSearchResult:'歌單裡沒有這首歌，換個關鍵詞試試',artistSongsT:'歌曲',artistAlbumsT:'專輯',artistNoSongs:'這個歌手還沒有歌曲',artistNoAlbums:'這個歌手還沒有專輯',albumSongsT:'專輯歌曲',artistBackT:'歌手',loadMoreT:'載入更多',plTotalT:'共 {n} 個歌單',plazaSub:'各大音樂平台的熱門歌單，點進去就能聽，也能一鍵導入到我的歌單',importAllT:'一鍵導入',dailyVideoT:'每日推薦',tmdbTrendT:'TMDB 熱門',runtimeMinT:'分鐘',dailySub:'根據你的聽歌習慣推薦',createList:'新建歌單',newListName:'新歌單的名字',chooseList:'選擇歌單',confirmDelList:'確定刪除這個歌單嗎？裡面的歌也會一起刪除。',listCreated:'歌單已創建',listDeleted:'歌單已刪除',noDaily:'多聽幾首歌，明天就有推薦啦',becauseListen:'因為你常聽 ',hotPick:'熱門推薦',searchPageT:'搜歌',seqMode:'順序播放',musicTabT:'音樂',liveTabT:'直播',videoTabT:'影視',shuffleMode:'隨機播放',playFailedSwitch:'這首歌播不了，已為你切到下一首',songUnplayable:'這首歌播不了，換一首試試',switchingSource:'正在換音源…',delSong:'刪除',del:'刪除',fsT:'全屏',dmOn:'彈幕開',dmOff:'彈幕關',dmSettingsT:'彈幕設置',dmPosT:'彈幕位置',dmPosTop:'頂部',dmPosMid:'中部',dmPosBot:'底部',dmPosFull:'全屏',dmOpacityT:'透明度',dmSpeedT:'速度',shareSong:'分享',cancelOp:'取消',okBtn:'確定',confirmDelSong:'確定刪除這首歌嗎？',shareCopied:'已複製分享內容',commentsT:'評論',hotCommentsT:'精彩評論',latestCommentsT:'最新評論',allLoadedT:'已載入全部',noComments:'暫無評論',commentsFailT:'評論加載失敗',loadingComments:'評論加載中…',tapCoverLyric:'左滑封面看歌詞',swipeCoverBack:'右滑返回封面',lyricT:'歌詞',noLyric:'暫無歌詞',lyricFailT:'歌詞加載失敗，點我重試',importPh:'粘貼網易雲 / QQ / 酷我歌單鏈接',importBtn:'一鍵導入',importSongs:'首',importFail:'導入失敗：',importHint:'支持網易雲、QQ、酷我公開歌單鏈接；酷狗歌單暫不支持導入，可搜歌單首添加。',myPlaylistCount:'首歌',myPlaylistT:'我的歌單',myPlaylistEmpty:'歌單還是空的，搜一首歌加進來吧',myPlaylistFull:'歌單已滿（200首）',importOk:'導入成功',joinedPlaylist:'已加入歌單',alreadyIn:'已在歌單中',back:'返回',liveT:'觀看直播',liveSub:'嗶哩嗶哩、抖音、虎牙、鬥魚、快手直播，打開就能看。',liveCatsT:'分區',liveCatsSub:'按平台和分區找直播，點一個遊戲就看這個分區的直播。',livePlatBili:'嗶哩嗶哩',livePlatDouyin:'抖音',livePlatHuya:'虎牙',livePlatDouyu:'鬥魚',livePlatKs:'快手',liveAll:'全部',liveMyFollows:'我的關注',liveNoFollows:'還沒有關注的主播，在直播間點「關注」就能在這裡看到。',liveFollowsTotal:'共 {n} 位關注',liveFollowsLive:'{m} 位直播中',liveRefreshT:'刷新狀態',liveFollowStatusErr:'直播狀態暫時查不到',liveUnfollowT:'取消關注',liveFollow:'關注',liveFollowed:'已關注',liveFollowErr:'關注失敗，請重試',liveShareT:'分享直播間',liveBackT:'返回直播',liveSwipeFirst:'已經是第一個直播間',liveSwipeLast:'已經是最後一個直播間',liveNoRooms:'這個分類下暫時沒有直播間',liveLoadFail:'直播列表加載失敗，稍後再試',livePlayFail:'這個直播間暫時播不了，換一個試試',liveFailRetryHint:'可能是主播剛下播或線路問題，點重試會換一條新線路再試一次。',rotLandT:'橫屏',rotPortT:'豎屏',liveTapPlay:'點 ▶ 開始播放',verTitle:'版本更新',verCurT:'目前版本',verShowLog:'查看更新日誌',verHideLog:'收起',liveDanmuBili:'彈幕：B站實時彈幕已連接',liveDanmuKs:'彈幕：快手實時評論已連接',liveDanmuDouyu:'彈幕：鬥魚彈幕連接中（實驗）',liveDanmuDouyuOk:'彈幕：鬥魚實時彈幕已連接',liveDanmuDouyinNone:'彈幕：抖音彈幕需官方簽名暫未接通，先看直播',liveDanmuHuya:'彈幕：虎牙彈幕連接中',liveDanmuHuyaOk:'彈幕：虎牙實時彈幕已連接',liveDanmuNone:'彈幕：該平台彈幕第二批支持',liveWatching:'人',liveCopied:'已複製直播間鏈接',liveQualityT:'畫質',liveSwitchingQ:'正在切換畫質…',liveSwitchingLine:'正在切換線路…',liveQUnavailable:'該畫質暫不可用',livePlayingDirect:'正在播放（直連）',liveErrManifest:'播放列表取不到',liveErrFrag:'分片加載失敗',liveErrLevel:'清晰度列表取不到',liveErrStall:'加載超時',liveErrKey:'密鑰加載失敗',liveViaDirect:'直連',liveDmListT:'彈幕列表',liveDmSettingsT:'彈幕設置',liveDmHlT:'醒目留言',liveDmBlockT:'屏蔽管理',liveDmLocalPh:'發送一條本地字幕',liveDmMe:'我',liveDmSwitchT:'彈幕開關',liveHotT:'熱度',liveLineT:'線路',liveLineSheetT:'選擇線路',liveOnlyOneQuality:'只有這一個畫質',liveLiveNow:'直播中',liveNoDm:'暫無彈幕',liveSearchPh:'搜主播名或房間標題…',liveSearchAll:'全部平台',liveSearchOnly:'僅{platform}',liveSearchNoResult:'沒找到相關直播間',liveSearchFound:'找到 {n} 個相關直播間',liveSearchTryT:'換個關鍵詞試試：',liveSearchBackHot:'看看熱門直播',liveNativePlaying:'正在 App 播放器中播放',liveNativeOnly:'請在 App 內觀看',favAdded:'已加入收藏',playBtn:'播放',seasonT:'Season',castT:'演職人員',myMedia:'我的媒體',continueWatching:'繼續觀看',epSkipT:'第{n}集播不了，已換下一集',favT:'收藏',watchedT:'已看過',directorT:'導演',actorT:'演員',liveOfflineT:'未開播'},
- 'en': {noSong:'No song selected yet',tapSong:'Tap a song in the playlist to play it',playlistEmpty:'Playlist is empty. Add songs in the admin music section.',quality:'Quality',songInfoT:'Song info',albumT:'Album',releaseT:'Released',durationT:'Duration',sourceT:'Source',favRemoved:'Removed from favorites',qStd:'Standard 128k',qHigh:'High 320k',qLossless:'Lossless FLAC',qHires:'Hi-Res 24bit',qFallback:'Lossless unavailable, playing lower quality',night:'Night',day:'Day',clearCacheT:'Clear cache',vodSpeedT:'Speed',clearCacheConfirm:'Clear the cache? The page will reload; you will stay logged in.',cacheCleared:'Cache cleared',tmdbAttrT:'This product uses the TMDB API but is not endorsed or certified by TMDB.',upNextT:'Up Next',copy:'Copy',copied:'Copied',modeT:'Mode',modeSystemT:'Follow system',menuT:'Menu',langT:'Language',fsExitT:'Exit fullscreen',searchSongPh:'Search songs / artists…',loading:'Loading…',retryT:'Retry',loadFailT:'Failed to load',videoSrcDownT:'The video source is temporarily unreachable — please try again later',videoStaleT:'Content may not be up to date',noItemsT:'Nothing here yet',saveChanges:'Save changes',searchBtn:'Search',joinPlaylist:'Add to playlist',style1:'Apple frosted glass',style2:'Midnight gold',style3:'Fresh mint',style4:'Polar ice blue',lineSwitchT:'This line failed, switched to another line',lineSwitchingT:'Switching line…',lineSwitchFailT:'This line failed — switched back to the previous line',videoFavEmptyT:'No favorites yet',videoFavEmptySub:'Tap ♥ on a title you like to save it here',videoFavBrowseT:'Browse videos',videoHomeEmptyT:'No video categories right now',videoHomeEmptySub:'Check back later, or search for something to watch',videoUnfavT:'Remove from favorites',switchSourceT:'Switching to another source…',filterAreaT:'Region',filterYearT:'Year',filterSortT:'Sort',filterAll:'All',filterOther:'Other',filterEarlier:'Earlier',sortTime:'Latest',sortHits:'Most viewed',sortScore:'Top rated',totMoviesT:'Movies',totShowsT:'Shows',totEpsT:'Episodes',prevPage:'Prev',nextPage:'Next',recentT:'Recently played',noRecent:'No plays yet — search and play a song.',clearRecent:'Clear',confirmClearRecent:'Clear all recently played?',recentSearchT:'Recent searches',hotSearchT:'Hot searches',renameList:'Rename playlist',listRenamed:'Playlist renamed',moveUp:'Move up',moveDown:'Move down',clearQueue:'Clear queue',confirmClearQueue:'Clear the playback queue?',queueCleared:'Queue cleared',queueEmptyT:'Queue is empty',sharedSongT:'Shared song',songNotFound:'This song is unavailable',videoT:'Movies & TV',searchVideoPh:'Search a movie or show…',videoSearchT:'Search videos',videoHotT:'Hot searches',videoHistT:'Search history',videoClearHistT:'Clear',videoNoResT:'No matching videos found',videoNoResTip1:'Try another keyword, or just part of the title',videoNoResTip2:'Check for typos',videoNoResTip3:'Or browse by category and check the hot picks',videoBrowseCatsT:'Browse categories',videoDoneT:'Finished',vodRemainMinT:'{n} min left',vodCollCountT:'{n} titles',videoDelHistT:'Remove this entry',episodesT:'Episodes',noVideo:'No results, try another keyword',playFailedV:'Playback failed, please check your connection and retry',playFailedAllV:'All sources failed to play, please try again later',videoLine:'Source',nowPlayingV:'Now playing',continueWatch:'Resume',noVideoHistory:'No videos watched yet — search for one.',clearHistory:'Clear history',confirmClearVideoHistory:'Clear all watch history?',resumeHint:'Resumed from where you left off',dailyT:'Daily Picks',plazaT:'Playlist Plaza',searchTypeSong:'Songs',searchTypePl:'Playlists',searchTypeUserPl:'User playlists',userPlEmptyT:'No user playlists found, try another keyword',userPlImportT:'Save playlist',userPlPlayAllT:'Play all',searchTypeArtist:'Artists',songsUnit:'songs',delList:'Delete playlist',noAirplay:'AirPlay is not available on this device',shareList:'Share playlist',batchDel:'Batch delete songs',selAll:'Select all',delSel:'Delete selected',selCount:'Selected',confirmDelSel:'Delete the',songsSel:'selected songs?',shareCopiedList:'Playlist share link copied',listOptsT:'Playlist options',playAllT:'Play all',searchInListPh:'Search songs / artists in this playlist',noSearchResult:'No matching song in this playlist, try another keyword',artistSongsT:'Songs',artistAlbumsT:'Albums',artistNoSongs:'No songs from this artist yet',artistNoAlbums:'No albums from this artist yet',albumSongsT:'Album songs',artistBackT:'Artists',loadMoreT:'Load more',plTotalT:'{n} playlists',plazaSub:'Hot playlists from major music platforms — tap to listen, or import to your playlist in one tap',importAllT:'Import all',dailyVideoT:'Daily picks',tmdbTrendT:'TMDB Trending',runtimeMinT:' min',dailySub:'Picked from your listening habits',createList:'New playlist',newListName:'Name the new playlist',chooseList:'Choose a playlist',confirmDelList:'Delete this playlist? Its songs will be deleted too.',listCreated:'Playlist created',listDeleted:'Playlist deleted',noDaily:'Listen to a few more songs and your picks will show up',becauseListen:'Because you listen to ',hotPick:'Trending',searchPageT:'Search songs',seqMode:'Sequential',musicTabT:'Music',liveTabT:'Live',videoTabT:'Movies',shuffleMode:'Shuffle',playFailedSwitch:'Could not play, skipped to the next song',songUnplayable:'Could not play this song, try another',switchingSource:'Switching source…',delSong:'Delete',del:'Delete',fsT:'Fullscreen',dmOn:'Danmaku on',dmOff:'Danmaku off',dmSettingsT:'Danmaku settings',dmPosT:'Position',dmPosTop:'Top',dmPosMid:'Middle',dmPosBot:'Bottom',dmPosFull:'Full screen',dmOpacityT:'Opacity',dmSpeedT:'Speed',shareSong:'Share',cancelOp:'Cancel',okBtn:'OK',confirmDelSong:'Delete this song?',shareCopied:'Share text copied',commentsT:'Comments',hotCommentsT:'Top comments',latestCommentsT:'Latest comments',allLoadedT:'All loaded',noComments:'No comments yet',commentsFailT:'Failed to load comments',loadingComments:'Loading comments…',tapCoverLyric:'Swipe left on the cover for lyrics',swipeCoverBack:'Swipe right to go back to the cover',lyricT:'Lyrics',noLyric:'No lyrics',lyricFailT:'Lyrics failed to load — tap to retry',importPh:'Paste a NetEase / QQ / Kuwo playlist link',importBtn:'Import',importSongs:' songs',importFail:'Import failed: ',importHint:'Supports public NetEase, QQ and Kuwo playlist links. Kugou playlists cannot be imported yet — add songs by search instead.',myPlaylistCount:'songs',myPlaylistT:'My playlist',myPlaylistEmpty:'Your playlist is empty. Search for a song to add.',myPlaylistFull:'Playlist is full (200 songs)',importOk:'Imported',joinedPlaylist:'Added to playlist',alreadyIn:'Already in playlist',back:'Back',liveT:'Live Streams',liveSub:'Bilibili, Douyin, Huya, Douyu and Kuaishou live — tap to watch.',liveCatsT:'Categories',liveCatsSub:'Browse live by platform and category — tap a game to watch that category.',livePlatBili:'Bilibili',livePlatDouyin:'Douyin',livePlatHuya:'Huya',livePlatDouyu:'Douyu',livePlatKs:'Kuaishou',liveAll:'All',liveMyFollows:'My follows',liveNoFollows:'No followed streamers yet. Tap Follow in a room to see them here.',liveFollowsTotal:'{n} followed',liveFollowsLive:'{m} live now',liveRefreshT:'Refresh status',liveFollowStatusErr:'Live status unavailable right now',liveUnfollowT:'Unfollow',liveFollow:'Follow',liveFollowed:'Following',liveFollowErr:'Follow failed, please retry',liveShareT:'Share live room',liveBackT:'Back to Live',liveSwipeFirst:'This is the first room',liveSwipeLast:'This is the last room',liveNoRooms:'No live rooms in this category yet',liveLoadFail:'Failed to load live rooms. Try again later.',livePlayFail:'This room cannot be played right now. Try another.',liveFailRetryHint:'The streamer may have just ended, or the line failed. Retry fetches a fresh line and tries again.',rotLandT:'Landscape',rotPortT:'Portrait',liveTapPlay:'Tap ▶ to play',verTitle:'Version & updates',verCurT:'Current version',verShowLog:'View changelog',verHideLog:'Hide',liveDanmuBili:'Danmaku: Bilibili live chat connected',liveDanmuKs:'Danmaku: Kuaishou live comments connected',liveDanmuDouyu:'Danmaku: connecting Douyu chat (experimental)',liveDanmuDouyuOk:'Danmaku: Douyu live chat connected',liveDanmuDouyinNone:'Danmaku: Douyin chat needs official signing and is not available yet. Enjoy the stream.',liveDanmuHuya:'Danmaku: connecting Huya chat',liveDanmuHuyaOk:'Danmaku: Huya live chat connected',liveDanmuNone:'Danmaku: coming in batch 2 for this platform',liveWatching:' watching',liveCopied:'Live room link copied',liveQualityT:'Quality',liveSwitchingQ:'Switching quality…',liveSwitchingLine:'Switching line…',liveQUnavailable:'This quality is unavailable',livePlayingDirect:'Playing (direct)',liveErrManifest:'Playlist unavailable',liveErrFrag:'Segment load failed',liveErrLevel:'Quality list unavailable',liveErrStall:'Load timed out',liveErrKey:'Key load failed',liveViaDirect:'direct',liveDmListT:'Danmaku',liveDmSettingsT:'Danmaku settings',liveDmHlT:'Highlighted',liveDmBlockT:'Blocked',liveDmLocalPh:'Send a local subtitle',liveDmMe:'Me',liveDmSwitchT:'Danmaku',liveHotT:'Popularity',liveLineT:'Line',liveLineSheetT:'Choose line',liveOnlyOneQuality:'Only one quality available',liveLiveNow:'LIVE',liveNoDm:'No danmaku yet',liveSearchPh:'Search streamer or room title…',liveSearchAll:'All platforms',liveSearchOnly:'Only {platform}',liveSearchNoResult:'No live rooms found',liveSearchFound:'{n} live rooms found',liveSearchTryT:'Try another keyword:',liveSearchBackHot:'Browse popular live rooms',liveNativePlaying:'Playing in the App player',liveNativeOnly:'Please watch in the App',favAdded:'Added to favorites',playBtn:'Play',seasonT:'Season',castT:'Cast & Crew',myMedia:'My Media',continueWatching:'Continue Watching',epSkipT:'Episode {n} failed to play, switched to next episode',favT:'Favorite',watchedT:'Watched',directorT:'Director',actorT:'Cast',liveOfflineT:'Offline'}};
+ 'zh-CN': {noSong:'还没有选歌',tapSong:'点下面歌单里的歌就能播放',playlistEmpty:'歌单为空，请在后台音乐管理里添加。',quality:'音质',songInfoT:'歌曲信息',albumT:'专辑',releaseT:'发行',durationT:'时长',sourceT:'音源',favRemoved:'已取消收藏',qStd:'标准 128k',qHigh:'高品质 320k',qLossless:'无损 FLAC',qHires:'Hi-Res 24bit',qFallback:'无损暂不可用，已降级播放',night:'夜晚',day:'白天',clearCacheT:'清除缓存',vodSpeedT:'倍速',clearCacheConfirm:'确定要清除缓存吗？清除后页面会刷新。',cacheCleared:'缓存已清除',upNextT:'继续播放',copy:'复制',copied:'已复制',modeT:'模式',modeSystemT:'跟随系统',menuT:'菜单',langT:'语言',fsExitT:'退出全屏',searchSongPh:'搜索歌曲 / 歌手…',loading:'加载中…',retryT:'重试',loadFailT:'加载失败',videoSrcDownT:'影视源暂时连不上，请稍后再试',videoStaleT:'内容可能不是最新',noItemsT:'暂无内容',saveChanges:'保存修改',searchBtn:'搜索',joinPlaylist:'加入歌单',style1:'苹果毛玻璃',style2:'暗夜鎏金',style3:'清新薄荷',style4:'极夜冰蓝',lineSwitchT:'本线路播不了，已换线路',lineSwitchingT:'正在切换线路…',lineSwitchFailT:'该线路播不了，已切回原线路',videoFavEmptyT:'还没有收藏的影视',videoFavEmptySub:'看到喜欢的影片，点 ♥ 就能收藏到这里',videoFavBrowseT:'去逛逛影视',videoHomeEmptyT:'影视分类暂时为空',videoHomeEmptySub:'稍后再来看看，或直接搜索想看的影片',videoUnfavT:'取消收藏',switchSourceT:'正在换源播放…',filterAreaT:'地区',filterYearT:'年份',filterSortT:'排序',filterAll:'全部',filterOther:'其他',filterEarlier:'更早',sortTime:'最新',sortHits:'最热',sortScore:'评分最高',totMoviesT:'电影总数',totShowsT:'节目总数',totEpsT:'集数总数',prevPage:'上一页',nextPage:'下一页',recentT:'最近播放',noRecent:'还没有播放记录，搜首歌播一下吧',clearRecent:'清空',confirmClearRecent:'确定清空最近播放吗？',recentSearchT:'最近搜索',hotSearchT:'热门搜索',renameList:'重命名歌单',listRenamed:'歌单已重命名',moveUp:'上移',moveDown:'下移',clearQueue:'清空队列',confirmClearQueue:'确定清空播放队列吗？',queueCleared:'队列已清空',queueEmptyT:'队列为空',sharedSongT:'分享的歌曲',songNotFound:'这首歌找不到了，换一首试试',videoT:'在线影视',searchVideoPh:'搜电影、电视剧…',videoSearchT:'搜索影片',videoHotT:'热门搜索',videoHistT:'搜索历史',videoClearHistT:'清空',videoNoResT:'没找到相关影片',videoNoResTip1:'换个关键词试试，也可以只搜片名的一部分',videoNoResTip2:'检查一下有没有错别字',videoNoResTip3:'也可以去分类里逛逛，或看看热门推荐',videoBrowseCatsT:'分类浏览',videoDoneT:'已看完',vodRemainMinT:'还剩 {n} 分钟',vodCollCountT:'{n} 部',videoDelHistT:'删除这条记录',episodesT:'选集',noVideo:'没找到相关影片，换个关键词试试',playFailedV:'播放失败，请检查网络后重试',playFailedAllV:'所有线路都播不了，请稍后再试',videoLine:'线路',nowPlayingV:'正在播放',continueWatch:'继续播放',noVideoHistory:'还没有看过影片，搜一部看看吧',clearHistory:'清空记录',confirmClearVideoHistory:'确定清空播放记录吗？',resumeHint:'已从上次位置继续播放',dailyT:'每日推荐',plazaT:'歌单广场',searchTypeSong:'歌曲',searchTypePl:'歌单',searchTypeArtist:'歌手',songsUnit:'首歌曲',delList:'删除歌单',noAirplay:'当前设备不支持隔空播放',shareList:'分享歌单',batchDel:'批量删除歌曲',selAll:'全选',delSel:'删除所选',selCount:'已选',confirmDelSel:'确定删除选中的',songsSel:'首歌吗？',shareCopiedList:'已复制歌单分享链接',listOptsT:'歌单选项',playAllT:'播放全部',searchInListPh:'在歌单中搜索歌曲/歌手',noSearchResult:'歌单里没有这首歌，换个关键词试试',songsUnit:'首歌曲',delList:'删除歌单',artistSongsT:'歌曲',artistAlbumsT:'专辑',artistTopSongsT:'歌曲排行',artistSinglesT:'单曲与 EP',artistMVsT:'音乐视频',artistConcertsT:'即将举办的音乐会',artistFanFavT:'代表作',artistFavT:'收藏歌手',artistUnfavT:'取消收藏歌手',artistCopyNameT:'复制歌手名',artistShowAllT:'查看全部',artistShowLessT:'收起',artistNoSongs:'这个歌手还没有歌曲',artistNoAlbums:'这个歌手还没有专辑',albumSongsT:'专辑歌曲',artistBackT:'歌手',loadMoreT:'加载更多',plTotalT:'共 {n} 个歌单',plazaSub:'各大音乐平台的热门歌单，点进去就能听，也能一键导入到我的歌单',importAllT:'一键导入',dailyVideoT:'每日推荐',runtimeMinT:'分钟',dailySub:'根据你的听歌习惯推荐',dailyHeroSub:'一半是你常听的，一半是为你发现的',dailyColdHint:'多听几首歌，明天推荐会更准',becauseArtist:'因为你常听 {name}',greetMorning:'早上好',greetAfternoon:'下午好',greetEvening:'晚上好',createList:'新建歌单',newListName:'新歌单的名字',chooseList:'选择歌单',confirmDelList:'确定删除这个歌单吗？里面的歌也会一起删除。',listCreated:'歌单已创建',listDeleted:'歌单已删除',noDaily:'多听几首歌，明天就有推荐啦',becauseListen:'因为你常听 ',hotPick:'热门推荐',searchPageT:'搜歌',seqMode:'顺序播放',musicTabT:'音乐',liveTabT:'直播',videoTabT:'影视',shuffleMode:'随机播放',playFailedSwitch:'这首歌播不了，已切到下一首',songUnplayable:'这首歌播不了，换一首试试',switchingSource:'正在换音源…',delSong:'删除',del:'删除',fsT:'全屏',dmOn:'弹幕开',dmOff:'弹幕关',dmSettingsT:'弹幕设置',dmPosT:'弹幕位置',dmPosTop:'顶部',dmPosMid:'中部',dmPosBot:'底部',dmPosFull:'全屏',dmOpacityT:'透明度',dmSpeedT:'速度',shareSong:'分享',cancelOp:'取消',okBtn:'确定',confirmDelSong:'确定删除这首歌吗？',shareCopied:'已复制分享内容',commentsT:'评论',hotCommentsT:'精彩评论',latestCommentsT:'最新评论',allLoadedT:'已加载全部',noComments:'暂无评论',commentsFailT:'评论加载失败',loadingComments:'评论加载中…',tapCoverLyric:'左滑封面看歌词',swipeCoverBack:'右滑返回封面',lyricT:'歌词',noLyric:'暂无歌词',lyricFailT:'歌词加载失败，点我重试',importPh:'粘贴网易云 / QQ / 酷我歌单链接',importBtn:'一键导入',importSongs:'首',importFail:'导入失败：',importHint:'支持网易云、QQ、酷我、酷狗公开歌单链接。',myPlaylistCount:'首歌',myPlaylistT:'我的歌单',myPlaylistEmpty:'歌单还是空的，搜一首歌加进来吧',myPlaylistFull:'歌单已满（200首）',importOk:'导入成功',joinedPlaylist:'已加入歌单',alreadyIn:'已在歌单中',back:'返回',liveT:'观看直播',liveSub:'哔哩哔哩、抖音、虎牙、斗鱼、快手直播，打开就能看。',liveCatsT:'分区',liveCatsSub:'按平台和分区找直播，点一个游戏就看这个分区的直播。',livePlatBili:'哔哩哔哩',livePlatDouyin:'抖音',livePlatHuya:'虎牙',livePlatDouyu:'斗鱼',livePlatKs:'快手',liveAll:'全部',liveMyFollows:'我的关注',liveNoFollows:'还没有关注的主播，在直播间点“关注”就能在这里看到。',liveFollowsTotal:'共 {n} 位关注',liveFollowsLive:'{m} 位直播中',liveRefreshT:'刷新状态',liveFollowStatusErr:'直播状态暂时查不到',liveUnfollowT:'取消关注',liveFollow:'关注',liveFollowed:'已关注',liveFollowErr:'关注失败，请重试',liveShareT:'分享直播间',liveBackT:'返回直播',liveSwipeFirst:'已经是第一个直播间',liveSwipeLast:'已经是最后一个直播间',liveNoRooms:'这个分类下暂时没有直播间',liveLoadFail:'直播列表加载失败，稍后再试',livePlayFail:'这个直播间暂时播不了，换一个试试',liveFailRetryHint:'可能是主播刚下播或线路问题，点重试会换一条新线路再试一次。',rotLandT:'横屏',rotPortT:'竖屏',liveTapPlay:'点 ▶ 开始播放',verTitle:'版本更新',verCurT:'当前版本',verShowLog:'查看更新日志',verHideLog:'收起',liveDanmuBili:'弹幕：B站实时弹幕已连接',liveDanmuKs:'弹幕：快手实时评论已连接',liveDanmuDouyu:'弹幕：斗鱼弹幕连接中（实验）',liveDanmuDouyuOk:'弹幕：斗鱼实时弹幕已连接',liveDanmuDouyinNone:'弹幕：抖音弹幕需官方签名暂未接通，先看直播',liveDanmuHuya:'弹幕：虎牙弹幕连接中',liveDanmuHuyaOk:'弹幕：虎牙实时弹幕已连接',liveDanmuNone:'弹幕：该平台弹幕第二批支持',liveWatching:'人',liveCopied:'已复制直播间链接',liveQualityT:'画质',liveSwitchingQ:'正在切换画质…',liveSwitchingLine:'正在切换线路…',liveQUnavailable:'该画质暂不可用',livePlayingDirect:'正在播放（直连）',liveErrManifest:'播放列表取不到',liveErrFrag:'分片加载失败',liveErrLevel:'清晰度列表取不到',liveErrStall:'加载超时',liveErrKey:'密钥加载失败',liveViaDirect:'直连',liveDmListT:'弹幕列表',liveDmSettingsT:'弹幕设置',liveDmHlT:'醒目留言',liveDmBlockT:'屏蔽管理',liveDmLocalPh:'发送一条本地字幕',liveDmMe:'我',liveDmSwitchT:'弹幕开关',liveHotT:'热度',liveLineT:'线路',liveLineSheetT:'选择线路',liveOnlyOneQuality:'只有这一个画质',liveLiveNow:'直播中',liveNoDm:'暂无弹幕',liveSearchPh:'搜主播名或房间标题…',liveSearchAll:'全部平台',liveSearchOnly:'仅{platform}',liveSearchNoResult:'没找到相关直播间',liveSearchFound:'找到 {n} 个相关直播间',liveSearchTryT:'换个关键词试试：',liveSearchBackHot:'看看热门直播',liveNativePlaying:'正在 App 播放器中播放',liveNativeOnly:'请在 App 内观看',favAdded:'已加入收藏',playBtn:'播放',seasonT:'Season',castT:'演职人员',myMedia:'我的媒体',continueWatching:'继续观看',epSkipT:'第{n}集播不了，已换下一集',favT:'收藏',watchedT:'已看过',directorT:'导演',actorT:'演员',liveOfflineT:'未开播'},
+ 'zh-TW': {noSong:'還沒有選歌',tapSong:'點下面歌單裡的歌就能播放',playlistEmpty:'歌單為空，請在後台音樂管理裡添加。',quality:'音質',songInfoT:'歌曲資訊',albumT:'專輯',releaseT:'發行',durationT:'時長',sourceT:'音源',favRemoved:'已取消收藏',qStd:'標準 128k',qHigh:'高品質 320k',qLossless:'無損 FLAC',qHires:'Hi-Res 24bit',qFallback:'無損暫不可用，已降級播放',night:'夜晚',day:'白天',clearCacheT:'清除快取',vodSpeedT:'倍速',clearCacheConfirm:'確定要清除快取嗎？清除後頁面會重新整理。',cacheCleared:'快取已清除',upNextT:'繼續播放',copy:'複製',copied:'已複製',modeT:'模式',modeSystemT:'跟隨系統',menuT:'菜單',langT:'語言',fsExitT:'退出全屏',searchSongPh:'搜索歌曲 / 歌手…',loading:'載入中…',retryT:'重試',loadFailT:'載入失敗',videoSrcDownT:'影視源暫時連不上，請稍後再試',videoStaleT:'內容可能不是最新',noItemsT:'暫無內容',saveChanges:'保存修改',searchBtn:'搜索',joinPlaylist:'加入歌單',style1:'蘋果毛玻璃',style2:'暗夜鎏金',style3:'清新薄荷',style4:'極夜冰藍',lineSwitchT:'本線路播不了，已換線路',lineSwitchingT:'正在切換線路…',lineSwitchFailT:'該線路播不了，已切回原線路',videoFavEmptyT:'還沒有收藏的影視',videoFavEmptySub:'看到喜歡的影片，點 ♥ 就能收藏到這裡',videoFavBrowseT:'去逛逛影視',videoHomeEmptyT:'影視分類暫時為空',videoHomeEmptySub:'稍後再來看看，或直接搜尋想看的影片',videoUnfavT:'取消收藏',switchSourceT:'正在換源播放…',filterAreaT:'地區',filterYearT:'年份',filterSortT:'排序',filterAll:'全部',filterOther:'其他',filterEarlier:'更早',sortTime:'最新',sortHits:'最熱',sortScore:'評分最高',totMoviesT:'電影總數',totShowsT:'節目總數',totEpsT:'集數總數',prevPage:'上一頁',nextPage:'下一頁',recentT:'最近播放',noRecent:'還沒有播放記錄，搜首歌播一下吧',clearRecent:'清空',confirmClearRecent:'確定清空最近播放嗎？',recentSearchT:'最近搜尋',hotSearchT:'熱門搜尋',renameList:'重新命名歌單',listRenamed:'歌單已重新命名',moveUp:'上移',moveDown:'下移',clearQueue:'清空佇列',confirmClearQueue:'確定清空播放佇列嗎？',queueCleared:'佇列已清空',queueEmptyT:'佇列為空',sharedSongT:'分享的歌曲',songNotFound:'這首歌找不到了，換一首試試',videoT:'在線影視',searchVideoPh:'搜電影、電視劇…',videoSearchT:'搜索影片',videoHotT:'熱門搜索',videoHistT:'搜索歷史',videoClearHistT:'清空',videoNoResT:'沒找到相關影片',videoNoResTip1:'換個關鍵詞試試，也可以只搜片名的一部分',videoNoResTip2:'檢查一下有沒有錯別字',videoNoResTip3:'也可以去分類裡逛逛，或看看熱門推薦',videoBrowseCatsT:'分類瀏覽',videoDoneT:'已看完',vodRemainMinT:'還剩 {n} 分鐘',vodCollCountT:'{n} 部',videoDelHistT:'刪除這條記錄',episodesT:'選集',noVideo:'沒找到相關影片，換個關鍵詞試試',playFailedV:'播放失敗，請檢查網絡後重試',playFailedAllV:'所有線路都播不了，請稍後再試',videoLine:'線路',nowPlayingV:'正在播放',continueWatch:'繼續播放',noVideoHistory:'還沒有看過影片，搜一部看看吧',clearHistory:'清空記錄',confirmClearVideoHistory:'確定清空播放記錄嗎？',resumeHint:'已從上次位置繼續播放',dailyT:'每日推薦',plazaT:'歌單廣場',searchTypeSong:'歌曲',searchTypePl:'歌單',searchTypeArtist:'歌手',songsUnit:'首歌曲',delList:'刪除歌單',noAirplay:'目前裝置不支援 AirPlay',shareList:'分享歌單',batchDel:'批量刪除歌曲',selAll:'全選',delSel:'刪除所選',selCount:'已選',confirmDelSel:'確定刪除選中的',songsSel:'首歌嗎？',shareCopiedList:'已複製歌單分享連結',listOptsT:'歌單選項',playAllT:'播放全部',searchInListPh:'在歌單中搜索歌曲/歌手',noSearchResult:'歌單裡沒有這首歌，換個關鍵詞試試',artistSongsT:'歌曲',artistAlbumsT:'專輯',artistTopSongsT:'歌曲排行',artistSinglesT:'單曲與 EP',artistMVsT:'音樂視頻',artistConcertsT:'即將舉辦的音樂會',artistFanFavT:'代表作',artistFavT:'收藏歌手',artistUnfavT:'取消收藏歌手',artistCopyNameT:'複製歌手名',artistShowAllT:'查看全部',artistShowLessT:'收起',artistNoSongs:'這個歌手還沒有歌曲',artistNoAlbums:'這個歌手還沒有專輯',albumSongsT:'專輯歌曲',artistBackT:'歌手',loadMoreT:'載入更多',plTotalT:'共 {n} 個歌單',plazaSub:'各大音樂平台的熱門歌單，點進去就能聽，也能一鍵導入到我的歌單',importAllT:'一鍵導入',dailyVideoT:'每日推薦',runtimeMinT:'分鐘',dailySub:'根據你的聽歌習慣推薦',dailyHeroSub:'一半是你常聽的，一半是為你發現的',dailyColdHint:'多聽幾首歌，明天推薦會更準',becauseArtist:'因為你常聽 {name}',greetMorning:'早上好',greetAfternoon:'下午好',greetEvening:'晚上好',createList:'新建歌單',newListName:'新歌單的名字',chooseList:'選擇歌單',confirmDelList:'確定刪除這個歌單嗎？裡面的歌也會一起刪除。',listCreated:'歌單已創建',listDeleted:'歌單已刪除',noDaily:'多聽幾首歌，明天就有推薦啦',becauseListen:'因為你常聽 ',hotPick:'熱門推薦',searchPageT:'搜歌',seqMode:'順序播放',musicTabT:'音樂',liveTabT:'直播',videoTabT:'影視',shuffleMode:'隨機播放',playFailedSwitch:'這首歌播不了，已為你切到下一首',songUnplayable:'這首歌播不了，換一首試試',switchingSource:'正在換音源…',delSong:'刪除',del:'刪除',fsT:'全屏',dmOn:'彈幕開',dmOff:'彈幕關',dmSettingsT:'彈幕設置',dmPosT:'彈幕位置',dmPosTop:'頂部',dmPosMid:'中部',dmPosBot:'底部',dmPosFull:'全屏',dmOpacityT:'透明度',dmSpeedT:'速度',shareSong:'分享',cancelOp:'取消',okBtn:'確定',confirmDelSong:'確定刪除這首歌嗎？',shareCopied:'已複製分享內容',commentsT:'評論',hotCommentsT:'精彩評論',latestCommentsT:'最新評論',allLoadedT:'已載入全部',noComments:'暫無評論',commentsFailT:'評論加載失敗',loadingComments:'評論加載中…',tapCoverLyric:'左滑封面看歌詞',swipeCoverBack:'右滑返回封面',lyricT:'歌詞',noLyric:'暫無歌詞',lyricFailT:'歌詞加載失敗，點我重試',importPh:'粘貼網易雲 / QQ / 酷我歌單鏈接',importBtn:'一鍵導入',importSongs:'首',importFail:'導入失敗：',importHint:'支持網易雲、QQ、酷我、酷狗公開歌單鏈接。',myPlaylistCount:'首歌',myPlaylistT:'我的歌單',myPlaylistEmpty:'歌單還是空的，搜一首歌加進來吧',myPlaylistFull:'歌單已滿（200首）',importOk:'導入成功',joinedPlaylist:'已加入歌單',alreadyIn:'已在歌單中',back:'返回',liveT:'觀看直播',liveSub:'嗶哩嗶哩、抖音、虎牙、鬥魚、快手直播，打開就能看。',liveCatsT:'分區',liveCatsSub:'按平台和分區找直播，點一個遊戲就看這個分區的直播。',livePlatBili:'嗶哩嗶哩',livePlatDouyin:'抖音',livePlatHuya:'虎牙',livePlatDouyu:'鬥魚',livePlatKs:'快手',liveAll:'全部',liveMyFollows:'我的關注',liveNoFollows:'還沒有關注的主播，在直播間點「關注」就能在這裡看到。',liveFollowsTotal:'共 {n} 位關注',liveFollowsLive:'{m} 位直播中',liveRefreshT:'刷新狀態',liveFollowStatusErr:'直播狀態暫時查不到',liveUnfollowT:'取消關注',liveFollow:'關注',liveFollowed:'已關注',liveFollowErr:'關注失敗，請重試',liveShareT:'分享直播間',liveBackT:'返回直播',liveSwipeFirst:'已經是第一個直播間',liveSwipeLast:'已經是最後一個直播間',liveNoRooms:'這個分類下暫時沒有直播間',liveLoadFail:'直播列表加載失敗，稍後再試',livePlayFail:'這個直播間暫時播不了，換一個試試',liveFailRetryHint:'可能是主播剛下播或線路問題，點重試會換一條新線路再試一次。',rotLandT:'橫屏',rotPortT:'豎屏',liveTapPlay:'點 ▶ 開始播放',verTitle:'版本更新',verCurT:'目前版本',verShowLog:'查看更新日誌',verHideLog:'收起',liveDanmuBili:'彈幕：B站實時彈幕已連接',liveDanmuKs:'彈幕：快手實時評論已連接',liveDanmuDouyu:'彈幕：鬥魚彈幕連接中（實驗）',liveDanmuDouyuOk:'彈幕：鬥魚實時彈幕已連接',liveDanmuDouyinNone:'彈幕：抖音彈幕需官方簽名暫未接通，先看直播',liveDanmuHuya:'彈幕：虎牙彈幕連接中',liveDanmuHuyaOk:'彈幕：虎牙實時彈幕已連接',liveDanmuNone:'彈幕：該平台彈幕第二批支持',liveWatching:'人',liveCopied:'已複製直播間鏈接',liveQualityT:'畫質',liveSwitchingQ:'正在切換畫質…',liveSwitchingLine:'正在切換線路…',liveQUnavailable:'該畫質暫不可用',livePlayingDirect:'正在播放（直連）',liveErrManifest:'播放列表取不到',liveErrFrag:'分片加載失敗',liveErrLevel:'清晰度列表取不到',liveErrStall:'加載超時',liveErrKey:'密鑰加載失敗',liveViaDirect:'直連',liveDmListT:'彈幕列表',liveDmSettingsT:'彈幕設置',liveDmHlT:'醒目留言',liveDmBlockT:'屏蔽管理',liveDmLocalPh:'發送一條本地字幕',liveDmMe:'我',liveDmSwitchT:'彈幕開關',liveHotT:'熱度',liveLineT:'線路',liveLineSheetT:'選擇線路',liveOnlyOneQuality:'只有這一個畫質',liveLiveNow:'直播中',liveNoDm:'暫無彈幕',liveSearchPh:'搜主播名或房間標題…',liveSearchAll:'全部平台',liveSearchOnly:'僅{platform}',liveSearchNoResult:'沒找到相關直播間',liveSearchFound:'找到 {n} 個相關直播間',liveSearchTryT:'換個關鍵詞試試：',liveSearchBackHot:'看看熱門直播',liveNativePlaying:'正在 App 播放器中播放',liveNativeOnly:'請在 App 內觀看',favAdded:'已加入收藏',playBtn:'播放',seasonT:'Season',castT:'演職人員',myMedia:'我的媒體',continueWatching:'繼續觀看',epSkipT:'第{n}集播不了，已換下一集',favT:'收藏',watchedT:'已看過',directorT:'導演',actorT:'演員',liveOfflineT:'未開播'},
+ 'en': {noSong:'No song selected yet',tapSong:'Tap a song in the playlist to play it',playlistEmpty:'Playlist is empty. Add songs in the admin music section.',quality:'Quality',songInfoT:'Song info',albumT:'Album',releaseT:'Released',durationT:'Duration',sourceT:'Source',favRemoved:'Removed from favorites',qStd:'Standard 128k',qHigh:'High 320k',qLossless:'Lossless FLAC',qHires:'Hi-Res 24bit',qFallback:'Lossless unavailable, playing lower quality',night:'Night',day:'Day',clearCacheT:'Clear cache',vodSpeedT:'Speed',clearCacheConfirm:'Clear the cache? The page will reload.',cacheCleared:'Cache cleared',upNextT:'Up Next',copy:'Copy',copied:'Copied',modeT:'Mode',modeSystemT:'Follow system',menuT:'Menu',langT:'Language',fsExitT:'Exit fullscreen',searchSongPh:'Search songs / artists…',loading:'Loading…',retryT:'Retry',loadFailT:'Failed to load',videoSrcDownT:'The video source is temporarily unreachable — please try again later',videoStaleT:'Content may not be up to date',noItemsT:'Nothing here yet',saveChanges:'Save changes',searchBtn:'Search',joinPlaylist:'Add to playlist',style1:'Apple frosted glass',style2:'Midnight gold',style3:'Fresh mint',style4:'Polar ice blue',lineSwitchT:'This line failed, switched to another line',lineSwitchingT:'Switching line…',lineSwitchFailT:'This line failed — switched back to the previous line',videoFavEmptyT:'No favorites yet',videoFavEmptySub:'Tap ♥ on a title you like to save it here',videoFavBrowseT:'Browse videos',videoHomeEmptyT:'No video categories right now',videoHomeEmptySub:'Check back later, or search for something to watch',videoUnfavT:'Remove from favorites',switchSourceT:'Switching to another source…',filterAreaT:'Region',filterYearT:'Year',filterSortT:'Sort',filterAll:'All',filterOther:'Other',filterEarlier:'Earlier',sortTime:'Latest',sortHits:'Most viewed',sortScore:'Top rated',totMoviesT:'Movies',totShowsT:'Shows',totEpsT:'Episodes',prevPage:'Prev',nextPage:'Next',recentT:'Recently played',noRecent:'No plays yet — search and play a song.',clearRecent:'Clear',confirmClearRecent:'Clear all recently played?',recentSearchT:'Recent searches',hotSearchT:'Hot searches',renameList:'Rename playlist',listRenamed:'Playlist renamed',moveUp:'Move up',moveDown:'Move down',clearQueue:'Clear queue',confirmClearQueue:'Clear the playback queue?',queueCleared:'Queue cleared',queueEmptyT:'Queue is empty',sharedSongT:'Shared song',songNotFound:'This song is unavailable',videoT:'Movies & TV',searchVideoPh:'Search a movie or show…',videoSearchT:'Search videos',videoHotT:'Hot searches',videoHistT:'Search history',videoClearHistT:'Clear',videoNoResT:'No matching videos found',videoNoResTip1:'Try another keyword, or just part of the title',videoNoResTip2:'Check for typos',videoNoResTip3:'Or browse by category and check the hot picks',videoBrowseCatsT:'Browse categories',videoDoneT:'Finished',vodRemainMinT:'{n} min left',vodCollCountT:'{n} titles',videoDelHistT:'Remove this entry',episodesT:'Episodes',noVideo:'No results, try another keyword',playFailedV:'Playback failed, please check your connection and retry',playFailedAllV:'All sources failed to play, please try again later',videoLine:'Source',nowPlayingV:'Now playing',continueWatch:'Resume',noVideoHistory:'No videos watched yet — search for one.',clearHistory:'Clear history',confirmClearVideoHistory:'Clear all watch history?',resumeHint:'Resumed from where you left off',dailyT:'Daily Picks',plazaT:'Playlist Plaza',searchTypeSong:'Songs',searchTypePl:'Playlists',searchTypeArtist:'Artists',songsUnit:'songs',delList:'Delete playlist',noAirplay:'AirPlay is not available on this device',shareList:'Share playlist',batchDel:'Batch delete songs',selAll:'Select all',delSel:'Delete selected',selCount:'Selected',confirmDelSel:'Delete the',songsSel:'selected songs?',shareCopiedList:'Playlist share link copied',listOptsT:'Playlist options',playAllT:'Play all',searchInListPh:'Search songs / artists in this playlist',noSearchResult:'No matching song in this playlist, try another keyword',artistSongsT:'Songs',artistAlbumsT:'Albums',artistTopSongsT:'Top Songs',artistSinglesT:'Singles & EPs',artistMVsT:'Music Videos',artistConcertsT:'Upcoming Concerts',artistFanFavT:'Fan Favorites',artistFavT:'Follow Artist',artistUnfavT:'Unfollow Artist',artistCopyNameT:'Copy artist name',artistShowAllT:'Show all',artistShowLessT:'Show less',artistNoSongs:'No songs from this artist yet',artistNoAlbums:'No albums from this artist yet',albumSongsT:'Album songs',artistBackT:'Artists',loadMoreT:'Load more',plTotalT:'{n} playlists',plazaSub:'Hot playlists from major music platforms — tap to listen, or import to your playlist in one tap',importAllT:'Import all',dailyVideoT:'Daily picks',runtimeMinT:' min',dailySub:'Picked from your listening habits',dailyHeroSub:'Half your favorites, half new discoveries',dailyColdHint:'Play a few more songs and tomorrow’s picks will be sharper',becauseArtist:'Because you listen to {name}',greetMorning:'Good morning',greetAfternoon:'Good afternoon',greetEvening:'Good evening',createList:'New playlist',newListName:'Name the new playlist',chooseList:'Choose a playlist',confirmDelList:'Delete this playlist? Its songs will be deleted too.',listCreated:'Playlist created',listDeleted:'Playlist deleted',noDaily:'Listen to a few more songs and your picks will show up',becauseListen:'Because you listen to ',hotPick:'Trending',searchPageT:'Search songs',seqMode:'Sequential',musicTabT:'Music',liveTabT:'Live',videoTabT:'Movies',shuffleMode:'Shuffle',playFailedSwitch:'Could not play, skipped to the next song',songUnplayable:'Could not play this song, try another',switchingSource:'Switching source…',delSong:'Delete',del:'Delete',fsT:'Fullscreen',dmOn:'Danmaku on',dmOff:'Danmaku off',dmSettingsT:'Danmaku settings',dmPosT:'Position',dmPosTop:'Top',dmPosMid:'Middle',dmPosBot:'Bottom',dmPosFull:'Full screen',dmOpacityT:'Opacity',dmSpeedT:'Speed',shareSong:'Share',cancelOp:'Cancel',okBtn:'OK',confirmDelSong:'Delete this song?',shareCopied:'Share text copied',commentsT:'Comments',hotCommentsT:'Top comments',latestCommentsT:'Latest comments',allLoadedT:'All loaded',noComments:'No comments yet',commentsFailT:'Failed to load comments',loadingComments:'Loading comments…',tapCoverLyric:'Swipe left on the cover for lyrics',swipeCoverBack:'Swipe right to go back to the cover',lyricT:'Lyrics',noLyric:'No lyrics',lyricFailT:'Lyrics failed to load — tap to retry',importPh:'Paste a NetEase / QQ / Kuwo playlist link',importBtn:'Import',importSongs:' songs',importFail:'Import failed: ',importHint:'Supports public NetEase, QQ, Kuwo and Kugou playlist links.',myPlaylistCount:'songs',myPlaylistT:'My playlist',myPlaylistEmpty:'Your playlist is empty. Search for a song to add.',myPlaylistFull:'Playlist is full (200 songs)',importOk:'Imported',joinedPlaylist:'Added to playlist',alreadyIn:'Already in playlist',back:'Back',liveT:'Live Streams',liveSub:'Bilibili, Douyin, Huya, Douyu and Kuaishou live — tap to watch.',liveCatsT:'Categories',liveCatsSub:'Browse live by platform and category — tap a game to watch that category.',livePlatBili:'Bilibili',livePlatDouyin:'Douyin',livePlatHuya:'Huya',livePlatDouyu:'Douyu',livePlatKs:'Kuaishou',liveAll:'All',liveMyFollows:'My follows',liveNoFollows:'No followed streamers yet. Tap Follow in a room to see them here.',liveFollowsTotal:'{n} followed',liveFollowsLive:'{m} live now',liveRefreshT:'Refresh status',liveFollowStatusErr:'Live status unavailable right now',liveUnfollowT:'Unfollow',liveFollow:'Follow',liveFollowed:'Following',liveFollowErr:'Follow failed, please retry',liveShareT:'Share live room',liveBackT:'Back to Live',liveSwipeFirst:'This is the first room',liveSwipeLast:'This is the last room',liveNoRooms:'No live rooms in this category yet',liveLoadFail:'Failed to load live rooms. Try again later.',livePlayFail:'This room cannot be played right now. Try another.',liveFailRetryHint:'The streamer may have just ended, or the line failed. Retry fetches a fresh line and tries again.',rotLandT:'Landscape',rotPortT:'Portrait',liveTapPlay:'Tap ▶ to play',verTitle:'Version & updates',verCurT:'Current version',verShowLog:'View changelog',verHideLog:'Hide',liveDanmuBili:'Danmaku: Bilibili live chat connected',liveDanmuKs:'Danmaku: Kuaishou live comments connected',liveDanmuDouyu:'Danmaku: connecting Douyu chat (experimental)',liveDanmuDouyuOk:'Danmaku: Douyu live chat connected',liveDanmuDouyinNone:'Danmaku: Douyin chat needs official signing and is not available yet. Enjoy the stream.',liveDanmuHuya:'Danmaku: connecting Huya chat',liveDanmuHuyaOk:'Danmaku: Huya live chat connected',liveDanmuNone:'Danmaku: coming in batch 2 for this platform',liveWatching:' watching',liveCopied:'Live room link copied',liveQualityT:'Quality',liveSwitchingQ:'Switching quality…',liveSwitchingLine:'Switching line…',liveQUnavailable:'This quality is unavailable',livePlayingDirect:'Playing (direct)',liveErrManifest:'Playlist unavailable',liveErrFrag:'Segment load failed',liveErrLevel:'Quality list unavailable',liveErrStall:'Load timed out',liveErrKey:'Key load failed',liveViaDirect:'direct',liveDmListT:'Danmaku',liveDmSettingsT:'Danmaku settings',liveDmHlT:'Highlighted',liveDmBlockT:'Blocked',liveDmLocalPh:'Send a local subtitle',liveDmMe:'Me',liveDmSwitchT:'Danmaku',liveHotT:'Popularity',liveLineT:'Line',liveLineSheetT:'Choose line',liveOnlyOneQuality:'Only one quality available',liveLiveNow:'LIVE',liveNoDm:'No danmaku yet',liveSearchPh:'Search streamer or room title…',liveSearchAll:'All platforms',liveSearchOnly:'Only {platform}',liveSearchNoResult:'No live rooms found',liveSearchFound:'{n} live rooms found',liveSearchTryT:'Try another keyword:',liveSearchBackHot:'Browse popular live rooms',liveNativePlaying:'Playing in the App player',liveNativeOnly:'Please watch in the App',favAdded:'Added to favorites',playBtn:'Play',seasonT:'Season',castT:'Cast & Crew',myMedia:'My Media',continueWatching:'Continue Watching',epSkipT:'Episode {n} failed to play, switched to next episode',favT:'Favorite',watchedT:'Watched',directorT:'Director',actorT:'Cast',liveOfflineT:'Offline'}};
 // ---- music player rebuild (LX-inspired) i18n ----
 Object.assign(I18N['zh-CN'],{singleMode:'单曲循环',plSetT:'播放器设置',lyrSizeT:'歌词字号',lyrSizeS:'小',lyrSizeM:'中',lyrSizeL:'大',lyrAlignT:'歌词对齐',lyrAlignC:'居中',lyrAlignL:'左对齐',lyrPlayLineT:'歌词跟随行',musicRateT:'音乐倍速',rateNativeNote:'App 内原生播放暂不支持倍速（网页端可用）',onT:'开',offT:'关',plStyleT:'播放器样式',plStyleImmersive:'沉浸式',plStyleVinyl:'黑胶',plStyleCompact:'紧凑',plStyleSplit:'横向分屏'});
 Object.assign(I18N['zh-TW'],{singleMode:'單曲循環',plSetT:'播放器設定',lyrSizeT:'歌詞字號',lyrSizeS:'小',lyrSizeM:'中',lyrSizeL:'大',lyrAlignT:'歌詞對齊',lyrAlignC:'置中',lyrAlignL:'靠左',lyrPlayLineT:'歌詞跟隨行',musicRateT:'音樂倍速',rateNativeNote:'App 內原生播放暫不支援倍速（網頁端可用）',onT:'開',offT:'關',plStyleT:'播放器樣式',plStyleImmersive:'沉浸式',plStyleVinyl:'黑膠',plStyleCompact:'緊湊',plStyleSplit:'橫向分屏'});
@@ -16,7 +16,7 @@ Object.assign(I18N['en'],{srcEditT:'Edit',srcImportedListT:'Imported sources',sr
 Object.assign(I18N['zh-CN'],{livePopularT:'热门'});
 Object.assign(I18N['zh-TW'],{livePopularT:'熱門'});
 Object.assign(I18N['en'],{livePopularT:'Popular'});
-// ---- community (dd) i18n ----
+// ---- listen report + playback settings i18n ----
 Object.assign(I18N['zh-CN'],{commListsFull:'歌單已滿（10個），請先刪除一個歌單',commListsFull:'歌单已满（10个），请先删除一个歌单',listenReportT:'听歌报告',listenTotalPlays:'累计播放',listenTotalTime:'累计收听',listenTopSongs:'最常听的歌',listenTopArtists:'最常听的歌手',listenDaily:'每日播放',listenMonthly:'每月播放',listenPlatforms:'音源分布',listenWeek:'本周',listenMonth:'本月',listenAll:'全部',listenEmpty:'还没有听歌记录，听几首歌再回来看看',listenTimes:'次',playSetT:'播放设置',liveDefQT:'默认直播画质',autoT:'自动',defVolT:'默认音量',muteT:'全局静音',dmFontT:'弹幕字号',dmWeightT:'弹幕粗细',dmStrokeT:'弹幕描边',dmMaxT:'同屏弹幕上限',histLimitT:'历史上限',cacheSizeT:'缓存大小'});
 Object.assign(I18N['zh-TW'],{listenReportT:'聽歌報告',listenTotalPlays:'累計播放',listenTotalTime:'累計收聽',listenTopSongs:'最常聽的歌',listenTopArtists:'最常聽的歌手',listenDaily:'每日播放',listenMonthly:'每月播放',listenPlatforms:'音源分佈',listenWeek:'本週',listenMonth:'本月',listenAll:'全部',listenEmpty:'還沒有聽歌記錄，聽幾首歌再回來看看',listenTimes:'次',playSetT:'播放設定',liveDefQT:'預設直播畫質',autoT:'自動',defVolT:'預設音量',muteT:'全域靜音',dmFontT:'彈幕字號',dmWeightT:'彈幕粗細',dmStrokeT:'彈幕描邊',dmMaxT:'同屏彈幕上限',histLimitT:'歷史上限',cacheSizeT:'快取大小'});
 Object.assign(I18N['en'],{commListsFull:'Playlist limit reached (10). Delete one first',listenReportT:'Listening Report',listenTotalPlays:'Total plays',listenTotalTime:'Total listening',listenTopSongs:'Top songs',listenTopArtists:'Top artists',listenDaily:'Daily plays',listenMonthly:'Monthly plays',listenPlatforms:'By platform',listenWeek:'This week',listenMonth:'This month',listenAll:'All time',listenEmpty:'No listening history yet — play a few songs and come back',listenTimes:' plays',playSetT:'Playback',liveDefQT:'Default live quality',autoT:'Auto',defVolT:'Default volume',muteT:'Mute all',dmFontT:'Danmaku font size',dmWeightT:'Danmaku weight',dmStrokeT:'Danmaku outline',dmMaxT:'Max danmaku on screen',histLimitT:'History limit',cacheSizeT:'Cache size'});
@@ -24,15 +24,15 @@ Object.assign(I18N['zh-CN'],{vodSynMoreT:'展开全文',vodSynLessT:'收起',dai
 Object.assign(I18N['zh-TW'],{vodSynMoreT:'展開全文',vodSynLessT:'收起',dailyVideoEmptyT:'今日暫無推薦，看看其他分類吧',dailyVideoFailT:'每日推薦載入失敗'});
 Object.assign(I18N['en'],{vodSynMoreT:'Read more',vodSynLessT:'Show less',dailyVideoEmptyT:'No picks today — browse the categories instead',dailyVideoFailT:'Daily picks failed to load'});
 // ---- video r6 (related + gestures + home search entry) i18n ----
-Object.assign(I18N['zh-CN'],{srcMgmtPageT:'源管理',srcVideoT:'影视源',srcMusicT:'音乐解析',srcLiveT:'直播源',srcTmdbT:'TMDB 密钥',srcTmdbPh:'输入 TMDB API 密钥（可选）',srcTmdbSaved:'TMDB 密钥已保存',srcDmT:'弹幕端点',srcDmPh:'弹幕服务地址（可选，留空不用）',srcDmSaved:'弹幕端点已保存',srcSoonT:'源管理功能即将上线',themeT:'主题',clearLocalT:'清除本地数据',clearLocalConfirm:'确定要清除全部本地数据吗？歌单、收藏、历史和关注都会被删除。',localCleared:'本地数据已清除',aboutT:'关于',aboutText:'HAo Studio 独立版：音乐、影视、直播全部直连播放，无需账号，所有数据只保存在本机。',myVideoT:'影视收藏',myLiveT:'直播关注',cancelT:'取消'});
-Object.assign(I18N['zh-TW'],{srcMgmtPageT:'源管理',srcVideoT:'影視源',srcMusicT:'音樂解析',srcLiveT:'直播源',srcTmdbT:'TMDB 密鑰',srcTmdbPh:'輸入 TMDB API 密鑰（可選）',srcTmdbSaved:'TMDB 密鑰已保存',srcDmT:'彈幕端點',srcDmPh:'彈幕服務地址（可選，留空不用）',srcDmSaved:'彈幕端點已保存',srcSoonT:'源管理功能即將上線',themeT:'主題',clearLocalT:'清除本地數據',clearLocalConfirm:'確定要清除全部本地數據嗎？歌單、收藏、歷史和關注都會被刪除。',localCleared:'本地數據已清除',aboutT:'關於',aboutText:'HAo Studio 獨立版：音樂、影視、直播全部直連播放，無需賬號，所有數據只保存在本機。',myVideoT:'影視收藏',myLiveT:'直播關注',cancelT:'取消'});
-Object.assign(I18N['en'],{srcMgmtPageT:'Sources',srcVideoT:'Video sources',srcMusicT:'Music resolvers',srcLiveT:'Live sources',srcTmdbT:'TMDB key',srcTmdbPh:'Enter TMDB API key (optional)',srcTmdbSaved:'TMDB key saved',srcDmT:'Danmaku endpoint',srcDmPh:'Danmaku service URL (optional, empty = off)',srcDmSaved:'Danmaku endpoint saved',srcSoonT:'Source management coming soon',themeT:'Theme',clearLocalT:'Clear local data',clearLocalConfirm:'Clear all local data? Playlists, favorites, history and follows will be deleted.',localCleared:'Local data cleared',aboutT:'About',aboutText:'HAo Studio standalone: music, video and live all play direct, no account needed. All data stays on this device.',myVideoT:'Video favorites',myLiveT:'Live follows',cancelT:'Cancel'});
+Object.assign(I18N['zh-CN'],{srcMgmtPageT:'源管理',srcVideoT:'影视源',srcMusicT:'音乐解析',srcLiveT:'直播源',srcDmT:'弹幕端点',srcDmPh:'弹幕服务地址（可选，留空不用）',srcDmSaved:'弹幕端点已保存',srcSoonT:'源管理功能即将上线',themeT:'主题',clearLocalT:'清除本地数据',clearLocalConfirm:'确定要清除全部本地数据吗？歌单、收藏、历史和关注都会被删除。',localCleared:'本地数据已清除',aboutT:'关于',aboutText:'HAo Studio 独立版：音乐、影视、直播全部直连播放，无需账号，所有数据只保存在本机。',myVideoT:'影视收藏',myLiveT:'直播关注',cancelT:'取消'});
+Object.assign(I18N['zh-TW'],{srcMgmtPageT:'源管理',srcVideoT:'影視源',srcMusicT:'音樂解析',srcLiveT:'直播源',srcDmT:'彈幕端點',srcDmPh:'彈幕服務地址（可選，留空不用）',srcDmSaved:'彈幕端點已保存',srcSoonT:'源管理功能即將上線',themeT:'主題',clearLocalT:'清除本地數據',clearLocalConfirm:'確定要清除全部本地數據嗎？歌單、收藏、歷史和關注都會被刪除。',localCleared:'本地數據已清除',aboutT:'關於',aboutText:'HAo Studio 獨立版：音樂、影視、直播全部直連播放，無需賬號，所有數據只保存在本機。',myVideoT:'影視收藏',myLiveT:'直播關注',cancelT:'取消'});
+Object.assign(I18N['en'],{srcMgmtPageT:'Sources',srcVideoT:'Video sources',srcMusicT:'Music resolvers',srcLiveT:'Live sources',srcDmT:'Danmaku endpoint',srcDmPh:'Danmaku service URL (optional, empty = off)',srcDmSaved:'Danmaku endpoint saved',srcSoonT:'Source management coming soon',themeT:'Theme',clearLocalT:'Clear local data',clearLocalConfirm:'Clear all local data? Playlists, favorites, history and follows will be deleted.',localCleared:'Local data cleared',aboutT:'About',aboutText:'HAo Studio standalone: music, video and live all play direct, no account needed. All data stays on this device.',myVideoT:'Video favorites',myLiveT:'Live follows',cancelT:'Cancel'});
 Object.assign(I18N['zh-CN'],{settingsT:'设置',updateT:'检查更新',updateCheckT:'检查更新',updateSoonT:'更新检查即将上线',updateLatestT:'已是最新版本',updateNewT:'发现新版本',cacheT:'缓存',cacheHintT:'只清理网页缓存，本地歌单、历史、源配置不受影响',generalT:'常规设置',dmT:'弹幕',qualityDefaultT:'默认音质',localDataT:'本地数据',clearCatT:'清空',backupT:'备份管理',backupNowT:'立即备份',backupImportT:'从文件恢复',backupRestoreT:'恢复',backupDeleteT:'删除',backupLastT:'上次备份',backupEmptyT:'暂无备份',backupDoneT:'备份已导出',backupInvalidT:'备份文件无效',backupNewerT:'备份版本较新，无法恢复',backupConfirmT:'确认恢复',backupConfirmText:'恢复将替换当前全部本地数据（歌单、收藏、历史、关注、源、设置），确定继续吗？',backupRestoredT:'已恢复，正在刷新',backupInAppT:'App 内备份',backupContentsT:'备份内容',backupCopyT:'复制备份文本',backupCopiedT:'已复制',backupTooBigT:'备份过大，未存入 App 内（仍可导出文件）',srcTestT:'测试',srcDelT:'删除',srcAddT:'添加源',srcNamePh:'源名称',srcUrlPh:'源地址',srcImportT:'导入源',srcExportT:'导出源',srcTestOkT:'测试通过',srcTestFailT:'测试失败',srcEnabledT:'已启用',srcDisabledT:'已停用',srcAddedT:'已添加',deletedT:'已删除',versionT:'版本',viewT:'查看'});
 Object.assign(I18N['zh-TW'],{settingsT:'設定',updateT:'檢查更新',updateCheckT:'檢查更新',updateSoonT:'更新檢查即將上線',updateLatestT:'已是最新版本',updateNewT:'發現新版本',cacheT:'緩存',cacheHintT:'只清理網頁緩存，本地歌單、歷史、源配置不受影響',generalT:'常規設置',dmT:'彈幕',qualityDefaultT:'默認音質',localDataT:'本地數據',clearCatT:'清空',backupT:'備份管理',backupNowT:'立即備份',backupImportT:'從文件恢復',backupRestoreT:'恢復',backupDeleteT:'刪除',backupLastT:'上次備份',backupEmptyT:'暫無備份',backupDoneT:'備份已導出',backupInvalidT:'備份文件無效',backupNewerT:'備份版本較新，無法恢復',backupConfirmT:'確認恢復',backupConfirmText:'恢復將替換當前全部本地數據（歌單、收藏、歷史、關注、源、設置），確定繼續嗎？',backupRestoredT:'已恢復，正在刷新',backupInAppT:'App 內備份',backupContentsT:'備份內容',backupCopyT:'複製備份文本',backupCopiedT:'已複製',backupTooBigT:'備份過大，未存入 App 內（仍可導出文件）',srcTestT:'測試',srcDelT:'刪除',srcAddT:'添加源',srcNamePh:'源名稱',srcUrlPh:'源地址',srcImportT:'導入源',srcExportT:'導出源',srcTestOkT:'測試通過',srcTestFailT:'測試失敗',srcEnabledT:'已啟用',srcDisabledT:'已停用',srcAddedT:'已添加',deletedT:'已刪除',versionT:'版本',viewT:'查看'});
 Object.assign(I18N['en'],{settingsT:'Settings',updateT:'Check for updates',updateCheckT:'Check now',updateSoonT:'Update check coming soon',updateLatestT:'You\'re up to date',updateNewT:'New version available',cacheT:'Cache',cacheHintT:'Only web caches are cleared. Playlists, history and sources are untouched.',generalT:'General',dmT:'Danmaku',qualityDefaultT:'Default quality',localDataT:'Local data',clearCatT:'Clear',backupT:'Backup',backupNowT:'Back up now',backupImportT:'Restore from file',backupRestoreT:'Restore',backupDeleteT:'Delete',backupLastT:'Last backup',backupEmptyT:'No backups yet',backupDoneT:'Backup exported',backupInvalidT:'Invalid backup file',backupNewerT:'Backup is from a newer version',backupConfirmT:'Confirm restore',backupConfirmText:'Restoring will replace ALL local data (playlists, favorites, history, follows, sources, settings). Continue?',backupRestoredT:'Restored, reloading…',backupInAppT:'In-app backups',backupContentsT:'Backup contents',backupCopyT:'Copy backup text',backupCopiedT:'Copied',backupTooBigT:'Backup too large to keep in app (file export still works)',srcTestT:'Test',srcDelT:'Delete',srcAddT:'Add source',srcNamePh:'Source name',srcUrlPh:'Source URL',srcImportT:'Import sources',srcExportT:'Export sources',srcTestOkT:'Test passed',srcTestFailT:'Test failed',srcEnabledT:'Enabled',srcDisabledT:'Disabled',srcAddedT:'Added',deletedT:'Deleted',versionT:'Version',viewT:'View'});
-Object.assign(I18N['zh-CN'],{setSecPlay:'播放',setSecLive:'直播',setSecDm:'弹幕',setSecMusic:'音乐',xfT:'歌曲过渡',xfSub:'自动切歌时无缝衔接，手动切歌和单曲循环不使用过渡。',xfStyleT:'过渡效果样式',xfAutoT:'自动过渡',xfAutoSub:'按歌尾音量自动找过渡点，找不到时按 5 秒过渡。',xfXT:'交叉渐入渐出',xfXSub:'简单的过渡方式，每首歌按设定时长依次切换。',xfDurT:'过渡时长',xfSec:'秒',setSecUi:'界面',setSecLook:'外观',setSecData:'数据与备份',setSecAbout:'关于',bgPlayT:'后台播放',bgPlaySub:'切到后台后音乐继续播放',keepScreenT:'屏幕常亮',keepScreenSub:'播放音乐、直播或视频时不自动锁屏',sleepT:'睡眠定时',sleepOff:'关',sleepLeftT:'剩余',sleepFiredT:'定时到了，已停止播放',cellWarnT:'流量提醒',cellWarnSub:'用移动数据进直播或看视频时先提示',cellWarnAsk:'当前正在使用移动数据，继续播放吗？',hudClockT:'HUD 时钟',hudClockSub:'播放画面角落显示当前时间',hudSpeedT:'HUD 倍速',hudSpeedSub:'显示当前倍速或画质',autoPipT:'离开直播间小窗播放',autoPipSub:'返回列表时小窗继续播直播',followRefreshT:'关注自动刷新',followRefreshSub:'进直播页和回前台时刷新关注主播的开播状态',liveAlertT:'开播提醒',liveAlertSub:'关注的主播开播时在 App 内顶部横幅提醒（不推送）',liveAlertBanner:'{n} 位关注的主播开播了',liveAlertRoomT:'此主播的开播提醒',defLivePlatT:'默认直播平台',defLivePlatSub:'打开直播页时默认进入该平台',dmPausedT:'暂停时弹幕',dmPausedPause:'停住',dmPausedKeep:'继续飞',dmCollapseT:'折叠重复弹幕',dmCollapseSub:'5 秒内相同弹幕只显示一条并标 ×n',dmHoldT:'按住弹幕停住',dmHoldSub:'按住一条飞过的弹幕可以停住看清',dmBlockT:'弹幕屏蔽词',dmBlockPh:'输入要屏蔽的词或用户名',dmBlockWord:'关键词',dmBlockUser:'用户名',dmBlockAdd:'添加',dmBlockEmpty:'暂无屏蔽词',musicCacheT:'解析缓存',musicCacheSub:'同一首歌 5 分钟内不重复解析，换歌更快',musicCacheClear:'清除解析缓存',musicCacheCleared:'解析缓存已清除',srcVerT:'版本',textScaleT:'字体大小',textScaleSub:'全 App 字号缩放',densityT:'列表密度',densityStd:'标准',densityCompact:'紧凑',pureBlackT:'纯黑夜晚',pureBlackSub:'夜晚模式使用纯黑背景',cfgPreviewT:'查看本地配置',cfgPreviewSub:'只读展示全部本地设置（出问题时对照用）',autoCheckT:'启动时自动检查更新',autoCheckSub:'每天最多检查一次',skipVerT:'跳过此版本',skipVerDone:'已跳过该版本，下次不再提示',skipVerClear:'取消跳过',updateSkippedT:'已跳过该版本',updateKnownT:'有新版本',srcAddVideoT:'添加影视源',srcAddMusicT:'添加音乐源',srcAddLiveT:'添加直播源',vHistT:'影视历史',vFavsT:'影视收藏',liveFollowsT:'直播关注',liveLikedT:'直播点赞',liveCheckingT:'检查中…',liveStatusUnknownT:'状态未知',liveFollowStatusFail:'{n} 个关注状态获取失败，点重试'});
-Object.assign(I18N['zh-TW'],{setSecPlay:'播放',setSecLive:'直播',setSecDm:'彈幕',setSecMusic:'音樂',xfT:'歌曲過渡',xfSub:'自動切歌時無縫銜接，手動切歌和單曲循環不使用過渡。',xfStyleT:'過渡效果樣式',xfAutoT:'自動過渡',xfAutoSub:'按歌尾音量自動找過渡點，找不到時按 5 秒過渡。',xfXT:'交叉漸入漸出',xfXSub:'簡單的過渡方式，每首歌按設定時長依次切換。',xfDurT:'過渡時長',xfSec:'秒',setSecUi:'介面',setSecLook:'外觀',setSecData:'數據與備份',setSecAbout:'關於',bgPlayT:'後台播放',bgPlaySub:'切到後台後音樂繼續播放',keepScreenT:'螢幕常亮',keepScreenSub:'播放音樂、直播或影片時不自動鎖屏',sleepT:'睡眠定時',sleepOff:'關',sleepLeftT:'剩餘',sleepFiredT:'定時到了，已停止播放',cellWarnT:'流量提醒',cellWarnSub:'用行動數據進直播或看影片時先提示',cellWarnAsk:'目前正在使用行動數據，繼續播放嗎？',hudClockT:'HUD 時鐘',hudClockSub:'播放畫面角落顯示目前時間',hudSpeedT:'HUD 倍速',hudSpeedSub:'顯示目前倍速或畫質',autoPipT:'離開直播間小窗播放',autoPipSub:'返回列表時小窗繼續播直播',followRefreshT:'關注自動重新整理',followRefreshSub:'進直播頁和回前台時重新整理關注主播的開播狀態',liveAlertT:'開播提醒',liveAlertSub:'關注的主播開播時在 App 內頂部橫幅提醒（不推送）',liveAlertBanner:'{n} 位關注的主播開播了',liveAlertRoomT:'此主播的開播提醒',defLivePlatT:'預設直播平台',defLivePlatSub:'打開直播頁時預設進入該平台',dmPausedT:'暫停時彈幕',dmPausedPause:'停住',dmPausedKeep:'繼續飛',dmCollapseT:'摺疊重複彈幕',dmCollapseSub:'5 秒內相同彈幕只顯示一條並標 ×n',dmHoldT:'按住彈幕停住',dmHoldSub:'按住一條飛過的彈幕可以停住看清',dmBlockT:'彈幕屏蔽詞',dmBlockPh:'輸入要屏蔽的詞或用戶名',dmBlockWord:'關鍵詞',dmBlockUser:'用戶名',dmBlockAdd:'添加',dmBlockEmpty:'暫無屏蔽詞',musicCacheT:'解析快取',musicCacheSub:'同一首歌 5 分鐘內不重複解析，換歌更快',musicCacheClear:'清除解析快取',musicCacheCleared:'解析快取已清除',srcVerT:'版本',textScaleT:'字體大小',textScaleSub:'全 App 字號縮放',densityT:'列表密度',densityStd:'標準',densityCompact:'緊湊',pureBlackT:'純黑夜晚',pureBlackSub:'夜晚模式使用純黑背景',cfgPreviewT:'查看本地設定',cfgPreviewSub:'唯讀展示全部本地設定（出問題時對照用）',autoCheckT:'啟動時自動檢查更新',autoCheckSub:'每天最多檢查一次',skipVerT:'跳過此版本',skipVerDone:'已跳過該版本，下次不再提示',skipVerClear:'取消跳過',updateSkippedT:'已跳過該版本',updateKnownT:'有新版本',srcAddVideoT:'添加影視源',srcAddMusicT:'添加音樂源',srcAddLiveT:'添加直播源',vHistT:'影視歷史',vFavsT:'影視收藏',liveFollowsT:'直播關注',liveLikedT:'直播點讚',liveCheckingT:'檢查中…',liveStatusUnknownT:'狀態未知',liveFollowStatusFail:'{n} 個關注狀態獲取失敗，點重試'});
-Object.assign(I18N['en'],{setSecPlay:'Playback',setSecLive:'Live',setSecDm:'Danmaku',setSecMusic:'Music',xfT:'Crossfade',xfSub:'Seamless transitions on auto-advance. Manual skips and single repeat play without a transition.',xfStyleT:'Transition style',xfAutoT:'Auto transition',xfAutoSub:'Finds a quiet spot near the end by volume; falls back to a 5-second crossfade.',xfXT:'Crossfade',xfXSub:'A simple transition — each song switches after the set duration.',xfDurT:'Transition length',xfSec:'s',setSecUi:'Interface',setSecLook:'Appearance',setSecData:'Data & Backup',setSecAbout:'About',bgPlayT:'Background play',bgPlaySub:'Keep playing music when the app goes to the background',keepScreenT:'Keep screen on',keepScreenSub:'Prevent the screen from locking while playing',sleepT:'Sleep timer',sleepOff:'Off',sleepLeftT:'left',sleepFiredT:'Sleep timer ended — playback stopped',cellWarnT:'Cellular warning',cellWarnSub:'Warn before playing on mobile data',cellWarnAsk:"You're on mobile data. Continue playing?",hudClockT:'HUD clock',hudClockSub:'Show the current time on the player',hudSpeedT:'HUD speed',hudSpeedSub:'Show the current speed or quality',autoPipT:'Auto picture-in-picture',autoPipSub:'Keep playing in a floating window when you leave a room',followRefreshT:'Auto-refresh follows',followRefreshSub:"Refresh followed streamers' live status on entering Live or returning to the app",liveAlertT:'Live alerts',liveAlertSub:'Show an in-app banner at the top of the app when a followed streamer goes live (no push)',liveAlertBanner:'{n} followed streamer(s) went live',liveAlertRoomT:'Live alerts for this streamer',defLivePlatT:'Default live platform',defLivePlatSub:'Which platform Live opens to by default',dmPausedT:'Danmaku when paused',dmPausedPause:'Pause',dmPausedKeep:'Keep flying',dmCollapseT:'Collapse repeated danmaku',dmCollapseSub:'Show identical danmaku once within 5 seconds, marked ×n',dmHoldT:'Hold danmaku to pause',dmHoldSub:'Press and hold a flying danmaku to freeze it',dmBlockT:'Blocked danmaku',dmBlockPh:'Word or username to block',dmBlockWord:'Keyword',dmBlockUser:'Username',dmBlockAdd:'Add',dmBlockEmpty:'No blocked words yet',musicCacheT:'Parse cache',musicCacheSub:'Resolved URLs are cached for 5 minutes',musicCacheClear:'Clear parse cache',musicCacheCleared:'Parse cache cleared',srcVerT:'Version',textScaleT:'Text size',textScaleSub:'Scale text across the app',densityT:'List density',densityStd:'Standard',densityCompact:'Compact',pureBlackT:'Pure black night',pureBlackSub:'Use a pure black background in night mode',cfgPreviewT:'View local config',cfgPreviewSub:'Read-only view of all local settings',autoCheckT:'Auto-check for updates on launch',autoCheckSub:'At most once a day',skipVerT:'Skip this version',skipVerDone:"Skipped — won't prompt again for this version",skipVerClear:'Unskip',updateSkippedT:'This version was skipped',updateKnownT:'New version available',srcAddVideoT:'Add video source',srcAddMusicT:'Add music source',srcAddLiveT:'Add live source',vHistT:'Video history',vFavsT:'Video favorites',liveFollowsT:'Live follows',liveLikedT:'Live liked',liveCheckingT:'Checking…',liveStatusUnknownT:'Status unknown',liveFollowStatusFail:'{n} follow status check(s) failed, tap to retry'});
+Object.assign(I18N['zh-CN'],{setSecPlay:'播放',setSecLive:'直播',setSecDm:'弹幕',setSecMusic:'音乐',xfT:'歌曲过渡',xfSub:'自动切歌时无缝衔接，手动切歌和单曲循环不使用过渡。',xfStyleT:'过渡效果样式',xfAutoT:'自动过渡',xfAutoSub:'按歌尾音量自动找过渡点，找不到时按 5 秒过渡。',xfXT:'交叉渐入渐出',xfXSub:'简单的过渡方式，每首歌按设定时长依次切换。',xfDurT:'过渡时长',xfSec:'秒',setSecUi:'界面',setSecLook:'外观',setSecData:'数据与备份',setSecAbout:'关于',bgPlayT:'后台播放',bgPlaySub:'切到后台后音乐继续播放',keepScreenT:'屏幕常亮',keepScreenSub:'播放音乐、直播或视频时不自动锁屏',sleepT:'睡眠定时',sleepOff:'关',sleepLeftT:'剩余',sleepFiredT:'定时到了，已停止播放',cellWarnT:'流量提醒',cellWarnSub:'用移动数据进直播或看视频时先提示',cellWarnAsk:'当前正在使用移动数据，继续播放吗？',hudClockT:'HUD 时钟',hudClockSub:'播放画面角落显示当前时间',hudSpeedT:'HUD 倍速',hudSpeedSub:'显示当前倍速或画质',autoPipT:'离开直播间小窗播放',autoPipSub:'返回列表时小窗继续播直播',followRefreshT:'关注自动刷新',followRefreshSub:'进直播页和回前台时刷新关注主播的开播状态',liveAlertT:'开播提醒',liveAlertSub:'关注的主播开播时在 App 内顶部横幅提醒（不推送）',liveAlertBanner:'{n} 位关注的主播开播了',liveAlertRoomT:'此主播的开播提醒',defLivePlatT:'默认直播平台',defLivePlatSub:'打开直播页时默认进入该平台',dmPausedT:'暂停时弹幕',dmPausedPause:'停住',dmPausedKeep:'继续飞',dmCollapseT:'折叠重复弹幕',dmCollapseSub:'5 秒内相同弹幕只显示一条并标 ×n',dmHoldT:'按住弹幕停住',dmHoldSub:'按住一条飞过的弹幕可以停住看清',dmBlockT:'弹幕屏蔽词',dmBlockPh:'输入要屏蔽的词或用户名',dmBlockWord:'关键词',dmBlockUser:'用户名',dmBlockAdd:'添加',dmBlockEmpty:'暂无屏蔽词',musicCacheT:'解析缓存',musicCacheSub:'同一首歌 5 分钟内不重复解析，换歌更快',musicCacheClear:'清除解析缓存',musicCacheCleared:'解析缓存已清除',srcVerT:'版本',textScaleT:'字体大小',textScaleSub:'全 App 字号缩放',densityT:'列表密度',densityStd:'标准',densityCompact:'紧凑',pureBlackT:'纯黑夜晚',pureBlackSub:'夜晚模式使用纯黑背景',cfgPreviewT:'查看本地配置',cfgPreviewSub:'只读展示全部本地设置（出问题时对照用）',autoCheckT:'启动时自动检查更新',autoCheckSub:'每天最多检查一次',skipVerT:'跳过此版本',skipVerDone:'已跳过该版本，下次不再提示',skipVerClear:'取消跳过',updateSkippedT:'已跳过该版本',updateKnownT:'有新版本',srcAddVideoT:'添加影视源',srcAddMusicT:'添加音乐源',srcAddLiveT:'添加直播源',vHistT:'影视历史',vFavsT:'影视收藏',liveFollowsT:'直播关注',liveLikedT:'直播点赞',liveCheckingT:'检查中…',liveStatusUnknownT:'状态未知',liveFollowStatusFail:'{n} 个关注状态获取失败，点重试',setSubMusicT:'音源',setSubVideoT:'影视源',setSubLiveT:'直播源',setSubDmT:'弹幕设置',setSubNavT:'源与弹幕',setBackT:'返回设置'});
+Object.assign(I18N['zh-TW'],{setSecPlay:'播放',setSecLive:'直播',setSecDm:'彈幕',setSecMusic:'音樂',xfT:'歌曲過渡',xfSub:'自動切歌時無縫銜接，手動切歌和單曲循環不使用過渡。',xfStyleT:'過渡效果樣式',xfAutoT:'自動過渡',xfAutoSub:'按歌尾音量自動找過渡點，找不到時按 5 秒過渡。',xfXT:'交叉漸入漸出',xfXSub:'簡單的過渡方式，每首歌按設定時長依次切換。',xfDurT:'過渡時長',xfSec:'秒',setSecUi:'介面',setSecLook:'外觀',setSecData:'數據與備份',setSecAbout:'關於',bgPlayT:'後台播放',bgPlaySub:'切到後台後音樂繼續播放',keepScreenT:'螢幕常亮',keepScreenSub:'播放音樂、直播或影片時不自動鎖屏',sleepT:'睡眠定時',sleepOff:'關',sleepLeftT:'剩餘',sleepFiredT:'定時到了，已停止播放',cellWarnT:'流量提醒',cellWarnSub:'用行動數據進直播或看影片時先提示',cellWarnAsk:'目前正在使用行動數據，繼續播放嗎？',hudClockT:'HUD 時鐘',hudClockSub:'播放畫面角落顯示目前時間',hudSpeedT:'HUD 倍速',hudSpeedSub:'顯示目前倍速或畫質',autoPipT:'離開直播間小窗播放',autoPipSub:'返回列表時小窗繼續播直播',followRefreshT:'關注自動重新整理',followRefreshSub:'進直播頁和回前台時重新整理關注主播的開播狀態',liveAlertT:'開播提醒',liveAlertSub:'關注的主播開播時在 App 內頂部橫幅提醒（不推送）',liveAlertBanner:'{n} 位關注的主播開播了',liveAlertRoomT:'此主播的開播提醒',defLivePlatT:'預設直播平台',defLivePlatSub:'打開直播頁時預設進入該平台',dmPausedT:'暫停時彈幕',dmPausedPause:'停住',dmPausedKeep:'繼續飛',dmCollapseT:'摺疊重複彈幕',dmCollapseSub:'5 秒內相同彈幕只顯示一條並標 ×n',dmHoldT:'按住彈幕停住',dmHoldSub:'按住一條飛過的彈幕可以停住看清',dmBlockT:'彈幕屏蔽詞',dmBlockPh:'輸入要屏蔽的詞或用戶名',dmBlockWord:'關鍵詞',dmBlockUser:'用戶名',dmBlockAdd:'添加',dmBlockEmpty:'暫無屏蔽詞',musicCacheT:'解析快取',musicCacheSub:'同一首歌 5 分鐘內不重複解析，換歌更快',musicCacheClear:'清除解析快取',musicCacheCleared:'解析快取已清除',srcVerT:'版本',textScaleT:'字體大小',textScaleSub:'全 App 字號縮放',densityT:'列表密度',densityStd:'標準',densityCompact:'緊湊',pureBlackT:'純黑夜晚',pureBlackSub:'夜晚模式使用純黑背景',cfgPreviewT:'查看本地設定',cfgPreviewSub:'唯讀展示全部本地設定（出問題時對照用）',autoCheckT:'啟動時自動檢查更新',autoCheckSub:'每天最多檢查一次',skipVerT:'跳過此版本',skipVerDone:'已跳過該版本，下次不再提示',skipVerClear:'取消跳過',updateSkippedT:'已跳過該版本',updateKnownT:'有新版本',srcAddVideoT:'添加影視源',srcAddMusicT:'添加音樂源',srcAddLiveT:'添加直播源',vHistT:'影視歷史',vFavsT:'影視收藏',liveFollowsT:'直播關注',liveLikedT:'直播點讚',liveCheckingT:'檢查中…',liveStatusUnknownT:'狀態未知',liveFollowStatusFail:'{n} 個關注狀態獲取失敗，點重試',setSubMusicT:'音源',setSubVideoT:'影視源',setSubLiveT:'直播源',setSubDmT:'彈幕設定',setSubNavT:'源與彈幕',setBackT:'返回設定'});
+Object.assign(I18N['en'],{setSecPlay:'Playback',setSecLive:'Live',setSecDm:'Danmaku',setSecMusic:'Music',xfT:'Crossfade',xfSub:'Seamless transitions on auto-advance. Manual skips and single repeat play without a transition.',xfStyleT:'Transition style',xfAutoT:'Auto transition',xfAutoSub:'Finds a quiet spot near the end by volume; falls back to a 5-second crossfade.',xfXT:'Crossfade',xfXSub:'A simple transition — each song switches after the set duration.',xfDurT:'Transition length',xfSec:'s',setSecUi:'Interface',setSecLook:'Appearance',setSecData:'Data & Backup',setSecAbout:'About',bgPlayT:'Background play',bgPlaySub:'Keep playing music when the app goes to the background',keepScreenT:'Keep screen on',keepScreenSub:'Prevent the screen from locking while playing',sleepT:'Sleep timer',sleepOff:'Off',sleepLeftT:'left',sleepFiredT:'Sleep timer ended — playback stopped',cellWarnT:'Cellular warning',cellWarnSub:'Warn before playing on mobile data',cellWarnAsk:"You're on mobile data. Continue playing?",hudClockT:'HUD clock',hudClockSub:'Show the current time on the player',hudSpeedT:'HUD speed',hudSpeedSub:'Show the current speed or quality',autoPipT:'Auto picture-in-picture',autoPipSub:'Keep playing in a floating window when you leave a room',followRefreshT:'Auto-refresh follows',followRefreshSub:"Refresh followed streamers' live status on entering Live or returning to the app",liveAlertT:'Live alerts',liveAlertSub:'Show an in-app banner at the top of the app when a followed streamer goes live (no push)',liveAlertBanner:'{n} followed streamer(s) went live',liveAlertRoomT:'Live alerts for this streamer',defLivePlatT:'Default live platform',defLivePlatSub:'Which platform Live opens to by default',dmPausedT:'Danmaku when paused',dmPausedPause:'Pause',dmPausedKeep:'Keep flying',dmCollapseT:'Collapse repeated danmaku',dmCollapseSub:'Show identical danmaku once within 5 seconds, marked ×n',dmHoldT:'Hold danmaku to pause',dmHoldSub:'Press and hold a flying danmaku to freeze it',dmBlockT:'Blocked danmaku',dmBlockPh:'Word or username to block',dmBlockWord:'Keyword',dmBlockUser:'Username',dmBlockAdd:'Add',dmBlockEmpty:'No blocked words yet',musicCacheT:'Parse cache',musicCacheSub:'Resolved URLs are cached for 5 minutes',musicCacheClear:'Clear parse cache',musicCacheCleared:'Parse cache cleared',srcVerT:'Version',textScaleT:'Text size',textScaleSub:'Scale text across the app',densityT:'List density',densityStd:'Standard',densityCompact:'Compact',pureBlackT:'Pure black night',pureBlackSub:'Use a pure black background in night mode',cfgPreviewT:'View local config',cfgPreviewSub:'Read-only view of all local settings',autoCheckT:'Auto-check for updates on launch',autoCheckSub:'At most once a day',skipVerT:'Skip this version',skipVerDone:"Skipped — won't prompt again for this version",skipVerClear:'Unskip',updateSkippedT:'This version was skipped',updateKnownT:'New version available',srcAddVideoT:'Add video source',srcAddMusicT:'Add music source',srcAddLiveT:'Add live source',vHistT:'Video history',vFavsT:'Video favorites',liveFollowsT:'Live follows',liveLikedT:'Live liked',liveCheckingT:'Checking…',liveStatusUnknownT:'Status unknown',liveFollowStatusFail:'{n} follow status check(s) failed, tap to retry',setSubMusicT:'Music Sources',setSubVideoT:'Video Sources',setSubLiveT:'Live Sources',setSubDmT:'Danmaku Settings',setSubNavT:'Sources & Danmaku',setBackT:'Back to Settings'});
 let lang=localStorage.getItem('lang')||'zh-CN', mode=localStorage.getItem('mode')||'system';
 audio=document.getElementById('audioEl')||new Audio(), curTrack=null, playing=false, wantPlaying=false, curTrackIdx=-1, curQuality=localStorage.getItem('musicQuality')||'hires', curCover='';
 try{ audio.preload='auto'; audio.setAttribute('playsinline',''); audio.muted=localStorage.getItem('hao_muted')==='1'; if(!audio.parentNode){ audio.style.position='fixed'; audio.style.width='1px'; audio.style.height='1px'; audio.style.opacity='0'; audio.style.pointerEvents='none'; if(document.body) document.body.appendChild(audio); } }catch(e){}
@@ -401,12 +401,12 @@ async function getPlayUrl(songId, platform, quality, title, cover){
   const ck = songId + '|' + pf + '|' + q;
   const cached = haoParseCacheGet(ck);
   if (cached) return cached;
-  let url='', candidates=[];
+  let url='', candidates=[], via='', r=null;
   try{
-    const r=await window.HaoResolvers.resolvePlayUrl(songId, pf, q, title);
-    if(r&&r.url){ url=r.url; candidates=[r.url]; }
+    r=await window.HaoResolvers.resolvePlayUrl(songId, pf, q, title);
+    if(r&&r.url){ url=r.url; candidates=(r.candidates&&r.candidates.length?r.candidates:[r.url]); via=(r&&r.via)||''; }
   }catch(e){}
-  const out = { url: url, candidates: candidates, quality: q, cover: cover || '', via: (r&&r.via)||'' };
+  const out = { url: url, candidates: candidates, quality: q, cover: cover || '', via: via };
   if (url) haoParseCacheSet(ck, out);
   return out;
 }
@@ -485,13 +485,13 @@ async function directSearchWY(q, limit){
 async function directSearchTX(q, limit){
   const j = await nativeJson('https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?g_tk=5381&uin=0&format=json&inCharset=utf-8&outCharset=utf-8&notice=0&platform=h5&needNewCode=1&w=' + encodeURIComponent(q) + '&zhidaqu=1&catZhida=1&t=0&flag=1&ie=utf-8&sem=1&aggr=0&perpage=' + limit + '&n=' + limit + '&p=1&remoteplace=txt.mqq.all', { headers: { Referer: 'https://y.qq.com/', 'User-Agent': DIRECT_MUSIC_UA } }, 10000);
   return (((j.data && j.data.song && j.data.song.list) || [])).map(function(x){
-    return { songId: x.songmid, title: x.songname, artist: (x.singer || []).map(function(a){ return a.name; }).join('/'), platform: 'tx', cover: x.albummid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T002R300x300M000' + x.albummid + '.jpg') : '', dur: Number(x.interval) || 0, vipOnly: 0 };
+    return { songId: x.songmid, title: x.songname, artist: (x.singer || []).map(function(a){ return a.name; }).join('/'), platform: 'tx', cover: x.albummid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T002R300x300M000' + x.albummid + '.jpg') : '', dur: Number(x.interval) || 0, vipOnly: 0, album: x.albumname || '' };
   });
 }
 async function directSearchKG(q, limit){
   for (let attempt = 0; attempt < 2; attempt++) {
     const j = await nativeJson('https://songsearch.kugou.com/song_search_v2?keyword=' + encodeURIComponent(q) + '&page=1&pagesize=' + limit + '&format=json', { headers: { 'User-Agent': DIRECT_MUSIC_UA } }, 10000);
-    const out = (((j.data && j.data.lists) || [])).map(function(x){ return { songId: x.FileHash, title: x.SongName, artist: x.SingerName, platform: 'kg', dur: Number(x.Duration) || 0, vipOnly: 0 }; }).filter(function(x){ return x.songId; });
+    const out = (((j.data && j.data.lists) || [])).map(function(x){ return { songId: x.FileHash, title: x.SongName, artist: x.SingerName, platform: 'kg', dur: Number(x.Duration) || 0, vipOnly: 0, album: x.AlbumName || '' }; }).filter(function(x){ return x.songId; });
     if (out.length || attempt === 1) return out;
     await new Promise(function(r){ setTimeout(r, 800); });
   }
@@ -509,7 +509,7 @@ async function directSearchKW(q, limit){
       const pics = Array.from(txt.matchAll(/'web_albumpic_short':'((?:[^'\\]|\\.)*)'/g)).map(function(m){ return m[1]; });
       list = ids.map(function(id, i){ return { MUSICRID: id, NAME: names[i] || '', ARTIST: arts[i] || '', web_albumpic_short: pics[i] || '' }; });
     }
-    const out = list.map(function(x){ return { songId: String(x.MUSICRID || '').replace('MUSIC_', ''), title: x.NAME, artist: x.ARTIST, platform: 'kw', dur: Number(x.DURATION) || 0, cover: directCoverHi(x.web_albumpic_short ? 'https://img1.kuwo.cn/star/albumcover/' + x.web_albumpic_short : (x.PICPATH || '')), vipOnly: 0 }; }).filter(function(x){ return x.songId && x.title; });
+    const out = list.map(function(x){ return { songId: String(x.MUSICRID || '').replace('MUSIC_', ''), title: x.NAME, artist: x.ARTIST, platform: 'kw', dur: Number(x.DURATION) || 0, album: x.ALBUM || '', cover: directCoverHi(x.web_albumpic_short ? 'https://img1.kuwo.cn/star/albumcover/' + x.web_albumpic_short : (x.PICPATH || '')), vipOnly: 0 }; }).filter(function(x){ return x.songId && x.title; });
     if (out.length || attempt === 1) return out;
     await new Promise(function(r){ setTimeout(r, 800); });
   }
@@ -525,8 +525,7 @@ async function directSearchOne(pf, q){
 
 // ---- music direct (Phase 3): playlist/artist/plaza/comments search + detail.
 // Port of the server functions; every call falls back to the matching
-// /api/music/* endpoint on any failure. User playlists (/api/search/user-*)
-// stay server-only: they are shop DB data, there is no upstream to call.
+// /api/music/* endpoint on any failure.
 function directDecodeEnt(s){ return String(s || '').replace(/&#(\d+);/g, function(m, n){ try { return String.fromCodePoint(Number(n)); } catch (e) { return m; } }).replace(/&amp;/g, '&'); }
 function directRaceNull(p, ms){ return Promise.race([Promise.resolve(p).catch(function(){ return null; }), new Promise(function(res){ setTimeout(function(){ res(null); }, ms); })]); }
 // ---- playlist search, direct (port of server searchWYPlaylists/searchKWPlaylists; QQ playlist search is rejected by its API, same as server) ----
@@ -636,7 +635,7 @@ async function directArtistDetailWY(id){
   if (!allSongs.length) {
     try { const sr = await nativeJson('https://music.163.com/api/artist/top/song?id=' + encodeURIComponent(id) + '&limit=100', hd, 15000); allSongs = sr.songs || []; } catch (e) {}
   }
-  const songs = allSongs.map(function(s){ return { songId: String(s.id), title: s.name || '', artist: ((s.artists || s.ar) || []).map(function(a){ return a.name; }).join(' / ') || '', platform: 'wy', dur: Math.round(Number((s && s.duration != null ? s.duration : s.dt) || 0) / 1000), cover: directCoverHi(((s.album && s.album.picUrl) || (s.al && s.al.picUrl)) || ''), vipOnly: (s.fee === 1 || s.fee === 4) ? 1 : 0 }; });
+  const songs = allSongs.map(function(s){ return { songId: String(s.id), title: s.name || '', artist: ((s.artists || s.ar) || []).map(function(a){ return a.name; }).join(' / ') || '', platform: 'wy', dur: Math.round(Number((s && s.duration != null ? s.duration : s.dt) || 0) / 1000), cover: directCoverHi(((s.album && s.album.picUrl) || (s.al && s.al.picUrl)) || ''), vipOnly: (s.fee === 1 || s.fee === 4) ? 1 : 0, album: ((s.album && s.album.name) || (s.al && s.al.name)) || '', albumYear: (function(pt){ return pt ? new Date(pt).getFullYear() : 0; })((s.album && s.album.publishTime) || (s.al && s.al.publishTime) || 0) }; });
   const albums = (ar.hotAlbums || []).map(function(a){ return { id: String(a.id), name: a.name || '', cover: directCoverHi(a.picUrl || ''), publishTime: Number(a.publishTime) || 0, songCount: Number(a.size) || 0, artist: (a.artist && a.artist.name) || '' }; });
   const artist = ar.artist || {};
   return { name: artist.name || '', pic: directCoverHi(artist.picUrl || ''), musicSize: Number(artist.musicSize) || 0, albumSize: Number(artist.albumSize) || 0, songs: songs, albums: albums };
@@ -659,7 +658,7 @@ async function directArtistDetailTX(mid, name){
       const mine = mid ? singers.some(function(x){ return x.mid === mid; }) : singers.some(function(x){ return x.name === q; });
       if (!mine) continue;
       seen.add(s.songmid);
-      songs.push({ songId: s.songmid, title: s.songname || '', artist: singers.map(function(a){ return a.name; }).join(' / ') || '', platform: 'tx', dur: Number(s.interval) || 0, cover: s.albummid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T002R300x300M000' + s.albummid + '.jpg') : '', vipOnly: 0 });
+      songs.push({ songId: s.songmid, title: s.songname || '', artist: singers.map(function(a){ return a.name; }).join(' / ') || '', platform: 'tx', dur: Number(s.interval) || 0, cover: s.albummid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T002R300x300M000' + s.albummid + '.jpg') : '', vipOnly: 0, album: s.albumname || '', albumYear: 0 });
     }
   }
   return { name: q, pic: mid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T001R300x300M000' + mid + '.jpg') : '', musicSize: songnum || songs.length, albumSize: albums.length || albumnum, songs: songs, albums: albums };
@@ -728,8 +727,31 @@ async function directPlazaKW(){
   const r = await directSearchKWPlaylists('热门', 1);
   return r.items;
 }
+async function directPlazaKG(){
+  const j = await nativeJson('http://mobilecdn.kugou.com/api/v3/search/special?format=json&keyword=%E7%83%AD%E9%97%A8&page=1&pagesize=30&showtype=1', { headers: { 'User-Agent': DIRECT_MUSIC_UA } }, 10000);
+  const list = (j.data && j.data.info) || [];
+  return list.map(function(x){ return { id: String(x.specialid), name: x.specialname || '', cover: directCoverHi(String(x.imgurl || '').replace('{size}', '400')), creator: x.nickname || '', playCount: Number(x.playcount) || 0, trackCount: Number(x.songcount) || 0, desc: x.intro || '', time: x.publishtime || '' }; }).filter(function(x){ return x.id && x.name; });
+}
+async function directImportKGPlaylist(id){
+  const out = []; let name = '';
+  for (let pn = 1; pn <= 10; pn++) {
+    const j = await nativeJson('http://mobilecdn.kugou.com/api/v3/special/song?specialid=' + id + '&page=' + pn + '&pagesize=100&showtype=1', { headers: { 'User-Agent': DIRECT_MUSIC_UA } }, 15000);
+    const list = (j.data && j.data.info) || [];
+    if (!list.length) break;
+    list.forEach(function(x){
+      const fn = String(x.filename || '');
+      const sep = fn.indexOf(' - ');
+      const artist = sep >= 0 ? fn.slice(0, sep) : '';
+      const title = sep >= 0 ? fn.slice(sep + 3) : fn;
+      const uc = (x.trans_param && x.trans_param.union_cover) || '';
+      out.push({ songId: String(x.hash || ''), title: title, artist: artist, platform: 'kg', dur: Number(x.duration) || 0, cover: uc ? directCoverHi(String(uc).replace('{size}', '400')) : '', vipOnly: 0 });
+    });
+    if (list.length < 100) break;
+  }
+  return { name: name, tracks: out.filter(function(x){ return x.songId && x.title; }) };
+}
 async function directPlaza(pf){
-  const items = pf === 'wy' ? await directPlazaWY() : pf === 'tx' ? await directPlazaTX() : await directPlazaKW();
+  const items = pf === 'wy' ? await directPlazaWY() : pf === 'tx' ? await directPlazaTX() : pf === 'kg' ? await directPlazaKG() : await directPlazaKW();
   return { ok: true, items: items };
 }
 async function directImportWYPlaylist(id){
@@ -781,7 +803,7 @@ async function directImportTXPlaylist(id){
   return { name: directDecodeEnt(cd.dissname || ''), tracks: list.map(function(x){ return { songId: x.mid, title: x.name, artist: (x.singer || []).map(function(a){ return a.name; }).join('/'), platform: 'tx', dur: Number(x.interval) || 0, cover: x.album && x.album.mid ? directCoverHi('https://y.gtimg.cn/music/photo_new/T002R300x300M000' + x.album.mid + '.jpg') : '', vipOnly: 0 }; }).filter(function(x){ return x.songId && x.title; }) };
 }
 async function directPlazaDetail(pf, id){
-  const got = pf === 'wy' ? await directImportWYPlaylist(id) : pf === 'tx' ? await directImportTXPlaylist(id) : await directImportKWPlaylist(id);
+  const got = pf === 'wy' ? await directImportWYPlaylist(id) : pf === 'tx' ? await directImportTXPlaylist(id) : pf === 'kg' ? await directImportKGPlaylist(id) : await directImportKWPlaylist(id);
   return { ok: true, name: got.name || '', tracks: got.tracks || [] };
 }
 
@@ -941,9 +963,8 @@ async function directKuwoLyric(songId){
   return list.map(function(x){ return { t: parseFloat(x.time) || 0, text: String(x.lineLyric || '').trim() }; }).filter(function(x){ return x.text; });
 }
 // ---- video CMS, direct (port of server /api/video/search + /api/video/detail) ----
-// TMDB enrichment is server-side (it needs the server's TMDB key), so the
-// direct path returns CMS data only: CMS poster/score/type. If the direct
-// call fails, the caller falls back to the server endpoint, which adds TMDB.
+// The direct path returns CMS data only: CMS poster/score/type.
+// Douban enriches the detail afterwards (rating/cast/poster/synopsis).
 const DIRECT_VIDEO_SEEDS = [
   // Built-in video seeds (standalone defaults; HaoSources.getVideoSources() may override).
   { id: 12, name: '金鹰资源', apiUrl: 'http://jyzyapi.com/api.php/provide/vod', kind: 'play' },
@@ -1084,38 +1105,11 @@ async function directVideoDetail(sid, vid){
   const meta = { name: d.vod_name || '', pic: d.vod_pic || '', year: String(d.vod_year || ''), type: d.type_name || '', area: d.vod_area || '', remarks: d.vod_remarks || '', score: d.vod_score || '', actor: d.vod_actor || '', director: d.vod_director || '', content: d.vod_content || '' };
   return { ok: true, meta: meta, lines: lines };
 }
-// ---- TMDB, direct (Phase 3). Key comes from the server at runtime
-// Standalone: key comes from HaoSources.getTmdbKey() (user setting) or
-// window.__HAO_TMDB_KEY__ (injected at document-start) or localStorage
-// 'hao_tmdb_key'. No key => enrichment is skipped silently.
-let __tmdbKey = null, __tmdbKeyP = null;
-function haoTmdbKey(){ try{ if(window.HaoSources&&typeof window.HaoSources.getTmdbKey==='function'){ const k=window.HaoSources.getTmdbKey(); if(k) return k; } }catch(e){} if(window.__HAO_TMDB_KEY__) return window.__HAO_TMDB_KEY__; try{ return localStorage.getItem('hao_tmdb_key')||''; }catch(e){ return ''; } }
 function haoDanmakuEndpoint(){ try{ if(window.HaoSources&&typeof window.HaoSources.getDanmakuEndpoint==='function'){ const e=window.HaoSources.getDanmakuEndpoint(); if(e!=null) return e||''; } }catch(e){} try{ return localStorage.getItem('hao_danmaku_endpoint')||''; }catch(e){ return ''; } }
 function postDanmakuEndpoint(){ try{ const ep=haoDanmakuEndpoint(); if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.nativePlayer){ window.webkit.messageHandlers.nativePlayer.postMessage({kind:'dm.endpoint', endpoint:ep||''}); } }catch(e){} }
-async function directTmdbKey(){
-  if(__tmdbKey) return __tmdbKey;
-  const k=haoTmdbKey();
-  if(k){ __tmdbKey=k; return k; }
-  return null;
-}
-async function directTmdbGet(path, params, ms){
-  const k = await directTmdbKey();
-  if(!k) return null;
-  const u = new URL('https://api.themoviedb.org/3'+path);
-  for(const kk in (params||{})) u.searchParams.set(kk, params[kk]);
-  u.searchParams.set('language','zh-CN');
-  const headers = {'Accept':'application/json'};
-  if(k.startsWith('eyJ')) headers['Authorization']='Bearer '+k;
-  else u.searchParams.set('api_key', k);
-  return nativeJson(u.toString(), {headers:headers}, ms||10000);
-}
-function directTmdbNorm(s){ return String(s||'').replace(/\s+/g,'').toLowerCase(); }
-function directTmdbYearOf(d){ const s=(d&&(d.release_date||d.first_air_date))||''; const y=parseInt(String(s).slice(0,4),10); return isNaN(y)?null:y; }
-// Port of server tmdbSearchTitle: /search/multi, exact title (or original
-// title) only, year must match within 1 when known on both sides.
-// Port of server tmdbStripSeasonSuffix: strip a TRAILING season suffix so
-// "xxx第2季" / "Show Season 2" searches TMDB as the base series title.
-function directTmdbStripSeasonSuffix(title){
+// Strip a trailing season suffix ("xxx第2季" / "Show Season 2")
+// so title lookups use the base series title.
+function vodStripSeasonSuffix(title){
   let base=String(title||'').trim();
   if(!base) return {base:base, stripped:false};
   const CN='[0-9０-９]{1,2}|[一二三四五六七八九十百千]+';
@@ -1138,89 +1132,12 @@ function directTmdbStripSeasonSuffix(title){
   if(!base) return {base:String(title||'').trim(), stripped:false};
   return {base:base, stripped:stripped};
 }
-async function directTmdbSearchTitle(title, year){
-  const _strip=directTmdbStripSeasonSuffix(title);
-  const qTitle=_strip.base, _stripped=_strip.stripped;
-  const j = await directTmdbGet('/search/multi',{query:qTitle});
-  const cands=[];
-  for(const r of ((j&&Array.isArray(j.results))?j.results:[])){
-    if(r.media_type!=='movie'&&r.media_type!=='tv') continue;
-    cands.push({id:r.id, media:r.media_type, title:r.title||r.name||'', orig:r.original_title||r.original_name||'', year:directTmdbYearOf(r), pop:r.popularity||0, poster:r.poster_path||'', backdrop:r.backdrop_path||'', score:(typeof r.vote_average==='number'&&r.vote_average>0)?Math.round(r.vote_average*10)/10:null, votes:r.vote_count||0, overview:r.overview||''});
-  }
-  const yNum=year?parseInt(String(year).slice(0,4),10):null;
-  const yOK=(typeof yNum==='number'&&!isNaN(yNum))?yNum:null;
-  const tNorm=directTmdbNorm(qTitle);
-  let best=null, bestScore=-1;
-  for(const c of cands){
-    if(!_stripped&&yOK&&c.year&&Math.abs(c.year-yOK)>1) continue;
-    let s=0;
-    if(directTmdbNorm(c.title)===tNorm) s+=10;
-    else if(directTmdbNorm(c.orig)===tNorm) s+=8;
-    else continue;
-    if(yOK&&c.year) s+=5;
-    s+=Math.min(2,(c.pop||0)/50);
-    if(s>bestScore){ bestScore=s; best=c; }
-  }
-  if(!best||bestScore<8) return null;
-  return best;
-}
-// Port of server tmdbDetailFor: search hit + /movie|tv/{id} + credits.
-// Port of server tmdbDetailFor: search hit + /movie|tv/{id} + credits.
-// Overall 8s cap: TMDB is slow/unreachable from mainland China and the
-// three calls run sequentially — without a cap a blocked TMDB stalls the
-// caller for ~39s (3 x (10s native timeout + 3s JS grace)).
-async function directTmdbDetail(title, year){
-  const run=(async function(){
-  const found = await directTmdbSearchTitle(title, year);
-  if(!found) return null;
-  const j = await directTmdbGet(found.media==='tv'?('/tv/'+found.id):('/movie/'+found.id),{},5000);
-  if(!j) return null;
-  let director='', castNames=[];
-  try{
-    const cr = await directTmdbGet(found.media==='tv'?('/tv/'+found.id+'/credits'):('/movie/'+found.id+'/credits'),{},4000);
-    const cast=(cr&&Array.isArray(cr.cast))?cr.cast:[];
-    const crew=(cr&&Array.isArray(cr.crew))?cr.crew:[];
-    director=(crew.find(function(c){return c&&c.job==='Director';})||{}).name||'';
-    castNames=cast.slice(0,8).map(function(c){return c.name;}).filter(Boolean);
-  }catch(e){}
-  const TMDB_CC_ZH={'US':'美国','CN':'中国大陆','JP':'日本','KR':'韩国','GB':'英国','HK':'香港','TW':'台湾','FR':'法国','DE':'德国','CA':'加拿大','AU':'澳大利亚','IN':'印度','TH':'泰国','RU':'俄罗斯','IT':'意大利','ES':'西班牙'};
-  return { id:found.id, media:found.media, title:found.title,
-    year:found.year||directTmdbYearOf(j),
-    poster: j.poster_path?('https://image.tmdb.org/t/p/w500'+j.poster_path):(found.poster?('https://image.tmdb.org/t/p/w500'+found.poster):''),
-    backdrop: j.backdrop_path?('https://image.tmdb.org/t/p/w1280'+j.backdrop_path):(found.backdrop?('https://image.tmdb.org/t/p/w1280'+found.backdrop):''),
-    overview: j.overview||found.overview||'',
-    score: (typeof j.vote_average==='number'&&j.vote_average>0)?Math.round(j.vote_average*10)/10:(found.score||null),
-    votes: j.vote_count||found.votes||0,
-    genres: Array.isArray(j.genres)?j.genres.map(function(g){return g.name;}).filter(Boolean):[],
-    runtime: j.runtime||(Array.isArray(j.episode_run_time)&&j.episode_run_time[0])||null,
-    countries: Array.isArray(j.production_countries)?j.production_countries.map(function(c){return TMDB_CC_ZH[c.iso_3166_1]||c.iso_3166_1;}).filter(Boolean):[],
-    releaseDate: j.release_date||j.first_air_date||'',
-    director:director, castNames:castNames };
-  })();
-  return Promise.race([run, new Promise(function(res){ setTimeout(function(){ res(null); }, 8000); })]);
-}
-// Client-side merge, same rules as the server's /api/video/detail TMDB block.
-function mergeTmdbIntoMeta(meta, td){
-  if(meta.douban){ if(meta.douban.score) td.score=null; if(meta.douban.poster) td.poster=''; }
-  if(td.backdrop) meta.backdrop=td.backdrop;
-  if(td.overview && String(meta.content||'').replace(/<[^>]*>/g,'').trim().length<20) meta.content=td.overview;
-  if(td.score) meta.score=String(td.score);
-  if(!meta.type && td.genres.length) meta.type=td.genres.slice(0,3).join('/');
-  if(!meta.area && td.countries.length) meta.area=td.countries[0];
-  if(!meta.year && td.year) meta.year=String(td.year);
-  if(!meta.director && td.director) meta.director=td.director;
-  if(!meta.actor && td.castNames.length) meta.actor=td.castNames.join(',');
-  if(td.runtime) meta.runtime=td.runtime;
-  if(td.releaseDate) meta.releaseDate=td.releaseDate;
-  if(td.poster){ if(meta.pic&&meta.pic!==td.poster&&!meta.picAlt) meta.picAlt=meta.pic; meta.pic=td.poster; }
-  meta.tmdb={id:td.id, media:td.media, score:td.score, votes:td.votes};
-}
 // ---- Douban detail enrichment (standalone) ---- [DOUBAN-START]
 // Replaces TMDB for core detail info: rating, cast/director, poster,
 // synopsis. Douban sends no CORS headers, so every call goes through the
 // nativeFetch bridge (URLSession). No key, no login.
 // Throttle: calls are serialized with a >=1s gap; HTTP 403 (error code
-// 008) backs off all Douban calls for 60s and falls back to TMDB.
+// 008) backs off all Douban calls for 60s (no enrichment until it expires).
 // Cache: detail by id + title->id mapping, permanent in localStorage.
 // Dead ends, do NOT use: douban.uieee.com (hijacked), frodo/api.douban.com
 // v2 (public apikeys revoked), rexxar search (needs login).
@@ -1238,7 +1155,7 @@ function doubanCacheGet(id){ const c=doubanLSGet('hao_douban_detail')||{}; retur
 function doubanCacheSet(id,d){ const c=doubanLSGet('hao_douban_detail')||{}; c[id]=Object.assign({},d,{at:Date.now()}); const ks=Object.keys(c); if(ks.length>200){ ks.sort(function(a,b){ return (c[a].at||0)-(c[b].at||0); }); for(let i=0;i<ks.length-200;i++) delete c[ks[i]]; } doubanLSSet('hao_douban_detail',c); }
 function doubanIdGet(key){ const m=doubanLSGet('hao_douban_idmap')||{}; return m[key]||null; }
 function doubanIdSet(key,id){ const m=doubanLSGet('hao_douban_idmap')||{}; m[key]=id; const ks=Object.keys(m); if(ks.length>200){ ks.slice(0,ks.length-200).forEach(function(k){ delete m[k]; }); } doubanLSSet('hao_douban_idmap',m); }
-function doubanTitleKey(title){ try{ return directTmdbStripSeasonSuffix(title).base.replace(/\s+/g,'').toLowerCase(); }catch(e){ return String(title||'').replace(/\s+/g,'').toLowerCase(); } }
+function doubanTitleKey(title){ try{ return vodStripSeasonSuffix(title).base.replace(/\s+/g,'').toLowerCase(); }catch(e){ return String(title||'').replace(/\s+/g,'').toLowerCase(); } }
 function doubanSuggestEnabled(){ try{ return localStorage.getItem('hao_douban_no_suggest')!=='1'; }catch(e){ return true; } }
 function doubanCall(fn){
   const run = __doubanChain.then(async function(){
@@ -1328,15 +1245,15 @@ async function directDoubanResolveId(title){
   let id = null;
   if(doubanSuggestEnabled()){ try{ id = await directDoubanSuggestId(title); }catch(e){ id = null; } }
   if(!id){ try{ id = await directDoubanSearchPageId(title); }catch(e){ id = null; } }
-  if(!id){ const b = directTmdbStripSeasonSuffix(title).base; id = DOUBAN_BUILTIN_IDS[title] || DOUBAN_BUILTIN_IDS[b] || null; }
+  if(!id){ const b = vodStripSeasonSuffix(title).base; id = DOUBAN_BUILTIN_IDS[title] || DOUBAN_BUILTIN_IDS[b] || null; }
   if(id) doubanIdSet(key, id);
   return id;
 }
-// Same return shape as directTmdbDetail, so the merge/DOM code is shared.
+// Same return shape as the video detail object, so the merge/DOM code is shared.
 async function directDoubanDetail(title, year){
   const run = (async function(){
     if(!nativeFetchAvailable() || doubanBlocked()) return null;
-    const base = directTmdbStripSeasonSuffix(title).base;
+    const base = vodStripSeasonSuffix(title).base;
     const id = await directDoubanResolveId(base);
     if(!id) return null;
     const cached = doubanCacheGet(id);
@@ -1359,7 +1276,7 @@ async function directDoubanDetail(title, year){
   return Promise.race([run, new Promise(function(res){ setTimeout(function(){ res(null); }, 15000); })]);
 }
 // Douban is primary for score/poster; director/cast/synopsis fill gaps
-// (same fill-when-missing rule as mergeTmdbIntoMeta).
+// (same fill-when-missing rule).
 function mergeDoubanIntoMeta(meta, dd){
   if(!dd) return;
   if(dd.score) meta.score = String(dd.score);
@@ -1377,100 +1294,19 @@ function mergeDoubanIntoMeta(meta, dd){
   meta.douban = {id: dd.id, score: dd.score, poster: dd.poster || ''};
 }
 function vodScoreMarkHTML(m){
-  if(m.douban && m.douban.score) return '<i class="tmdb-mark">豆瓣</i>';
-  if(m.tmdb && m.tmdb.score) return '<i class="tmdb-mark">TMDB</i>';
+  if(m.douban && m.douban.score) return '<i class="score-mark">豆瓣</i>';
   return '';
-}
-// ---- US content rating (TMDB) ---- [US-RATING-START]
-// TV Parental Guidelines for series (TV-Y / TV-Y7 / TV-G / TV-PG /
-// TV-14 / TV-MA) and MPAA for movies (G / PG / PG-13 / R / NC-17).
-// Source is TMDB only: TV /tv/{id}/content_ratings (US entry),
-// movie /movie/{id}/release_dates (US entry, first non-empty
-// certification). Douban has no US rating — never fake one from it.
-// No TMDB data (or no US entry) = no badge, never an invented rating.
-// Shown on the detail page meta line only, next to the score — never
-// on poster cards. Rating is stored on meta.usRating so a future
-// filter UI can use it.
-function usRatingCacheGet(media, id){
-  try{ const c=JSON.parse(localStorage.getItem('hao_us_rating')||'{}'); return c[media+':'+id]||null; }catch(e){ return null; }
-}
-function usRatingCacheSet(media, id, rating){
-  try{
-    const c=JSON.parse(localStorage.getItem('hao_us_rating')||'{}');
-    c[media+':'+id]=rating;
-    const ks=Object.keys(c);
-    if(ks.length>200){ ks.slice(0,ks.length-200).forEach(function(k){ delete c[k]; }); }
-    localStorage.setItem('hao_us_rating', JSON.stringify(c));
-  }catch(e){}
-}
-function usRatingParseTv(j){
-  const arr=(j&&Array.isArray(j.results))?j.results:[];
-  for(let i=0;i<arr.length;i++){
-    const x=arr[i];
-    if(x&&x.iso_3166_1==='US'&&x.rating&&String(x.rating).trim()) return String(x.rating).trim();
-  }
-  return null;
-}
-function usRatingParseMovie(j){
-  const arr=(j&&Array.isArray(j.results))?j.results:[];
-  for(let i=0;i<arr.length;i++){
-    const x=arr[i];
-    if(!x||x.iso_3166_1!=='US'||!Array.isArray(x.release_dates)) continue;
-    for(let k=0;k<x.release_dates.length;k++){
-      const rd=x.release_dates[k];
-      if(rd&&rd.certification&&String(rd.certification).trim()) return String(rd.certification).trim();
-    }
-  }
-  return null;
-}
-async function directTmdbUsRating(tmdbId, media){
-  const id=Number(tmdbId)||0;
-  if(!id) return null;
-  const med=(media==='tv')?'tv':'movie';
-  const ck=usRatingCacheGet(med, id);
-  if(ck) return ck;
-  let rating=null;
-  try{
-    if(med==='tv'){
-      const j=await directTmdbGet('/tv/'+id+'/content_ratings',{},5000);
-      rating=usRatingParseTv(j);
-    }else{
-      const j=await directTmdbGet('/movie/'+id+'/release_dates',{},5000);
-      rating=usRatingParseMovie(j);
-    }
-  }catch(e){ rating=null; }
-  if(rating) usRatingCacheSet(med, id, rating);
-  return rating;
-}
-function vodUsRatingBadgeHTML(m){
-  const r=String((m&&m.usRating)||'').trim();
-  if(!r) return '';
-  return '<span class="vod-us-rating" title="美国分级" style="display:inline-flex;align-items:center;border:1px solid var(--hairline);color:var(--muted);border-radius:5px;padding:0 6px;font-size:11px;font-weight:700;letter-spacing:.04em;line-height:17px">'+esc(r)+'</span>';
 }
 function vodMetaLineHTML(m){
   const sc=parseFloat(String(m.score||'').trim());
   const show=!!m.score&&!isNaN(sc)&&sc>0;
   return (show?'<span class="vod-score"><span class="vod-star">★</span> '+esc(String(m.score))+vodScoreMarkHTML(m)+'</span>':'')
-    +vodUsRatingBadgeHTML(m)
     +'<span>'+esc(m.releaseDate||m.year||'')+(m.type&&!vodGenreChipsHTML(m.type)?' · '+esc(m.type):'')+(m.area?' · '+esc(m.area):'')+(m.runtime?' · '+esc(String(m.runtime))+t('runtimeMinT'):'')+'</span>';
 }
 // Infuse D4: after any meta-line rebuild, make sure genre chips exist when
 // the (possibly enriched) type holds several genres.
 function vodSyncMetaLine(m){ const ml=document.querySelector('#videoDetail .vod-meta-line'); if(!ml) return; ml.innerHTML=vodMetaLineHTML(m); if(!document.querySelector('#videoDetail .vod-genres')){ const _gc=vodGenreChipsHTML(m.type); if(_gc) ml.insertAdjacentHTML('afterend',_gc); } }
-async function enrichVideoDetailUsRating(r){
-  if(!r||!r.meta||!r.meta.tmdb||!r.meta.tmdb.id) return;
-  if(r.meta.usRating||r.meta._usRatingFetching) return;
-  r.meta._usRatingFetching=true;
-  let rating=null;
-  try{ rating=await Promise.race([directTmdbUsRating(r.meta.tmdb.id, r.meta.tmdb.media), new Promise(function(res){ setTimeout(function(){ res(null); }, 6000); })]); }catch(e){}
-  if(!rating){ r.meta._usRatingFetching=false; return; }
-  if(curVideo!==r||!document.getElementById('videoDetail')) return;
-  r.meta.usRating=rating;
-  vodSyncMetaLine(r.meta);
-}
-// ---- end US rating ---- [US-RATING-END]
-
-// Mirror of enrichVideoDetailTmdb: CMS renders first, Douban fills in
+// Douban detail enrichment: CMS renders first, Douban fills in
 // score/cast/director/synopsis/poster afterwards (never blocks the page).
 async function enrichVideoDetailDouban(r){
   if(!r || !r.meta || r.meta.douban) return;
@@ -1495,33 +1331,11 @@ async function enrichVideoDetailDouban(r){
 }
 // ---- end Douban ---- [DOUBAN-END]
 
-// Port of server /api/video/tmdb/trending: 6 movies + 6 TV, interleaved.
-async function directTmdbTrending(){
-  const mvP = directTmdbGet('/trending/movie/week',{}).catch(function(){ return null; });
-  const tvP = directTmdbGet('/trending/tv/week',{}).catch(function(){ return null; });
-  const mv = await mvP, tv = await tvP;
-  const mvs=(((mv&&mv.results)||[]).filter(function(r){return r&&r.poster_path;})).slice(0,6);
-  const tvs=(((tv&&tv.results)||[]).filter(function(r){return r&&r.poster_path;})).slice(0,6);
-  const items=[];
-  for(let i=0;i<6;i++){
-    const pairs=[[mvs[i],'movie'],[tvs[i],'tv']];
-    for(const pr of pairs){
-      const r=pr[0], media=pr[1];
-      if(!r) continue;
-      items.push({ name:r.title||r.name||'', year:directTmdbYearOf(r), pic:'https://image.tmdb.org/t/p/w500'+r.poster_path,
-        backdrop:r.backdrop_path?('https://image.tmdb.org/t/p/w1280'+r.backdrop_path):'', score:(typeof r.vote_average==='number'&&r.vote_average>0)?Math.round(r.vote_average*10)/10:null,
-        votes:r.vote_count||0, overview:r.overview||'', media:media, tmdbId:r.id, tmdb:1 });
-    }
-  }
-  if(!items.length) throw new Error('tmdb empty');
-  return {ok:true, items:items};
-}
 // ---- video home / by-type / daily, direct (Phase 3) ----
 // Port of server buildVideoHome / /api/video/by-type / /api/video/daily:
 // the App fans out to the CMS sources itself (nativeJson), merges
 // client-side, and falls back to the server endpoints on any failure.
-// Pic upgrade (cross-source sharper poster) stays server-only — TMDB
-// enrichment below already replaces most posters with w342.
+// Posters come from the CMS source as-is (no client-side pic upgrade).
 const DIRECT_ADULT_WORDS = ['伦理','福利','成人','情色','三级','写真','美女','激情','性感'];
 function directVideoAdult(x){ return DIRECT_ADULT_WORDS.some(function(w){ return (x.type||'').includes(w) || String(x.name||'').includes(w); }); }
 function directVideoItem(s, x){ return { source:s.id, sourceName:s.name, vodId:String(x.vod_id), name:x.vod_name||'', pic:x.vod_pic||'', year:String(x.vod_year||''), type:x.type_name||'', area:x.vod_area||'', score:x.vod_score||'', total:x.vod_total||'', remarks:x.vod_remarks||'', hits:Number(x.vod_hits)||0 }; }
@@ -1547,29 +1361,6 @@ async function directVideoTypeMap(){
   }));
   __directVideoTypeMap = map; __directVideoTypeMapAt = Date.now();
   return map;
-}
-// Bounded TMDB enrichment for video items (port of server
-// enrichVideoItemsTmdb): poster w342 + score, marked tmdb:1.
-async function directEnrichVideoItemsTmdb(items, budgetMs){
-  const t0 = Date.now();
-  let idx = 0;
-  async function worker(){
-    while(idx < items.length){
-      if(Date.now()-t0 > budgetMs) return;
-      const x = items[idx++];
-      if(!x || !x.name || x.tmdb) continue;
-      try{
-        const found = await Promise.race([directTmdbSearchTitle(x.name, x.year||''), new Promise(function(r){ setTimeout(function(){ r(null); }, 4000); })]);
-        if(!found) continue;
-        if(found.poster){ if(x.pic&&!x.picAlt) x.picAlt=x.pic; x.pic='https://image.tmdb.org/t/p/w342'+found.poster; }
-        if(found.score) x.score = String(found.score);
-        x.tmdb = 1;
-      }catch(e){}
-    }
-  }
-  const conc = 4;
-  await Promise.all(Array.from({length: Math.min(conc, items.length)}, function(){ return worker(); }));
-  return items;
 }
 // Port of server /api/video/daily: 3 workers over play sources, dedup by
 // name|year (higher score wins), series first, 12 items. Throws when empty
@@ -1600,7 +1391,6 @@ async function directVideoDaily(){
   }
   const items = series.concat(other).slice(0,12);
   if(!items.length) throw new Error('video source unreachable');
-  try{ await directEnrichVideoItemsTmdb(items, 8000); }catch(e){}
   return {ok:true, items:items};
 }
 // Port of server /api/video/by-type: single source, WIN=10 pages when
@@ -1641,12 +1431,11 @@ async function directVideoByType(name, pg, area, year, by){
   }
   if(by==='hits') items.sort(function(a,b){ return b.hits-a.hits; });
   else if(by==='score') items.sort(function(a,b){ return (parseFloat(b.score)||0)-(parseFloat(a.score)||0); });
-  try{ await directEnrichVideoItemsTmdb(items.slice(0,40), 8000); }catch(e){}
   const pagecount = filtered ? Math.max(1, Math.ceil(srcPagecount/WIN)) : srcPagecount;
   return {ok:true, name:name, page:pg, pagecount:pagecount, total:filtered?items.length:srcTotal, items:items};
 }
 // Port of server buildVideoHome: type rows (batches of 8, 20s deadline),
-// sorted by count, top 10 rows; TMDB enrichment; collections + totals.
+// sorted by count, top 10 rows; collections + totals.
 async function directVideoHome(){
   const map = await directVideoTypeMap();
   const HOME_DEADLINE = Date.now()+20000;
@@ -1671,7 +1460,6 @@ async function directVideoHome(){
   }
   got.sort(function(a,b){ return b.count-a.count; });
   const rows = got.slice(0,10);
-  if(Date.now()<HOME_DEADLINE-8000){ try{ await directEnrichVideoItemsTmdb(rows.flatMap(function(r){ return r.items; }), Math.min(5000, HOME_DEADLINE-Date.now()-2000)); }catch(e){} }
   const collections = rows.slice(0,5).map(function(r){ return {name:r.name, en:DIRECT_VIDEO_EN_SUB[r.name]||'MEDIA', count:r.count, pics:r.items.slice(0,4).map(function(x){ return x.pic; }), picAlts:r.items.slice(0,4).map(function(x){ return x.picAlt||''; })}; });
   let totMovies = 0, totShows = 0;
   for(const r of rows){ if(DIRECT_VIDEO_MOVIE_RE.test(r.name)) totMovies+=r.count; else totShows+=r.count; }
@@ -1933,9 +1721,24 @@ async function directDyCats(){
 async function directHuyaRooms(catId, page){
   const c = String(catId || '1');
   const pg = Math.max(1, Number(page) || 1);
+  const headers = { 'User-Agent': DIRECT_LIVE_UA, 'Referer': 'https://www.huya.com/', 'X-Requested-With': 'XMLHttpRequest' };
+  function mapRooms(j){ return ((j.data && j.data.datas) || []).map(function(x){ return { roomId: String(x.profileRoom), title: x.introduction || '', uname: x.nick || '', online: directLiveNum(x.totalCount), cover: x.screenshot || '', face: x.avatar180 || '', game: x.gameFullName || '' }; }).filter(function(x){ return x.roomId; }); }
   const url = c === '1' ? 'https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&tagAll=0&page=' + pg : 'https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&tagAll=0&gameId=' + encodeURIComponent(c) + '&page=' + pg;
-  const j = await nativeJson(url, { headers: { 'User-Agent': DIRECT_LIVE_UA, 'Referer': 'https://www.huya.com/', 'X-Requested-With': 'XMLHttpRequest' } }, 12000);
-  return ((j.data && j.data.datas) || []).map(function(x){ return { roomId: String(x.profileRoom), title: x.introduction || '', uname: x.nick || '', online: directLiveNum(x.totalCount), cover: x.screenshot || '', face: x.avatar180 || '', game: x.gameFullName || '' }; }).filter(function(x){ return x.roomId; });
+  const j = await nativeJson(url, { headers: headers }, 12000);
+  let rooms = mapRooms(j);
+  // Huya killed the gameId category endpoint: cache.php returns 0
+  // rooms for every /g gid (verified 2026-11-16, all 16 gids tested).
+  // A category that returns nothing falls back to the hot list so no
+  // Huya page is ever blank (category filtering is degraded until a
+  // working category endpoint is found — the rooms come from SSR
+  // TAF data now, not this API).
+  if (!rooms.length && c !== '1') {
+    try {
+      const hj = await nativeJson('https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&tagAll=0&page=' + pg, { headers: headers }, 12000);
+      rooms = mapRooms(hj);
+    } catch (e) {}
+  }
+  return rooms;
 }
 const DIRECT_HUYA_QNAME = { 0: '原画', 500: '流畅', 1000: '高清', 2000: '超清', 3000: '蓝光', 4000: '蓝光4M', 8000: '蓝光8M' };
 function directHuyaQName(ratio){ return DIRECT_HUYA_QNAME[ratio] || ('画质' + ratio); }
@@ -2298,7 +2101,7 @@ function sysDark() { try { return window.matchMedia('(prefers-color-scheme: dark
 function resolveMode() { return mode === 'system' ? (sysDark() ? 'night' : 'day') : mode; }
 try { const _sysMq = window.matchMedia('(prefers-color-scheme: dark)'); const _onSysMode = function () { if (mode === 'system') applyPrefs(); }; if (_sysMq.addEventListener) _sysMq.addEventListener('change', _onSysMode); else if (_sysMq.addListener) _sysMq.addListener(_onSysMode); } catch (e) {}
 let chatTimer=null; function applyStaticI18n(){ document.querySelectorAll('[data-t]').forEach(el=>{ const v=t(el.dataset.t); if(v&&v!==el.dataset.t) el.textContent=v; }); document.querySelectorAll('[data-t-ph]').forEach(el=>{ const v=t(el.dataset.tPh); if(v&&v!==el.dataset.tPh) el.placeholder=v; }); }
-function syncTabbar(){ const bar=document.getElementById('tabbar'); if(!bar) return; bar.style.display=''; let k='video'; const h=location.hash||'#/'; if(h.startsWith('#/video')) k='video'; else if(h.startsWith('#/live')) k='live'; else if(h.startsWith('#/playlist')||h==='#/music'||h==='#/search'||h==='#/daily'||h==='#/plaza'||h.startsWith('#/song/')) k='music'; else if(h==='#/settings') k='settings'; else if(h==='#/listen-report') k='music'; bar.querySelectorAll('[data-tab]').forEach(e=>{ e.classList.toggle('on',e.dataset.tab===k); }); try{ tabIndSync(); }catch(e){} }
+function syncTabbar(){ const bar=document.getElementById('tabbar'); if(!bar) return; bar.style.display=''; let k='video'; const h=location.hash||'#/'; if(h.startsWith('#/video')) k='video'; else if(h.startsWith('#/live')) k='live'; else if(h.startsWith('#/playlist')||h==='#/music'||h==='#/search'||h==='#/daily'||h==='#/plaza'||h.startsWith('#/song/')) k='music'; else if(h.startsWith('#/settings')) k='settings'; else if(h==='#/listen-report') k='music'; bar.querySelectorAll('[data-tab]').forEach(e=>{ e.classList.toggle('on',e.dataset.tab===k); }); try{ tabIndSync(); }catch(e){} }
 function syncMiniPlayer(){ const v=document.getElementById('vinyl'); if(!v) return; const h=location.hash||'#/'; const music=h.startsWith('#/playlist')||h==='#/music'||h==='#/search'||h==='#/daily'||h==='#/plaza'||h.startsWith('#/song/'); const show=!!(music||curTrack); v.style.display=show?'flex':'none'; document.body.classList.toggle('has-mini',show); }
 function syncNav(){ document.querySelectorAll('#menuModeSeg .mode-seg-btn').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-mode')===mode); }); }
 function render(){ syncNav(); applyStaticI18n(); nav(); }
@@ -2309,11 +2112,11 @@ async function load(){
   const tn=document.getElementById('topbarName'); if(tn) tn.textContent=nm;
   document.title=nm;
   applyPrefs(); render(); loadPlayerPlaylist(); restoreLastSong();
-  const mv=localStorage.getItem('musicVolume'); if(mv!==null) audio.volume=parseFloat(mv); const vs=document.getElementById('sheetVol'); if(vs) vs.value=Math.round(audio.volume*100); if(/iPad|iPhone|iPod/.test(navigator.userAgent)){ const vr=document.getElementById('sheetVolRow'); if(vr) vr.style.display='none'; } updateQualityUI(); applyVolume(); haoStartTick(); haoSleepTimerArm(); haoBindDmHold(); haoAutoCheckUpdate(); haoStartLiveAlertPoll(); if(!window.__haoVisBound){ window.__haoVisBound=true; document.addEventListener('visibilitychange', function(){ if(document.hidden){ if(!haoBgPlay()&&playing){ try{ audio.pause(); }catch(e){} wantPlaying=false; playing=false; updatePlayer(); } haoWakeLockRelease(); } else { haoWakeLockAcquire(); if(haoFollowRefresh()&&(location.hash||'').indexOf('#/live')===0) haoRefreshFollowStatus(); if(haoLiveAlert()&&haoLiveFollowsGet().length) haoCheckLiveAlerts(); } }); }
+  const mv=localStorage.getItem('musicVolume'); if(mv!==null) audio.volume=parseFloat(mv); const vs=document.getElementById('sheetVol'); if(vs) vs.value=Math.round(audio.volume*100); if(/iPad|iPhone|iPod/.test(navigator.userAgent)){ const vr=document.getElementById('sheetVolRow'); if(vr) vr.style.display='none'; } updateQualityUI(); applyVolume(); haoStartTick(); haoSleepTimerArm(); haoBindDmHold(); haoAutoCheckUpdate(); haoStartLiveAlertPoll(); haoBindVodPrefetch(); if(!window.__haoVisBound){ window.__haoVisBound=true; document.addEventListener('visibilitychange', function(){ if(document.hidden){ if(!haoBgPlay()&&playing){ try{ audio.pause(); }catch(e){} wantPlaying=false; playing=false; updatePlayer(); } haoWakeLockRelease(); } else { haoWakeLockAcquire(); if(haoFollowRefresh()&&(location.hash||'').indexOf('#/live')===0) haoRefreshFollowStatus(); if(haoLiveAlert()&&haoLiveFollowsGet().length) haoCheckLiveAlerts(); } }); }
 }
 let haoPrevHash='';
 async function nav(){ const _prev=haoPrevHash; haoPrevHash=location.hash||'#/'; const _wasRoom=!!document.getElementById('liveVideo'); if(_wasRoom&&haoPrevHash.indexOf('#/live/')!==0){ try{ await haoTryLeavePip(); }catch(e){} } stopLive(); syncTabbar(); syncMiniPlayer(); document.body.classList.remove('bars-hidden'); document.body.classList.remove('bars-compact'); const h=location.hash||'#/'; if(h==='#/'||h==='#'||h===''||h==='#/home'){ location.hash='#/video'; return; }
- if(h==='#/settings') return renderSettings(); if(h==='#/user'||h==='#/sources'){ location.hash='#/settings'; return; } if(h==='#/search') return renderSearchPage(); if(h==='#/upnext') return renderUpNextPage(); if(h.startsWith('#/song/')) return renderSharedSong(h); if(h==='#/video') return renderVideoPage(); if(h==='#/video/search'||h.startsWith('#/video/search?')) return renderVideoSearchPage(); if(h==='#/video/favorites') return renderVideoFavsPage(); if(h.startsWith('#/video/')) return renderVideoDetail(h); if(h==='#/live'||h.startsWith('#/live/')){ if(h==='#/live'){ return renderLivePage(); } if(h==='#/live/cats') return renderLiveCatsPage(); const _lm=h.match(/^#\/live\/(bili|douyu|huya|douyin|ks)$/); if(_lm){ livePlatform=_lm[1]; return renderLivePage(); } return renderLiveRoom(h); } if(h==='#/listen-report') return renderListenReport(); if(h==='#/daily') return renderDailyPage(); if(h==='#/plaza') return renderPlazaPage(); if(h.startsWith('#/playlist/')){ const pid=h.split('/')[2]; if(pid){ curListId=pid; localStorage.setItem('curListId',pid); myPlView='list'; } return renderMyPlaylist(); } if(h==='#/music') return renderMyPlaylist(); if(h==='#/playlist') return renderMyPlaylist(); renderVideoPage(); }
+ if(h==='#/settings/music-sources') return renderSettingsMusicSources(); if(h==='#/settings/video-sources') return renderSettingsVideoSources(); if(h==='#/settings/live-sources') return renderSettingsLiveSources(); if(h==='#/settings/danmaku') return renderSettingsDanmaku(); if(h==='#/settings') return renderSettings(); if(h==='#/user'||h==='#/sources'){ location.hash='#/settings'; return; } if(h==='#/search') return renderSearchPage(); if(h==='#/upnext') return renderUpNextPage(); if(h.startsWith('#/song/')) return renderSharedSong(h); if(h==='#/video') return renderVideoPage(); if(h==='#/video/search'||h.startsWith('#/video/search?')) return renderVideoSearchPage(); if(h==='#/video/favorites') return renderVideoFavsPage(); if(h.startsWith('#/video/')) return renderVideoDetail(h); if(h==='#/live'||h.startsWith('#/live/')){ if(h==='#/live'){ return renderLivePage(); } if(h==='#/live/cats') return renderLiveCatsPage(); const _lm=h.match(/^#\/live\/(bili|douyu|huya|douyin|ks)$/); if(_lm){ livePlatform=_lm[1]; return renderLivePage(); } return renderLiveRoom(h); } if(h==='#/listen-report') return renderListenReport(); if(h==='#/daily') return renderDailyPage(); if(h==='#/plaza') return renderPlazaPage(); if(h.startsWith('#/playlist/')){ const pid=h.split('/')[2]; if(pid){ curListId=pid; localStorage.setItem('curListId',pid); myPlView='list'; } return renderMyPlaylist(); } if(h==='#/music') return renderMyPlaylist(); if(h==='#/playlist') return renderMyPlaylist(); renderVideoPage(); }
 function fmtTime(s){ if(!isFinite(s)||s==null) return '0:00'; s=Math.floor(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
 function durOf(x){ return Number(x&&x.dur!=null?x.dur:(x&&x.duration))||0; }
 function durSuffix(x){ if(!haoShowDur()) return ''; const d=durOf(x); return d>0?' · '+fmtTime(d):''; }
@@ -2344,26 +2147,31 @@ function playTrackAt(i){ const tr=playerPlaylist[i]; if(!tr) return; const from=
 function prevTrack(){ if(!playerPlaylist.length) return; playTrackAt((curTrackIdx<=0?playerPlaylist.length:curTrackIdx)-1); }
 function nextTrack(fromEnded){ if(!playerPlaylist.length) return; if(playMode==='single'&&fromEnded&&curTrackIdx>=0){ playTrackAt(curTrackIdx); return; } if(playMode==='shuffle'&&playerPlaylist.length>1){ if(nextPrefetchIdx>=0&&nextPrefetchIdx<playerPlaylist.length&&nextPrefetchIdx!==curTrackIdx){ const n=nextPrefetchIdx; nextPrefetchIdx=-1; playTrackAt(n); return; } let n; do{ n=Math.floor(Math.random()*playerPlaylist.length);}while(n===curTrackIdx); playTrackAt(n);} else playTrackAt((curTrackIdx+1)%playerPlaylist.length);}
 function qLabel(q){ return q==='hires'?t('qHires'):q==='lossless'?t('qLossless'):q==='320k'?t('qHigh'):t('qStd'); }
-function updateQualityUI(){ const b=document.getElementById('sheetQBadge'); if(b) b.innerHTML=ic('eq')+' '+qLabel(curActualQuality||curQuality); document.querySelectorAll('.q-check').forEach(e=>{ e.textContent=e.dataset.q===curQuality?'✓':''; }); }
-function openQualitySheet(){ const sh=document.getElementById('qualitySheet'); if(sh) sh.style.display='flex'; updateQualityUI(); }
+function updateQualityUI(){ const b=document.getElementById('sheetQBadge'); if(b) b.innerHTML=ic('eq')+' '+qLabel(curActualQuality||curQuality); document.querySelectorAll('.q-check').forEach(e=>{ const on=e.dataset.q===curQuality; e.textContent=on?'✓':''; const btn=e.closest('button'); if(btn) btn.classList.toggle('q-on',on); }); }
+function openQualitySheet(){ const ps=document.getElementById('playerSheet'); if(ps&&!ps.classList.contains('open')) return; const sh=document.getElementById('qualitySheet'); if(sh) sh.style.display='flex'; updateQualityUI(); }
+function toggleQualitySheet(){ const sh=document.getElementById('qualitySheet'); if(sh&&sh.style.display==='flex') closeQualitySheet(); else openQualitySheet(); }
 function closeQualitySheet(){ const sh=document.getElementById('qualitySheet'); if(sh) sh.style.display='none'; }
 async function pickQuality(v){ closeQualitySheet(); if(v===curQuality) return; setQuality(v); }
 
-function setVolume(v){ audio.volume=v/100; localStorage.setItem('musicVolume',String(v/100)); }
+function syncVolSlider(){ var sv=document.getElementById('sheetVol'); if(!sv) return; var v=Math.round((audio&&typeof audio.volume==='number'?audio.volume:haoDefaultVolume())*100); sv.value=v; sv.style.background='linear-gradient(90deg,#fff '+v+'%,rgba(255,255,255,.28) '+v+'%)'; }
+function setVolume(v){ audio.volume=v/100; localStorage.setItem('musicVolume',String(v/100)); syncVolSlider(); }
 async function refreshFavState(){ haoRefreshFavIds(); favLoaded=true; updateFavBtn(); }
 function updateFavBtn(){ const b=document.getElementById('sheetFav'); if(!b) return; const k=(curPf||'wy')+'|'+curSongId; const f=curSongId&&favIds.has(k); b.innerHTML=ic(f?'star':'starO'); b.classList.toggle('faved',!!f); const dl=document.getElementById('trackMoreDel'); if(dl) dl.style.display=f?'':'none'; }
 async function toggleFav(){ if(!curSongId) return; const k=(curPf||'wy')+'|'+curSongId; if(favIds.has(k)){ const lists=haoListsGet(); lists.forEach(function(l){ l.tracks=(l.tracks||[]).filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; }); }); haoListsSave(lists); haoFavSave(haoFavGet().filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; })); haoRefreshFavIds(); updateFavBtn(); toast(t('favRemoved')); } else { const tr=playerPlaylist[curTrackIdx]; if(!tr) return; openPickSong(tr); } }
 function openTrackMore(){ const tr=playerPlaylist[curTrackIdx]; if(!tr) return; const tt=document.getElementById('trackMoreTitle'); if(tt) tt.textContent=tr.title+' - '+(tr.artist||''); updateFavBtn(); const sh=document.getElementById('trackMoreSheet'); if(sh) sh.style.display='flex';
   // patch J: song info + up-next moved here from the bottom row
   var _tmBox=document.querySelector('#trackMoreSheet .lp-box');
+  var _oldUp=document.getElementById('trackMoreUpNext'); if(_oldUp&&_oldUp.parentNode) _oldUp.parentNode.removeChild(_oldUp);
   if(_tmBox && !document.getElementById('trackMoreSongInfo')){
     var _cancel=_tmBox.querySelector('button[data-t="cancelOp"]');
     var _b1=document.createElement('button'); _b1.id='trackMoreSongInfo'; _b1.setAttribute('onclick',"closeTrackMore();openSongInfo()");
     _b1.innerHTML='<span data-t="songInfoT">'+t('songInfoT')+'</span>';
-    var _b2=document.createElement('button'); _b2.id='trackMoreUpNext'; _b2.setAttribute('onclick',"closeTrackMore();openUpNext()");
-    _b2.innerHTML='<span data-t="upNextT">'+t('upNextT')+'</span>';
-    if(_cancel){ _tmBox.insertBefore(_b1,_cancel); _tmBox.insertBefore(_b2,_cancel); }
+    var _b3=document.createElement('button'); _b3.id='trackMoreComments'; _b3.setAttribute('onclick',"closeTrackMore();openCommentsSheet()");
+    _b3.innerHTML='<span data-t="commentsT">'+t('commentsT')+'</span>';
+    var _b4=document.createElement('button'); _b4.id='trackMorePlayMode'; _b4.setAttribute('onclick',"closeTrackMore();togglePlayMode()");
+    if(_cancel){ _tmBox.insertBefore(_b1,_cancel); _tmBox.insertBefore(_b3,_cancel); _tmBox.insertBefore(_b4,_cancel); }
   }
+  var _pm=document.getElementById('trackMorePlayMode'); if(_pm) _pm.innerHTML='<span>'+t(playMode==='seq'?'seqMode':playMode==='shuffle'?'shuffleMode':'singleMode')+'</span>';
 }
 function closeTrackMore(){ const sh=document.getElementById('trackMoreSheet'); if(sh) sh.style.display='none'; }
 async function shareCurrent(){ const tr=playerPlaylist[curTrackIdx]; if(!tr) return; const text='《'+tr.title+'》- '+(tr.artist||''); const url=location.origin+'/#/song/'+(tr.platform||'wy')+'/'+encodeURIComponent(tr.songId)+'?title='+encodeURIComponent(tr.title)+'&artist='+encodeURIComponent(tr.artist||''); if(navigator.share){ try{ await navigator.share({title:tr.title,text:text,url:url});}catch(e){}} else { try{ await navigator.clipboard.writeText(text+' '+url); toast(t('shareCopied'));}catch(e){ toast(text+' '+url);} } closeTrackMore(); }
@@ -2421,6 +2229,13 @@ Object.assign(I18N['zh-CN'],{liveSearchHistT:'最近搜索',liveSearchHotT:'热�
 Object.assign(I18N['zh-TW'],{liveSearchHistT:'最近搜尋',liveSearchHotT:'熱門搜尋',liveClearHistT:'清除',livePlatPageSub:'該平台的直播間',livePlatEnterT:'進入',liveAllCatsT:'全部'});
 Object.assign(I18N['en'],{liveSearchHistT:'Recent searches',liveSearchHotT:'Hot searches',liveClearHistT:'Clear',livePlatPageSub:'Live rooms on this platform',livePlatEnterT:'Enter',liveAllCatsT:'All'});
 const CHANGELOG=[
+{v:'20261116sa9',date:'2026-11-16',zh:'底部菜单支持拖动切换：手指横滑页面跟手走，松手吸附到上一个/下一个 tab，指示器平滑跟随；全 app 滚动锁死：滚到顶/底不再滑动、不回弹、不露黑边；液态玻璃上到 tab 栏、迷你播放器、卡片、弹窗等，四个主题各有自己的玻璃色调，白天深色都对。',tw:'底部選單支援拖動切換：手指橫滑頁面跟手走，鬆手吸附到上一個/下一個 tab，指示器平滑跟隨；全 app 滾動鎖死：滾到頂/底不再滑動、不回彈、不露黑邊；液態玻璃上到 tab 欄、迷你播放器、卡片、彈窗等，四個主題各有自己的玻璃色調，白天深色都對。',en:'Bottom tabs now swipe with drag-follow: the page follows your finger and snaps to the previous/next tab on release, with the indicator sliding along. Scrolling is locked at content edges across the app: no more bounce or black gaps at the top/bottom. Liquid glass is now on the tab bar, mini player, cards and popups, with each of the four themes getting its own glass tint, in both light and dark mode.'},
+{v:'20261116sa8',date:'2026-11-16',zh:'影视点播放直接横屏全屏播（详情页不再竖屏内联自动播），选集与续播不变；直播播放器照 Pure Live 的界面和控制抄（画质/线路合一菜单、填充、仅听音频等），影视播放器没有画质选择；音质菜单改成居中的液态玻璃浮层。',tw:'影視點播放直接橫屏全屏播（詳情頁不再豎屏內聯自動播），選集與續播不變；直播播放器照 Pure Live 的介面和控制抄（畫質/線路合一選單、填充、僅聽音訊等），影視播放器沒有畫質選擇；音質選單改成居中的液態玻璃浮層。',en:'Tapping play on a video now goes straight to landscape fullscreen (no more inline portrait autoplay on the detail page); episode picking and resume are unchanged. The live player copies Pure Live UI and controls (combined quality/line menu, fill modes, audio-only, etc.); the video player has no quality picker. The audio quality menu is now a centered liquid-glass floating panel.'},
+{v:'20261116sa7',date:'2026-11-16',zh:'歌手详情页重做：大照片 hero + 大号歌手名 + 圆形播放键，滚动时照片平滑缩小变暗、顶栏变液态玻璃；下面是歌曲排行、专辑、单曲与 EP、代表作。专辑详情页重做：大封面居中 + 专辑名/歌手/年份/音质 + 随机播/播放/加入 + 带编号的完整曲目列表。',tw:'歌手詳情頁重做：大照片 hero + 大號歌手名 + 圓形播放鍵，滾動時照片平滑縮小變暗、頂欄變液態玻璃；下面是歌曲排行、專輯、單曲與 EP、代表作。專輯詳情頁重做：大封面居中 + 專輯名/歌手/年份/音質 + 隨機播/播放/加入 + 帶編號的完整曲目列表。',en:'Artist page redesigned: big photo hero + large artist name + round play button; the photo smoothly shrinks and dims on scroll while the top bar turns into liquid glass; below are Top Songs, Albums, Singles & EPs and Fan Favorites. Album page redesigned: large centered cover + album/artist/year/quality + Shuffle/Play/Add + a full numbered track list.'},
+{v:'20261116sa6',date:'2026-11-16',zh:'搜歌改成无限滚动：滚到底自动加载更多，不用再点下一页；结果行按新样式（封面、歌名、平台角标、收藏、圆形播放键）；搜歌类型里的“用户歌单”已移除（独立站没有账号系统）。',tw:'搜歌改成無限滾動：滾到底自動載入更多，不用再點下一頁；結果行按新樣式（封面、歌名、平台角標、收藏、圓形播放鍵）；搜歌類型裡的「用戶歌單」已移除（獨立站沒有帳號系統）。',en:'Search is now infinite scroll: more results load as you scroll, no more Next Page button; result rows use the new style (cover, title, platform badge, favorite, round play button); the "User Playlists" search type is removed (the standalone app has no account system).'},
+{v:'20261116sa5',date:'2026-11-16',zh:'歌单广场改版：大标题 + 平台下拉（网易云/QQ/酷我/酷狗）+ 分类与排序（推荐/最热/最新）+ 横向歌单卡片；新增酷狗歌单（列表与详情、一键导入）；一个平台失败自动换下一个平台兜底。',tw:'歌單廣場改版：大標題 + 平台下拉（網易雲/QQ/酷我/酷狗）+ 分類與排序（推薦/最熱/最新）+ 橫向歌單卡片；新增酷狗歌單（列表與詳情、一鍵匯入）；一個平台失敗自動換下一個平台兜底。',en:'Plaza redesigned: big title + platform picker (NetEase/QQ/Kuwo/Kugou) + category and sort (Recommended/Hottest/Newest) + horizontal playlist cards; Kugou playlists added (list, detail, one-tap import); if one platform fails it automatically falls back to the next.'},
+{v:'20261116sa4',date:'2026-11-16',zh:'每日推荐改成真正的每日歌单：日期 + 播放全部，一半是你常听的、一半是按常听歌手发现的新歌，同一天打开是同一份，没有听歌记录时用热门歌单打底；音乐首页改版：问候 + 日期、搜歌 / 每日推荐 / 歌单广场 / 听歌报告四个入口、继续播放、我的歌单（含导入框）。',tw:'每日推薦改成真正的每日歌單：日期 + 播放全部，一半是你常聽的、一半是按常聽歌手發現的新歌，同一天打開是同一份，沒有聽歌記錄時用熱門歌單打底；音樂首頁改版：問候 + 日期、搜歌 / 每日推薦 / 歌單廣場 / 聽歌報告四個入口、繼續播放、我的歌單（含匯入框）。',en:'Daily Mix is now a real daily playlist: date + Play All, half your most-played and half new discoveries from your top artists, identical all day, with hot playlists as a fallback when there is no listening history. Music home redesigned: greeting + date, four entries (Search / Daily Mix / Plaza / Listening Report), Continue Playing, and My Playlists with the import box inside.'},
+{v:'20261116sa3',date:'2026-11-16',zh:'设置页拆分子页面：音源、影视源、直播源、弹幕设置各成独立页面（带返回），主页面只留四个入口；各子页面里的开关、源管理、弹幕选项功能不变。',tw:'設定頁拆分子頁面：音源、影視源、直播源、彈幕設定各成獨立頁面（帶返回），主頁面只留四個入口；各子頁面裡的開關、源管理、彈幕選項功能不變。',en:'Settings split into sub-pages: Music Sources, Video Sources, Live Sources and Danmaku Settings are now standalone pages (with a back button); the main page keeps just the four entries. All switches, source management and danmaku options work exactly as before.'},
 {v:'20261116sa2',date:'2026-11-16',zh:'设置页上线：源管理、检查更新、清缓存、备份管理（导出/恢复全部本地数据）、四主题切换；新增播放小开关：默认直播画质、默认音量、全局静音、弹幕字号/粗细/描边、同屏弹幕上限、历史上限、缓存大小显示。',tw:'設定頁上線：源管理、檢查更新、清快取、備份管理（匯出/恢復全部本地資料）、四主題切換；新增播放小開關：預設直播畫質、預設音量、全域靜音、彈幕字號/粗細/描邊、同屏彈幕上限、歷史上限、快取大小顯示。',en:'Settings page is live: source management, update check, clear cache, backup management (export/restore all local data), four-theme switcher; plus small playback switches: default live quality, default volume, mute all, danmaku font size/weight/outline, max danmaku on screen, history limit, cache size display.'},
 {v:'20261116sa1',date:'2026-11-16',zh:'独立版：无需账号，音乐、影视、直播全部直连播放；登录、会员、社区、商店、后台、通知全部移除，歌单、收藏、历史、关注都只保存在本机。',tw:'獨立版：無需賬號，音樂、影視、直播全部直連播放；登錄、會員、社區、商店、後台、通知全部移除，歌單、收藏、歷史、關注都只保存在本機。',en:'Standalone: no account needed. Music, video and live all play direct; login, membership, community, shop, admin and notifications removed. Playlists, favorites, history and follows stay on this device.'}
 ];
@@ -2433,20 +2248,55 @@ function toggleVerLog(){ verLogOpen=!verLogOpen; if(verLogOpen) verLogPage=0; co
 function verLogSetPage(d){ const hist=CHANGELOG.slice(1); const pages=Math.max(1,Math.ceil(hist.length/VER_LOG_PER)); verLogPage=Math.min(Math.max(0,verLogPage+d),pages-1); const w=document.getElementById('verCardWrap'); if(w) w.outerHTML=versionCardHTML(); pageScrollTop(document.getElementById('verCardWrap')); }
 function verHistoryHTML(item){ const hist=CHANGELOG.slice(1); const pages=Math.max(1,Math.ceil(hist.length/VER_LOG_PER)); verLogPage=Math.min(verLogPage,pages-1); const items=hist.slice(verLogPage*VER_LOG_PER,verLogPage*VER_LOG_PER+VER_LOG_PER); return items.map(item).join('')+(pages>1?'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button class="ghost-btn" onclick="verLogSetPage(-1)" '+(verLogPage===0?'disabled':'')+'>'+t('prevPage')+'</button><span class="muted">'+(verLogPage+1)+'/'+pages+'</span><button class="ghost-btn" onclick="verLogSetPage(1)" '+(verLogPage>=pages-1?'disabled':'')+'>'+t('nextPage')+'</button></div>':''); }
 function versionCardHTML(){ const ver=APP_VERSION||(CHANGELOG[0]&&CHANGELOG[0].v)||''; const item=function(e){ return '<div class="ver-item"><div class="ver-meta"><span class="ver-v">v'+esc(e.v)+'</span><span class="ver-date">'+esc(e.date)+'</span></div><div class="ver-desc">'+esc(changelogText(e))+'</div></div>'; }; return '<div class="card ver-card" id="verCardWrap"><div class="ver-head" onclick="toggleVerLog()" style="cursor:pointer"><span class="ver-title">'+t('verTitle')+'</span><span class="ver-cur">'+t('verCurT')+' <span class="ver-badge">v'+esc(ver)+'</span></span></div><div class="ver-list">'+(CHANGELOG[0]?item(CHANGELOG[0]):'')+'</div><div class="ver-toggle" onclick="toggleVerLog()" style="cursor:pointer"><span id="verToggleText">'+(verLogOpen?(t('verHideLog')+' ▴'):(t('verShowLog')+' ▾'))+'</span></div><div class="ver-list ver-history" id="verHistory" style="display:'+(verLogOpen?'':'none')+'">'+verHistoryHTML(item)+'</div></div>'; }
-function haoTmdbKeySave(){ const el=document.getElementById('tmdbKeyInput'); const v=(el?el.value:'').trim(); try{ localStorage.setItem('hao_tmdb_key', v); }catch(e){} __tmdbKey=null; __tmdbKeyP=null; toast(t('srcTmdbSaved')); }
 function saveDmEndpoint(){ const el=document.getElementById('dmEndpointInput'); const v=(el?el.value:'').trim(); try{ localStorage.setItem('hao_danmaku_endpoint', v); }catch(e){} try{ postDanmakuEndpoint(); }catch(e){} toast(t('srcDmSaved')); }
-function setLocalTheme(v){ try{ localStorage.setItem('hao_theme', v); }catch(e){} shop.settings.theme=v; applyPrefs(); renderSettings(); }
-function clearLocalData(){ if(!confirm(t('clearLocalConfirm'))) return; try{ const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&(k.startsWith('hao_')||k.startsWith('haoVodProg:'))) keys.push(k); } keys.forEach(function(k){ localStorage.removeItem(k); }); localStorage.removeItem('haoLastSong'); localStorage.removeItem('curListId'); }catch(e){} curListId=''; playerPlaylist=[]; curTrackIdx=0; toast(t('localCleared')); renderSettings(); }
+function setLocalTheme(v){ try{ localStorage.setItem('hao_theme', v); }catch(e){} shop.settings.theme=v; applyPrefs(); haoRerenderSettings(); }
+function clearLocalData(){ if(!confirm(t('clearLocalConfirm'))) return; try{ const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&(k.startsWith('hao_')||k.startsWith('haoVodProg:'))) keys.push(k); } keys.forEach(function(k){ localStorage.removeItem(k); }); localStorage.removeItem('haoLastSong'); localStorage.removeItem('curListId'); }catch(e){} curListId=''; playerPlaylist=[]; curTrackIdx=0; toast(t('localCleared')); haoRerenderSettings(); }
 // ================= standalone settings (music + live + video + settings) =================
 // Sources section: (b)'s renderSourcesPage() is embedded when available
 // (it must accept a container element or return an HTML string, and must NOT
 // write to #app). Otherwise this fallback renders from the HaoSources data
 // APIs (getVideoSources/getMusicResolvers/getLivePlatforms + CRUD).
-function haoRenderSourcesSection() {
+function haoRenderSourcesSection(kind) {
   haoPatchSourcesRender();
-  const el = document.getElementById('settingsSources');
+  if(!kind){
+    if(document.getElementById('settingsSourcesMusic')) kind='music';
+    else if(document.getElementById('settingsSourcesVideo')) kind='video';
+    else if(document.getElementById('settingsSourcesLive')) kind='live';
+    else if(document.getElementById('settingsSources')) kind='all';
+  }
+  const id=kind==='music'?'settingsSourcesMusic':kind==='video'?'settingsSourcesVideo':kind==='live'?'settingsSourcesLive':'settingsSources';
+  const el = document.getElementById(id);
   if (!el) return;
-  el.innerHTML = sourcesSectionHTML();
+  el.innerHTML = kind==='all'?sourcesSectionHTML():srcManageHTML(kind);
+}
+// Per-kind source management for the settings sub-pages: one kind per page
+// (the old sourcesSectionHTML rendered all three kinds together).
+function srcManageHTML(kind) {
+  const vs = haoSrcList('video');
+  const ms = haoSrcList('music');
+  const ls = haoSrcList('live');
+  const ioRow = '<div class="row"><button type="button" class="row-btn" onclick="haoExportSources()">'+t('srcExportT')+'</button><button type="button" class="row-btn" onclick="document.getElementById(\'srcImportInput\').click()">'+t('srcImportT')+'</button></div><input type="file" id="srcImportInput" accept="application/json,.json" style="display:none" onchange="haoImportSourcesFile(this)">';
+  const urlRow = '<div class="src-sec-title">'+t('srcAddNewT')+'</div><div class="src-url-row"><input id="srcUrlInput" placeholder="'+t('srcUrlInputPh')+'"><button type="button" onclick="haoImportSourceUrl()">'+t('srcImportUrlT')+'</button></div>';
+  if (vs === null && ms === null && ls === null) {
+    if (kind === 'video') {
+      let html = '<div class="src-cards"><div class="src-sec-title">' + t('srcImportedListT') + '</div><div class="src-kind-title">' + t('srcVideoT') + ' (' + DIRECT_VIDEO_SEEDS.length + ')</div>' + DIRECT_VIDEO_SEEDS.map(function (s) { return '<div class="src-card"><span class="src-dot"></span><div class="src-card-main"><div class="src-card-name">' + esc(s.name || s.id || '') + '</div><div class="src-card-url">' + esc(s.apiUrl || '') + '</div></div></div>'; }).join('');
+      return html + '</div>';
+    }
+    return '<div class="src-cards"><div class="muted">' + t('srcSoonT') + '</div></div>';
+  }
+  if (kind === 'video') {
+    const v = vs || [];
+    const curV = (typeof curVideoSource === 'string' && curVideoSource) ? curVideoSource : '';
+    return '<div class="src-cards"><div class="src-sec-title">' + t('srcImportedListT') + '</div>' + srcKindHTML('video', v, curV, 'srcVideoT') + '<div class="src-add-row"><button type="button" class="row-btn" onclick="haoAddSource(\'video\')">' + t('srcAddVideoT') + '</button></div>' + urlRow + ioRow + '</div>';
+  }
+  if (kind === 'music') {
+    const m = ms || [];
+    const curM = haoCurMusicResolver();
+    return '<div class="src-cards"><div class="src-sec-title">' + t('srcImportedListT') + '</div>' + srcKindHTML('music', m, curM ? (curM.key || curM.id) : '', 'srcMusicT') + urlRow + '<div class="src-add-row"><button type="button" class="row-btn" onclick="haoAddSource(\'music\')">' + t('srcAddMusicT') + '</button></div>' + ioRow + '</div>';
+  }
+  const l = ls || [];
+  const curL = haoCurLivePlat();
+  return '<div class="src-cards"><div class="src-sec-title">' + t('srcImportedListT') + '</div>' + srcKindHTML('live', l, curL, 'srcLiveT') + '<div class="src-add-row"><button type="button" class="row-btn" onclick="haoAddSource(\'live\')">' + t('srcAddLiveT') + '</button></div>' + urlRow + ioRow + '</div>';
 }
 // sources.js keeps its own renderSourcesPage() closure; its editor/import
 // sheets call it directly after saving. Point its _container at a detached
@@ -2498,7 +2348,7 @@ async function haoImportSourceUrl(){
     if(window.HaoSources&&typeof window.HaoSources.importSourceUrl==='function'){
       const out=await window.HaoSources.importSourceUrl(url);
       toast(t('srcAddedT')+(out&&out.def&&out.def.name?'：'+out.def.name:''));
-      renderSettings(); return;
+      haoRerenderSettings(); return;
     }
   }catch(e){ toast(e&&e.message?e.message:t('srcTestFailT')); return; }
   toast(t('srcSoonT'));
@@ -2547,7 +2397,7 @@ function sourcesSectionHTML() {
   const vs = haoSrcList('video');
   const ms = haoSrcList('music');
   const ls = haoSrcList('live');
-  const tail = '<div class="sec-title">' + t('srcTmdbT') + '</div><div class="row"><input id="tmdbKeyInput" placeholder="' + t('srcTmdbPh') + '" value="' + esc(haoTmdbKey() || '') + '"><button type="button" onclick="haoTmdbKeySave()">' + t('saveChanges') + '</button></div>'
+  const tail = '';
     + '<div class="sec-title">' + t('srcDmT') + '</div><div class="row"><input id="dmEndpointInput" placeholder="' + t('srcDmPh') + '" value="' + esc(haoDanmakuEndpoint() || '') + '"><button type="button" onclick="saveDmEndpoint()">' + t('saveChanges') + '</button></div>';
   if (vs === null && ms === null && ls === null) {
     let html = '<div class="src-cards"><div class="src-sec-title">' + t('srcImportedListT') + '</div><div class="muted">' + t('srcSoonT') + '</div>';
@@ -2591,7 +2441,7 @@ async function haoDelSource(kind, idx) {
       const delId = kind === 'music' ? (s.key || s.id) : s.id;
       await window.HaoSources.deleteSource(kind, delId);
       toast(t('deletedT'));
-      renderSettings();
+      haoRerenderSettings();
       return;
     }
   } catch (e) {}
@@ -2605,7 +2455,7 @@ async function haoToggleSource(kind, idx) {
     if (window.HaoSources && typeof window.HaoSources.updateSource === 'function') {
       const id = kind === 'music' ? (s.key || s.id) : s.id;
       await window.HaoSources.updateSource(kind, id, { enabled: s.enabled === false ? true : false });
-      renderSettings();
+      haoRerenderSettings();
       return;
     }
   } catch (e) {}
@@ -2634,7 +2484,7 @@ function haoSourcesOnlyObject() {
 async function haoExportSources() {
   const obj = haoSourcesOnlyObject();
   await haoShareJson(obj, 'HAoStudio-sources-' + haoBackupDateStr() + '.json');
-  renderSettings();
+  haoRerenderSettings();
 }
 async function haoImportSourcesFile(input) {
   const f = input && input.files && input.files[0];
@@ -2686,20 +2536,22 @@ function haoLSRaw(key, fallback) {
 // Borrowed settings, phase 1 (SETTINGS_BORROW.md): small switches wired to
 // existing variables only. Everything else stays in the Phase 2 list.
 function haoLiveDefQ(){ return localStorage.getItem('hao_live_def_q') || ''; }
-function haoSetLiveDefQ(name){ try{ if(name) localStorage.setItem('hao_live_def_q', name); else localStorage.removeItem('hao_live_def_q'); }catch(e){} renderSettings(); }
+function haoSetLiveDefQ(name){ try{ if(name) localStorage.setItem('hao_live_def_q', name); else localStorage.removeItem('hao_live_def_q'); }catch(e){} haoRerenderSettings(); }
 function haoApplyLiveDefQ(data){ try{ const dq=haoLiveDefQ(); if(!dq || !data || data!==livePlayData) return; const m=(data.qualities||[]).find(function(x){ return x.name===dq; }); if(m && String(m.id)!==String(liveCurQ) && !liveSwitchingQ) liveSetQuality(m.id); }catch(e){} }
-function haoToggleMute(){ const m=!audio.muted; audio.muted=m; try{ localStorage.setItem('hao_muted', m?'1':'0'); }catch(e){} try{ if(window.webkit&&window.webkit.messageHandlers){ if(window.webkit.messageHandlers.nativeMusic) window.webkit.messageHandlers.nativeMusic.postMessage({kind:'mute', muted:m}); if(window.webkit.messageHandlers.nativePlayer) window.webkit.messageHandlers.nativePlayer.postMessage({kind:'mute', muted:m}); } }catch(e){} renderSettings(); }
-function haoSetDmFontSize(v){ dmFontSize=v; try{ localStorage.setItem('dmFontSize', String(v)); }catch(e){} renderSettings(); }
-function haoSetDmFontWeight(v){ dmFontWeight=v; try{ localStorage.setItem('dmFontWeight', String(v)); }catch(e){} renderSettings(); }
-function haoSetDmStroke(on){ dmStroke=!!on; try{ localStorage.setItem('dmStroke', on?'1':'0'); }catch(e){} renderSettings(); }
-function haoSetDmMaxVisible(n){ dmMaxVisible=n; try{ localStorage.setItem('dmMaxVisible', String(n)); }catch(e){} renderSettings(); }
+function haoToggleMute(){ const m=!audio.muted; audio.muted=m; try{ localStorage.setItem('hao_muted', m?'1':'0'); }catch(e){} try{ if(window.webkit&&window.webkit.messageHandlers){ if(window.webkit.messageHandlers.nativeMusic) window.webkit.messageHandlers.nativeMusic.postMessage({kind:'mute', muted:m}); if(window.webkit.messageHandlers.nativePlayer) window.webkit.messageHandlers.nativePlayer.postMessage({kind:'mute', muted:m}); } }catch(e){} haoRerenderSettings(); }
+function haoSetDmFontSize(v){ dmFontSize=v; try{ localStorage.setItem('dmFontSize', String(v)); }catch(e){} haoRerenderSettings(); }
+function haoSetDmFontWeight(v){ dmFontWeight=v; try{ localStorage.setItem('dmFontWeight', String(v)); }catch(e){} haoRerenderSettings(); }
+function haoSetDmStroke(on){ dmStroke=!!on; try{ localStorage.setItem('dmStroke', on?'1':'0'); }catch(e){} haoRerenderSettings(); }
+function haoSetDmMaxVisible(n){ dmMaxVisible=n; try{ localStorage.setItem('dmMaxVisible', String(n)); }catch(e){} haoRerenderSettings(); }
 function haoHistLimit(){ const v=parseInt(localStorage.getItem('hao_hist_limit'),10); return (isFinite(v)&&v>=50&&v<=500)?v:200; }
-function haoSetHistLimit(n){ try{ localStorage.setItem('hao_hist_limit', String(n)); }catch(e){} renderSettings(); }
+function haoSetHistLimit(n){ try{ localStorage.setItem('hao_hist_limit', String(n)); }catch(e){} haoRerenderSettings(); }
 
 // ---- settings phase 2 (SETTINGS_BORROW.md §三, 28 items) ----
 // Only re-render the settings page when we are actually on it, so a
 // setter called from another page never wipes the current view.
-function haoRefreshSettings(){ try{ if((location.hash||'')==='#/settings') renderSettings(); }catch(e){} }
+function haoRefreshSettings(){ try{ const h=location.hash||''; if(h==='#/settings'||h.indexOf('#/settings/')===0) haoRerenderSettings(); }catch(e){} }
+// Re-render whichever settings page is showing (main or sub-page).
+function haoRerenderSettings(){ try{ const h=location.hash||''; if(h==='#/settings/music-sources') return renderSettingsMusicSources(); if(h==='#/settings/video-sources') return renderSettingsVideoSources(); if(h==='#/settings/live-sources') return renderSettingsLiveSources(); if(h==='#/settings/danmaku') return renderSettingsDanmaku(); if(h==='#/settings') return renderSettings(); }catch(e){} }
 function haoLsBool(key, defOn){ try{ const v=localStorage.getItem(key); if(v==null) return !!defOn; return v==='1'; }catch(e){ return !!defOn; } }
 function haoLsSet(key, v){ try{ localStorage.setItem(key, v); }catch(e){} }
 // LX settings borrow: small switches wired to existing behaviour only.
@@ -2731,7 +2583,7 @@ async function haoCellWarnCheck(){ if(!haoCellWarn()||haoCellWarned) return true
 // 3. default volume (+ per-room live volume memory, room wins over default)
 function haoDefaultVolume(){ try{ const v=localStorage.getItem('musicVolume'); if(v!==null){ const n=parseFloat(v); if(isFinite(n)) return Math.max(0,Math.min(1,n)); } }catch(e){} return 1; }
 function haoApplyVolumeToPlayers(){ const v=haoDefaultVolume(); try{ const lv=document.getElementById('liveVideo'); if(lv) lv.volume=v; }catch(e){} try{ const vp=document.getElementById('videoPlayer'); if(vp) vp.volume=v; }catch(e){} }
-function applyVolume(){ try{ audio.volume=haoDefaultVolume(); audio.muted=localStorage.getItem('hao_muted')==='1'; }catch(e){} }
+function applyVolume(){ try{ audio.volume=haoDefaultVolume(); audio.muted=localStorage.getItem('hao_muted')==='1'; syncVolSlider(); }catch(e){} }
 function haoSetDefaultVolume(v){ v=Math.max(0,Math.min(100,Number(v)||0)); setVolume(v); haoApplyVolumeToPlayers(); haoRefreshSettings(); }
 function haoLiveVolGet(pf, room){ try{ const v=localStorage.getItem('hao_live_vol_'+pf+'_'+room); if(v==null) return null; const n=parseFloat(v); return isFinite(n)?n:null; }catch(e){ return null; } }
 function haoLiveVolSet(pf, room, v){ try{ localStorage.setItem('hao_live_vol_'+pf+'_'+room, String(v)); }catch(e){} }
@@ -2980,7 +2832,6 @@ function haoCollectBackup() {
       musicVolume: haoLSRaw('musicVolume', ''),
       vodSpeed: haoLSRaw('vodSpeed', ''),
       curListId: haoLSRaw('curListId', ''),
-      tmdbKey: haoLSRaw('hao_tmdb_key', ''),
       danmakuEndpoint: haoLSRaw('hao_danmaku_endpoint', ''),
       liveDefQ: haoLSRaw('hao_live_def_q', ''),
       cellWarn: haoLSRaw('hao_cell_warn', ''),
@@ -3079,14 +2930,14 @@ async function haoExportBackup() {
   const json = JSON.stringify(obj);
   haoSaveBackupInApp(obj, json);
   await haoShareJson(obj, 'HAoStudio-backup-' + haoBackupDateStr() + '.json');
-  renderSettings();
+  haoRerenderSettings();
 }
 async function haoDeleteBackup(id) {
   if (!(await showConfirm({ title: t('backupDeleteT'), ok: t('backupDeleteT'), cancel: t('cancelT') }))) return;
   try {
     localStorage.setItem('hao_backups', JSON.stringify(haoGetBackups().filter(function (b) { return b.id !== id; })));
   } catch (e) {}
-  renderSettings();
+  haoRerenderSettings();
 }
 function haoValidateBackup(obj) {
   if (!obj || typeof obj !== 'object' || typeof obj.format !== 'string') return { ok: false, code: 'invalid' };
@@ -3126,9 +2977,7 @@ function haoWriteBackupData(obj) {
   setStr('musicVolume', s.musicVolume);
   setStr('vodSpeed', s.vodSpeed);
   setStr('curListId', s.curListId);
-  setStr('hao_tmdb_key', s.tmdbKey);
   setStr('hao_danmaku_endpoint', s.danmakuEndpoint);
-  try { __tmdbKey = null; __tmdbKeyP = null; } catch (e) {}
 }
 async function haoRestoreFromObject(obj) {
   const v = haoValidateBackup(obj);
@@ -3180,10 +3029,10 @@ async function haoClearLocalCategory(cat) {
     else if (cat === 'liveLiked') { haoLiveLikedSave([]); haoLiveLikeCountSave({}); }
   } catch (e) {}
   toast(t('localCleared'));
-  renderSettings();
+  haoRerenderSettings();
 }
-function toggleDanmakuUI() { toggleDanmaku(); renderSettings(); }
-function setDmPosUI(p) { setDmPos(p); renderSettings(); }
+function toggleDanmakuUI() { toggleDanmaku(); haoRerenderSettings(); }
+function setDmPosUI(p) { setDmPos(p); haoRerenderSettings(); }
 function setDmOpacityUI(v) { setDmOpacity(v); const s = document.getElementById('setDmOpacityVal'); if (s) s.textContent = String(dmOpacity); }
 function setDmSpeedUI(v) { setDmSpeed(v); const s = document.getElementById('setDmSpeedVal'); if (s) s.textContent = String(dmSpeed); }
 
@@ -3194,7 +3043,7 @@ function setSwitchHTML(on, call){ return '<button type="button" class="set-switc
 function setChipsHTML(opts, cur, fn){ return '<span class="set-chips">' + opts.map(function(o){ return '<button type="button" class="set-chip' + (String(cur) === String(o[0]) ? ' on' : '') + '" onclick="' + fn + '(\'' + o[0] + '\')">' + o[1] + '</button>'; }).join('') + '</span>'; }
 function haoSecState(){ try{ const v=JSON.parse(localStorage.getItem('hao_set_secs')||'null'); if(v&&typeof v==='object') return v; }catch(e){} return {play:true}; }
 function haoSecSave(st){ try{ localStorage.setItem('hao_set_secs', JSON.stringify(st)); }catch(e){} }
-function haoSecOpen(key){ const st=haoSecState(); if(!(key in st)) return key==='play'; return !!st[key]; }
+function haoSecOpen(key){ const st=haoSecState(); if(!(key in st)) return key==='play'||key.indexOf('src-')===0; return !!st[key]; }
 function haoToggleSec(key){
   const body=document.querySelector('[data-sec-body="'+key+'"]');
   const head=document.querySelector('[data-sec-head="'+key+'"]');
@@ -3229,6 +3078,78 @@ function haoBackupSectionHTML() {
   );
   return html;
 }
+// ================= settings sub-pages (split from renderSettings) =================
+// Main page keeps only entry rows; each sub-page is a standalone page with a
+// back button to #/settings. Setters re-render the current page via
+// haoRerenderSettings() / haoRefreshSettings(), so every switch and source
+// action works exactly as it did on the long page.
+function setNavRowHTML(titleKey, hash, iconName){ return '<div class="set-row set-nav-row" onclick="location.hash=\''+hash+'\'"><div class="set-row-t"><div class="set-title">'+ic(iconName)+' '+t(titleKey)+'</div></div><span class="set-nav-chev">›</span></div>'; }
+function setSubPageHead(titleKey, iconName){ return '<div class="settings-page"><div class="vod-top"><button type="button" class="ghost-btn set-back-btn" onclick="location.hash=\'#/settings\'">‹ '+t('setBackT')+'</button><div class="vod-top-title">'+ic(iconName)+' '+t(titleKey)+'</div></div>'; }
+function renderSettingsMusicSources(){
+  const body=document.getElementById('app'); if(!body) return;
+  const quals=[['128k',t('qStd')],['320k',t('qHigh')],['lossless',t('qLossless')],['hires',t('qHires')]];
+  let html=setSubPageHead('setSubMusicT','music');
+  html+='<div id="settingsSourcesMusic" class="set-group"><div class="muted" style="padding:14px 18px">'+t('loading')+'</div></div>';
+  html+='<div class="set-sec">'+t('setSecMusic')+'</div><div class="set-group">'
+    + setRowHTML(t('qualityDefaultT'), '', setChipsHTML(quals, curQuality, 'pickQuality'))
+    + setRowHTML(t('musicCacheT'), t('musicCacheSub'), '<button type="button" class="set-chip" onclick="haoParseCacheClear()">' + t('musicCacheClear') + '</button>')
+    + setRowHTML(t('plStyleT'), '', setChipsHTML([['immersive', t('plStyleImmersive')], ['vinyl', t('plStyleVinyl')], ['compact', t('plStyleCompact')], ['split', t('plStyleSplit')]], plStyle(), 'plSetStyle'))
+    + setRowHTML(t('savePlayTimeT'), t('savePlayTimeSub'), setSwitchHTML(haoSavePlayTime(), 'haoSetSavePlayTime(' + (!haoSavePlayTime()) + ')'))
+    + setRowHTML(t('allowBarSeekT'), t('allowBarSeekSub'), setSwitchHTML(haoAllowBarSeek(), 'haoSetAllowBarSeek(' + (!haoAllowBarSeek()) + ')'))
+    + setRowHTML(t('showDurT'), t('showDurSub'), setSwitchHTML(haoShowDur(), 'haoSetShowDur(' + (!haoShowDur()) + ')'))
+    + setRowHTML(t('showHotSearchT'), t('showHotSearchSub'), setSwitchHTML(haoShowHotSearch(), 'haoSetShowHotSearch(' + (!haoShowHotSearch()) + ')'))
+    + setRowHTML(t('showSearchHistT'), t('showSearchHistSub'), setSwitchHTML(haoShowSearchHist(), 'haoSetShowSearchHist(' + (!haoShowSearchHist()) + ')'))
+    + '<div class="set-row set-row-block"><div class="set-row-t"><div class="set-title">' + t('dislikeT') + '</div><div class="set-sub">' + t('dislikeSub') + '</div><div class="set-sub">' + (haoDislikeGet().length ? haoDislikeGet().map(function(b){ return '<span class="set-block-chip">' + esc(b.text||'') + ' <i onclick="haoDislikeDel(\'' + esc(b.id||'') + '\')">✕</i></span>'; }).join(' ') : t('dislikeEmptyT')) + '</div></div></div>'
+    + '<div class="row"><input id="dislikeInput" placeholder="' + t('dislikeAddPh') + '" style="flex:1"><button type="button" onclick="haoDislikeAddFromUI()">' + t('dislikeAddT') + '</button></div>'
+    + '</div>';
+  html+='</div>';
+  body.innerHTML=html;
+  haoRenderSourcesSection('music');
+}
+function renderSettingsVideoSources(){
+  const body=document.getElementById('app'); if(!body) return;
+  let html=setSubPageHead('setSubVideoT','movie');
+  html+='<div id="settingsSourcesVideo" class="set-group"><div class="muted" style="padding:14px 18px">'+t('loading')+'</div></div>';
+  html+='</div>';
+  body.innerHTML=html;
+  haoRenderSourcesSection('video');
+}
+function renderSettingsLiveSources(){
+  const body=document.getElementById('app'); if(!body) return;
+  let html=setSubPageHead('setSubLiveT','tv');
+  html+='<div id="settingsSourcesLive" class="set-group"><div class="muted" style="padding:14px 18px">'+t('loading')+'</div></div>';
+  html+='<div class="set-sec">'+t('setSecLive')+'</div><div class="set-group">'
+    + setRowHTML(t('followRefreshT'), t('followRefreshSub'), setSwitchHTML(haoFollowRefresh(), 'haoSetFollowRefresh(' + (!haoFollowRefresh()) + ')'))
+    + setRowHTML(t('liveAlertT'), t('liveAlertSub'), setSwitchHTML(haoLiveAlert(), 'haoSetLiveAlert(' + (!haoLiveAlert()) + ')'))
+    + setRowHTML(t('defLivePlatT'), t('defLivePlatSub'), setChipsHTML([['', t('liveAll')], ['bili', t('livePlatBili')], ['douyu', t('livePlatDouyu')], ['huya', t('livePlatHuya')], ['douyin', t('livePlatDouyin')], ['ks', t('livePlatKs')]], haoDefLivePlat(), 'haoSetDefaultLivePlatform'))
+    + '</div>';
+  html+='</div>';
+  body.innerHTML=html;
+  haoRenderSourcesSection('live');
+}
+function renderSettingsDanmaku(){
+  const body=document.getElementById('app'); if(!body) return;
+  const dmBlocks=haoDmBlockGet();
+  let html=setSubPageHead('setSubDmT','chat');
+  html+='<div class="set-group">'
+    + setRowHTML(t('liveDmSwitchT'), '', setSwitchHTML(dmEnabled, 'toggleDanmakuUI()'))
+    + setRowHTML(t('dmPosT'), '', setChipsHTML([['top', t('dmPosTop')], ['middle', t('dmPosMid')], ['bottom', t('dmPosBot')], ['full', t('dmPosFull')]], dmPos, 'setDmPosUI'))
+    + setRowHTML(t('dmOpacityT'), '', '<input type="range" class="set-slider" min="0.3" max="1" step="0.1" value="' + dmOpacity + '" oninput="setDmOpacityUI(this.value);document.getElementById(\'setDmOpacityVal\').textContent=this.value"> <span class="set-val" id="setDmOpacityVal">' + dmOpacity + '</span>')
+    + setRowHTML(t('dmSpeedT'), '', '<input type="range" class="set-slider" min="0.5" max="2" step="0.25" value="' + dmSpeed + '" oninput="setDmSpeedUI(this.value);document.getElementById(\'setDmSpeedVal\').textContent=this.value"> <span class="set-val" id="setDmSpeedVal">' + dmSpeed + '</span>')
+    + setRowHTML(t('dmFontT'), '', setChipsHTML([['14', '14'], ['16', '16'], ['20', '20']], String(dmFontSize), 'haoSetDmFontSize'))
+    + setRowHTML(t('dmWeightT'), '', setChipsHTML([['500', '500'], ['700', '700']], String(dmFontWeight), 'haoSetDmFontWeight'))
+    + setRowHTML(t('dmStrokeT'), '', setSwitchHTML(dmStroke, 'haoSetDmStroke(' + (!dmStroke) + ')'))
+    + setRowHTML(t('dmMaxT'), '', setChipsHTML([['24', '24'], ['48', '48'], ['96', '96']], String(dmMaxVisible), 'haoSetDmMaxVisible'))
+    + setRowHTML(t('dmPausedT'), '', setChipsHTML([['pause', t('dmPausedPause')], ['keep', t('dmPausedKeep')]], haoDmPausedBehavior(), 'haoSetDmPausedBehavior'))
+    + setRowHTML(t('dmCollapseT'), t('dmCollapseSub'), setSwitchHTML(haoDmCollapse(), 'haoSetDmCollapseRepeat(' + (!haoDmCollapse()) + ')'))
+    + setRowHTML(t('dmHoldT'), t('dmHoldSub'), setSwitchHTML(haoDmHold(), 'haoSetDmHoldOnPress(' + (!haoDmHold()) + ')'))
+    + '<div class="set-row set-row-block"><div class="set-row-t"><div class="set-title">' + t('dmBlockT') + '</div><div class="set-sub">' + (dmBlocks.length ? dmBlocks.map(function(b){ return '<span class="set-block-chip">' + esc(b.text) + ' <i onclick="haoDmBlockDel(\'' + b.id + '\')">✕</i></span>'; }).join(' ') : t('dmBlockEmpty')) + '</div></div></div>'
+    + '<div class="set-row"><input id="dmBlockInput" class="set-input" placeholder="' + t('dmBlockPh') + '"><select id="dmBlockKind" class="set-select"><option value="word">' + t('dmBlockWord') + '</option><option value="user">' + t('dmBlockUser') + '</option></select><button type="button" class="set-chip" onclick="haoDmBlockAddFromUI()">' + t('dmBlockAdd') + '</button></div>'
+    + '</div>';
+  html+='<div class="set-sec">'+t('srcDmT')+'</div><div class="set-group"><div class="set-row"><input id="dmEndpointInput" class="set-input" placeholder="'+t('srcDmPh')+'" value="'+esc(haoDanmakuEndpoint()||'')+'"><button type="button" class="set-chip" onclick="saveDmEndpoint()">'+t('saveChanges')+'</button></div></div>';
+  html+='</div>';
+  body.innerHTML=html;
+}
 function renderSettings() {
   const body = document.getElementById('app');
   if (!body) return;
@@ -3251,7 +3172,12 @@ function renderSettings() {
   const skippedUp = haoSkipVer();
   let html = '<div class="settings-page"><div class="vod-top"><div class="vod-top-title">' + ic('settings') + ' ' + t('settingsT') + '</div></div>';
   // Sources — separated by category (tabs in the primary path, collapsible sections in the fallback)
-  html += '<div class="set-sec set-sec-coll' + (haoSecOpen('sources') ? '' : ' collapsed') + '" data-sec-head="sources" onclick="haoToggleSec(\'sources\')"><span>' + t('srcMgmtPageT') + '</span><span class="set-sec-chev">' + ic('chevDown') + '</span></div><div id="settingsSources" class="set-group' + (haoSecOpen('sources') ? '' : ' collapsed') + '" data-sec-body="sources"' + (haoSecOpen('sources') ? '' : ' style="max-height:0"') + '><div class="muted">' + t('loading') + '</div></div>';
+  html += '<div class="set-sec">' + t('setSubNavT') + '</div><div class="set-group">'
+    + setNavRowHTML('setSubMusicT', '#/settings/music-sources', 'music')
+    + setNavRowHTML('setSubVideoT', '#/settings/video-sources', 'movie')
+    + setNavRowHTML('setSubLiveT', '#/settings/live-sources', 'tv')
+    + setNavRowHTML('setSubDmT', '#/settings/danmaku', 'chat')
+    + '</div>';
   // 播放
   html += setGroupHTML(t('setSecPlay'),
     setRowHTML(t('liveDefQT'), '', setChipsHTML([['', t('autoT')], ['原画', '原画'], ['蓝光8M', '蓝光8M'], ['蓝光4M', '蓝光4M'], ['超清', '超清'], ['流畅', '流畅']], haoLiveDefQ(), 'haoSetDefaultLiveQuality'))
@@ -3265,41 +3191,6 @@ function renderSettings() {
     + setRowHTML(t('hudSpeedT'), t('hudSpeedSub'), setSwitchHTML(haoHudSpeed(), 'haoSetHudSpeed(' + (!haoHudSpeed()) + ')'))
     + setRowHTML(t('autoPipT'), t('autoPipSub'), setSwitchHTML(haoAutoPip(), 'haoSetAutoPip(' + (!haoAutoPip()) + ')'))
     + setRowHTML(t('startupAutoPlayT'), t('startupAutoPlaySub'), setSwitchHTML(haoStartupAutoPlay(), 'haoSetStartupAutoPlay(' + (!haoStartupAutoPlay()) + ')'))
-  );
-  // 直播
-  html += setGroupHTML(t('setSecLive'),
-    setRowHTML(t('followRefreshT'), t('followRefreshSub'), setSwitchHTML(haoFollowRefresh(), 'haoSetFollowRefresh(' + (!haoFollowRefresh()) + ')'))
-    + setRowHTML(t('liveAlertT'), t('liveAlertSub'), setSwitchHTML(haoLiveAlert(), 'haoSetLiveAlert(' + (!haoLiveAlert()) + ')'))
-    + setRowHTML(t('defLivePlatT'), t('defLivePlatSub'), setChipsHTML([['', t('liveAll')], ['bili', t('livePlatBili')], ['douyu', t('livePlatDouyu')], ['huya', t('livePlatHuya')], ['douyin', t('livePlatDouyin')], ['ks', t('livePlatKs')]], haoDefLivePlat(), 'haoSetDefaultLivePlatform'))
-  );
-  // 弹幕
-  html += setGroupHTML(t('setSecDm'),
-    setRowHTML(t('liveDmSwitchT'), '', setSwitchHTML(dmEnabled, 'toggleDanmakuUI()'))
-    + setRowHTML(t('dmPosT'), '', setChipsHTML([['top', t('dmPosTop')], ['middle', t('dmPosMid')], ['bottom', t('dmPosBot')], ['full', t('dmPosFull')]], dmPos, 'setDmPosUI'))
-    + setRowHTML(t('dmOpacityT'), '', '<input type="range" class="set-slider" min="0.3" max="1" step="0.1" value="' + dmOpacity + '" oninput="setDmOpacityUI(this.value);document.getElementById(\'setDmOpacityVal\').textContent=this.value"> <span class="set-val" id="setDmOpacityVal">' + dmOpacity + '</span>')
-    + setRowHTML(t('dmSpeedT'), '', '<input type="range" class="set-slider" min="0.5" max="2" step="0.25" value="' + dmSpeed + '" oninput="setDmSpeedUI(this.value);document.getElementById(\'setDmSpeedVal\').textContent=this.value"> <span class="set-val" id="setDmSpeedVal">' + dmSpeed + '</span>')
-    + setRowHTML(t('dmFontT'), '', setChipsHTML([['14', '14'], ['16', '16'], ['20', '20']], String(dmFontSize), 'haoSetDmFontSize'))
-    + setRowHTML(t('dmWeightT'), '', setChipsHTML([['500', '500'], ['700', '700']], String(dmFontWeight), 'haoSetDmFontWeight'))
-    + setRowHTML(t('dmStrokeT'), '', setSwitchHTML(dmStroke, 'haoSetDmStroke(' + (!dmStroke) + ')'))
-    + setRowHTML(t('dmMaxT'), '', setChipsHTML([['24', '24'], ['48', '48'], ['96', '96']], String(dmMaxVisible), 'haoSetDmMaxVisible'))
-    + setRowHTML(t('dmPausedT'), '', setChipsHTML([['pause', t('dmPausedPause')], ['keep', t('dmPausedKeep')]], haoDmPausedBehavior(), 'haoSetDmPausedBehavior'))
-    + setRowHTML(t('dmCollapseT'), t('dmCollapseSub'), setSwitchHTML(haoDmCollapse(), 'haoSetDmCollapseRepeat(' + (!haoDmCollapse()) + ')'))
-    + setRowHTML(t('dmHoldT'), t('dmHoldSub'), setSwitchHTML(haoDmHold(), 'haoSetDmHoldOnPress(' + (!haoDmHold()) + ')'))
-    + '<div class="set-row set-row-block"><div class="set-row-t"><div class="set-title">' + t('dmBlockT') + '</div><div class="set-sub">' + (dmBlocks.length ? dmBlocks.map(function(b){ return '<span class="set-block-chip">' + esc(b.text) + ' <i onclick="haoDmBlockDel(\'' + b.id + '\')">✕</i></span>'; }).join(' ') : t('dmBlockEmpty')) + '</div></div></div>'
-    + '<div class="set-row"><input id="dmBlockInput" class="set-input" placeholder="' + t('dmBlockPh') + '"><select id="dmBlockKind" class="set-select"><option value="word">' + t('dmBlockWord') + '</option><option value="user">' + t('dmBlockUser') + '</option></select><button type="button" class="set-chip" onclick="haoDmBlockAddFromUI()">' + t('dmBlockAdd') + '</button></div>'
-  );
-  // 音乐
-  html += setGroupHTML(t('setSecMusic'),
-    setRowHTML(t('qualityDefaultT'), '', setChipsHTML(quals, curQuality, 'pickQuality'))
-    + setRowHTML(t('musicCacheT'), t('musicCacheSub'), '<button type="button" class="set-chip" onclick="haoParseCacheClear()">' + t('musicCacheClear') + '</button>')
-    + setRowHTML(t('plStyleT'), '', setChipsHTML([['immersive', t('plStyleImmersive')], ['vinyl', t('plStyleVinyl')], ['compact', t('plStyleCompact')], ['split', t('plStyleSplit')]], plStyle(), 'plSetStyle'))
-    + setRowHTML(t('savePlayTimeT'), t('savePlayTimeSub'), setSwitchHTML(haoSavePlayTime(), 'haoSetSavePlayTime(' + (!haoSavePlayTime()) + ')'))
-    + setRowHTML(t('allowBarSeekT'), t('allowBarSeekSub'), setSwitchHTML(haoAllowBarSeek(), 'haoSetAllowBarSeek(' + (!haoAllowBarSeek()) + ')'))
-    + setRowHTML(t('showDurT'), t('showDurSub'), setSwitchHTML(haoShowDur(), 'haoSetShowDur(' + (!haoShowDur()) + ')'))
-    + setRowHTML(t('showHotSearchT'), t('showHotSearchSub'), setSwitchHTML(haoShowHotSearch(), 'haoSetShowHotSearch(' + (!haoShowHotSearch()) + ')'))
-    + setRowHTML(t('showSearchHistT'), t('showSearchHistSub'), setSwitchHTML(haoShowSearchHist(), 'haoSetShowSearchHist(' + (!haoShowSearchHist()) + ')'))
-    + '<div class="set-row set-row-block"><div class="set-row-t"><div class="set-title">' + t('dislikeT') + '</div><div class="set-sub">' + t('dislikeSub') + '</div><div class="set-sub">' + (haoDislikeGet().length ? haoDislikeGet().map(function(b){ return '<span class="set-block-chip">' + esc(b.text||'') + ' <i onclick="haoDislikeDel(\'' + esc(b.id||'') + '\')">✕</i></span>'; }).join(' ') : t('dislikeEmptyT')) + '</div></div></div>'
-    + '<div class="row"><input id="dislikeInput" placeholder="' + t('dislikeAddPh') + '" style="flex:1"><button type="button" onclick="haoDislikeAddFromUI()">' + t('dislikeAddT') + '</button></div>'
   );
   // 歌曲过渡 (Apple Music 交叉淡化, 照真机截图结构: 开关卡 + 过渡效果样式两选项)
   html += setGroupHTML(t('xfT'),
@@ -3349,7 +3240,6 @@ function renderSettings() {
   setTimeout(haoFillCacheSize, 50);
   html += '</div>';
   body.innerHTML = html;
-  haoRenderSourcesSection();
 }
 
 
@@ -3368,8 +3258,8 @@ async function renderMyPlaylist(){
     document.getElementById('app').innerHTML=`<div class="card"><p><a href="javascript:void(0)" onclick="backToMyPlHub()">‹ ${t('myPlaylistT')}</a></p><h2>${t('recentT')}</h2><div id="myRecent"></div><p><button onclick="clearMyRecent()" class="ghost-btn">${t('clearRecent')}</button></p></div>`;
     loadMyRecent();
   } else {
-    document.getElementById('app').innerHTML=`<div class="card"><h2>${t('myPlaylistT')}</h2><div class="qa-grid"><div class="qa-tile" onclick="location.hash='#/search'"><span class="qa-ico">${ic('search')}</span><span>${t('searchPageT')}</span></div><div class="qa-tile" onclick="location.hash='#/daily'"><span class="qa-ico">${ic('music')}</span><span>${t('dailyT')}</span></div><div class="qa-tile" onclick="location.hash='#/plaza'"><span class="qa-ico">${ic('grid')}</span><span>${t('plazaT')}</span></div></div><div style="display:flex;gap:8px;margin-top:10px"><input id="myImportUrl" placeholder="${t('importPh')}" style="flex:1"><button type="button" onclick="importMyPlaylist()">${t('importBtn')}</button></div><p class="muted" style="font-size:12px">${t('importHint')}</p><div id="myListCards"></div></div><div id="lpSheet" class="lp-sheet" style="display:none" onclick="if(event.target===this)lpClose()"><div class="lp-box"><div id="lpTitle" class="lp-title"></div><button class="lp-del" onclick="lpDelete()">${ic('del')} ${t('delSong')}</button><button onclick="lpShare()">${ic('share')} ${t('shareSong')}</button><button onclick="lpClose()">${t('cancelOp')}</button></div></div>`;
-    loadMyLists(); loadMyRecent();
+    document.getElementById('app').innerHTML=`<div class="card home-card"><div class="home-greet">${homeGreetText()}</div><div class="home-date">${homeDateText()}</div><div class="qa-grid qa-grid4"><div class="qa-tile" onclick="location.hash='#/search'"><span class="qa-ico">${ic('search')}</span><span>${t('searchPageT')}</span></div><div class="qa-tile" onclick="location.hash='#/daily'"><span class="qa-ico">${ic('music')}</span><span>${t('dailyT')}</span></div><div class="qa-tile" onclick="location.hash='#/plaza'"><span class="qa-ico">${ic('grid')}</span><span>${t('plazaT')}</span></div><div class="qa-tile" onclick="location.hash='#/listen-report'"><span class="qa-ico">${ic('eq')}</span><span>${t('listenReportT')}</span></div></div><div id="homeContinue"></div><div class="home-sec"><div class="home-sec-head">${t('myPlaylistT')}</div><div class="home-import"><input id="myImportUrl" placeholder="${t('importPh')}"><button type="button" onclick="importMyPlaylist()">${t('importBtn')}</button></div><p class="muted home-import-hint">${t('importHint')}</p><div id="myListCards"></div></div></div><div id="lpSheet" class="lp-sheet" style="display:none" onclick="if(event.target===this)lpClose()"><div class="lp-box"><div id="lpTitle" class="lp-title"></div><button class="lp-del" onclick="lpDelete()">${ic('del')} ${t('delSong')}</button><button onclick="lpShare()">${ic('share')} ${t('shareSong')}</button><button onclick="lpClose()">${t('cancelOp')}</button></div></div>`;
+    loadMyLists(); loadMyRecent(); renderHomeContinue();
   }
 }
 function renderMyListCards(){ const el=document.getElementById('myListCards'); if(!el) return; const recentCover=lastRecent.length?(lastRecent[0].cover||'./music-cover.svg'):'./music-cover.svg'; el.innerHTML=myLists.map((l,idx)=>`<div class="pl-card" onclick="openMyListDetail(${l.id})"><img class="pl-cover" src="${esc(l.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'"><div class="pl-meta"><div class="pl-name">${esc(l.name)}</div><div class="pl-count">${l.count||0} ${t('songsUnit')}</div></div><span class="pl-sort"><button type="button" class="pl-sort-btn" ${idx===0?'disabled':''} onclick="event.stopPropagation();moveList(${l.id},-1)" title="${t('moveUp')}" aria-label="${t('moveUp')}">↑</button><button type="button" class="pl-sort-btn" ${idx===myLists.length-1?'disabled':''} onclick="event.stopPropagation();moveList(${l.id},1)" title="${t('moveDown')}" aria-label="${t('moveDown')}">↓</button></span><span class="pl-chev">›</span></div>`).join('')+`<div class="pl-card" onclick="openRecentDetail()"><img class="pl-cover" src="${esc(recentCover)}" onerror="this.src='./music-cover.svg'"><div class="pl-meta"><div class="pl-name">${t('recentT')}</div><div class="pl-count">${lastRecent.length} ${t('songsUnit')}</div></div><span class="pl-chev">›</span></div>`+`<button type="button" class="add-list-btn" onclick="createList()" style="margin-top:10px">+ ${t('createList')}</button>`; }
@@ -3396,22 +3286,94 @@ async function moveList(id,dir){ const idx=myLists.findIndex(x=>String(x.id)===S
 async function openPickSong(song){ pickSong=song; const lists=haoListsGet(); myLists=lists; if(!lists.length){ const nl={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:t('myPlaylistT'), tracks:[]}; lists.push(nl); haoListsSave(lists); myLists=lists; addPickedToList(nl.id); return; } if(lists.length===1){ addPickedToList(lists[0].id); return; } const el=document.getElementById('pickListBtns'); if(el){ el.innerHTML=lists.map(l=>`<button onclick="addPickedToList('${esc(l.id)}')" style="width:100%;text-align:left;margin:4px 0">${esc(l.name)}</button>`).join(''); } const sh=document.getElementById('pickSheet'); if(sh) sh.style.display='block'; }
 function closePickSheet(){ const sh=document.getElementById('pickSheet'); if(sh) sh.style.display='none'; }
 async function addPickedToList(listId){ if(!pickSong) return; const x=pickSong; const lists=haoListsGet(); const list=lists.find(function(l){ return String(l.id)===String(listId); }); closePickSheet(); if(!list) return; if((list.tracks||[]).some(function(t){ return String(t.songId)===String(x.songId); })){ toast(t('alreadyIn')); return; } if((list.tracks||[]).length>=200){ toast(t('myPlaylistFull')); return; } const nid='t'+Date.now()+Math.floor(Math.random()*1000); list.tracks=list.tracks||[]; list.tracks.push({id:nid, songId:x.songId, title:x.title, artist:x.artist, platform:x.platform, cover:x.cover||'', vipOnly:x.vipOnly, dur:durOf(x)}); haoListsSave(lists); toast(t('joinedPlaylist')); loadMyPlaylist(); const k=(x.platform||'wy')+'|'+x.songId; favIds.add(k); updateFavBtn(); }
-async function renderDailyPage(){ document.getElementById('app').innerHTML=`<div class="card"><p><a href="#/playlist">‹ ${t('myPlaylistT')}</a></p><h2>${ic('music')} ${t('dailyT')}</h2><p class="muted">${t('dailySub')}</p><div id="dailyList">${skelAmRowsHTML(5)}</div></div>`; const now=Date.now(); const evs=haoLSGet('hao_listen', []).filter(function(x){ return now-(x.at||0)<=30*864e5; }); const counts={}; evs.forEach(function(x){ const k=(x.platform||'wy')+'|'+x.songId; counts[k]=counts[k]||{n:0, tr:x}; counts[k].n++; }); lastDaily=Object.values(counts).sort(function(a,b){ return b.n-a.n; }).slice(0,20).map(function(c){ const tr=c.tr; return {songId:tr.songId, title:tr.title, artist:tr.artist, platform:tr.platform, cover:tr.cover, vipOnly:false, dur:tr.dur||0, reasonKey:'becauseListen', reasonArg:' ×'+c.n}; }); lastDailyDay=new Date().toISOString().slice(0,10); const el=document.getElementById('dailyList'); if(!el) return; el.innerHTML=lastDaily.length?`<div class="am-list">${lastDaily.map((x,i)=>`<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playDailyIdx(${i})" style="cursor:pointer"><div class="am-meta" onclick="playDailyIdx(${i})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''} · ${x.reasonKey==='becauseListen'?esc(t('becauseListen')+(x.reasonArg||'')):esc(t('hotPick'))}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addDailyIdx(${i})">+</button></div></div>`).join('')}</div>`:`<p class="muted">${t('noDaily')}</p>`; }
+// ---- music home helpers (v1.0.2): greeting + date + continue playing ----
+function homeGreetText(){ const h=new Date().getHours(); return h<12?t('greetMorning'):h<18?t('greetAfternoon'):t('greetEvening'); }
+function homeDateText(){ try{ const loc=lang==='zh-TW'?'zh-TW':lang==='en'?'en-US':'zh-CN'; return new Date().toLocaleDateString(loc,{month:'long',day:'numeric',weekday:'long'}); }catch(e){ return ''; } }
+function renderHomeContinue(){ const el=document.getElementById('homeContinue'); if(!el) return; const items=(lastRecent||[]).slice(0,5); if(!items.length){ el.innerHTML=''; return; } el.innerHTML=`<div class="home-sec"><div class="home-sec-head-row"><div class="home-sec-head">${t('upNextT')}</div><a href="javascript:void(0)" onclick="openRecentDetail()" class="home-more">${t('recentT')} ›</a></div><div class="am-list">${items.map((x,i)=>`<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playRecentIdx(${i})" style="cursor:pointer"><div class="am-meta" onclick="playRecentIdx(${i})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${durSuffix(x)}</div></div></div>`).join('')}</div></div>`; }
+// ---- daily mix helpers (v1.0.2): date-seeded shuffle, artist discovery, hot fallback ----
+function dailySeeded(seed){ let h=2166136261; for(let i=0;i<seed.length;i++){ h^=seed.charCodeAt(i); h=Math.imul(h,16777619); } return function(){ h+=0x6D2B79F5; let x=h; x=Math.imul(x^x>>>15,x|1); x^=x+Math.imul(x^x>>>7,x|61); return ((x^x>>>14)>>>0)/4294967296; }; }
+function dailyShuffle(arr,rnd){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const tmp=a[i]; a[i]=a[j]; a[j]=tmp; } return a; }
+function dailyNorm(s){ return String(s||'').replace(/[\s\(\)（）\[\]·\-'"“”]/g,'').toLowerCase(); }
+function dailyFirstArtist(s){ return String(s||'').split(/[\/、，,；;]/)[0].trim(); }
+async function dailyDiscover(artists,heard,heardTitles,rnd){
+  const seen=new Set();
+  const jobs=artists.map(function(name){ return (async function(){ let found=[]; try{ found=await directSearchWY(name,12); }catch(e){ found=[]; } if(found.length<4){ try{ const tx=await directSearchTX(name,12); found=found.concat(tx); }catch(e){} } return {name:name,songs:found}; })(); });
+  const settled=await Promise.allSettled(jobs);
+  const per=settled.map(function(r){ if(r.status!=='fulfilled') return {name:'',songs:[]}; const name=r.value.name; const nn=dailyNorm(name); return {name:name,songs:(r.value.songs||[]).filter(function(s){ const k=(s.platform||'wy')+'|'+s.songId; if(!s.songId||!s.title||heard.has(k)||seen.has(k)) return false; if(heardTitles.has(dailyNorm(s.title)+'|'+dailyNorm(dailyFirstArtist(s.artist)))) return false; if(dailyNorm(s.artist).indexOf(nn)<0&&dailyNorm(dailyFirstArtist(s.artist))!==nn) return false; seen.add(k); return true; }).map(function(s){ return {songId:s.songId,title:s.title,artist:s.artist,platform:s.platform,cover:s.cover||'',vipOnly:s.vipOnly?1:0,dur:s.dur||0,reasonKey:'becauseArtist',reasonArg:name}; })}; });
+  const out=[]; let idx=0,guard=0;
+  while(out.length<10&&guard++<40){ let added=false; for(const p of per){ const s=p.songs[idx]; if(s){ out.push(s); added=true; } } idx++; if(!added) break; }
+  return dailyShuffle(out,rnd).slice(0,10);
+}
+async function dailyHotFill(n,heard,list){
+  const have=new Set(list.map(function(x){ return (x.platform||'wy')+'|'+x.songId; }));
+  const settled=await Promise.allSettled(['wy','tx','kw'].map(function(pf){ return directPlaza(pf).catch(function(){ return null; }); }));
+  const cands=[];
+  ['wy','tx','kw'].forEach(function(pf,i){ const r=settled[i]; if(r.status==='fulfilled'&&r.value&&(r.value.items||[]).length) cands.push({pf:pf,items:r.value.items}); });
+  let tracks=[];
+  for(const c of cands){ if(tracks.length) break; try{ const d=await directPlazaDetail(c.pf,c.items[0].id); tracks=d.tracks||[]; }catch(e){} }
+  return tracks.filter(function(s){ const k=(s.platform||'wy')+'|'+s.songId; return s.songId&&s.title&&!heard.has(k)&&!have.has(k); }).slice(0,n).map(function(s){ return {songId:s.songId,title:s.title,artist:s.artist,platform:s.platform,cover:s.cover||'',vipOnly:s.vipOnly?1:0,dur:s.dur||0,reasonKey:'hotPick',reasonArg:''}; });
+}
+function renderDailyRows(cold){
+  const el=document.getElementById('dailyList'); if(!el) return;
+  const pr=document.getElementById('dailyPlayRow'); if(pr) pr.style.display=lastDaily.length?'':'none';
+  const nt=document.getElementById('dailyNote'); if(nt) nt.innerHTML=cold?`<div class="daily-note">${esc(t('dailyColdHint'))}</div>`:'';
+  if(!lastDaily.length){ el.innerHTML=`<p class="muted">${t('noDaily')}</p><p><button class="ghost-btn" onclick="renderDailyPage()">${t('retryT')}</button></p>`; return; }
+  el.innerHTML=`<div class="am-list">${lastDaily.map((x,i)=>`<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playDailyIdx(${i})" style="cursor:pointer"><div class="am-meta" onclick="playDailyIdx(${i})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''} · ${x.reasonKey==='becauseListen'?esc(t('becauseListen')+(x.reasonArg||'')):x.reasonKey==='becauseArtist'?esc(t('becauseArtist').replace('{name}',x.reasonArg||'')):esc(t('hotPick'))}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addDailyIdx(${i})">+</button></div></div>`).join('')}</div>`;
+}
+let dailyBuildSeq=0;
+async function renderDailyPage(){ const mySeq=++dailyBuildSeq; document.getElementById('app').innerHTML=`<div class="card daily-card"><p class="daily-back"><a href="#/playlist">‹ ${t('myPlaylistT')}</a></p><div class="daily-eyebrow">${homeDateText()}</div><h2 class="daily-title">${t('dailyT')}</h2><p class="daily-sub">${t('dailyHeroSub')}</p><div class="daily-play-row" id="dailyPlayRow"><button class="play-all-btn daily-play-all" onclick="playDailyIdx(0)">${ic('play')} ${t('playAllT')}</button></div><div id="dailyNote"></div><div id="dailyList">${skelAmRowsHTML(5)}</div></div>`; const dayKey=new Date().toISOString().slice(0,10); try{ const cached=haoLSGet('hao_daily_'+dayKey,null); if(cached&&Array.isArray(cached.tracks)&&cached.tracks.length){ lastDaily=cached.tracks; lastDailyDay=dayKey; renderDailyRows(!!cached.cold); return; } }catch(e){} const now=Date.now(); const evs=haoLSGet('hao_listen', []).filter(function(x){ return now-(x.at||0)<=30*864e5; }); const counts={}; evs.forEach(function(x){ const k=(x.platform||'wy')+'|'+x.songId; counts[k]=counts[k]||{n:0, tr:x}; counts[k].n++; }); const ranked=Object.values(counts).sort(function(a,b){ return b.n-a.n; }); const rng=dailySeeded(dayKey); const heard=new Set(); const heardTitles=new Set(); ranked.forEach(function(c){ heard.add((c.tr.platform||'wy')+'|'+c.tr.songId); heardTitles.add(dailyNorm(c.tr.title)+'|'+dailyNorm(dailyFirstArtist(c.tr.artist))); }); const toDaily=function(c){ const tr=c.tr; return {songId:tr.songId,title:tr.title,artist:tr.artist,platform:tr.platform,cover:tr.cover,vipOnly:false,dur:tr.dur||0,reasonKey:'becauseListen',reasonArg:' ×'+c.n}; }; let list=dailyShuffle(ranked.slice(0,20),rng).slice(0,10).map(toDaily); let cold=false; if(ranked.length){ const artists=[]; const seenA=new Set(); ranked.forEach(function(c){ const a=dailyFirstArtist(c.tr.artist); if(a&&!seenA.has(a)){ seenA.add(a); artists.push(a); } }); list=list.concat(await dailyDiscover(artists.slice(0,3),heard,heardTitles,rng)); if(list.length<20){ const have=new Set(list.map(function(x){ return (x.platform||'wy')+'|'+x.songId; })); list=list.concat(dailyShuffle(ranked.filter(function(c){ return !have.has((c.tr.platform||'wy')+'|'+c.tr.songId); }),rng).map(toDaily)); } } if(list.length<20){ let hot=await dailyHotFill(20-list.length,heard,list); if(!hot.length&&!ranked.length){ hot=await dailyHotFill(20-list.length,heard,list); } if(!ranked.length&&hot.length) cold=true; list=list.concat(hot); } if(mySeq!==dailyBuildSeq) return; lastDaily=list.slice(0,20); lastDailyDay=dayKey; try{ haoLSSet('hao_daily_'+dayKey,{tracks:lastDaily,cold:cold}); }catch(e){} renderDailyRows(cold); }
 // ---- playlist plaza ----
-let plazaPf='wy', plazaCache={}, plazaDetail=null, lastPlazaTracks=[], plazaErr={}, plazaDetailIdx=0, plazaDetailFrom='plaza';
+let plazaPf='wy', plazaCache={}, plazaDetail=null, lastPlazaTracks=[], plazaErr={}, plazaDetailIdx=0, plazaDetailFrom='plaza', plazaSort='rec';
+const PLAZA_PFS=[['wy','网易云'],['tx','QQ音乐'],['kw','酷我'],['kg','酷狗音乐']];
+function plazaSortedIdx(items){ const arr=(items||[]).map(function(x,i){ return {x:x,i:i}; }); if(plazaSort==='hot') arr.sort(function(a,b){ return (Number(b.x.playCount)||0)-(Number(a.x.playCount)||0); }); else if(plazaSort==='new') arr.sort(function(a,b){ return (Date.parse(b.x.time||'')||0)-(Date.parse(a.x.time||'')||0); }); return arr; }
+function plazaHistGet(){ return haoLSGet('hao_plaza_recent', []); }
+function plazaHistAdd(x){ if(!x||!x.id) return; const r=plazaHistGet().filter(function(y){ return String(y.id)!==String(x.id)||y.platform!==plazaPf; }); r.unshift({id:String(x.id), name:x.name||'', cover:x.cover||'', platform:plazaPf}); haoLSSet('hao_plaza_recent', r.slice(0,20)); }
 function fmtCount(n){ n=Number(n)||0; return n>=10000?(n/10000).toFixed(1).replace(/\.0$/,'')+'万':String(n); }
-async function renderPlazaPage(){ document.getElementById('app').innerHTML=`<div class="card"><p><a href="#/playlist">‹ ${t('myPlaylistT')}</a></p><h2>${ic('music')} ${t('plazaT')}</h2><p class="muted">${t('plazaSub')}</p><div id="plazaTabs" style="display:flex;gap:8px;margin:8px 0"></div><div id="plazaBody"><p class="muted">${t('loading')}</p></div></div>`; renderPlazaTabs(); loadPlaza(); }
-function renderPlazaTabs(){ const el=document.getElementById('plazaTabs'); if(!el) return; const tabs=[['wy','网易云'],['tx','QQ音乐'],['kw','酷我']]; el.innerHTML=tabs.map(([k,n])=>`<button type="button" onclick="switchPlaza('${k}')" style="${plazaPf===k?'background:#e5484d;color:#fff':''}">${n}</button>`).join(''); }
-async function switchPlaza(pf){ plazaPf=pf; plazaDetail=null; renderPlazaTabs(); loadPlaza(); }
-async function loadPlaza(){ const el=document.getElementById('plazaBody'); if(!el) return; if(!plazaCache[plazaPf]){ el.innerHTML=skelPlazaHTML(); plazaErr[plazaPf]=0; try{ let r=null; if(nativeFetchAvailable()){ try{ r=await directPlaza(plazaPf); }catch(e){ r=null; } } if(!r) throw new Error('direct fail'); plazaCache[plazaPf]=(r.items||[]); }catch{ plazaCache[plazaPf]=null; plazaErr[plazaPf]=1; } } const items=plazaCache[plazaPf]; if(!el) return; if(plazaErr[plazaPf]){ el.innerHTML=loadErrHTML('loadPlaza()'); return; } el.innerHTML=(items||[]).length?`<div class="plaza-grid">${items.map((x,i)=>`<div class="plaza-card" onclick="openPlazaDetail(${i})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-meta">${x.trackCount?x.trackCount+'首 · ':''}${x.playCount?fmtCount(x.playCount)+'播放':''}</div></div>`).join('')}</div>`:`<p class="muted">${t('noItemsT')}</p>`; }
+async function renderPlazaPage(){ document.getElementById('app').innerHTML=`<div class="card plaza-page"><div class="plaza-head"><h2 class="plaza-title">${t('plazaT')}</h2><div class="plaza-head-right"><button type="button" id="plazaHistBtn" class="plaza-hist-btn" onclick="openPlazaHistory()" aria-label="历史"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button><select id="plazaPfSel" class="plaza-select" onchange="switchPlaza(this.value)">${PLAZA_PFS.map(function(p){ return `<option value="${p[0]}">${p[1]}</option>`; }).join('')}</select></div></div><div class="plaza-subrow"><select id="plazaCatSel" class="plaza-select"><option value="all">${t('filterAll')}</option></select><div class="plaza-sorts"><span class="plaza-sort${plazaSort==='rec'?' on':''}" onclick="setPlazaSort('rec')">推荐</span><span class="plaza-sort${plazaSort==='hot'?' on':''}" onclick="setPlazaSort('hot')">${t('sortHits')}</span><span class="plaza-sort${plazaSort==='new'?' on':''}" onclick="setPlazaSort('new')">${t('sortTime')}</span></div></div><div id="plazaBody"><p class="muted">${t('loading')}</p></div></div>`; syncPlazaPfSel(); loadPlaza(); }
+function syncPlazaPfSel(){ const el=document.getElementById('plazaPfSel'); if(el) el.value=plazaPf; }
+function renderPlazaTabs(){ syncPlazaPfSel(); }
+function setPlazaSort(s){ if(plazaSort===s||['rec','hot','new'].indexOf(s)<0) return; plazaSort=s; const sorts=['rec','hot','new']; document.querySelectorAll('.plaza-sort').forEach(function(el,i){ el.classList.toggle('on', sorts[i]===s); }); loadPlaza(); }
+async function switchPlaza(pf){ plazaPf=pf; plazaDetail=null; syncPlazaPfSel(); loadPlaza(); }
+function openPlazaHistory(){ const el=document.getElementById('plazaBody'); if(!el) return; const list=plazaHistGet(); el.innerHTML=`<p><a href="javascript:void(0)" onclick="loadPlaza()">‹ ${t('plazaT')}</a></p>`+(list.length?`<div class="plaza-list">${list.map(function(h,i){ return `<div class="plaza-card" onclick="openPlazaHistDetail(${i})"><img class="plaza-cover" src="${esc(h.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-info"><div class="plaza-name">${esc(h.name)}</div><div class="plaza-creator">${esc(pfName(h.platform))}</div></div></div>`; }).join('')}</div>`:`<p class="muted">${t('noItemsT')}</p>`); }
+async function openPlazaHistDetail(i){ const h=plazaHistGet()[i]; if(!h) return; plazaPf=h.platform; syncPlazaPfSel(); if(!plazaCache[plazaPf]){ await loadPlaza(); } const idx=(plazaCache[plazaPf]||[]).findIndex(function(x){ return String(x.id)===String(h.id); }); if(idx>=0){ openPlazaDetail(idx); return; } plazaDetail={id:h.id, name:h.name, cover:h.cover, creator:'', playCount:0, trackCount:0, desc:''}; plazaDetailIdx=-1; plazaDetailFrom='plaza'; showPlazaDetail(plazaDetail); }
+let plazaLoadSeq=0;
+async function loadPlaza(){
+  const el=document.getElementById('plazaBody'); if(!el) return;
+  const mySeq=++plazaLoadSeq, myPf=plazaPf;
+  let got=null, failed=false;
+  if(!plazaCache[myPf]){
+    el.innerHTML=skelPlazaHTML(); plazaErr[myPf]=0;
+    try{
+      const order=[myPf].concat(['wy','tx','kw','kg'].filter(function(p){ return p!==myPf; }));
+      for(const pf of order){
+        try{
+          let r=null;
+          if(nativeFetchAvailable()){ try{ r=await directPlaza(pf); }catch(e){ r=null; } }
+          if(r && (r.items||[]).length){ got={pf:pf, items:r.items}; break; }
+        }catch(e){}
+        if(mySeq!==plazaLoadSeq) return;
+      }
+      if(!got) throw new Error('direct fail');
+      plazaCache[got.pf]=got.items; plazaErr[got.pf]=0;
+    }catch{ failed=true; plazaCache[myPf]=null; plazaErr[myPf]=1; }
+  }
+  if(mySeq!==plazaLoadSeq) return;
+  if(got && got.pf!==myPf){ plazaPf=got.pf; syncPlazaPfSel(); }
+  if(failed){ el.innerHTML=loadErrHTML('loadPlaza()'); return; }
+  const items=plazaCache[plazaPf];
+  if(!el) return;
+  if(plazaErr[plazaPf]){ el.innerHTML=loadErrHTML('loadPlaza()'); return; }
+  el.innerHTML=(items||[]).length?`<div class="plaza-list">${plazaSortedIdx(items).map(function(o){ const x=o.x; return `<div class="plaza-card" onclick="openPlazaDetail(${o.i})"><img class="plaza-cover" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-info"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-creator">${esc(x.creator||'')}</div><div class="plaza-stats">♪ ${x.trackCount||0}　🎧 ${fmtCount(x.playCount)}</div></div></div>`; }).join('')}</div>`:`<p class="muted">${t('noItemsT')}</p>`;
+}
 function renderPlazaTracks(){ const te=document.getElementById('plazaTracks'); if(!te) return; const pages=Math.max(1,Math.ceil(lastPlazaTracks.length/20)); plazaTrackPage=Math.min(plazaTrackPage,pages-1); const start=plazaTrackPage*20; const items=lastPlazaTracks.slice(start,start+20); te.innerHTML=lastPlazaTracks.length?`<div class="am-list">${items.map((s,k)=>{ const j=start+k; return `<div class="am-row"><img class="am-art" src="${esc(s.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playPlazaIdx(${j})" style="cursor:pointer"><div class="am-meta" onclick="playPlazaIdx(${j})" style="cursor:pointer"><div class="am-title">${esc(s.title)}</div><div class="am-sub">${esc(s.artist)} · ${pfName(s.platform)}${durSuffix(s)}</div></div><div class="am-act"><button class="am-add" onclick="addPlazaIdx(${j})">+</button></div></div>`; }).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="plazaTrackPrev()" ${plazaTrackPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${plazaTrackPage+1}/${pages}</span><button onclick="plazaTrackNext()" ${plazaTrackPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:''):`<p class="muted">${t('noItemsT')}</p>`; }
 function plazaTrackPrev(){ if(plazaTrackPage>0){ plazaTrackPage--; renderPlazaTracks(); pageScrollTop(document.getElementById('plazaTracks')); } }
 function plazaTrackNext(){ const pages=Math.max(1,Math.ceil(lastPlazaTracks.length/20)); if(plazaTrackPage<pages-1){ plazaTrackPage++; renderPlazaTracks(); pageScrollTop(document.getElementById('plazaTracks')); } }
-async function openPlazaDetail(i){ const x=(plazaCache[plazaPf]||[])[i]; if(!x) return; plazaDetail=x; plazaDetailIdx=i; plazaDetailFrom='plaza'; plazaTrackPage=0; const el=document.getElementById('plazaBody'); if(!el) return; el.innerHTML=`<p><a href="javascript:void(0)" onclick="closePlazaDetail()">‹ ${t('plazaT')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(x.cover||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:12px;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(x.name)}</b><div class="muted" style="font-size:12px">${esc(x.creator||'')}${x.trackCount?' · '+x.trackCount+'首':''}${x.playCount?' · '+fmtCount(x.playCount)+'播放':''}</div>${x.desc?`<div class="muted" style="font-size:12px;margin-top:4px">${esc(x.desc.slice(0,80))}</div>`:''}</div></div><p><button type="button" onclick="importPlazaDetail()">${ic('download')} ${t('importAllT')}</button></p><div id="plazaTracks">${skelAmRowsHTML(5)}</div>`; try{ let r=null; if(nativeFetchAvailable()){ try{ r=await directPlazaDetail(plazaPf,x.id); }catch(e){ r=null; } } if(!r||!r.ok) throw new Error('detail'); lastPlazaTracks=r.tracks||[]; renderPlazaTracks(); }catch{ const te=document.getElementById('plazaTracks'); if(te) te.innerHTML=loadErrHTML('retryPlazaDetail()'); } }
+async function openPlazaDetail(i){ const x=(plazaCache[plazaPf]||[])[i]; if(!x) return; plazaDetailIdx=i; plazaDetailFrom='plaza'; plazaHistAdd(x); showPlazaDetail(x); }
+async function showPlazaDetail(x){ plazaDetail=x; plazaTrackPage=0; const el=document.getElementById('plazaBody'); if(!el) return; el.innerHTML=`<p><a href="javascript:void(0)" onclick="closePlazaDetail()">‹ ${t('plazaT')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(x.cover||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:12px;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(x.name)}</b><div class="muted" style="font-size:12px">${esc(x.creator||'')}${x.trackCount?' · '+x.trackCount+'首':''}${x.playCount?' · '+fmtCount(x.playCount)+'播放':''}</div>${x.desc?`<div class="muted" style="font-size:12px;margin-top:4px">${esc(x.desc.slice(0,80))}</div>`:''}</div></div><p><button type="button" onclick="importPlazaDetail()">${ic('download')} ${t('importAllT')}</button></p><div id="plazaTracks">${skelAmRowsHTML(5)}</div>`; try{ let r=null; if(nativeFetchAvailable()){ try{ r=await directPlazaDetail(plazaPf,x.id); }catch(e){ r=null; } } if(!r||!r.ok) throw new Error('detail'); lastPlazaTracks=r.tracks||[]; renderPlazaTracks(); }catch{ const te=document.getElementById('plazaTracks'); if(te) te.innerHTML=loadErrHTML('retryPlazaDetail()'); } }
 function closePlazaDetail(){ plazaDetail=null; loadPlaza(); }
 function playPlazaIdx(j){ const x=lastPlazaTracks[j]; if(!x) return; playerPlaylist=lastPlazaTracks.map(s=>({songId:s.songId,title:s.title,artist:s.artist,platform:s.platform||'wy',cover:s.cover||'',vipOnly:s.vipOnly,dur:durOf(s)})); curTrackIdx=j; playerIsMine=false; curQueue='plaza'; renderSheetPlaylist(); openPlayerSheet(); playTrack(x.songId,x.title,x.platform,x.cover,x.artist,x.vipOnly); }
 async function addPlazaIdx(j){ const x=lastPlazaTracks[j]; if(!x) return; openPickSong(x); }
-async function importPlazaDetail(){ if(!plazaDetail) return; const pf=plazaPf; let r=null; try{ if(pf==='wy') r=await directImportWYPlaylist(plazaDetail.id); else if(pf==='kw') r=await directImportKWPlaylist(plazaDetail.id); else if(pf==='tx') r=await directImportTXPlaylist(plazaDetail.id); }catch(e){ r=null; } if(!r||!(r.tracks||[]).length){ toast(t('importFail')); return; } const lists=haoListsGet(); let list=lists.find(function(l){ return l.name===plazaDetail.name; }); let added=0; if(!list){ list={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:r.name||plazaDetail.name||t('myPlaylistT'), tracks:[]}; lists.push(list); } const seen=new Set((list.tracks||[]).map(function(x){ return String(x.songId); })); (r.tracks||[]).forEach(function(t){ if(seen.has(String(t.songId))) return; if((list.tracks||[]).length>=200) return; list.tracks.push({id:'t'+Date.now()+Math.floor(Math.random()*100000), songId:t.songId, title:t.title||'', artist:t.artist||'', platform:t.platform||pf, cover:t.cover||'', vipOnly:t.vipOnly||false, dur:t.dur||0}); added++; }); haoListsSave(lists); myLists=lists; curListId=String(list.id); localStorage.setItem('curListId',curListId); toast(t('importOk')+added+t('importSongs')+' → '+list.name); }
+async function importPlazaDetail(){ if(!plazaDetail) return; const pf=plazaPf; let r=null; try{ if(pf==='wy') r=await directImportWYPlaylist(plazaDetail.id); else if(pf==='kw') r=await directImportKWPlaylist(plazaDetail.id); else if(pf==='tx') r=await directImportTXPlaylist(plazaDetail.id); else if(pf==='kg') r=await directImportKGPlaylist(plazaDetail.id); }catch(e){ r=null; } if(!r||!(r.tracks||[]).length){ toast(t('importFail')); return; } const lists=haoListsGet(); let list=lists.find(function(l){ return l.name===plazaDetail.name; }); let added=0; if(!list){ list={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:r.name||plazaDetail.name||t('myPlaylistT'), tracks:[]}; lists.push(list); } const seen=new Set((list.tracks||[]).map(function(x){ return String(x.songId); })); (r.tracks||[]).forEach(function(t){ if(seen.has(String(t.songId))) return; if((list.tracks||[]).length>=200) return; list.tracks.push({id:'t'+Date.now()+Math.floor(Math.random()*100000), songId:t.songId, title:t.title||'', artist:t.artist||'', platform:t.platform||pf, cover:t.cover||'', vipOnly:t.vipOnly||false, dur:t.dur||0}); added++; }); haoListsSave(lists); myLists=lists; curListId=String(list.id); localStorage.setItem('curListId',curListId); toast(t('importOk')+added+t('importSongs')+' → '+list.name); }
 // ---- video daily recommendations ----
 let _videoDaily=[];
 async function loadVideoDaily(){ const app=document.getElementById('app'); if(!app) return; let card=document.getElementById('videoDailyCard'); if(!card){ card=document.createElement('div'); card.className='card'; card.id='videoDailyCard'; card.innerHTML='<h3>'+ic('movie')+' '+t('dailyVideoT')+'</h3><div id="videoDaily"><p class="muted">'+t('loading')+'</p></div>'; const first=app.querySelector('.card'); if(first) app.insertBefore(card,first); else app.prepend(card); } let r=null; try{ if(nativeFetchAvailable()){ try{ const d=await directVideoDaily(); if(d&&d.items&&d.items.length) r=d; }catch(e){} } }catch{ r={ok:false}; } const el=document.getElementById('videoDaily'); if(!el) return; const items=(r&&r.items)||[]; _videoDaily=items; if(!items.length){ el.innerHTML=(!r||!r.ok)?loadErrHTML('loadVideoDaily()'):'<p class="muted">'+t('noVideo')+'</p>'; return; } el.innerHTML='<div class="video-daily-row">'+items.map((x,i)=>'<div class="video-daily-card" onclick="openVideoDaily('+i+')"><img src="'+esc(x.pic)+'" onerror="this.src=\'./music-cover.svg\'" loading="lazy"><div class="video-daily-name">'+esc(x.name)+'</div><div class="video-daily-meta">'+esc(x.year||'')+(x.type?' · '+esc(x.type):'')+'</div></div>').join('')+'</div>'; }
@@ -3421,20 +3383,10 @@ function addDailyIdx(i){ const x=lastDaily[i]; if(!x) return; openPickSong(x); }
 let _videoHist=[], _vodHome=null, vodTypeName='', vodTypePage=1, vodFavState=false, vodWatched=false, vodHasResume=false, vodHistItem=null, vodAutoPlayEp=null, vodTypeArea='all', vodTypeYear='all', vodTypeSort='time';
 let videoErrLinesTried=new Set(), videoErrEpKey='';
 let videoAltTried=new Set();
-// TMDB attribution (required by the TMDB terms of use): the logo links
-// to themoviedb.org. Plain <a> with no target=_blank: in the App the
-// native navigation delegate opens foreign links in Safari and keeps the
-// shop in place; in a browser it navigates (standard for attribution).
-// The official blue_short logo is a light green->blue gradient, so it
-// reads on light and dark themes alike with no variant needed.
-function tmdbLogoHTML(){ return `<a class="tmdb-logo" href="https://www.themoviedb.org/" rel="noopener" title="TMDB"><img src="./tmdb-logo.svg" alt="TMDB"></a>`; }
-function tmdbAttrHTML(){ return `<div class="tmdb-attr">${tmdbLogoHTML()}<span>${t('tmdbAttrT')}</span></div>`; }
-// Poster fallback (fr): TMDB posters are slow/unreachable from mainland
-// China, so a stalled poster swaps to its backup after 4s. vodPosterErr
-// handles a hard error; armVodPosterFallback handles a hang (no error
-// event fires for a stalled request). The backup is the original CMS pic
-// (picAlt, kept by the server) or the server image proxy for the TMDB-only
-// trending row. The swap is marked data-alt-done so it never loops.
+// Poster fallback (fr): a stalled poster swaps to its backup after 4s.
+// vodPosterErr handles a hard error; armVodPosterFallback handles a hang
+// (no error event fires for a stalled request). The backup is the
+// original CMS pic (picAlt). The swap is marked data-alt-done so it never loops.
 function vodPosterErr(img){ try{ const a=img.getAttribute('data-alt'); if(a&&!img.getAttribute('data-alt-done')){ img.setAttribute('data-alt-done','1'); img.src=a; return; } }catch(e){} img.src='./video-cover.svg'; }
 function vodStripErr(img){ try{ const a=img.getAttribute('data-alt'); if(a&&!img.getAttribute('data-alt-done')){ img.setAttribute('data-alt-done','1'); img.src=a; return; } }catch(e){} img.style.display='none'; }
 let vodPosterFbT=null;
@@ -3447,11 +3399,11 @@ function vodHomeSkelHTML(){ return `<div class="vod-skel"><div class="vod-sec"><
 function vodDetailSkelHTML(){ return `<div class="vod-skel"><div class="skel" style="height:46vh;min-height:300px;border-radius:0"></div><div class="vod-meta"><div class="skel" style="height:26px;width:62%;margin:14px 0 10px"></div><div class="skel" style="height:14px;width:45%"></div><div class="skel" style="height:48px;border-radius:24px;margin:16px 0"></div><div class="skel" style="height:14px;width:85%;margin-bottom:8px"></div><div class="skel" style="height:14px;width:70%"></div></div></div>`; }
 let vodPreload=null;
 function openVideoDetail(a,b,c){ let p={source:'',vodId:'',name:'',pic:'',picAlt:'',year:'',type:'',score:'',remarks:''}; if(a&&a.dataset){ const d=a.dataset; p.source=d.source||''; p.vodId=d.vodid||''; p.name=d.name||''; p.pic=d.pic||''; p.picAlt=d.picAlt||''; p.year=d.year||''; p.type=d.type||''; p.score=d.score||''; } else { p.source=String(a||''); p.vodId=String(b||''); const x=c||{}; p.name=x.name||x.title||''; p.pic=x.pic||''; p.picAlt=x.picAlt||''; p.year=String(x.year||''); p.type=x.type||''; p.score=x.score||''; p.remarks=x.remarks||''; } vodPreload=p; location.hash='#/video/'+p.source+'/'+encodeURIComponent(p.vodId); }
-function vodPreviewHTML(p){ const score=String(p.score||'').trim(); const scoreNum=parseFloat(score); const showScore=!!score&&!isNaN(scoreNum)&&scoreNum>0; return `<div class="vod-hero"><img src="${esc(p.pic||'./video-cover.svg')}"${(p.picAlt&&p.picAlt!==p.pic)?` data-alt="${esc(p.picAlt)}"`:''} onerror="vodPosterErr(this)" fetchpriority="high" onload="this.classList.add('ld')" referrerpolicy="no-referrer"><div class="vod-hero-fade"></div><div class="vod-hero-top"><a class="vod-glass-btn" href="#/video">‹</a><button class="vod-glass-pill" onclick="location.hash='#/video/search'">${ic('search')}</button></div></div><div class="vod-meta"><h2 class="vod-title">${esc(p.name||'')}</h2><div class="vod-meta-line">${showScore?`<span class="vod-score"><span class="vod-star">★</span> ${esc(score)}</span>`:''}<span>${esc(p.year||'')}${p.type?' · '+esc(p.type):''}</span></div>${p.remarks?`<div class="vod-remarks">${esc(p.remarks)}</div>`:''}</div>`; }
+function vodPreviewHTML(p){ const score=String(p.score||'').trim(); const scoreNum=parseFloat(score); const showScore=!!score&&!isNaN(scoreNum)&&scoreNum>0; return `<div class="vod-hero"><img src="${esc(p.pic||'./video-cover.svg')}"${(p.picAlt&&p.picAlt!==p.pic)?` data-alt="${esc(p.picAlt)}"`:''} onerror="vodPosterErr(this)" fetchpriority="high" onload="this.classList.add('ld')" referrerpolicy="no-referrer"><div class="vod-hero-fade"></div><div class="vod-hero-top"><a class="vod-glass-btn" href="#/video">‹</a><button class="vod-glass-pill" onclick="location.hash='#/video/search'">${ic('search')}</button></div></div><div class="vod-meta"><h2 class="vod-title">${esc(p.name||'')}</h2><div class="vod-meta-line">${showScore?`<span class="vod-score"><span class="vod-star">★</span> ${esc(score)}</span>`:''}<span>${esc(p.year||'')}${p.type?' · '+esc(p.type):''}</span></div>${p.remarks?`<div class="vod-remarks">${esc(p.remarks)}</div>`:''}<div class="skel" style="height:48px;border-radius:24px;margin:16px 0"></div><div style="display:flex;gap:8px"><div class="skel" style="height:38px;width:38px;border-radius:50%"></div><div class="skel" style="height:38px;width:38px;border-radius:50%"></div><div class="skel" style="height:38px;width:38px;border-radius:50%"></div></div></div>`; }
 function skelAmRowsHTML(n){ let c=''; for(let i=0;i<(n||5);i++) c+=`<div class="am-row"><div class="skel" style="width:52px;height:52px;border-radius:12px;flex:0 0 52px"></div><div style="flex:1;min-width:0"><div class="skel" style="height:15px;width:70%"></div><div class="skel" style="height:12px;width:45%;margin-top:8px"></div></div></div>`; return `<div class="am-list">${c}</div>`; }
-function skelPlazaHTML(){ let c=''; for(let i=0;i<6;i++) c+=`<div class="plaza-card"><div class="skel" style="aspect-ratio:1;border-radius:12px"></div><div class="skel" style="height:14px;margin-top:8px"></div><div class="skel" style="height:12px;width:60%;margin-top:6px"></div></div>`; return `<div class="plaza-grid">${c}</div>`; }
+function skelPlazaHTML(){ let c=''; for(let i=0;i<6;i++) c+=`<div class="plaza-card"><div class="skel" style="width:100px;height:100px;border-radius:12px;flex:0 0 100px"></div><div style="flex:1;min-width:0"><div class="skel" style="height:16px;width:75%"></div><div class="skel" style="height:12px;width:35%;margin-top:10px"></div><div class="skel" style="height:12px;width:55%;margin-top:8px"></div></div></div>`; return `<div class="plaza-list">${c}</div>`; }
 function loadErrHTML(retryCall,titleKey){ return `<div class="empty load-err"><div class="empty-ico">⚠</div><div class="empty-title">${t(titleKey||'loadFailT')}</div><p style="margin-top:14px"><button type="button" onclick="${retryCall}">${t('retryT')}</button></p></div>`; }
-function retryPlazaDetail(){ if(plazaDetailFrom==='search') openSearchPlDetail(plazaDetailIdx); else openPlazaDetail(plazaDetailIdx); }
+function retryPlazaDetail(){ if(plazaDetailFrom==='search') openSearchPlDetail(plazaDetailIdx); else if(plazaDetailIdx>=0) openPlazaDetail(plazaDetailIdx); else if(plazaDetail) showPlazaDetail(plazaDetail); }
 function retryArtistDetail(){ if(lastArtistReq) openArtistById(lastArtistReq.platform,lastArtistReq.id,lastArtistReq.name); }
 async function renderVideoPage(){ document.getElementById('app').innerHTML=`<div class="vod-home"><div class="vod-top"><button class="vod-search-pill" onclick="location.hash='#/video/search'">${ic('search')}<span>${t('searchVideoPh')}</span></button><button class="vod-heart" onclick="location.hash='#/video/favorites'" title="${t('favT')}">${ic('heart')}</button></div><div id="videoRes"></div><div id="vodHomeBody">${vodHomeSkelHTML()}</div></div>`; loadVideoHome().catch(function(err){ const b=document.getElementById('vodHomeBody'); if(b) b.innerHTML=loadErrHTML('loadVideoHome()','videoSrcDownT'); }); }
 let videoSearchSeq=0;
@@ -3471,10 +3423,6 @@ function vodHistDel(e, key){ if(e&&e.stopPropagation) e.stopPropagation(); const
 function vodDailyHTML(daily){ if(!daily||!daily.length) return ''; return `<div class="vod-sec"><div class="vod-sec-head"><span>${t('dailyVideoT')}</span></div><div class="vod-poster-row">`+daily.map(x=>vodPosterCard({source:x.source,vodId:x.vodId,name:x.name,pic:x.pic,picAlt:x.picAlt,year:x.year,score:x.score||'',total:x.total||'',type:x.type})).join('')+`</div></div>`; }
 function vodDailySkelHTML(){ return `<div class="vod-sec"><div class="vod-sec-head"><span class="skel" style="width:90px;height:20px"></span></div>${skelPosterRowHTML(3)}</div>`; }
 function renderVodDailySec(d){ const sec=document.getElementById('vodDailySec'); if(!sec) return; _videoDaily=(d&&d.items)||[]; if(_videoDaily.length){ sec.innerHTML=vodDailyHTML(_videoDaily); armVodPosterFallback(); return; } const failed=!!(d&&d.failed); sec.innerHTML=`<div class="vod-sec"><div class="vod-sec-head"><span>${t('dailyVideoT')}</span></div>${failed?`<div class="vod-daily-err"><span>⚠ ${t('dailyVideoFailT')}</span><button class="ghost-btn" onclick="retryVideoDaily()">${t('retryT')}</button></div>`:`<p class="muted" style="margin:4px 0 8px">${t('dailyVideoEmptyT')}</p><p style="margin:0"><button class="ghost-btn" onclick="retryVideoDaily()">${t('retryT')}</button></p>`}</div>`; }
-let _tmdbTrend=[];
-function tmdbTrendCard(x,i){ return `<div class="vod-poster-card" onclick="openTmdbVideoIdx(${i})"><div class="vod-poster-img"><img src="${esc(x.pic||'./video-cover.svg')}" onerror="vodPosterErr(this)" loading="lazy" onload="this.parentNode&&this.parentNode.classList.add('ld')" referrerpolicy="no-referrer"></div><div class="vod-poster-name">${esc(x.name)}</div><div class="vod-poster-meta">${esc(x.year||'')}${x.media==='tv'?' · 剧集':' · 电影'}</div></div>`; }
-function renderTmdbTrendSec(items){ const sec=document.getElementById('vodTmdbSec'); if(!sec) return; if(!items||!items.length){ sec.remove(); return; } _tmdbTrend=items; armVodPosterFallback(); sec.innerHTML=`<div class="vod-sec"><div class="vod-sec-head"><span>${t('tmdbTrendT')}</span>${tmdbLogoHTML()}</div><div class="vod-poster-row">`+items.map((x,i)=>tmdbTrendCard(x,i)).join('')+`</div></div>`; }
-async function openTmdbVideoIdx(i){ const x=_tmdbTrend[i]; if(!x) return; try{ let r=null; if(nativeFetchAvailable()){ try{ r=await directVideoSearch(x.name); }catch(e){ r=null; } } const list=(r&&r.results)||[]; const hit=list.find(y=>y.name===x.name&&(!x.year||String(y.year)===String(x.year)))||list.find(y=>y.name===x.name)||list[0]; if(hit){ openVideoDetail(hit.source, hit.id, hit); return; } }catch(e){} location.hash='#/video/search?q='+encodeURIComponent(x.name); }
 async function retryVideoDaily(){ const sec=document.getElementById('vodDailySec'); if(sec) sec.innerHTML=vodDailySkelHTML(); let d={items:[],failed:true}; try{ let dr=null; if(nativeFetchAvailable()){ try{ const dd=await directVideoDaily(); if(dd&&dd.items&&dd.items.length) dr=dd; }catch(e){} } if(dr) d={items:(dr&&dr.items)||[],failed:!(dr&&dr.ok)}; }catch(e){} renderVodDailySec(d); }
 async function fetchVideoHomeOnce(){
   function never(){ return new Promise(function(){}); }
@@ -3483,12 +3431,11 @@ async function fetchVideoHomeOnce(){
   if(win) return win;
   const late=await Promise.race([directP, new Promise(function(res){ setTimeout(function(){ res(null); },5000); })]);
   return late||null; }
-async function loadVideoHome(){ const body=document.getElementById('vodHomeBody'); if(!body) return; if(!body.querySelector('.vod-sec')&&!body.querySelector('.vod-skel')) body.innerHTML=vodHomeSkelHTML(); const homeP=fetchVideoHomeOnce(); const histP=Promise.resolve(haoVideoHistGet()); const dailyP=(async function(){ if(nativeFetchAvailable()){ try{ const d=await directVideoDaily(); if(d&&d.items&&d.items.length) return {items:d.items,failed:false}; }catch(e){} } return {items:[],failed:true}; })(); const tmdbP=(async function(){ if(nativeFetchAvailable()){ try{ const d=await directTmdbTrending(); if(d&&d.items&&d.items.length) return d.items; }catch(e){} } return []; })(); // One total budget (30s) for the whole home fetch: the old code raced
+async function loadVideoHome(){ const body=document.getElementById('vodHomeBody'); if(!body) return; if(!body.querySelector('.vod-sec')&&!body.querySelector('.vod-skel')) body.innerHTML=vodHomeSkelHTML(); const homeP=fetchVideoHomeOnce(); const histP=Promise.resolve(haoVideoHistGet()); const dailyP=(async function(){ if(nativeFetchAvailable()){ try{ const d=await directVideoDaily(); if(d&&d.items&&d.items.length) return {items:d.items,failed:false}; }catch(e){} } return {items:[],failed:true}; })(); // One total budget (30s) for the whole home fetch: the old code raced
 // twice at 45s each, so a dead home could spin for 90s.
 let homeRaw=null; try{ homeRaw=await Promise.race([homeP,new Promise(res=>setTimeout(()=>res('__timeout'),30000))]); }catch(e){ homeRaw=null; } /* History must NEVER delay the render: it is only the Continue Watching row. Give it 3s (was 10s); a timeout just means no row this time. */ const histRes=await Promise.race([histP.then(function(v){ return {ok:true,items:v}; }),new Promise(function(res){ setTimeout(function(){ res({ok:false,items:[]}); },3000); })]); const hist=histRes.items; _videoHist=hist; if(!document.getElementById('vodHomeBody')) return; const homeFailed=!homeRaw||homeRaw==='__timeout'; let home=homeFailed?null:homeRaw; let showStale=false; if(homeFailed&&_vodHome&&_vodHome.rows&&_vodHome.rows.length){ home=_vodHome; showStale=true; } if(home){ _vodHome=home; if(home.stale) showStale=true; } let h='';
 if(hist.length){ h+=`<div class="vod-sec"><div class="vod-sec-head"><span>${t('continueWatching')}</span><button class="vod-clear-btn" onclick="clearVideoHistory()">🗑 ${t('clearHistory')}</button></div><div class="vod-wide-row">`+hist.map((x,hi)=>{ const pct=x.duration>0?Math.min(100,Math.round(x.position/x.duration*100)):0; const done=x.duration>0&&x.position>=x.duration-30; const _ha=(x.picAlt&&x.picAlt!==x.pic)?x.picAlt:''; return `<div class="vod-wide-card" data-source="${esc(x.source)}" data-vodid="${esc(x.vodId)}" data-name="${esc(x.title||'')}" data-pic="${esc(x.pic||'')}"${x.picAlt?` data-pic-alt="${esc(x.picAlt)}"`:''} data-year="" onclick="openVideoDetail(this)"><div class="vod-wide-img"><img src="${esc(x.pic||'./video-cover.svg')}"${_ha?` data-alt="${esc(_ha)}"`:''} onerror="vodPosterErr(this)" ${hi===0?'loading="eager" fetchpriority="high"':'loading="lazy"'} onload="this.parentNode&&this.parentNode.classList.add('ld')" referrerpolicy="no-referrer"><button class="vod-hist-del" title="${t('videoDelHistT')}" onclick="vodHistDel(event,'${esc(x.source)}|${esc(x.vodId)}')" ">✕</button><div class="vod-prog"><div style="width:${pct}%"></div></div></div><div class="vod-wide-name">${esc(x.title||'')}</div><div class="vod-wide-meta">${esc(x.epName||('第'+(x.epIdx+1)+'集'))} · ${done?t('videoDoneT'):(x.duration>0?t('vodRemainMinT').replace('{n}',String(Math.max(1,Math.round((x.duration-x.position)/60)))):pct+'%')}</div></div>`; }).join('')+`</div></div>`; }
 
-h+='<div id="vodTmdbSec">'+vodDailySkelHTML()+'</div>';
 h+='<div id="vodDailySec">'+vodDailySkelHTML()+'</div>';
 if(home&&home.rows&&home.rows.length){ for(let ri=0;ri<home.rows.length;ri++){ const row=home.rows[ri]; h+=`<div class="vod-sec"><div class="vod-sec-head"><span>${esc(row.name)}</span><span class="vod-sec-more" onclick="openVideoRowIdx(${ri})">${row.count} ›</span></div><div class="vod-poster-row">`+row.items.map((x,i)=>vodPosterCard(x,ri===0&&i<6)).join('')+`</div></div>`; } }
 if(home&&home.collections&&home.collections.length){ h+=`<div class="vod-sec"><div class="vod-sec-head"><span>${t('myMedia')}</span></div><div class="vod-coll-row">`+home.collections.map((c,i)=>{ const _pics=(c.pics||[]).slice(0,3); const _fan=_pics.length?_pics.map((p,pi)=>{ const _ca=(c.picAlts||[])[pi]; return `<img src="${esc(p)}"${(_ca&&_ca!==p)?` data-alt="${esc(_ca)}"`:''} onerror="vodStripErr(this)" loading="eager" referrerpolicy="no-referrer">`; }).join(''):`<img src="./video-cover.svg" referrerpolicy="no-referrer">`; return `<div class="vod-coll-card" onclick="openVideoTypeIdx(${i})"><div class="vod-coll-fan">${_fan}</div><div class="vod-poster-name">${esc(c.name)}</div><div class="vod-poster-meta">${t('vodCollCountT').replace('{n}',String(c.count||0))}</div></div>`; }).join('')+`</div></div>`; }
@@ -3497,8 +3444,7 @@ const _vodHomeHasSec=h.length>0;
 if(showStale){ h=`<div class="vod-stale-hint">⚠ ${t('videoStaleT')} <button class="ghost-btn" style="margin-left:8px" onclick="loadVideoHome()">${t('retryT')}</button></div>`+h; }
 if(homeFailed&&!home){ h=loadErrHTML('loadVideoHome()','videoSrcDownT')+h; }
 if(!_vodHomeHasSec&&!showStale&&!(homeFailed&&!home)){ h=homeFailed?loadErrHTML('loadVideoHome()','videoSrcDownT'):`<div class="empty"><div class="empty-ico">🎬</div><div class="empty-title">${t('videoHomeEmptyT')}</div><div class="empty-text">${t('videoHomeEmptySub')}</div><p style="margin-top:16px"><button type="button" onclick="location.hash='#/video/search'">${t('searchBtn')}</button> <button type="button" class="ghost-btn" onclick="loadVideoHome()">${t('retryT')}</button></p></div>`; }
-h+=tmdbAttrHTML();
-body.innerHTML=h; armVodPosterFallback(); dailyP.then(d=>{ renderVodDailySec(d); }).catch(()=>{ renderVodDailySec({items:[],failed:true}); }); tmdbP.then(items=>{ renderTmdbTrendSec(items); }).catch(()=>{ renderTmdbTrendSec([]); }); }
+body.innerHTML=h; armVodPosterFallback(); dailyP.then(d=>{ renderVodDailySec(d); }).catch(()=>{ renderVodDailySec({items:[],failed:true}); }); }
 function openVideoTypeIdx(i){ const c=_vodHome&&_vodHome.collections&&_vodHome.collections[i]; if(!c) return; openVideoType(c.name); }
 function openVideoRowIdx(i){ const r=_vodHome&&_vodHome.rows&&_vodHome.rows[i]; if(!r) return; openVideoType(r.name); }
 async function openVideoType(name){ vodTypeName=name; vodTypePage=1; vodTypeArea='all'; vodTypeYear='all'; vodTypeSort='time'; document.getElementById('app').innerHTML=`<div class="vod-home"><div class="vod-top"><button class="vod-back" onclick="renderVideoPage()">‹ ${t('back')}</button><div class="vod-top-title">${esc(name)}</div><span style="width:40px"></span></div><div id="vodFilterBar">${vodFilterBarHTML()}</div><div id="vodTypeBody">${skelPosterGridHTML(6)}</div></div>`; loadVideoType(); }
@@ -3516,7 +3462,7 @@ async function loadVideoFavs(){ const body=document.getElementById('vodFavBody')
 function vodFavCardHTML(x,i){ return `<div class="vod-fav-item">${vodPosterCard({source:x.source,vodId:x.vodId,name:x.name,pic:x.pic,picAlt:x.picAlt,year:x.year,score:'',total:''},i<6)}<button class="vod-hist-del" title="${t('videoUnfavT')}" data-source="${esc(x.source)}" data-vodid="${esc(x.vodId)}" onclick="vodFavDel(event,this)">✕</button></div>`; }
 async function vodFavDel(e,btn){ if(e&&e.stopPropagation) e.stopPropagation(); const src=btn.getAttribute('data-source')||'', id=btn.getAttribute('data-vodid')||''; haoVideoFavSave(haoVideoFavGet().filter(function(x){ return !(String(x.source)===String(src)&&String(x.vodId)===String(id)); })); toast(t('favRemoved')); const item=btn.closest('.vod-fav-item'); if(item) item.remove(); const grid=document.querySelector('#vodFavBody .vod-grid'); const left=grid?grid.querySelectorAll('.vod-fav-item').length:0; const c=document.getElementById('vodFavCount'); if(c) c.textContent=left?'('+left+')':''; if(!left) loadVideoFavs(); }
 function openVideoFavs(){ location.hash='#/video/favorites'; }
-async function saveVideoProgress(posOverride){ if(!curVideo) return; const v=document.getElementById('videoPlayer'); const pos=(typeof posOverride==='number')?posOverride:(v?v.currentTime||0:0); if(pos<5) return; let dur=(v&&v.duration)||0; if(!(dur>0&&isFinite(dur))) dur=(vodHistItem&&Number(vodHistItem.duration)>0)?Number(vodHistItem.duration):0; if(!dur) return; const m=curVideo.meta||{}; const ep=(curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp])||{}; try{ vodLocalSave(curVideoSource,curVideoId,curVideoLine,curVideoEp,ep.name||'',pos,dur); }catch(e){} try{ const hist=haoVideoHistGet().filter(function(x){ return !(String(x.source)===String(curVideoSource)&&String(x.vodId)===String(curVideoId)); }); hist.unshift({source:curVideoSource, vodId:curVideoId, title:m.name||'', pic:m.pic||'', picAlt:m.picAlt||'', lineIdx:curVideoLine, epIdx:curVideoEp, epName:ep.name||'', position:pos, duration:dur, at:Date.now()}); haoVideoHistSave(hist.slice(0,haoHistLimit())); }catch(e){} }
+async function saveVideoProgress(posOverride){ if(!curVideo) return; const v=document.getElementById('videoPlayer'); const pos=(typeof posOverride==='number')?posOverride:(v?v.currentTime||0:0); if(pos<5) return; let dur=(v&&v.duration)||0; if(!(dur>0&&isFinite(dur))) dur=(curVideoDuration>0&&isFinite(curVideoDuration))?curVideoDuration:0; if(!(dur>0&&isFinite(dur))) dur=(vodHistItem&&Number(vodHistItem.duration)>0)?Number(vodHistItem.duration):0; if(!dur) return; const m=curVideo.meta||{}; const ep=(curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp])||{}; try{ vodLocalSave(curVideoSource,curVideoId,curVideoLine,curVideoEp,ep.name||'',pos,dur); }catch(e){} try{ const hist=haoVideoHistGet().filter(function(x){ return !(String(x.source)===String(curVideoSource)&&String(x.vodId)===String(curVideoId)); }); hist.unshift({source:curVideoSource, vodId:curVideoId, title:m.name||'', pic:m.pic||'', picAlt:m.picAlt||'', lineIdx:curVideoLine, epIdx:curVideoEp, epName:ep.name||'', position:pos, duration:dur, at:Date.now()}); haoVideoHistSave(hist.slice(0,haoHistLimit())); }catch(e){} }
 function openVideo(i){ const x=lastVideo[i]; if(!x) return; openVideoDetail(x.source, x.id, x); }
 async function renderSharedSong(h){ const parts=h.replace('#/song/','').split('?')[0].split('/'); const pf=parts[0], sid=decodeURIComponent(parts[1]||''); const q=new URLSearchParams(h.split('?')[1]||''); const title=q.get('title')||'', artist=q.get('artist')||''; const box=document.getElementById('app'); if(!pf||!sid||!title){ box.innerHTML=`<div class="card"><p class="muted">${t('songNotFound')}</p><p><button onclick="location.hash='#/video'">${t('videoTabT')}</button></p></div>`; return; } box.innerHTML=`<div class="card"><h2>${ic('music')} ${t('sharedSongT')}</h2><div style="display:flex;gap:12px;align-items:center"><img id="sharedCover" src="./music-cover.svg" style="width:64px;height:64px;border-radius:12px;object-fit:cover"><div><b style="font-size:18px">${esc(title)}</b><p class="muted" style="margin:4px 0">${esc(artist||'')} · ${pfName(pf)}</p><p class="muted" style="margin:0">${ic('chevDown')} ${t('nowPlayingV')}</p></div></div><p style="margin-top:14px"><button onclick="location.hash='#/video'">${t('videoTabT')}</button> <button onclick="location.hash='#/search'">${ic('search')} ${t('searchPageT')}</button></p></div>`; playerPlaylist=[{songId:sid,title:title,artist:artist,platform:pf,cover:'',vipOnly:0}]; curTrackIdx=0; playerIsMine=false; curQueue='shared'; playTrack(sid,title,pf,'',artist,0); setTimeout(()=>{ const img=document.getElementById('sharedCover'); if(img&&curCover) img.src=curCover; },1200); }
 // Infuse-style genre chips (D4): when meta.type holds several genres joined
@@ -3525,33 +3471,9 @@ async function renderSharedSong(h){ const parts=h.replace('#/song/','').split('?
 function vodGenreChipsHTML(ty){ const ps=String(ty||'').split('/').map(function(s){ return s.trim(); }).filter(Boolean); if(ps.length<2) return ''; return '<div class="vod-genres">'+ps.slice(0,3).map(function(g){ return '<span class="vod-genre">'+esc(g)+'</span>'; }).join('')+'</div>'; }
 function vodSynHTML(content){ const txt=stripHtml(content||'').trim(); if(!txt) return ''; if(txt.length<=120) return `<p class="vod-syn">${esc(txt)}</p>`; return `<div class="vod-syn-wrap"><p class="vod-syn clamped" id="vodSyn">${esc(txt)}</p><button type="button" class="vod-syn-toggle" onclick="toggleVodSyn(this)">${t('vodSynMoreT')} ▾</button></div>`; }
 function toggleVodSyn(btn){ const p=document.getElementById('vodSyn'); if(!p||!btn) return; const open=!p.classList.contains('open'); p.classList.toggle('open',open); p.classList.toggle('clamped',!open); btn.innerHTML=(open?t('vodSynLessT'):t('vodSynMoreT'))+(open?' ▴':' ▾'); }
-// TMDB enrichment for the video detail page, AFTER render (not before):
-// api.themoviedb.org is slow/unreachable from mainland China, and
-// directTmdbDetail used to be awaited before el.innerHTML — every detail
-// page in the App sat on a skeleton for up to ~39s (3 sequential TMDB
-// calls x 13s timeout). Now the page renders with CMS data first and
-// TMDB fills in score/backdrop/synopsis/cast afterwards (6s cap).
-async function enrichVideoDetailTmdb(r){
-  if(!r||!r.meta||r.meta.tmdb) return;
-  let td=null;
-  try{ td=await Promise.race([directTmdbDetail(r.meta.name||'', String(r.meta.year||'')), new Promise(function(res){ setTimeout(function(){ res(null); }, 6000); })]); }catch(e){}
-  if(!td) return;
-  if(curVideo!==r||!document.getElementById('videoDetail')) return;
-  const m=r.meta;
-  const hadActor=!!m.actor, hadDirector=!!m.director, hadSyn=String(m.content||'').replace(/<[^>]*>/g,'').trim().length>=20;
-  mergeTmdbIntoMeta(m, td);
-  enrichVideoDetailUsRating(r);
-  vodSyncMetaLine(m);
-  const hero=document.querySelector('#videoDetail .vod-hero img');
-  if(hero&&td.backdrop&&hero.getAttribute('src')!==td.backdrop){ hero.src=td.backdrop; }
-  if(!hadDirector&&m.director&&!document.querySelector('#videoDetail .vod-director')){ const pb=document.querySelector('#videoDetail .vod-play-btn'); if(pb) pb.insertAdjacentHTML('beforebegin','<div class="vod-director">'+t('directorT')+'：'+esc(m.director)+'</div>'); }
-  const names=(!hadActor&&m.actor)?m.actor.split(/[,，、]/).map(function(s){ return s.trim(); }).filter(Boolean).slice(0,8):[];
-  let extra='';
-  if(!hadSyn&&m.content&&!document.querySelector('#videoDetail .vod-syn')) extra+=vodSynHTML(m.content);
-  if(names.length&&!document.getElementById('vodCast')) extra+='<div class="vod-cast-sec"><h3>'+t('castT')+'</h3><div id="vodCast" class="vod-cast-row">'+names.map(function(n){ return '<div class="vod-cast-card"><div class="vod-cast-photo"></div><div class="vod-cast-name">'+esc(n)+'</div></div>'; }).join('')+'</div></div>';
-  if(extra){ const eps=document.getElementById('videoEps'); if(eps) eps.insertAdjacentHTML('afterend', extra); else { const vd=document.getElementById('videoDetail'); if(vd) vd.insertAdjacentHTML('beforeend', extra); } }
-  if(names.length) loadCastPhotos(names, m.name, m.year);
-}
+// Douban enrichment for the video detail page, AFTER render (not before):
+// the page renders with CMS data first and Douban fills in
+// score/cast/director/synopsis/poster afterwards (never blocks the page).
 // ---- video detail fast path (et) ----
 // Detail fetch: race the phone-direct CMS call against the server, first
 // GOOD answer wins. The old code waited the full 5s direct timeout before
@@ -3560,8 +3482,20 @@ async function enrichVideoDetailTmdb(r){
 // Each branch rejects unless it has playable lines, so a branch that fails
 // fast (e.g. a search-only source with no episodes) never wins the race.
 function detUsable(r){ return (r&&r.ok&&r.lines&&r.lines.length)?r:null; }
-// Direct detail fetch: one retry on failure (each attempt aborts at 5s).
-function detDirectP(sid,vid){ return directVideoDetail(sid,vid).catch(function(){ return directVideoDetail(sid,vid); }).then(function(r){ const o=detUsable(r); if(o) return o; throw new Error('direct detail fail'); }); }
+// Direct detail fetch: one retry on fast (non-timeout) failures only.
+// A timeout means the CMS host is slow; a blind second attempt just doubles
+// the wait, so fail fast and let the error card's retry button drive a
+// fresh attempt instead. (Each attempt aborts at 5s.)
+function detDirectP(sid,vid){ return directVideoDetail(sid,vid).catch(function(e){ if(e&&/timeout/i.test(String(e.message||''))) throw e; return directVideoDetail(sid,vid); }).then(function(r){ const o=detUsable(r); if(o) return o; throw new Error('direct detail fail'); }); }
+// Detail promise cache + prefetch (issue 5: the play button and episodes
+// waited on a single CMS request with no cache and no head start, so the
+// detail felt very slow). Resolved results live 5 min; in-flight promises
+// are shared, so a pointerdown prefetch and the detail render use the same
+// request instead of fetching twice.
+let __vodDetCache={};
+function vodDetGet(sid,vid){ const k=String(sid)+'|'+String(vid); const c=__vodDetCache[k]; if(c){ if(c.r&&Date.now()-c.at<300000) return Promise.resolve(c.r); if(!c.r&&Date.now()-c.at<30000) return c.p; } const p=detDirectP(sid,vid).then(function(r){ if(__vodDetCache[k]&&__vodDetCache[k].p===p) __vodDetCache[k]={at:Date.now(),r:r,p:p}; return r; },function(e){ if(__vodDetCache[k]&&__vodDetCache[k].p===p) delete __vodDetCache[k]; throw e; }); __vodDetCache[k]={at:Date.now(),r:null,p:p}; return p; }
+function vodDetPrefetch(sid,vid){ try{ if(!sid||!vid) return; let n=0; for(const k in __vodDetCache){ if(__vodDetCache[k]&&!__vodDetCache[k].r) n++; } if(n>=3) return; vodDetGet(sid,vid).catch(function(){}); }catch(e){} }
+function haoBindVodPrefetch(){ if(window.__haoVodPreBound) return; window.__haoVodPreBound=true; document.addEventListener('pointerdown',function(e){ try{ const t=e.target&&e.target.closest?e.target.closest('.vod-poster-card'):null; if(!t||!t.dataset) return; vodDetPrefetch(t.dataset.source,t.dataset.vodid); }catch(_){} },{passive:true}); }
 // Local video resume cache (et): saveVideoProgress writes the resume to
 // localStorage as well as the server, so the detail page can offer the
 // correct "continue watching" episode/position the instant the episodes
@@ -3573,16 +3507,18 @@ function vodLocalSave(sid,vid,lineIdx,epIdx,epName,position,duration){ try{ loca
 function vodLocalLoad(sid,vid,lines){ try{ const o=JSON.parse(localStorage.getItem(vodLocalKey(sid,vid))||'null'); if(!o||!lines||!lines.length) return null; const li=Number(o.lineIdx)||0, ei=Number(o.epIdx)||0; if(li<0||li>=lines.length) return null; const eps=lines[li].episodes||[]; if(ei<0||ei>=eps.length) return null; const pos=Number(o.position)||0, dur=Number(o.duration)||0; if(!(pos>10)) return null; if(dur>0&&pos>=dur-30) return null; return {lineIdx:li,epIdx:ei,epName:o.epName||'',position:pos,duration:dur}; }catch(e){ return null; } }
 // Playback speed (VOD). Declared with var BEFORE renderVideoDetail so the
 // detail template can never hit the let-TDZ ("Can't find variable: vodSpeed").
-const VOD_SPEEDS=[0.5,0.75,1,1.25,1.5,2,3];
+const VOD_SPEEDS=[0.5,0.75,1,1.25,1.5,2];
 var vodSpeed=(function(){ try{ var v=parseFloat(localStorage.getItem('vodSpeed')); return VOD_SPEEDS.indexOf(v)>=0?v:1; }catch(e){ return 1; } })();
 function vodSpeedLabel(r){ return (String(r).replace(/\.0+$/,''))+'x'; }
-async function renderVideoDetail(h){ if(videoFs) exitVideoFs(true); videoRot=false; vodHistReady=false; vodPlayed=false; const parts=h.split('/'); const sid=parts[2], vid=decodeURIComponent(parts[3]||''); curVideoSource=sid; curVideoId=vid; curVideoResume=0; vodLineSwitch=null; vodFavState=false; vodWatched=false; vodHasResume=false; vodHistItem=null; vodEpsExpanded=false; const detP=detDirectP(sid,vid); const _pre=(vodPreload&&String(vodPreload.source)===String(sid)&&String(vodPreload.vodId)===String(vid))?vodPreload:null; vodPreload=null; document.getElementById('app').innerHTML=`<div class="vod-detail"><div id="videoDetail">${_pre?vodPreviewHTML(_pre):vodDetailSkelHTML()}</div></div>`; armVodPosterFallback(); let r=null; try{ r=await Promise.race([detP,new Promise(res=>setTimeout(()=>res(null),30000))]); }catch(e){ r=null; } const el=document.getElementById('videoDetail'); if(!el) return; if(!r||!r.ok||!r.lines||!r.lines.length){ el.innerHTML=loadErrHTML('renderVideoDetail(location.hash)',(r&&r.error==='找不到这部影片')?'loadFailT':'videoSrcDownT'); return; } curVideo=r; curVideoLine=0; curVideoEp=0; const _lr=vodLocalLoad(sid,vid,r.lines); if(_lr){ curVideoLine=_lr.lineIdx; curVideoEp=_lr.epIdx; curVideoResume=_lr.position; vodHasResume=true; vodWatched=true; vodHistItem={lineIdx:_lr.lineIdx,epIdx:_lr.epIdx,epName:_lr.epName,position:_lr.position,duration:_lr.duration}; } const m=r.meta; const mScoreNum=parseFloat(String(m.score||'').trim()); const mShowScore=!!m.score&&!isNaN(mScoreNum)&&mScoreNum>0; const castNames=m.actor?m.actor.split(/[,，、]/).map(s=>s.trim()).filter(Boolean).slice(0,8):[]; const genreChips=vodGenreChipsHTML(m.type); const castHtml=castNames.length?`<div class="vod-cast-sec"><h3>${t('castT')}</h3><div id="vodCast" class="vod-cast-row">${castNames.map(n=>`<div class="vod-cast-card"><div class="vod-cast-photo"></div><div class="vod-cast-name">${esc(n)}</div></div>`).join('')}</div></div>`:''; el.innerHTML=`<div class="vod-hero"><img src="${esc(m.backdrop||m.pic||'./video-cover.svg')}"${(m.picAlt&&m.picAlt!==(m.backdrop||m.pic))?` data-alt="${esc(m.picAlt)}"`:''} onerror="vodPosterErr(this)" fetchpriority="high" onload="this.classList.add('ld')" referrerpolicy="no-referrer"><div class="vod-hero-fade"></div><div class="vod-hero-top"><a class="vod-glass-btn" href="#/video">‹</a><button class="vod-glass-pill" onclick="location.hash='#/video/search'">${ic('search')}</button></div></div><div class="vod-meta"><h2 class="vod-title">${esc(m.name)}</h2><div class="vod-meta-line">${mShowScore?`<span class="vod-score"><span class="vod-star">★</span> ${esc(String(m.score))}${(m.tmdb&&m.tmdb.score)?'<i class="tmdb-mark">TMDB</i>':''}</span>`:''}${vodUsRatingBadgeHTML(m)}<span>${esc(m.releaseDate||m.year||'')}${m.type&&!genreChips?' · '+esc(m.type):''}${m.area?' · '+esc(m.area):''}${m.runtime?' · '+esc(String(m.runtime))+t('runtimeMinT'):''}</span></div>${genreChips}${m.remarks?`<div class="vod-remarks">${esc(m.remarks)}</div>`:''}${m.director?`<div class="vod-director">${t('directorT')}：${esc(m.director)}</div>`:''}<button id="vodPlayBtn" class="vod-play-btn" onclick="vodPlayMain()">${ic('play')} ${vodHasResume?t('continueWatch'):t('playBtn')}</button><div class="vod-actions"><button id="vodWatchedBtn" class="vod-act-btn${vodWatched?' on':''}" onclick="vodWatchedInfo()" title="${t('watchedT')}">${ic('check')}</button><button id="vodFavBtn" class="vod-act-btn${vodFavState?' on':''}" onclick="toggleVideoFav()" title="${t('favT')}">${ic('heart')}</button></div></div><div class="vod-player-zone" id="vodPlayerZone" style="display:none"><div class="video-wrap" id="videoWrap"><video id="videoPlayer" controls playsinline preload="metadata" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9;display:block"></video><div id="vodSpeedInd" class="vod-speed-ind" style="display:none">2x</div><div id="dmLayer" class="dm-layer"></div><div class="video-overlay"><button id="dmToggleBtn" class="ov-btn on" onclick="toggleDanmaku()">${t('dmOn')}</button><button id="vodSpeedBtn" class="ov-btn" onclick="toggleDmSettings()" title="${t('vodSpeedT')}">${(String(vodSpeed).replace(/\.0+$/,'')+'x')}</button><button id="videoRotBtn" class="ov-btn" onclick="toggleVideoRotate()">${t('rotLandT')}</button><button id="fsBtn" class="ov-btn" onclick="toggleVideoFullscreen()">${ic('fullscreen')} ${t('fsT')}</button><button class="ov-btn" onclick="toggleDmSettings()" title="${t('dmSettingsT')}">${ic('settings')}</button></div><div class="fs-ctl" id="fsCtl"><div class="fs-ctl-top"><button id="fsDmBtn" class="ov-btn on" onclick="toggleDanmaku()">${t('dmOn')}</button><button id="fsSpeedBtn" class="ov-btn" onclick="toggleDmSettings()" title="${t('vodSpeedT')}">${(String(vodSpeed).replace(/\.0+$/,'')+'x')}</button><button class="ov-btn" onclick="toggleDmSettings()">${ic('settings')}</button><button id="fsRotBtn" class="ov-btn" onclick="toggleVideoRotate()">${t('rotLandT')}</button><button class="ov-btn" onclick="toggleVideoFullscreen()">${ic('fullscreen')} ${t('fsExitT')}</button></div><div class="fs-ctl-center"><button id="fsCenterBtn" class="fs-center-btn" onclick="fsTogglePlay(event)">${ic('play')}</button></div><div class="fs-ctl-bottom"><button id="fsPlayBtn" class="fs-pp" onclick="fsTogglePlay(event)">${ic('play')}</button><button class="fs-skip" onclick="fsSkip(-10)">−10s</button><span id="fsTimeCur" class="fs-time">0:00</span><input id="fsSeek" type="range" min="0" max="1000" step="1" value="0" oninput="fsSeekInput(this)" onpointerdown="fsSeeking=true" onpointerup="fsSeeking=false" onchange="fsSeeking=false"><span id="fsTimeDur" class="fs-time">—</span><button class="fs-skip" onclick="fsSkip(10)">+10s</button></div></div></div><p class="muted" id="videoNow"></p><div id="dmSettings" class="dm-settings" style="display:none"><div>${t('dmPosT')}： <button data-dmpos="top" onclick="setDmPos('top')">${t('dmPosTop')}</button> <button data-dmpos="middle" onclick="setDmPos('middle')">${t('dmPosMid')}</button> <button data-dmpos="bottom" onclick="setDmPos('bottom')">${t('dmPosBot')}</button> <button data-dmpos="full" onclick="setDmPos('full')">${t('dmPosFull')}</button></div><div>${t('dmOpacityT')}： <input id="dmOpacity" type="range" min="0.3" max="1" step="0.1" value="${dmOpacity}" oninput="setDmOpacity(this.value)"> <span id="dmOpacityVal">${dmOpacity}</span></div><div>${t('dmSpeedT')}： <input id="dmSpeed" type="range" min="0.5" max="2" step="0.25" value="${dmSpeed}" oninput="setDmSpeed(this.value)"> <span id="dmSpeedVal">${dmSpeed}</span></div><div>${t('vodSpeedT')}： ${VOD_SPEEDS.map(r=>`<button data-vodspeed="${r}" onclick="setVodSpeed(${r})">${(String(r).replace(/\.0+$/,'')+'x')}</button>`).join(' ')}</div></div></div><div id="videoLines" class="vod-lines"></div><div id="videoEps" class="vod-eps"></div>${vodSynHTML(m.content)}${castHtml}${tmdbAttrHTML()}`; armVodPosterFallback(); syncDmToggle(); const vp=document.getElementById('videoPlayer'); if(vp){ try{ vp.volume=haoDefaultVolume(); }catch(e){} vp.addEventListener('error',()=>videoErrorHandle()); vp.addEventListener('loadedmetadata',()=>{ if(curVideoResume>10&&vp.duration&&curVideoResume<vp.duration-30){ vp.currentTime=curVideoResume; toast(t('resumeHint')); } curVideoResume=0; }); vp.addEventListener('timeupdate',()=>{ checkDanmaku(); syncFsTime(); const now=Date.now(); if(now-lastVideoSave>10000){ lastVideoSave=now; saveVideoProgress(); } }); vp.addEventListener('pause',()=>saveVideoProgress()); vp.addEventListener('pause',()=>{ haoApplyDmPaused(true); haoWakeLockRelease(); }); vp.addEventListener('play',()=>{ haoApplyDmPaused(false); haoWakeLockAcquire(); }); vp.addEventListener('ended',()=>saveVideoProgress()); vp.addEventListener('seeked',()=>{ dmShown.clear(); checkDanmaku(); }); vp.addEventListener('play',()=>{ syncFsPlayBtn(); }); vp.addEventListener('playing',()=>{ if(vodLineSwitch){ const li=curVideoLine; const ep=curVideo.lines[li]&&curVideo.lines[li].episodes[curVideoEp]; clearVodLineSwitch(); const n2=document.getElementById('videoNow'); if(n2&&ep) n2.textContent=t('nowPlayingV')+'：'+curVideo.lines[li].name+' · '+ep.name; } }); vp.addEventListener('pause',()=>{ syncFsPlayBtn(); }); vp.addEventListener('loadedmetadata',()=>{ syncFsTime(); applyVodSpeed(); }); const w0=document.getElementById('videoWrap'); if(w0) w0.addEventListener('click',onVideoWrapClick); haoHudEnsure(); initVodSpeedLongPress(); syncVodSpeedBtns(); } renderVideoLines(); (function(){ const sv=haoVideoHistGet().find(function(x){ return String(x.source)===String(sid)&&String(x.vodId)===String(vid); }); vodHistDone(); try{ if(sv){ if(!vodPlayed&&sv.lineIdx<curVideo.lines.length&&sv.epIdx<curVideo.lines[sv.lineIdx].episodes.length){ curVideoLine=sv.lineIdx; curVideoEp=sv.epIdx; } curVideoResume=Number(sv.position)||0; vodWatched=true; vodHistItem=sv; const _hd=Number(sv.duration)||0; if(_hd>0&&curVideoResume>=_hd-30) curVideoResume=0; vodHasResume=curVideoResume>10; renderVideoLines(); const pb=document.querySelector('.vod-play-btn'); if(pb&&vodHasResume) pb.innerHTML=ic('play')+' '+t('continueWatch'); const wb=document.getElementById('vodWatchedBtn'); if(wb) wb.classList.toggle('on',vodWatched); } }catch{} })(); setTimeout(vodHistDone,5000); (function(){ try{ vodFavState=haoVideoFavGet().some(function(x){ return String(x.source)===String(sid)&&String(x.vodId)===String(vid); }); syncVodFavBtn(); }catch{} })(); if(vodAutoPlayEp){ const ap=vodAutoPlayEp; vodAutoPlayEp=null; playVideoEp(ap.line,ap.ep); } syncVodFavBtn(); if(castNames.length) loadCastPhotos(castNames, m.name, m.year); if(nativeFetchAvailable()){ if(!r.meta.douban) enrichVideoDetailDouban(r); if(!r.meta.tmdb) enrichVideoDetailTmdb(r); if(r.meta.tmdb) enrichVideoDetailUsRating(r); } }
+async function renderVideoDetail(h){ if(videoFs) exitVideoFs(true); videoRot=false; vodHistReady=false; vodPlayed=false; const parts=h.split('/'); const sid=parts[2], vid=decodeURIComponent(parts[3]||''); curVideoSource=sid; curVideoId=vid; curVideoResume=0; vodLineSwitch=null; vodFavState=false; vodWatched=false; vodHasResume=false; vodHistItem=null; vodEpsExpanded=false; const detP=vodDetGet(sid,vid); const _pre=(vodPreload&&String(vodPreload.source)===String(sid)&&String(vodPreload.vodId)===String(vid))?vodPreload:null; vodPreload=null; document.getElementById('app').innerHTML=`<div class="vod-detail"><div id="videoDetail">${_pre?vodPreviewHTML(_pre):vodDetailSkelHTML()}</div></div>`; armVodPosterFallback(); let r=null; try{ r=await Promise.race([detP,new Promise(res=>setTimeout(()=>res(null),12000))]); }catch(e){ r=null; } const el=document.getElementById('videoDetail'); if(!el) return; if(!r||!r.ok||!r.lines||!r.lines.length){ el.innerHTML=loadErrHTML('renderVideoDetail(location.hash)',(r&&r.error==='找不到这部影片')?'loadFailT':'videoSrcDownT'); return; } curVideo=r; curVideoLine=0; curVideoEp=0; const _lr=vodLocalLoad(sid,vid,r.lines); if(_lr){ curVideoLine=_lr.lineIdx; curVideoEp=_lr.epIdx; curVideoResume=_lr.position; vodHasResume=true; vodWatched=true; vodHistItem={lineIdx:_lr.lineIdx,epIdx:_lr.epIdx,epName:_lr.epName,position:_lr.position,duration:_lr.duration}; } const m=r.meta; const mScoreNum=parseFloat(String(m.score||'').trim()); const mShowScore=!!m.score&&!isNaN(mScoreNum)&&mScoreNum>0; const castNames=m.actor?m.actor.split(/[,，、]/).map(s=>s.trim()).filter(Boolean).slice(0,8):[]; const genreChips=vodGenreChipsHTML(m.type); const castHtml=castNames.length?`<div class="vod-cast-sec"><h3>${t('castT')}</h3><div id="vodCast" class="vod-cast-row">${castNames.map(n=>`<div class="vod-cast-card"><div class="vod-cast-photo"></div><div class="vod-cast-name">${esc(n)}</div></div>`).join('')}</div></div>`:''; el.innerHTML=`<div class="vod-player-zone" id="vodPlayerZone"><div class="vod-cover" id="vodCover" onclick="vodPlayMain()"><img src="${esc(m.pic||'./video-cover.svg')}"${(m.picAlt&&m.picAlt!==m.pic)?` data-alt="${esc(m.picAlt)}"`:''} onerror="vodPosterErr(this)" referrerpolicy="no-referrer"><div class="vod-cover-fade"></div><div class="vod-topbar"><a class="vod-glass-btn" href="#/video" onclick="event.stopPropagation()">‹</a><span class="vod-top-title">${esc(m.name)}</span><span style="width:40px"></span></div><button id="vodBigPlay" class="vod-big-play">${ic('play')}</button><span class="vod-cover-chip" id="vodCoverEp">${esc(vodCurEpName())}</span><span class="vod-cover-chip vod-cover-resume" id="vodCoverResume"${vodHasResume?'':' style="display:none"'}>${ic('play')} ${t('continueWatch')} · ${fmtTime(curVideoResume)}</span></div><button id="vodPlayBtn" class="vod-play-btn" disabled onclick="vodPlayMain()">${vodHasResume?ic('play')+' '+t('continueWatch')+' · '+esc(vodCurEpName()):ic('play')+' '+esc(vodCurEpName())}</button></div><p class="muted" id="videoNow"></p><div id="dmSettings" class="dm-settings" style="display:none"><div>${t('dmPosT')}： <button data-dmpos="top" onclick="setDmPos('top')">${t('dmPosTop')}</button> <button data-dmpos="middle" onclick="setDmPos('middle')">${t('dmPosMid')}</button> <button data-dmpos="bottom" onclick="setDmPos('bottom')">${t('dmPosBot')}</button> <button data-dmpos="full" onclick="setDmPos('full')">${t('dmPosFull')}</button></div><div>${t('dmOpacityT')}： <input id="dmOpacity" type="range" min="0.3" max="1" step="0.1" value="${dmOpacity}" oninput="setDmOpacity(this.value)"> <span id="dmOpacityVal">${dmOpacity}</span></div><div>${t('dmSpeedT')}： <input id="dmSpeed" type="range" min="0.5" max="2" step="0.25" value="${dmSpeed}" oninput="setDmSpeed(this.value)"> <span id="dmSpeedVal">${dmSpeed}</span></div><div>${t('vodSpeedT')}： ${VOD_SPEEDS.map(r=>`<button data-vodspeed="${r}" onclick="setVodSpeed(${r})">${(String(r).replace(/\.0+$/,'')+'x')}</button>`).join(' ')}</div></div></div><div class="vod-meta"><h2 class="vod-title">${esc(m.name)}</h2><div class="vod-meta-line">${mShowScore?`<span class="vod-score"><span class="vod-star">★</span> ${esc(String(m.score))}${vodScoreMarkHTML(m)}</span>`:''}<span>${esc(m.releaseDate||m.year||'')}${m.type&&!genreChips?' · '+esc(m.type):''}${m.area?' · '+esc(m.area):''}${m.runtime?' · '+esc(String(m.runtime))+t('runtimeMinT'):''}</span></div>${genreChips}${m.remarks?`<div class="vod-remarks">${esc(m.remarks)}</div>`:''}${m.director?`<div class="vod-director">${t('directorT')}：${esc(m.director)}</div>`:''}<div class="vod-actions"><button id="vodWatchedBtn" class="vod-act-btn${vodWatched?' on':''}" onclick="vodWatchedInfo()" title="${t('watchedT')}">${ic('check')}</button><button id="vodFavBtn" class="vod-act-btn${vodFavState?' on':''}" onclick="toggleVideoFav()" title="${t('favT')}">${ic('heart')}</button></div></div><div id="videoLines" class="vod-lines"></div><div id="videoEps" class="vod-eps"></div>${vodSynHTML(m.content)}${castHtml}`; armVodPosterFallback(); syncDmToggle();  renderVideoLines(); (function(){ const sv=haoVideoHistGet().find(function(x){ return String(x.source)===String(sid)&&String(x.vodId)===String(vid); }); vodHistDone(); try{ if(sv){ if(!vodPlayed&&sv.lineIdx<curVideo.lines.length&&sv.epIdx<curVideo.lines[sv.lineIdx].episodes.length){ curVideoLine=sv.lineIdx; curVideoEp=sv.epIdx; } curVideoResume=Number(sv.position)||0; vodWatched=true; vodHistItem=sv; const _hd=Number(sv.duration)||0; if(_hd>0&&curVideoResume>=_hd-30) curVideoResume=0; vodHasResume=curVideoResume>10; renderVideoLines(); syncVodPlayBtn(); const wb=document.getElementById('vodWatchedBtn'); if(wb) wb.classList.toggle('on',vodWatched); } }catch{} })(); setTimeout(vodHistDone,5000); (function(){ try{ vodFavState=haoVideoFavGet().some(function(x){ return String(x.source)===String(sid)&&String(x.vodId)===String(vid); }); syncVodFavBtn(); }catch{} })(); if(vodAutoPlayEp){ const ap=vodAutoPlayEp; vodAutoPlayEp=null; if(ap&&curVideo.lines[ap.line]&&curVideo.lines[ap.line].episodes[ap.ep]){ curVideoLine=ap.line; curVideoEp=ap.ep; renderVideoLines(); } } syncVodPlayBtn(); syncVodFavBtn(); if(castNames.length) loadCastPhotos(castNames, m.name, m.year); if(nativeFetchAvailable()){ if(!r.meta.douban) enrichVideoDetailDouban(r); } }
 function renderVideoLines(){ const el=document.getElementById('videoLines'); if(!el||!curVideo) return; el.classList.toggle('switching',!!vodLineSwitch); el.innerHTML=curVideo.lines.map((ln,i)=>`<button class="list-tab${i===curVideoLine?' on':''}${vodLineSwitch&&vodLineSwitch.toLine===i?' switching':''}" onclick="switchVideoLine(${i})">${esc(ln.name||(t('videoLine')+(i+1)))}</button>`).join(''); renderVideoEps(); }
 let vodEpsExpanded=false;
 function vodEpsExpand(){ vodEpsExpanded=true; renderVideoEps(); }
 function renderVideoEps(){ const el=document.getElementById('videoEps'); if(!el||!curVideo) return; const ln=curVideo.lines[curVideoLine]; const eps=ln.episodes; const multi=eps.length>1; const EP_CARD_CAP=12; const showAll=vodEpsExpanded||eps.length<=EP_CARD_CAP; const shown=showAll?eps:eps.slice(0,EP_CARD_CAP); el.innerHTML=`<div class="vod-eps-head">${multi?`<span class="vod-season">${t('seasonT')} 1 \u2304</span>`:''}<span class="vod-eps-count">${t('episodesT')} (${eps.length})</span></div>`+(multi?`<div class="vod-ep-chips">${eps.map((ep,i)=>`<button class="vod-ep-chip${i===curVideoEp?' on':''}" onclick="playVideoEp(${curVideoLine},${i})">${i+1}</button>`).join('')}</div>`:'')+`<div class="vod-ep-cards">${shown.map((ep,i)=>`<div class="vod-ep-card${i===curVideoEp?' on':''}" onclick="playVideoEp(${curVideoLine},${i})"><div class="vod-ep-still vod-ep-num"><span>${String(i+1).padStart(2,'0')}</span></div><!-- no per-episode stills from CMS: numbered tile instead of repeating the poster --><div class="vod-ep-cap">${multi?('E'+String(i+1).padStart(2,'0')+' \u00b7 '+esc(ep.name)):esc(ep.name)}</div></div>`).join('')}</div>`+((!showAll)?`<p style="text-align:center;margin:10px 0 0"><button class="ghost-btn" onclick="vodEpsExpand()">${t('loadMoreT')} (${eps.length-EP_CARD_CAP})</button></p>`:''); }
 function vodHistDone(){ vodHistReady=true; const pb=document.getElementById('vodPlayBtn'); if(pb) pb.disabled=false; }
-function vodPlayMain(){ if(!curVideo) return; playVideoEp(curVideoLine,curVideoEp); if(isNativePlayer()) return; const z=document.getElementById('vodPlayerZone'); if(z) z.scrollIntoView({behavior:'smooth',block:'start'}); }
+function vodCurEpName(){ const ln=curVideo&&curVideo.lines[curVideoLine]; const ep=ln&&ln.episodes[curVideoEp]; return (ep&&ep.name)||('第'+(curVideoEp+1)+'集'); }
+function syncVodPlayBtn(){ const pb=document.getElementById('vodPlayBtn'); if(pb) pb.innerHTML=ic('play')+' '+(vodHasResume?t('continueWatch')+' · '+vodCurEpName()+' · '+fmtTime(curVideoResume):vodCurEpName()); const chip=document.getElementById('vodCoverResume'); if(chip){ chip.style.display=vodHasResume?'':'none'; if(vodHasResume) chip.innerHTML=ic('play')+' '+t('continueWatch')+' · '+fmtTime(curVideoResume); } const epChip=document.getElementById('vodCoverEp'); if(epChip) epChip.textContent=vodCurEpName(); }
+function vodPlayMain(){ vodTogglePlay(); }
 function syncVodFavBtn(){ const b=document.getElementById('vodFavBtn'); if(!b) return; b.classList.toggle('on',!!vodFavState); }
 async function toggleVideoFav(){ if(!curVideo||!curVideo.meta) return; const m=curVideo.meta; const key=curVideoSource+'|'+curVideoId; let list=haoVideoFavGet(); const has=list.some(function(x){ return String(x.source)+'|'+String(x.vodId)===key; }); if(has){ list=list.filter(function(x){ return String(x.source)+'|'+String(x.vodId)!==key; }); } else { list.unshift({source:curVideoSource, vodId:curVideoId, name:m.name||'', pic:m.pic||'', picAlt:m.picAlt||'', year:m.year||'', at:Date.now()}); } haoVideoFavSave(list); vodFavState=!has; syncVodFavBtn(); toast(t(!has?'favAdded':'favRemoved')); }
 function vodWatchedInfo(){ if(!vodWatched||!vodHistItem){ toast(t('noVideoHistory')); return; } const pct=vodHistItem.duration>0?Math.min(100,Math.round(vodHistItem.position/vodHistItem.duration*100)):0; const done=vodHistItem.duration>0&&vodHistItem.position>=vodHistItem.duration-30; toast(t('continueWatch')+'：'+(vodHistItem.epName||('第'+(vodHistItem.epIdx+1)+'集'))+' · '+(done?t('videoDoneT'):pct+'%')); }
@@ -3592,11 +3528,20 @@ let vodLineSwitch=null, vodLineSwitchTimer=0;
 function clearVodLineSwitch(){ vodLineSwitch=null; if(vodLineSwitchTimer){ clearTimeout(vodLineSwitchTimer); vodLineSwitchTimer=0; } const el=document.getElementById('videoLines'); if(el) el.classList.remove('switching'); }
 function switchVideoLine(i){ if(!curVideo||i===curVideoLine||vodLineSwitch) return; vodLineSwitch={fromLine:curVideoLine,fromEp:curVideoEp,toLine:i}; vodLineSwitchTimer=setTimeout(function(){ if(vodLineSwitch&&vodLineSwitch.toLine===i) clearVodLineSwitch(); },20000); curVideoLine=i; curVideoEp=0; renderVideoLines(); const now=document.getElementById('videoNow'); if(now) now.textContent=t('lineSwitchingT'); playVideoEp(i,0); }
 function hasRealNativeHls(v){ if(!v||!v.canPlayType) return false; if(!v.canPlayType('application/vnd.apple.mpegurl')) return false; if(typeof navigator!=='undefined'&&navigator.vendor==='Apple Computer, Inc.') return true; if(typeof navigator!=='undefined'&&/iPhone|iPad|iPod/.test(navigator.userAgent||'')) return true; return false; }
-async function playVideoEp(li,ei){ if(!curVideo) return; if(!(await haoCellWarnCheck())) return; vodPlayed=true; curVideoLine=li; curVideoEp=ei; const epKey=String(curVideoId)+':'+ei; if(epKey!==videoErrEpKey){ videoErrEpKey=epKey; videoErrLinesTried=new Set(); } renderVideoLines(); loadDanmaku(); const ep=curVideo.lines[li].episodes[ei]; const v=document.getElementById('videoPlayer'); if(!v||!ep) return; const now=document.getElementById('videoNow'); if(now) now.textContent=(vodLineSwitch&&vodLineSwitch.toLine===li)?t('lineSwitchingT'):(t('nowPlayingV')+'：'+curVideo.lines[li].name+' · '+ep.name); if(isNativePlayer()){ const pos=(curVideoResume>10)?curVideoResume:0; if(pos>10) toast(t('resumeHint')); curVideoResume=0; clearVodLineSwitch(); openNativeVideoPlayer(pos); return; } const pz=document.getElementById('vodPlayerZone'); if(pz) pz.style.display=''; const src=ep.url; try{ if(hasRealNativeHls(v)){ v.src=src; v.play().catch(()=>{}); return; } if(!window.Hls){ await loadHls(); } if(window.Hls&&Hls.isSupported()){ if(v._hls) v._hls.destroy(); const h=new Hls(); h.loadSource(src); h.attachMedia(v); v._hls=h; h.on(Hls.Events.ERROR,(e,d)=>{ if(d.fatal) videoErrorHandle(); }); v.play().catch(()=>{}); return; } v.src=src; v.play().catch(()=>{}); }catch(e){ if(/hls load/i.test(String(e&&e.message||''))){ videoErrorShow(); } else { videoErrorNext(); } } }
+async function playVideoEp(li,ei){ if(!curVideo) return; if(!(await haoCellWarnCheck())) return; vodPlayed=true; curVideoLine=li; curVideoEp=ei; const epKey=String(curVideoId)+':'+ei; if(epKey!==videoErrEpKey){ videoErrEpKey=epKey; videoErrLinesTried=new Set(); } renderVideoLines(); loadDanmaku(); const ep=curVideo.lines[li].episodes[ei]; if(!ep) return; const now=document.getElementById('videoNow'); if(now) now.textContent=(vodLineSwitch&&vodLineSwitch.toLine===li)?t('lineSwitchingT'):(t('nowPlayingV')+'：'+curVideo.lines[li].name+' · '+ep.name); vodHasResume=!!(vodHistItem&&vodHistItem.lineIdx===li&&vodHistItem.epIdx===ei&&curVideoResume>10); syncVodPlayBtn(); const startPos=vodHasResume?curVideoResume:0; if(isNativePlayer()){ openNativeVideoPlayer(startPos,true); return; } vodPlayInlineWeb(li,ei,startPos); }
+// Browser-only fallback (no native player, e.g. desktop preview): the App
+// always takes the native landscape path above. Tapping play in a plain
+// browser builds a one-off inline <video> on demand — the detail page
+// itself never auto-plays inline and never shows an empty player.
+async function vodPlayInlineWeb(li,ei,startPos){ const ep=curVideo.lines[li]&&curVideo.lines[li].episodes[ei]; if(!ep) return; const pz=document.getElementById('vodPlayerZone'); if(!pz) return; let v=document.getElementById('videoPlayer'); if(!v){ if(!pz.dataset.coverHtml) pz.dataset.coverHtml=pz.innerHTML; pz.innerHTML='<div class="video-wrap" id="videoWrap"><video id="videoPlayer" playsinline controls autoplay preload="metadata" style="width:100%;border-radius:12px;background:#000;aspect-ratio:16/9;display:block"></video><button class="vod-web-close" onclick="vodCloseInlineWeb()">✕</button></div>'; v=document.getElementById('videoPlayer'); if(!v) return; v.addEventListener('error',()=>videoErrorHandle()); v.addEventListener('loadedmetadata',()=>{ if(v.duration&&isFinite(v.duration)) curVideoDuration=v.duration; const sp=v._vodStartPos||0; if(sp>10&&v.duration&&sp<v.duration-30){ v.currentTime=sp; } }); v.addEventListener('timeupdate',()=>{ const now=Date.now(); if(now-lastVideoSave>10000){ lastVideoSave=now; saveVideoProgress(); } }); v.addEventListener('pause',()=>saveVideoProgress()); v.addEventListener('ended',()=>{ saveVideoProgress(); vodAutoNext(); }); } v._vodStartPos=startPos; const src=ep.url; try{ if(hasRealNativeHls(v)){ v.src=src; v.play().catch(()=>{}); return; } if(!window.Hls){ await loadHls(); } if(window.Hls&&Hls.isSupported()){ if(v._hls) v._hls.destroy(); const h=new Hls(); h.loadSource(src); h.attachMedia(v); v._hls=h; h.on(Hls.Events.ERROR,(e,d)=>{ if(d.fatal) videoErrorHandle(); }); v.play().catch(()=>{}); return; } v.src=src; v.play().catch(()=>{}); }catch(e){ if(/hls load/i.test(String(e&&e.message||''))){ videoErrorShow(); } else { videoErrorNext(); } } }
+function vodCloseInlineWeb(){ const v=document.getElementById('videoPlayer'); try{ if(v){ v.pause(); if(v._hls) v._hls.destroy(); } }catch(e){} const pz=document.getElementById('vodPlayerZone'); if(pz&&pz.dataset.coverHtml){ pz.innerHTML=pz.dataset.coverHtml; pz.removeAttribute('data-cover-html'); armVodPosterFallback(); const pb=document.getElementById('vodPlayBtn'); if(pb) pb.disabled=false; syncVodPlayBtn(); } }
 let lastVideoErrAt=0, lastVideoErrKey='';
 function videoErrGuarded(){ const n=Date.now(); const k=String(curVideoId)+':'+curVideoLine+':'+curVideoEp; if(k===lastVideoErrKey&&n-lastVideoErrAt<2000) return true; lastVideoErrKey=k; lastVideoErrAt=n; return false; }
+let vodNativeFbKey='';
+let vodAutoNextPending=false;
+function vodAutoNext(){ if(!curVideo) return; const ln=curVideo.lines[curVideoLine]; if(!ln) return; if(curVideoEp+1<ln.episodes.length){ playVideoEp(curVideoLine,curVideoEp+1); } }
 function videoErrorShow(){ clearVodLineSwitch(); if(videoErrGuarded()) return; const now=document.getElementById('videoNow'); if(now) now.textContent=t('playFailedV'); toast(t('playFailedV')); }
-function videoErrorNext(){ if(!curVideo) return; if(videoErrGuarded()) return; if(vodLineSwitch&&vodLineSwitch.toLine===curVideoLine){ const back=vodLineSwitch; videoErrLinesTried.add(curVideoLine); clearVodLineSwitch(); curVideoLine=back.fromLine; curVideoEp=back.fromEp; renderVideoLines(); toast(t('lineSwitchFailT')); playVideoEp(back.fromLine,back.fromEp); return; } const failedEp=curVideoEp+1; const vidAtCall=curVideoId, lineAtCall=curVideoLine, epAtCall=curVideoEp; videoErrLinesTried.add(curVideoLine); for(let i=0;i<curVideo.lines.length;i++){ if(i===curVideoLine||videoErrLinesTried.has(i)) continue; const eps=curVideo.lines[i].episodes; if(!eps.length) continue; videoErrLinesTried.add(i); const ei=Math.min(curVideoEp,eps.length-1); toast(t('lineSwitchT')); playVideoEp(i,ei); return; } videoTryOtherSource().then(function(ok){ if(ok||!curVideo||curVideoId!==vidAtCall||curVideoLine!==lineAtCall||curVideoEp!==epAtCall) return; const ln=curVideo.lines[curVideoLine]; if(curVideoEp+1<ln.episodes.length){ toast(t('epSkipT').replace('{n}',String(failedEp))); playVideoEp(curVideoLine,curVideoEp+1); return; } const now=document.getElementById('videoNow'); if(now) now.textContent=t('playFailedAllV'); toast(t('playFailedAllV')); }); }
+function videoErrorNext(){ if(!curVideo) return; if(videoErrGuarded()) return; if(vodLineSwitch&&vodLineSwitch.toLine===curVideoLine){ const back=vodLineSwitch; videoErrLinesTried.add(curVideoLine); clearVodLineSwitch(); curVideoLine=back.fromLine; curVideoEp=back.fromEp; renderVideoLines(); toast(t('lineSwitchFailT')); playVideoEp(back.fromLine,back.fromEp); return; } const failedEp=curVideoEp+1; const vidAtCall=curVideoId, lineAtCall=curVideoLine, epAtCall=curVideoEp; videoErrLinesTried.add(curVideoLine); for(let i=0;i<curVideo.lines.length;i++){ if(i===curVideoLine||videoErrLinesTried.has(i)) continue; const eps=curVideo.lines[i].episodes; if(!eps.length) continue; videoErrLinesTried.add(i); const ei=Math.min(curVideoEp,eps.length-1); toast(t('lineSwitchT')); playVideoEp(i,ei); return; } videoTryOtherSource().then(function(ok){ if(ok||!curVideo||curVideoId!==vidAtCall||curVideoLine!==lineAtCall||curVideoEp!==epAtCall) return; const ln=curVideo.lines[curVideoLine]; if(curVideoEp+1<ln.episodes.length){ toast(t('epSkipT').replace('{n}',String(failedEp))); playVideoEp(curVideoLine,curVideoEp+1); return; } if(isNativePlayer()){ const fbk=String(curVideoId)+':'+curVideoLine+':'+curVideoEp; if(vodNativeFbKey!==fbk){ vodNativeFbKey=fbk; openNativeVideoPlayer(undefined,true); return; } } const now=document.getElementById('videoNow'); if(now) now.textContent=t('playFailedAllV'); toast(t('playFailedAllV')); }); }
 async function directVideoAltSources(title, year, exclude){ const srcs=await directVideoSources(); const qn=videoNormTitle(title); const out=[]; let si=0; async function worker(){ while(si<srcs.length&&out.length<3){ const s=srcs[si++]; if(String(s.id)===String(exclude)) continue; try{ const j=await nativeJson(s.apiUrl+'?ac=videolist&wd='+encodeURIComponent(title)+'&pg=1', {headers:{'User-Agent':DIRECT_VIDEO_UA,'Accept':'application/json'}}, 5000); const hit=((j.list||[])).find(function(x){ return videoNormTitle(x.vod_name||'')===qn&&(!year||!x.vod_year||String(x.vod_year)===String(year)); }); if(hit) out.push({source:s.id, vodId:String(hit.vod_id)}); }catch(e){} } } await Promise.race([Promise.all([worker(),worker(),worker()]), new Promise(function(r){ setTimeout(r,15000); })]); return out.slice(0,3); }
 async function videoTryOtherSource(){ if(!curVideo||!curVideo.meta) return false; const title=curVideo.meta.name||''; if(!title) return false; const key=title+'|'+curVideoSource; if(videoAltTried.has(key)) return false; videoAltTried.add(key); let alts=[]; try{ alts=await directVideoAltSources(title, curVideo.meta.year||'', curVideoSource); }catch(e){} if(!alts.length) return false; for(const a of alts.slice(0,3)){ if(videoAltTried.has(title+'|'+a.source)) continue; videoAltTried.add(title+'|'+a.source); try{ const d=await directVideoDetail(a.source, a.vodId); if(!d||!d.ok||!d.lines||!d.lines.length) continue; const eps=d.lines[0].episodes||[]; if(!eps.length) continue; const ei=Math.min(curVideoEp,eps.length-1); vodAutoPlayEp={line:0,ep:ei}; toast(t('switchSourceT')); openVideoDetail(a.source, a.vodId, d.meta); return true; }catch(e){} } return false; }
 async function videoErrorHandle(){ if(!curVideo) return; if(navigator.onLine===false){ videoErrorShow(); return; } const ep=curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp]; if(!ep){ videoErrorShow(); return; } videoErrorNext(); }
@@ -3605,7 +3550,7 @@ let dmList=[], dmShown=new Set(), dmGen=0, dmEnabled=localStorage.getItem('dmEna
 // player (openNativeVideoPlayer sends it; the native side calls back
 // window.__setVodSpeed when the user changes it there).
 function applyVodSpeed(){ const v=document.getElementById('videoPlayer'); if(v){ try{ v.playbackRate=vodSpeed; }catch(e){} } }
-function syncVodSpeedBtns(){ const b1=document.getElementById('vodSpeedBtn'); if(b1) b1.textContent=(String(vodSpeed).replace(/\.0+$/,'')+'x'); const b2=document.getElementById('fsSpeedBtn'); if(b2) b2.textContent=(String(vodSpeed).replace(/\.0+$/,'')+'x'); document.querySelectorAll('#dmSettings [data-vodspeed]').forEach(function(b){ b.classList.toggle('on',parseFloat(b.getAttribute('data-vodspeed'))===vodSpeed); }); }
+function syncVodSpeedBtns(){ const b1=document.getElementById('vodSpeedBtn'); if(b1) b1.textContent=(String(vodSpeed).replace(/\.0+$/,'')+'x'); const b0=document.getElementById('vodSpeedBtn2'); if(b0) b0.textContent=(String(vodSpeed).replace(/\.0+$/,'')+'x'); const b2=document.getElementById('fsSpeedBtn'); if(b2) b2.textContent=(String(vodSpeed).replace(/\.0+$/,'')+'x'); document.querySelectorAll('#dmSettings [data-vodspeed]').forEach(function(b){ b.classList.toggle('on',parseFloat(b.getAttribute('data-vodspeed'))===vodSpeed); }); }
 function setVodSpeed(r){ r=parseFloat(r); if(VOD_SPEEDS.indexOf(r)<0) return; vodSpeed=r; localStorage.setItem('vodSpeed',String(r)); applyVodSpeed(); syncVodSpeedBtns(); }
 window.__setVodSpeed=function(r){ setVodSpeed(r); };
 // Long-press 2x on the video area (web player only; the App uses the native
@@ -3641,12 +3586,22 @@ let dmLaneBusy=[];
 function dmLaneTop(layer,dur){ const h=(layer&&layer.clientHeight)||240; const zones={top:[0,30],middle:[30,70],bottom:[70,100],full:[0,100]}; const z=zones[dmPos]||zones.full; const laneH=24; const n=Math.max(1,Math.min(8,Math.floor(h*(z[1]-z[0])/100/laneH))); if(dmLaneBusy.length!==n) dmLaneBusy=new Array(n).fill(0); const now=Date.now(); let best=0; for(let i=1;i<n;i++) if(dmLaneBusy[i]<dmLaneBusy[best]) best=i; dmLaneBusy[best]=now+dur*0.5; return z[0]+best*(laneH/h*100); }
 function spawnDm(item){ const layer=document.getElementById('dmLayer'); if(!layer||!dmEnabled||dmPaused) return; if(item&&haoDmBlocked(item.content, item.uname||item.user||'')) return; if(item&&haoDmCollapseCheck(item.content)) return; if(layer.children.length>=dmMaxVisible) return; const el=document.createElement('div'); el.className='dm-item'; el.textContent=item.content; el.style.opacity=dmOpacity; el.style.fontSize=dmFontSize+'px'; el.style.fontWeight=dmFontWeight; if(dmStroke) el.style.textShadow='0 1px 2px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.85)'; layer.appendChild(el); haoDmCollapseNote(item.content, el); const w=layer.clientWidth||320; const ew=el.offsetWidth||120; const dur=Math.max(2500,(w+ew)/(120*dmSpeed)*1000); el.style.top=dmLaneTop(layer,dur)+'%'; const anim=el.animate([{transform:'translateX('+w+'px)'},{transform:'translateX('+(-ew-8)+'px)'}],{duration:dur,easing:'linear',fill:'forwards'}); el._dmAnim=anim; el._dmSpeed=dmSpeed; anim.onfinish=()=>el.remove(); setTimeout(()=>{ if(el.parentNode) el.remove(); },dur+800); }
 function checkDanmaku(){ const v=document.getElementById('videoPlayer'); if(!v||!dmEnabled||!dmList.length) return; const t=v.currentTime||0; for(const it of dmList){ if(it.time>t-0.6&&it.time<=t+0.2&&!dmShown.has(it.id)){ dmShown.add(it.id); spawnDm(it); } } if(dmShown.size>400) dmShown.clear(); }
-function syncDmToggle(){ const b=document.getElementById('dmToggleBtn'); if(b){ b.textContent=dmEnabled?t('dmOn'):t('dmOff'); b.classList.toggle('on',dmEnabled); } const fb=document.getElementById('fsDmBtn'); if(fb){ fb.textContent=dmEnabled?t('dmOn'):t('dmOff'); fb.classList.toggle('on',dmEnabled); } const layer=document.getElementById('dmLayer'); if(layer){ layer.style.display=dmEnabled?'':'none'; if(!dmEnabled) layer.innerHTML=''; } }
+function syncDmToggle(){ const b=document.getElementById('dmToggleBtn'); if(b){ b.textContent=dmEnabled?t('dmOn'):t('dmOff'); b.classList.toggle('on',dmEnabled); } const vb=document.getElementById('vodDmBtn'); if(vb){ vb.textContent=dmEnabled?t('dmOn'):t('dmOff'); vb.classList.toggle('on',dmEnabled); } const fb=document.getElementById('fsDmBtn'); if(fb){ fb.textContent=dmEnabled?t('dmOn'):t('dmOff'); fb.classList.toggle('on',dmEnabled); } const layer=document.getElementById('dmLayer'); if(layer){ layer.style.display=dmEnabled?'':'none'; if(!dmEnabled) layer.innerHTML=''; } }
 function toggleDanmaku(){ dmEnabled=!dmEnabled; localStorage.setItem('dmEnabled',dmEnabled?'1':'0'); syncDmToggle(); }
 let videoFs=false, fsPushed=false, fsW=0, dmSetHome=null, wrapHome=null, videoRot=false;
-function toggleVideoFullscreen(){ if(videoFs) exitVideoFs(); else enterVideoFs(); }
+// ---- Inline VOD player controls (Bilibili-style) ----
+let vodCtlTimer=null, vodSeeking=false;
+function vodCtlShow(){ const w=document.getElementById('videoWrap'); if(w) w.classList.add('show'); vodCtlResetTimer(); }
+function vodCtlHide(){ const v=document.getElementById('videoPlayer'); if(v&&!v.paused) return; const w=document.getElementById('videoWrap'); if(w) w.classList.remove('show'); if(vodCtlTimer){ clearTimeout(vodCtlTimer); vodCtlTimer=null; } }
+function vodCtlResetTimer(){ if(vodCtlTimer) clearTimeout(vodCtlTimer); const v=document.getElementById('videoPlayer'); if(v&&!v.paused){ vodCtlTimer=setTimeout(function(){ const w=document.getElementById('videoWrap'); if(w) w.classList.remove('show'); },3000); } }
+function vodTogglePlay(){ if(!curVideo) return; playVideoEp(curVideoLine,curVideoEp); }
+function vodGoFullscreen(){ toggleVideoFullscreen(); }
+function vodCycleSpeed(){ const i=VOD_SPEEDS.indexOf(vodSpeed); const n=VOD_SPEEDS[(i+1)%VOD_SPEEDS.length]; setVodSpeed(n); }
+function vodSeekInput(el){ const v=document.getElementById('videoPlayer'); if(v&&v.duration) v.currentTime=el.value/1000*v.duration; vodCtlShow(); }
+function syncVodCtl(){ const v=document.getElementById('videoPlayer'); if(!v) return; const paused=v.paused||!v.currentSrc; const pp=document.getElementById('vodPPBtn'); if(pp) pp.innerHTML=ic(paused?'play':'pause'); const bp=document.getElementById('vodBigPlay'); if(bp){ bp.style.display=paused?'':'none'; } const cur=document.getElementById('vodTimeCur'), dur=document.getElementById('vodTimeDur'), sk=document.getElementById('vodSeek'); const hasDur=v.duration&&isFinite(v.duration)&&v.duration>0; if(cur) cur.textContent=fmtTime(v.currentTime); if(dur) dur.textContent=hasDur?fmtTime(v.duration):'\u2014'; if(sk){ sk.disabled=!hasDur; if(!vodSeeking&&hasDur) sk.value=Math.round(v.currentTime/v.duration*1000); } const w=document.getElementById('videoWrap'); if(w){ if(paused) w.classList.add('show'); else vodCtlResetTimer(); } }
+function toggleVideoFullscreen(){ if(videoFs){ exitVideoFs(); return; } if(isNativePlayer()){ openNativeVideoPlayer(undefined,true); return; } enterVideoFs(); }
 function syncVideoRot(w){ w=w||document.getElementById('videoWrap'); if(!w) return; w.classList.toggle('rot', videoRot && window.innerHeight>window.innerWidth); }
-function toggleVideoRotate(){ const w=document.getElementById('videoWrap'); if(!w) return; if(window.__HAO_NATIVE__&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.nativePlayer){ openNativeVideoPlayer(); return; } if(!videoFs){ enterVideoFs(); return; } videoRot=!videoRot; syncVideoRot(w); syncVideoRotBtns(); }
+function toggleVideoRotate(){ const w=document.getElementById('videoWrap'); if(!w) return; if(window.__HAO_NATIVE__&&window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.nativePlayer){ openNativeVideoPlayer(undefined,true); return; } if(!videoFs){ enterVideoFs(); return; } videoRot=!videoRot; syncVideoRot(w); syncVideoRotBtns(); }
 let lastNativeVodKey='', lastNativeVodAt=0;
 // No server re-fetch here: the episode URL is already in memory from
 // the detail page (the re-fetch cost a US round trip + retries before
@@ -3662,8 +3617,9 @@ let lastNativeVodKey='', lastNativeVodAt=0;
 // probe and force the proxy every time). If a particular CDN ever blocks
 // the direct URL, the user can switch lines/sources; a future IPA round
 // can add a native-side probe for an automatic fallback.
-async function openNativeVideoPlayer(posOverride){ const v=document.getElementById('videoPlayer'); if(!v||!curVideo) return; const ep=curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp]; if(!ep) return; try{ v.pause(); }catch(e){} let url=''; if(ep.url) url=ep.url; if(!url){ url=(v.currentSrc&&v.currentSrc.indexOf('blob:')!==0)?v.currentSrc:''; } const m=curVideo.meta||{}; const title=(m.name||'')+((ep.name&&ep.name!==m.name)?' '+ep.name:''); const pos=(typeof posOverride==='number'?posOverride:(v.currentTime||0)); const vodKey=url+'|'+title+'|'+pos; if(vodKey===lastNativeVodKey&&Date.now()-lastNativeVodAt<10000) return; lastNativeVodKey=vodKey; lastNativeVodAt=Date.now(); try{ window.webkit.messageHandlers.nativePlayer.postMessage({kind:'vod',url:url,title:title,platform:'video',position:pos,cover:(m.pic||''),lyrics:'',speed:vodSpeed,dm:{name:m.name||'',ep:curVideoEp+1,year:m.year||'',type:m.type||'',enabled:dmEnabled,opacity:dmOpacity,speed:dmSpeed,pos:dmPos}}); }catch(e){} }
-window.syncNativePlayerPosition=function(t){ lastNativeVodKey=''; lastNativeLiveKey=''; lastNativeLiveAt=0; if(!isFinite(t)||t<=5) return; curVideoResume=t; const v=document.getElementById('videoPlayer'); if(v&&v.duration&&t<v.duration-2){ try{ v.currentTime=t; }catch(e){} } saveVideoProgress(t); };
+async function openNativeVideoPlayer(posOverride,startLandscape){ if(!curVideo) return; const ep=curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp]; if(!ep||!ep.url) return; const m=curVideo.meta||{}; const title=(m.name||'')+((ep.name&&ep.name!==m.name)?' '+ep.name:''); const pos=(typeof posOverride==='number'?posOverride:(curVideoResume>0?curVideoResume:0)); const vodKey=ep.url+'|'+title+'|'+pos; if(vodKey===lastNativeVodKey&&Date.now()-lastNativeVodAt<10000) return; lastNativeVodKey=vodKey; lastNativeVodAt=Date.now(); try{ window.webkit.messageHandlers.nativePlayer.postMessage({kind:'vod',url:ep.url,title:title,platform:'video',position:pos,cover:(m.pic||''),lyrics:'',speed:vodSpeed,accent:haoThemeAccent(),...(startLandscape?{startLandscape:true}:{}),episodes:curVideo.lines[curVideoLine].episodes.map(function(e){ return {name:e.name||''}; }),epIndex:curVideoEp,dm:{name:m.name||'',ep:curVideoEp+1,year:m.year||'',type:m.type||'',enabled:dmEnabled,opacity:dmOpacity,speed:dmSpeed,pos:dmPos}}); }catch(e){} }
+window.syncNativePlayerPosition=function(t,d){ lastNativeVodKey=''; lastNativeLiveKey=''; lastNativeLiveAt=0; if(isFinite(d)&&d>0) curVideoDuration=d; if(!isFinite(t)||t<=5) return; curVideoResume=t; if(vodAutoNextPending){ vodAutoNextPending=false; return; } if(curVideo&&location.hash.indexOf('#/video/')===0){ const ep=(curVideo.lines[curVideoLine]&&curVideo.lines[curVideoLine].episodes[curVideoEp])||{}; vodHistItem={lineIdx:curVideoLine,epIdx:curVideoEp,epName:ep.name||'',position:t,duration:(curVideoDuration>0?curVideoDuration:((vodHistItem&&vodHistItem.duration)||0))}; vodHasResume=t>10; } saveVideoProgress(t); syncVodPlayBtn(); };
+window.__nativeVodEnded=function(d){ if(!curVideo||location.hash.indexOf('#/video/')!==0) return; if(isFinite(d)&&d>0) curVideoDuration=d; const ln=curVideo.lines[curVideoLine]; const hasNext=!!(ln&&curVideoEp+1<ln.episodes.length); try{ saveVideoProgress(curVideoDuration>0?curVideoDuration:((vodHistItem&&vodHistItem.duration)||0)); }catch(e){} if(hasNext){ vodAutoNextPending=true; vodAutoNext(); } };
 function syncVideoRotBtns(){ const label=videoRot?t('rotPortT'):t('rotLandT'); const b1=document.getElementById('videoRotBtn'); if(b1) b1.textContent=label; const b2=document.getElementById('fsRotBtn'); if(b2) b2.textContent=label; }
 function enterVideoFs(){ const w=document.getElementById('videoWrap'); if(!w||videoFs) return; videoFs=true; videoRot=true; fsW=window.innerWidth; wrapHome={p:w.parentNode,n:w.nextSibling}; document.body.appendChild(w); const set=document.getElementById('dmSettings'); if(set){ dmSetHome={p:set.parentNode,n:set.nextSibling}; w.appendChild(set); } w.classList.add('fs'); fitFsVideo(); syncVideoRotBtns(); const _vp=document.getElementById('videoPlayer'); if(_vp) _vp.controls=false; const _set2=document.getElementById('dmSettings'); if(_set2) _set2.style.display='none'; syncFsPlayBtn(); syncFsTime(); showFsCtl(); const b=document.getElementById('fsBtn'); if(b) b.innerHTML=ic('fullscreen')+' '+t('fsExitT'); if(!fsPushed){ try{ history.pushState({vfs:1},''); fsPushed=true; }catch(e){} } }
 function exitVideoFs(fromPop){ const w=document.getElementById('videoWrap'); if(!w){ videoFs=false; fsPushed=false; return; } const _vp2=document.getElementById('videoPlayer'); if(_vp2) _vp2.controls=true; hideFsCtl(); w.classList.remove('fs'); w.classList.remove('rot'); videoRot=false; syncVideoRotBtns(); w.style.width=''; w.style.height=''; if(wrapHome&&wrapHome.p&&w.parentElement===document.body){ try{ wrapHome.p.insertBefore(w,wrapHome.n); }catch(e){} } try{ const set=document.getElementById('dmSettings'); if(set&&dmSetHome&&dmSetHome.p&&set.parentElement===w) dmSetHome.p.insertBefore(set,dmSetHome.n); }catch(e){} const b=document.getElementById('fsBtn'); if(b) b.innerHTML=ic('fullscreen')+' '+t('fsT'); videoFs=false; dmSetHome=null; wrapHome=null; if(!fromPop&&fsPushed){ fsPushed=false; try{ history.back(); }catch(e){} } else fsPushed=false; }
@@ -3673,7 +3629,7 @@ function showFsCtl(){ const c=document.getElementById('fsCtl'); if(!c) return; c
 function hideFsCtl(){ const c=document.getElementById('fsCtl'); if(c) c.classList.remove('show'); if(fsCtlTimer){ clearTimeout(fsCtlTimer); fsCtlTimer=null; } const st=document.getElementById('dmSettings'); if(st) st.style.display='none'; }
 function resetFsCtlTimer(){ if(fsCtlTimer) clearTimeout(fsCtlTimer); fsCtlTimer=setTimeout(()=>{ const v=document.getElementById('videoPlayer'); if(videoFs&&v&&!v.paused) hideFsCtl(); else if(videoFs) resetFsCtlTimer(); },3000); }
 function toggleFsCtl(){ const c=document.getElementById('fsCtl'); if(!c) return; if(c.classList.contains('show')) hideFsCtl(); else showFsCtl(); }
-function onVideoWrapClick(e){ if(!videoFs) return; if(e.target.closest('button,input,select,a,.dm-settings')){ resetFsCtlTimer(); return; } const v=document.getElementById('videoPlayer'); if(!v) return; if(v.paused){ v.play().catch(()=>{}); showFsCtl(); } else toggleFsCtl(); }
+function onVideoWrapClick(e){ if(videoFs){ if(e.target.closest('button,input,select,a,.dm-settings')){ resetFsCtlTimer(); return; } const v=document.getElementById('videoPlayer'); if(!v) return; if(v.paused){ v.play().catch(()=>{}); showFsCtl(); } else toggleFsCtl(); return; } if(e.target.closest('button,input,select,a,.dm-settings,.vod-ctl,.vod-topbar')){ vodCtlShow(); return; } vodTogglePlay(); }
 function fsTogglePlay(e){ if(e) e.stopPropagation(); const v=document.getElementById('videoPlayer'); if(!v) return; if(v.paused) v.play().catch(()=>{}); else v.pause(); resetFsCtlTimer(); }
 function syncFsPlayBtn(){ const v=document.getElementById('videoPlayer'); if(!v) return; const paused=v.paused; const c=document.getElementById('fsCenterBtn'); if(c) c.innerHTML=ic(paused?'play':'pause'); const p=document.getElementById('fsPlayBtn'); if(p) p.innerHTML=ic(paused?'play':'pause'); }
 function syncFsTime(){ const v=document.getElementById('videoPlayer'); if(!v||!videoFs) return; const cur=document.getElementById('fsTimeCur'), dur=document.getElementById('fsTimeDur'), sk=document.getElementById('fsSeek'); const hasDur=v.duration&&isFinite(v.duration)&&v.duration>0; if(cur) cur.textContent=fmtTime(v.currentTime); if(dur) dur.textContent=hasDur?fmtTime(v.duration):'—'; if(sk){ sk.disabled=!hasDur; if(!fsSeeking) sk.value=hasDur?Math.round(v.currentTime/v.duration*1000):500; } }
@@ -3774,8 +3730,8 @@ function stopLive() {
   livePlaying = false; liveRemuxing = false; livePlayData = null; liveCurQ = ''; liveRot = false;
   const qs = document.getElementById('liveQSheet'); if (qs) qs.remove();
   const ls = document.getElementById('liveLineSheet'); if (ls) ls.remove();
-  try { if (liveHls) { liveHls.destroy(); liveHls = null; } } catch (e) {}
-  try { if (liveFlv) { liveFlv.destroy(); liveFlv = null; } } catch (e) {}
+  if (!haoPipActive) { try { if (liveHls) { liveHls.destroy(); liveHls = null; } } catch (e) {} }
+  if (!haoPipActive) { try { if (liveFlv) { liveFlv.destroy(); liveFlv = null; } } catch (e) {} }
   try { if (liveWs) { liveWs.close(); liveWs = null; } } catch (e) {}
   if (liveDmHb) { clearInterval(liveDmHb); liveDmHb = null; }
   if (liveKsTimer) { clearInterval(liveKsTimer); liveKsTimer = null; }
@@ -4105,7 +4061,12 @@ async function loadLiveCats() {
   } else if (liveCatLocked) {
     return;
   } else if (livePlatform === 'bili') { liveParent = ''; liveCat = ''; }
-  else if (livePlatform === 'huya') { liveCat = (liveCats[0] && liveCats[0].id) || '1'; }
+  // Huya default is the HOT list (liveCat '' = strip "全部"), NOT
+  // cats[0]: cache.php?gameId=<gid> returns 0 rooms for every /g gid
+  // (verified 2026-11-16 — Huya moved category rooms to SSR TAF
+  // data, the gameId endpoint is dead), so defaulting to the first
+  // category showed an empty "热门" tab. directHuyaRooms('') = hot.
+  else if (livePlatform === 'huya') { liveCat = ''; }
   else if (livePlatform === 'douyu') { liveParent = (liveCats[0] && liveCats[0].id) || ''; const c0 = liveCats[0]; liveCat = (c0 && c0.children && c0.children[0] && c0.children[0].id) || '1'; }
   else { liveCat = ''; }
   if (!liveCatLocked && liveCats.length && (livePlatform === 'huya' || livePlatform === 'douyu')) liveSaveDefaultCat(livePlatform, liveParent, liveCat);
@@ -4368,7 +4329,7 @@ function livePrefetchPlay(platform, roomId, gameId) {
 }
 function hideLiveFollows() { liveFollowsShowing = false; if (liveSearchQ) renderLiveSearch(); else if (livePlatformFromHash()) renderLiveRooms(); else { const _l = document.getElementById('liveList'); if (_l) _l.innerHTML = ''; } }
 let liveCurLine = 0;
-let liveFs = false, liveFsWrapHome = null, liveFsDmHome = null, liveFsPushed = false, liveFsCtlTimer = null, liveRot = false;
+let liveFs = false, liveFsWrapHome = null, liveFsDmHome = null, liveFsPushed = false, liveFsCtlTimer = null, liveCtlTimer = null, liveRot = false;
 function liveRoomHTML() {
 const r = liveRoom || {};
 const platId = r.platform || livePlatform;
@@ -4399,6 +4360,7 @@ return `<div class="live-room-card">
 <span style="flex:1"></span>
 <button class="live-ctl-btn on" id="liveCtlDmBtn" onclick="toggleDanmaku();syncLiveDmToggle()">弹</button>
 <button class="live-ctl-btn" onclick="liveOpenDmSettings()">${ic('settings')}</button>
+<button class="live-ctl-btn" id="liveFitBtn" onclick="liveCycleFit()">适应</button>
 <button class="live-ctl-btn" onclick="toggleLiveFullscreen()">${ic('fullscreen')}</button>
 </div>
 <div class="fs-ctl" id="liveFsCtl">
@@ -4410,8 +4372,11 @@ return `<div class="live-room-card">
 <div class="fs-ctl-center"><button class="fs-center-btn" id="liveFsCenterBtn" onclick="liveFsTogglePlay(event)">${ic('play')}</button></div>
 <div class="fs-ctl-bottom">
 <button class="fs-pp" id="liveFsPlayBtn" onclick="liveFsTogglePlay(event)">${ic('play')}</button>
+<button class="ov-btn" onclick="liveRefresh()">${ic('refresh')}</button>
 <span class="live-badge">● ${t('liveLiveNow')}</span>
 <span style="flex:1"></span>
+<button class="live-stream-pill" id="liveFsStreamBtn" onclick="toggleLiveStreamSheet()">画质 · 线路1</button>
+<button class="ov-btn" id="liveFsFitBtn" onclick="liveCycleFit()">适应</button>
 <button class="ov-btn" onclick="liveOpenDmSettings()">${ic('settings')}</button>
 </div>
 </div>
@@ -4481,6 +4446,7 @@ const c = document.getElementById('liveFsCenterBtn');
 if (c) c.innerHTML = ic(paused ? 'play' : 'pause');
 const p = document.getElementById('liveFsPlayBtn');
 if (p) p.innerHTML = ic(paused ? 'play' : 'pause');
+if (paused) showLiveCtl(); else resetLiveCtlTimer();
 }
 function liveTogglePlay() {
 const v = document.getElementById('liveVideo');
@@ -4491,8 +4457,28 @@ syncLivePlayBtns();
 }
 function liveVideoClick() {
 if (liveFs) { showLiveFsCtl(); return; }
-liveTogglePlay();
+// Pure Live video_controller_panel onTap (mobile): a tap while
+// playing with the bars visible hides them; any other tap shows
+// the bars, and a tap on a paused surface resumes playback.
+const v = document.getElementById('liveVideo');
+if (!v) return;
+if (v.paused) { v.play().catch(function () {}); showLiveCtl(); return; }
+toggleLiveCtl();
 }
+// Inline control bar auto-hide (Pure Live: 5s idle, never while
+// paused -- a paused picture keeps its bars visible).
+function showLiveCtl() { const c = document.getElementById('liveCtl'); if (c) c.classList.remove('hide'); resetLiveCtlTimer(); }
+function hideLiveCtl() { const c = document.getElementById('liveCtl'); if (c) c.classList.add('hide'); if (liveCtlTimer) { clearTimeout(liveCtlTimer); liveCtlTimer = null; } }
+function resetLiveCtlTimer() { if (liveCtlTimer) clearTimeout(liveCtlTimer); liveCtlTimer = setTimeout(function () { const v = document.getElementById('liveVideo'); if (v && !v.paused) hideLiveCtl(); else if (!liveFs) resetLiveCtlTimer(); }, 5000); }
+function toggleLiveCtl() { const c = document.getElementById('liveCtl'); if (!c) return; if (c.classList.contains('hide')) showLiveCtl(); else hideLiveCtl(); }
+// Video fit (Pure Live PlayerVideoFitButton): tap cycles the
+// picture fit. The video element supports contain / cover / fill;
+// Pure Live's other three fits (fitHeight / fitWidth / scaleDown)
+// have no <video> equivalent.
+const LIVE_FITS = [['适应', 'contain'], ['裁剪', 'cover'], ['拉伸', 'fill']];
+let liveFitIdx = 0;
+function liveCycleFit() { liveFitIdx = (liveFitIdx + 1) % LIVE_FITS.length; applyLiveFit(); }
+function applyLiveFit() { const v = document.getElementById('liveVideo'); const f = LIVE_FITS[liveFitIdx]; if (v) v.style.objectFit = f[1]; const b1 = document.getElementById('liveFitBtn'); if (b1) b1.textContent = f[0]; const b2 = document.getElementById('liveFsFitBtn'); if (b2) b2.textContent = f[0]; }
 async function liveRefresh() {
 if (!livePlayData) return;
 const v = document.getElementById('liveVideo');
@@ -4617,12 +4603,15 @@ const isFlv = livePlayData && (livePlayData.platform === 'douyu' || livePlayData
 if (isFlv || lines.length < 2) { b.style.display = 'none'; return; }
 b.style.display = '';
 b.textContent = t('liveLineT') + ((liveCurLine || 0) + 1);
+const p = document.getElementById('liveFsStreamBtn'); if (p) p.textContent = liveStreamPillText();
 }
 async function liveSetLine(idx) {
 if (!livePlayData) return;
 liveCurLine = idx;
 const ls = document.getElementById('liveLineSheet');
 if (ls) ls.remove();
+const ss = document.getElementById('liveStreamSheet');
+if (ss) ss.remove();
 const v = document.getElementById('liveVideo');
 if (!v) return;
 const now = document.getElementById('liveNow');
@@ -4638,6 +4627,8 @@ const old = document.getElementById('liveLineSheet');
 if (old) { old.remove(); return; }
 const qs = document.getElementById('liveQSheet');
 if (qs) qs.remove();
+const ss = document.getElementById('liveStreamSheet');
+if (ss) ss.remove();
 const lines = liveLines();
 if (lines.length < 2) return;
 const d = document.createElement('div');
@@ -4650,6 +4641,35 @@ function liveLineSheetOutside(e) {
 const s = document.getElementById('liveLineSheet');
 if (s && !s.contains(e.target) && !(e.target && e.target.id === 'liveLineBtn')) s.remove();
 }
+// Stream selector pill label (Pure Live FullscreenStreamSelectorButton:
+// "画质 · 线路N").
+function liveStreamPillText() {
+if (!livePlayData || !livePlayData.qualities || !livePlayData.qualities.length) return '画质 · 线路1';
+const cur = livePlayData.qualities.find(function (x) { return String(x.id) === String(liveCurQ); }) || livePlayData.qualities[livePlayData.qualities.length - 1];
+return (cur.name || '画质') + ' · 线路' + ((liveCurLine || 0) + 1);
+}
+// Combined quality + line sheet (Pure Live's two-pane stream selector
+// dialog: one 画质 pane, one 线路 pane). The separate quality / line
+// sheets still exist for the info row and room menu.
+function toggleLiveStreamSheet() {
+const old = document.getElementById('liveStreamSheet'); if (old) { old.remove(); return; }
+const wrap = document.getElementById('liveVideoWrap'); if (!wrap) return;
+const qs = document.getElementById('liveQSheet'); if (qs) qs.remove();
+const ls = document.getElementById('liveLineSheet'); if (ls) ls.remove();
+if (!livePlayData) return;
+const d = document.createElement('div');
+d.id = 'liveStreamSheet';
+let h = '';
+const ql = livePlayData.qualities || [];
+if (ql.length > 1) { h += '<div class="live-q-title">' + t('liveQualityT') + '</div>' + ql.map(function (q) { return '<button class="live-q-item' + (String(q.id) === String(liveCurQ) ? ' on' : '') + '" onclick="liveSetQuality(\'' + String(q.id).replace(/'/g, '') + '\')">' + esc(q.name) + (q.bitrate ? ' · ' + (Math.round(q.bitrate / 100) / 10) + 'Mbps' : '') + '</button>'; }).join(''); }
+const lines = liveLines();
+if (lines.length > 1) { h += '<div class="live-q-title">' + t('liveLineSheetT') + '</div>' + lines.map(function (l, i) { return '<button class="live-q-item' + (i === (liveCurLine || 0) ? ' on' : '') + '" onclick="liveSetLine(' + i + ')">' + t('liveLineT') + (i + 1) + ' · ' + esc(l.name) + '</button>'; }).join(''); }
+if (!h) { toast(t('liveOnlyOneQuality')); return; }
+d.innerHTML = h;
+wrap.appendChild(d);
+setTimeout(function () { document.addEventListener('click', liveStreamSheetOutside, { once: true }); }, 0);
+}
+function liveStreamSheetOutside(e) { const s = document.getElementById('liveStreamSheet'); if (s && !s.contains(e.target) && !(e.target && e.target.id === 'liveFsStreamBtn')) s.remove(); }
 function liveQualityBtnText() {
 if (!livePlayData || !livePlayData.qualities || !livePlayData.qualities.length) return t('liveQualityT');
 const cur = livePlayData.qualities.find(function (x) { return String(x.id) === String(liveCurQ); }) || livePlayData.qualities[livePlayData.qualities.length - 1];
@@ -4740,7 +4760,7 @@ const v = document.getElementById('liveVideo');
 const playing = isNativePlayer() ? livePlaying : (v && !v.paused);
 if (liveFs && playing) hideLiveFsCtl();
 else if (liveFs) resetLiveFsCtlTimer();
-}, 3000);
+}, 5000);
 }
 function liveFsTogglePlay(e) {
 if (e) e.stopPropagation();
@@ -4819,7 +4839,7 @@ async function renderLiveRoom(h) {
   const v = document.getElementById('liveVideo');
   const now = document.getElementById('liveNow');
   if (v) v.addEventListener('error', function () { if (livePlaying && v.error) { liveShowFailCard(); } });
-  if (v) { const _rv=haoLiveVolGet(platform, roomId); v.volume=(_rv==null?haoDefaultVolume():_rv); v.addEventListener('volumechange', function(){ try{ haoLiveVolSet(platform, roomId, v.volume); }catch(e){} }); v.addEventListener('leavepictureinpicture', function(){ haoPipActive=false; try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} }); }
+  if (v) { const _rv=haoLiveVolGet(platform, roomId); v.volume=(_rv==null?haoDefaultVolume():_rv); v.addEventListener('volumechange', function(){ try{ haoLiveVolSet(platform, roomId, v.volume); }catch(e){} }); v.addEventListener('leavepictureinpicture', function(){ haoPipActive=false; try{ if (liveHls) { liveHls.destroy(); liveHls = null; } }catch(e){} try{ if (liveFlv) { liveFlv.destroy(); liveFlv = null; } }catch(e){} try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} }); }
   haoHudEnsure();
   if (v) v.addEventListener('playing', liveHideLoadingPh);
   // Belt-and-braces for a stuck spinner: if the 'playing' event was ever
@@ -4936,10 +4956,12 @@ function renderLiveQualityBtn() {
   const b = document.getElementById('liveQBtn'); if (!b) return;
   b.style.display = '';
   b.textContent = liveQualityBtnText();
+  const p = document.getElementById('liveFsStreamBtn'); if (p) p.textContent = liveStreamPillText();
 }
 function toggleLiveQualitySheet() {
   const old = document.getElementById('liveQSheet'); if (old) { old.remove(); return; }
   const ls = document.getElementById('liveLineSheet'); if (ls) ls.remove();
+  const ss = document.getElementById('liveStreamSheet'); if (ss) ss.remove();
   if (!livePlayData || !livePlayData.qualities || livePlayData.qualities.length < 2) { toast(t('liveOnlyOneQuality')); return; }
   const wrap = document.getElementById('liveVideoWrap'); if (!wrap) return;
   const sheet = document.createElement('div');
@@ -4956,6 +4978,7 @@ function liveQSheetOutside(e) { const s = document.getElementById('liveQSheet');
 let liveSwitchingQ = false;
 async function liveSetQuality(qid) {
   const s = document.getElementById('liveQSheet'); if (s) s.remove();
+  const ss = document.getElementById('liveStreamSheet'); if (ss) ss.remove();
   if (!livePlayData || String(qid) === String(liveCurQ) || liveSwitchingQ) return;
   liveSwitchingQ = true;
   const now = document.getElementById('liveNow');
@@ -5047,6 +5070,9 @@ function liveNativeQualities(data) {
   return out;
 }
 let lastNativeLiveKey='', lastNativeLiveAt=0;
+// Current theme accent (CSS --accent) for the native player: the
+// player's active tint follows the web theme.
+function haoThemeAccent(){ try{ var v=getComputedStyle(document.documentElement).getPropertyValue('--accent'); return String(v||'').trim(); }catch(e){ return ''; } }
 function playLiveNative(data) {
   if (!isNativePlayer()) return false;
   const url = liveNativeUrl();
@@ -5055,7 +5081,7 @@ function playLiveNative(data) {
   if(liveKey===lastNativeLiveKey&&Date.now()-lastNativeLiveAt<2000) return false;
   lastNativeLiveKey=liveKey; lastNativeLiveAt=Date.now();
   try {
-    window.webkit.messageHandlers.nativePlayer.postMessage({ kind: 'live', format: data.type, url: url, title: (liveRoom && liveRoom.title) || '', platform: data.platform, roomId: (liveRoom && liveRoom.roomId) || data.room || '', qualities: liveNativeQualities(data), cover:(liveRoom&&liveRoom.cover)||'', dm: { enabled: dmEnabled, opacity: dmOpacity, speed: dmSpeed, pos: dmPos } });
+    window.webkit.messageHandlers.nativePlayer.postMessage({ kind: 'live', format: data.type, url: url, title: (liveRoom && liveRoom.title) || '', platform: data.platform, roomId: (liveRoom && liveRoom.roomId) || data.room || '', qualities: liveNativeQualities(data), cover:(liveRoom&&liveRoom.cover)||'', accent: haoThemeAccent(), dm: { enabled: dmEnabled, opacity: dmOpacity, speed: dmSpeed, pos: dmPos } });
   } catch (e) { return false; }
   const now = document.getElementById('liveNow');
   if (now) now.textContent = t('liveNativePlaying');
@@ -6273,60 +6299,78 @@ async function startHuyaDanmu(roomId) {
   }, 12000);
 }
 function loadHls(){ return new Promise((res,rej)=>{ if(window.Hls) return res(); loadScriptOnce('./vendor/hls.min.js?v=20261113cx').then(res).catch(function(){ loadScriptOnce('https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js').then(res).catch(rej); }); }); }
-async function renderSearchPage(){ document.getElementById('app').innerHTML=`<div class="card"><p><a href="#/playlist">‹ ${t('myPlaylistT')}</a></p><h2>${ic('search')} ${t('searchPageT')}</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="mySongQ" placeholder="${t('searchSongPh')}" style="flex:1 1 160px;min-width:0;margin:0" onkeydown="if(event.key==='Enter')searchMySongs()" onfocus="showRecentSearches('mySearchRes','mySongQ')" onclick="showRecentSearches('mySearchRes','mySongQ')" oninput="if(!this.value.trim())showRecentSearches('mySearchRes','mySongQ')"><button type="button" id="searchTypeBtn" class="type-btn" onclick="toggleSearchTypeMenu()">歌曲 ▾</button><button type="button" onclick="searchMySongs()">${t('searchBtn')}</button></div><div id="mySearchRes"></div></div><div id="searchTypePop" style="display:none;position:fixed;inset:0;z-index:10007" onclick="this.style.display='none'"><div class="st-pop-box" style="position:absolute;background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:150px" onclick="event.stopPropagation()"><button class="st-opt" onclick="setSearchType('song')"><span class="st-check" data-st="song">✓</span> ${t('searchTypeSong')}</button><button class="st-opt" onclick="setSearchType('artist')"><span class="st-check" data-st="artist">✓</span> ${t('searchTypeArtist')}</button><button class="st-opt" onclick="setSearchType('playlist')"><span class="st-check" data-st="playlist">✓</span> ${t('searchTypePl')}</button><button class="st-opt" onclick="setSearchType('userpl')"><span class="st-check" data-st="userpl">✓</span> ${t('searchTypeUserPl')}</button></div></div>`; if(searchType==='userpl'&&lastUserPlSearch.length) renderUserPlSearch(); else if(searchType==='playlist'&&lastPlSearch.length) renderPlSearch(); else if(searchType==='artist'&&lastArtistSearch.length) renderArtistSearch(); else if(lastMySearch.length) renderMySearch(); syncSearchTypeUI(); if(!lastMySearch.length&&!lastPlSearch.length&&!lastArtistSearch.length&&!lastUserPlSearch.length){ loadHotSearches().then(()=>showRecentSearches('mySearchRes','mySongQ')); } }
-let lastMySearch=[]; let mySearchGen=0; let lastMyPlaylist=[]; let mySearchPage=0; let myPlPage=0, myRecentPage=0, plazaTrackPage=0, sheetPlPage=0, sheetPlFollow=true; let lastRecent=[]; let lastDaily=[]; let myLists=[]; let pickSong=null; let curListId=localStorage.getItem('curListId')||''; let selMode=false, selIds=new Set(), plFilterQ=''; let lastVideo=[]; let curVideo=null; let curVideoLine=0; let curVideoEp=0; let curVideoResume=0, lastVideoSave=0, curVideoSource='', curVideoId='';
+async function renderSearchPage(){ document.getElementById('app').innerHTML=`<div class="card"><p><a href="#/playlist">‹ ${t('myPlaylistT')}</a></p><h2>${ic('search')} ${t('searchPageT')}</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="mySongQ" placeholder="${t('searchSongPh')}" style="flex:1 1 160px;min-width:0;margin:0" onkeydown="if(event.key==='Enter')searchMySongs()" onfocus="showRecentSearches('mySearchRes','mySongQ')" onclick="showRecentSearches('mySearchRes','mySongQ')" oninput="if(!this.value.trim())showRecentSearches('mySearchRes','mySongQ')"><button type="button" id="searchTypeBtn" class="type-btn" onclick="toggleSearchTypeMenu()">歌曲 ▾</button><button type="button" id="searchPfBtn" class="type-btn" onclick="toggleSearchPfMenu()">网易云 ▾</button><button type="button" onclick="searchMySongs()">${t('searchBtn')}</button></div><div id="mySearchRes"></div></div><div id="searchTypePop" style="display:none;position:fixed;inset:0;z-index:10007" onclick="this.style.display='none'"><div class="st-pop-box" style="position:absolute;background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:150px" onclick="event.stopPropagation()"><button class="st-opt" onclick="setSearchType('song')"><span class="st-check" data-st="song">✓</span> ${t('searchTypeSong')}</button><button class="st-opt" onclick="setSearchType('artist')"><span class="st-check" data-st="artist">✓</span> ${t('searchTypeArtist')}</button><button class="st-opt" onclick="setSearchType('playlist')"><span class="st-check" data-st="playlist">✓</span> ${t('searchTypePl')}</button></div></div><div id="searchPfPop" style="display:none;position:fixed;inset:0;z-index:10007" onclick="this.style.display='none'"><div class="st-pop-box" style="position:absolute;background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:6px;min-width:150px" onclick="event.stopPropagation()"><button class="st-opt" onclick="setSearchPf('wy')"><span class="st-check" data-pf="wy">✓</span> 网易云</button><button class="st-opt" onclick="setSearchPf('tx')"><span class="st-check" data-pf="tx">✓</span> QQ音乐</button><button class="st-opt" onclick="setSearchPf('kg')"><span class="st-check" data-pf="kg">✓</span> 酷狗</button><button class="st-opt" onclick="setSearchPf('kw')"><span class="st-check" data-pf="kw">✓</span> 酷我</button></div></div>`; if(searchType==='playlist'&&lastPlSearch.length) renderPlSearch(); else if(searchType==='artist'&&lastArtistSearch.length) renderArtistSearch(); else if(lastMySearch.length) renderMySearch(); syncSearchTypeUI(); syncSearchPfUI(); if(!lastMySearch.length&&!lastPlSearch.length&&!lastArtistSearch.length){ loadHotSearches().then(()=>showRecentSearches('mySearchRes','mySongQ')); } }
+let lastMySearch=[]; let mySearchGen=0; let mySearchShown=20, mySearchObs=null; let lastMyPlaylist=[]; let myPlPage=0, myRecentPage=0, plazaTrackPage=0, sheetPlPage=0, sheetPlFollow=true; let lastRecent=[]; let lastDaily=[]; let myLists=[]; let pickSong=null; let curListId=localStorage.getItem('curListId')||''; let selMode=false, selIds=new Set(), plFilterQ=''; let lastVideo=[]; let curVideo=null; let curVideoLine=0; let curVideoEp=0; let curVideoResume=0, curVideoDuration=0, lastVideoSave=0, curVideoSource='', curVideoId='';
 let vodHistReady=false, vodPlayed=false;
-let searchType=localStorage.getItem('searchType')||'song'; let lastPlSearch=[]; let plSearchPage=1, plSearchHasMore=false, plSearchQ='', plSearchTotal=0;
-function syncSearchTypeUI(){ const b=document.getElementById('searchTypeBtn'); if(b) b.textContent=(searchType==='playlist'?t('searchTypePl'):searchType==='artist'?t('searchTypeArtist'):searchType==='userpl'?t('searchTypeUserPl'):t('searchTypeSong'))+' ▾'; document.querySelectorAll('.st-check').forEach(e=>{ e.classList.toggle('on',e.dataset.st===searchType); }); }
+let searchType=localStorage.getItem('searchType')||'song'; if(searchType!=='song'&&searchType!=='artist'&&searchType!=='playlist'){ searchType='song'; localStorage.setItem('searchType','song'); } let searchPf=localStorage.getItem('searchPf')||'wy'; if(['wy','tx','kg','kw'].indexOf(searchPf)<0){ searchPf='wy'; localStorage.setItem('searchPf','wy'); } let lastPlSearch=[]; let plSearchPage=1, plSearchHasMore=false, plSearchQ='', plSearchTotal=0;
+function syncSearchTypeUI(){ const b=document.getElementById('searchTypeBtn'); if(b) b.textContent=(searchType==='playlist'?t('searchTypePl'):searchType==='artist'?t('searchTypeArtist'):t('searchTypeSong'))+' ▾'; document.querySelectorAll('.st-check').forEach(e=>{ e.classList.toggle('on',e.dataset.st===searchType); }); const pb=document.getElementById('searchPfBtn'); if(pb) pb.style.display=(searchType==='song'?'':'none'); }
 function toggleSearchTypeMenu(){ const m=document.getElementById('searchTypePop'); if(!m) return; if(m.style.display==='block'){ m.style.display='none'; return; } const b=document.getElementById('searchTypeBtn'); const r=b.getBoundingClientRect(); const box=m.querySelector('.st-pop-box'); if(box){ box.style.top=(r.bottom+6)+'px'; box.style.right=Math.max(8,window.innerWidth-r.right)+'px'; } m.style.display='block'; }
-function setSearchType(v){ searchType=v; localStorage.setItem('searchType',v); const m=document.getElementById('searchTypePop'); if(m) m.style.display='none'; syncSearchTypeUI(); const q=(document.getElementById('mySongQ')||{}).value||''; if(q.trim()) searchMySongs(); }
+function setSearchType(v){ if(v!=='song'&&v!=='artist'&&v!=='playlist') v='song'; searchType=v; localStorage.setItem('searchType',v); const m=document.getElementById('searchTypePop'); if(m) m.style.display='none'; syncSearchTypeUI(); const q=(document.getElementById('mySongQ')||{}).value||''; if(q.trim()) searchMySongs(); }
 async function searchPlaylists(q){ plSearchQ=q; plSearchPage=1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchPlaylists(q,1); }catch(e){ r=null; } } const el=document.getElementById('mySearchRes'); if(!r||!r.ok){ if(el) el.innerHTML=loadErrHTML('searchPlaylists(plSearchQ)'); return; } lastPlSearch=r.playlists||[]; plSearchHasMore=!!r.hasMore; plSearchTotal=r.total||0; renderPlSearch(); }
 async function loadMorePlSearch(){ if(!plSearchHasMore) return; const b=document.getElementById('plMoreBtn'); if(b) b.textContent=t('loading'); const p=plSearchPage+1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchPlaylists(plSearchQ,p); }catch(e){ r=null; } } if(!r){ if(b) b.textContent=t('loadMoreT'); return; } lastPlSearch=lastPlSearch.concat(r.playlists||[]); plSearchPage=p; plSearchHasMore=!!r.hasMore; if(typeof r.total==='number') plSearchTotal=r.total; renderPlSearch(); }
-let lastUserPlSearch=[]; let userPlSearchPage=1, userPlHasMore=false, userPlSearchQ='', userPlTotal=0; let curUserPlDetail=null, lastUserPlTracks=[], userPlSongPage=0;
-async function searchUserPls(q){ userPlSearchQ=q; userPlSearchPage=1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchPlaylists(q,1); }catch(e){ r=null; } } const el=document.getElementById('mySearchRes'); if(!r||!r.ok){ if(el) el.innerHTML=loadErrHTML('searchUserPls(userPlSearchQ)'); return; } lastUserPlSearch=(r.playlists||[]).map(function(x){ return {id:x.id, platform:x.platform||'wy', name:x.name||'', cover:x.cover||'', ownerName:x.creator||'', ownerAvatar:'', count:x.trackCount||0}; }); userPlHasMore=!!r.hasMore; userPlTotal=r.total||0; renderUserPlSearch(); }
-async function loadMoreUserPlSearch(){ if(!userPlHasMore) return; const b=document.getElementById('uplMoreBtn'); if(b) b.textContent=t('loading'); const p=userPlSearchPage+1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchPlaylists(userPlSearchQ,p); }catch(e){ r=null; } } if(!r){ if(b) b.textContent=t('loadMoreT'); return; } lastUserPlSearch=lastUserPlSearch.concat((r.playlists||[]).map(function(x){ return {id:x.id, platform:x.platform||'wy', name:x.name||'', cover:x.cover||'', ownerName:x.creator||'', ownerAvatar:'', count:x.trackCount||0}; })); userPlSearchPage=p; userPlHasMore=!!r.hasMore; if(typeof r.total==='number') userPlTotal=r.total; renderUserPlSearch(); }
-function renderUserPlSearch(){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=(userPlTotal?`<p class="muted" style="font-size:12px">${t('plTotalT').replace('{n}',userPlTotal)}</p>`:'')+(lastUserPlSearch.length?`<div class="plaza-grid">${lastUserPlSearch.map((x,i)=>`<div class="plaza-card" onclick="openUserPlDetail(${x.id})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-meta"><span style="display:inline-flex;align-items:center;gap:4px"><img src="${esc(x.ownerAvatar||'./avatar-default.svg')}" style="width:16px;height:16px;border-radius:50%;object-fit:cover" onerror="this.src='./avatar-default.svg'">${esc(x.ownerName||'')}</span>${x.count?' · '+x.count+'首':''}</div></div>`).join('')}</div>`:`<p class="muted">${t('userPlEmptyT')}</p>`)+(userPlHasMore?`<p><button type="button" id="uplMoreBtn" onclick="loadMoreUserPlSearch()" style="width:100%">${t('loadMoreT')}</button></p>`:''); }
-async function openUserPlDetail(id){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=skelAmRowsHTML(5); const hit=(lastUserPlSearch||[]).find(function(x){ return String(x.id)===String(id); }); const pf=(hit&&hit.platform)||'wy'; let r=null; if(nativeFetchAvailable()){ try{ r=await directPlazaDetail(pf, id); }catch(e){ r=null; } } if(!r||!r.ok){ el.innerHTML=loadErrHTML('openUserPlDetail('+id+')'); return; } curUserPlDetail={id:id, platform:pf, name:r.name||(hit&&hit.name)||'', cover:(hit&&hit.cover)||'', ownerName:(hit&&hit.ownerName)||'', ownerAvatar:'', count:(r.tracks||[]).length}; lastUserPlTracks=r.tracks||[]; userPlSongPage=0; const p=curUserPlDetail; el.innerHTML=`<p><a href="javascript:void(0)" onclick="renderUserPlSearch()">‹ ${t('searchTypeUserPl')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(p.cover||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:12px;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(p.name)}</b><div class="muted" style="font-size:12px;display:flex;align-items:center;gap:4px"><img src="${esc(p.ownerAvatar||'./avatar-default.svg')}" style="width:18px;height:18px;border-radius:50%;object-fit:cover" onerror="this.src='./avatar-default.svg'">${esc(p.ownerName||'')}${p.count?' · '+p.count+'首':''}</div></div></div><p style="display:flex;gap:8px"><button type="button" onclick="playAllUserPl()">${t('userPlPlayAllT')}</button><button type="button" class="ghost-btn" onclick="importUserPl()">${ic('download')} ${t('userPlImportT')}</button></p><div id="userPlSongs"></div>`; renderUserPlSongs(); }
-function renderUserPlSongs(){ const el=document.getElementById('userPlSongs'); if(!el) return; const pages=Math.max(1,Math.ceil(lastUserPlTracks.length/20)); userPlSongPage=Math.min(userPlSongPage,pages-1); const start=userPlSongPage*20; const items=lastUserPlTracks.slice(start,start+20); el.innerHTML=lastUserPlTracks.length?`<div class="am-list">${items.map((x,k)=>{ const j=start+k; return `<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playUserPlIdx(${j})" style="cursor:pointer"><div class="am-meta" onclick="playUserPlIdx(${j})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addUserPlIdx(${j})">+</button></div></div>`; }).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="userPlSongPrev()" ${userPlSongPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${userPlSongPage+1}/${pages}</span><button onclick="userPlSongNext()" ${userPlSongPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:''):`<p class="muted">${t('noItemsT')}</p>`; }
-function userPlSongPrev(){ if(userPlSongPage>0){ userPlSongPage--; renderUserPlSongs(); } }
-function userPlSongNext(){ const pages=Math.max(1,Math.ceil(lastUserPlTracks.length/20)); if(userPlSongPage<pages-1){ userPlSongPage++; renderUserPlSongs(); } }
-function playUserPlIdx(j){ const x=lastUserPlTracks[j]; if(!x) return; playerPlaylist=lastUserPlTracks.map(s=>({songId:s.songId,title:s.title,artist:s.artist,platform:s.platform||'wy',cover:s.cover,vipOnly:s.vipOnly,dur:durOf(s)})); curTrackIdx=j; playerIsMine=false; curQueue='search'; renderSheetPlaylist(); openPlayerSheet(); playTrack(x.songId,x.title,x.platform||'wy',x.cover,x.artist,x.vipOnly); }
-function playAllUserPl(){ if(!lastUserPlTracks.length) return; playUserPlIdx(0); }
-function addUserPlIdx(j){ const x=lastUserPlTracks[j]; if(!x) return; openPickSong(x); }
-async function importUserPl(){ if(!curUserPlDetail) return; const lists=haoListsGet(); let list=lists.find(function(l){ return l.name===curUserPlDetail.name; }); if(!list){ list={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:curUserPlDetail.name||t('myPlaylistT'), tracks:[]}; lists.push(list); } const seen=new Set((list.tracks||[]).map(function(x){ return String(x.songId); })); let added=0; (lastUserPlTracks||[]).forEach(function(t){ if(seen.has(String(t.songId))) return; if((list.tracks||[]).length>=200) return; list.tracks.push({id:'t'+Date.now()+Math.floor(Math.random()*100000), songId:t.songId, title:t.title||'', artist:t.artist||'', platform:t.platform||curUserPlDetail.platform||'wy', cover:t.cover||'', vipOnly:t.vipOnly||false, dur:t.dur||0}); added++; }); haoListsSave(lists); myLists=lists; curListId=String(list.id); localStorage.setItem('curListId',curListId); haoRefreshFavIds(); toast(t('importOk')+added+t('importSongs')+(list.name?' · '+list.name:'')); }
 let lastArtistSearch=[]; let artistSearchPage=1, artistSearchHasMore=false, artistSearchQ='', artistSearchTotal=0;
 async function searchArtists(q){ artistSearchQ=q; artistSearchPage=1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchArtists(q,1); }catch(e){ r=null; } } const el=document.getElementById('mySearchRes'); if(!r||!r.ok){ if(el) el.innerHTML=loadErrHTML('searchArtists(artistSearchQ)'); return; } lastArtistSearch=r.artists||[]; artistSearchHasMore=!!r.hasMore; artistSearchTotal=r.total||0; renderArtistSearch(); }
 async function loadMoreArtistSearch(){ if(!artistSearchHasMore) return; const b=document.getElementById('arMoreBtn'); if(b) b.textContent=t('loading'); const p=artistSearchPage+1; let r=null; if(nativeFetchAvailable()){ try{ r=await directSearchArtists(artistSearchQ,p); }catch(e){ r=null; } } if(!r){ if(b) b.textContent=t('loadMoreT'); return; } const seen=new Set(lastArtistSearch.map(x=>x.platform+'|'+x.id)); lastArtistSearch=lastArtistSearch.concat((r.artists||[]).filter(x=>!seen.has(x.platform+'|'+x.id))); artistSearchPage=p; artistSearchHasMore=!!r.hasMore; if(typeof r.total==='number') artistSearchTotal=r.total; renderArtistSearch(); }
 function renderArtistSearch(){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=(artistSearchTotal?`<p class="muted" style="font-size:12px">${t('plTotalT').replace('{n}',artistSearchTotal)}</p>`:'')+(lastArtistSearch.length?`<div class="plaza-grid">${lastArtistSearch.map((x,i)=>`<div class="plaza-card" onclick="openArtistDetail(${i})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy" style="border-radius:50%"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-meta">${pfName(x.platform)}${x.musicSize?' · '+x.musicSize+'首歌':''}${x.albumSize?' · '+x.albumSize+'张专辑':''}${x.alias?' · '+esc(x.alias):''}</div></div>`).join('')}</div>`:`<p class="muted">没搜到歌手，换个名字试试</p>`)+(artistSearchHasMore?`<p><button type="button" id="arMoreBtn" onclick="loadMoreArtistSearch()" style="width:100%">${t('loadMoreT')}</button></p>`:''); }
-let curArtistDetail=null, lastArtistSongs=[], lastArtistAlbums=[], artistSongPage=0, lastAlbumSongs=[], albumSongPage=0, curAlbumDetail=null, lastArtistReq=null;
+let curArtistDetail=null, lastArtistSongs=[], lastArtistAlbums=[], artistSongPage=0, lastAlbumSongs=[], albumSongPage=0, curAlbumDetail=null, lastArtistReq=null, artistShowAll=false;
 async function openArtistDetail(i){ const x=lastArtistSearch[i]; if(!x) return; openArtistById(x.platform, x.id, x.name); }
 async function openArtistById(platform, id, name){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=skelAmRowsHTML(6); lastArtistReq={platform:platform||'wy',id:id||'',name:name||''}; let r=null; if(nativeFetchAvailable()){ try{ r=await directArtistDetail(platform||'wy',id||'',name||''); }catch(e){ r=null; } } if(!r||!r.ok){ el.innerHTML=loadErrHTML('retryArtistDetail()'); return; } curArtistDetail={platform:platform||'wy', id:id||'', name:r.artist.name||name||'', _a:r.artist}; lastArtistSongs=r.songs||[]; lastArtistAlbums=r.albums||[]; artistSongPage=0; renderArtistDetail(r.artist); }
 function backToArtistDetail(){ if(curArtistDetail&&curArtistDetail._a) renderArtistDetail(curArtistDetail._a); else renderArtistSearch(); }
-function renderArtistDetail(a){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=`<p><a href="javascript:void(0)" onclick="renderArtistSearch()">‹ ${t('artistBackT')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(a.pic||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:50%;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(a.name||'')}</b><div class="muted" style="font-size:12px">${a.musicSize?a.musicSize+'首歌':''}${a.albumSize?' · '+a.albumSize+'张专辑':''}</div></div></div><h3 style="margin:16px 0 8px">${t('artistSongsT')}</h3><div id="artistSongs"></div><h3 style="margin:16px 0 8px">${t('artistAlbumsT')}</h3><div id="artistAlbums"></div>`; renderArtistSongs(); const ab=document.getElementById('artistAlbums'); if(ab) ab.innerHTML=lastArtistAlbums.length?`<div class="plaza-grid">${lastArtistAlbums.map((x,i)=>`<div class="plaza-card" onclick="openAlbumDetail(${i})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-meta">${x.publishTime?new Date(x.publishTime).getFullYear():''}${x.songCount?' · '+x.songCount+'首':''}</div></div>`).join('')}</div>`:`<p class="muted">${t('artistNoAlbums')}</p>`; }
-function renderArtistSongs(){ const el=document.getElementById('artistSongs'); if(!el) return; const pages=Math.max(1,Math.ceil(lastArtistSongs.length/20)); artistSongPage=Math.min(artistSongPage,pages-1); const start=artistSongPage*20; const items=lastArtistSongs.slice(start,start+20); el.innerHTML=lastArtistSongs.length?`<div class="am-list">${items.map((x,k)=>{ const j=start+k; return `<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playArtistIdx(${j})" style="cursor:pointer"><div class="am-meta" onclick="playArtistIdx(${j})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addArtistIdx(${j})">+</button></div></div>`; }).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="artistSongPrev()" ${artistSongPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${artistSongPage+1}/${pages}</span><button onclick="artistSongNext()" ${artistSongPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:''):`<p class="muted">${t('artistNoSongs')}</p>`; }
+function renderArtistDetail(a){ const el=document.getElementById('mySearchRes'); if(!el) return; artistShowAll=false; artistSongPage=0; const fav=isArtistFav(); const counts=[a.musicSize?a.musicSize+' '+t('songsUnit'):'',a.albumSize?a.albumSize+' '+t('artistAlbumsT'):''].filter(Boolean).join(' · '); el.innerHTML=`<div id="artistDetailWrap"><div class="ad-topbar" id="artistTopbar"><button type="button" class="ad-topbtn" onclick="renderArtistSearch()" aria-label="${t('back')}">‹</button><span class="ad-topname">${esc(a.name||'')}</span><span class="ad-topcapsule"><button type="button" class="ad-topbtn ad-topbtn-in" onclick="shareArtist()" aria-label="${t('shareSong')}">${ic('share')}</button><button type="button" class="ad-topbtn ad-topbtn-in" onclick="openArtistMore()" aria-label="${t('menuT')}">${ic('more')}</button></span></div><div class="ad-hero" id="artistHero"><img id="artistHeroImg" class="ad-hero-img" src="${esc(a.pic||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" alt=""><div class="ad-hero-dim" id="artistHeroDim"></div><div class="ad-hero-info" id="artistHeroInfo"><div class="ad-hero-name">${esc(a.name||'')}</div>${counts?`<div class="ad-hero-sub">${esc(counts)}</div>`:''}<div class="ad-hero-btns"><button type="button" class="ad-round-btn" onclick="artistInfo()" aria-label="i">i</button><button type="button" class="ad-play-btn" onclick="playArtistIdx(0)" aria-label="${t('playBtn')}">${ic('play')}</button><button type="button" class="ad-round-btn" id="artistFavBtn" onclick="toggleArtistFav()" aria-label="${t('favT')}">${fav?ic('star'):ic('starO')}</button></div></div></div><div class="ad-body" id="artistBody"><div class="ad-sec"><div class="ad-sec-head" onclick="toggleArtistSongsAll()" style="cursor:pointer"><span>${t('artistTopSongsT')}</span><span class="ad-chev">›</span></div><div id="artistSongs"></div></div><div class="ad-sec" id="artistAlbumsSec"><div class="ad-sec-head"><span>${t('artistAlbumsT')}</span></div><div class="ad-hrow" id="artistAlbums"></div></div><div class="ad-sec" id="artistSinglesSec"><div class="ad-sec-head"><span>${t('artistSinglesT')}</span><span class="ad-chev">›</span></div><div class="ad-hrow" id="artistSingles"></div></div><div class="ad-sec" id="artistFanFavSec"><div class="ad-sec-head"><span>${t('artistFanFavT')}</span></div><div class="ad-hrow" id="artistFanFav"></div></div></div><div id="artistMoreSheet" class="lp-sheet" style="display:none" onclick="if(event.target===this)artistMoreClose()"><div class="lp-box"><div class="lp-title">${esc(a.name||'')}</div><button type="button" id="artistMoreFavBtn" onclick="artistMoreFav()">${fav?ic('star'):ic('starO')} ${fav?t('artistUnfavT'):t('artistFavT')}</button><button type="button" onclick="artistMoreCopy()">${t('artistCopyNameT')}</button><button type="button" onclick="artistMoreClose()">${t('cancelOp')}</button></div></div></div>`; renderArtistSongs(); renderArtistAlbums(); renderArtistFanFav(); const _w=document.getElementById('artistDetailWrap'); artistHeroBase=_w?Math.max(0,_w.getBoundingClientRect().top+window.scrollY):0; window.scrollTo(0,artistHeroBase); artistHeroInit(); }
+function renderArtistSongs(){ const el=document.getElementById('artistSongs'); if(!el) return; if(!lastArtistSongs.length){ el.innerHTML=`<p class="muted">${t('artistNoSongs')}</p>`; return; } if(!artistShowAll){ const items=lastArtistSongs.slice(0,10); el.innerHTML=`<div class="am-list">${items.map((x,k)=>artistSongRowHTML(x,k)).join('')}</div>`+(lastArtistSongs.length>10?`<p><button type="button" class="ghost-btn" style="width:100%" onclick="toggleArtistSongsAll()">${t('artistShowAllT')}</button></p>`:''); return; } const pages=Math.max(1,Math.ceil(lastArtistSongs.length/20)); artistSongPage=Math.min(artistSongPage,pages-1); const start=artistSongPage*20; const items=lastArtistSongs.slice(start,start+20); el.innerHTML=`<div class="am-list">${items.map((x,k)=>artistSongRowHTML(x,start+k)).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="artistSongPrev()" ${artistSongPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${artistSongPage+1}/${pages}</span><button onclick="artistSongNext()" ${artistSongPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:'')+`<p><button type="button" class="ghost-btn" style="width:100%" onclick="toggleArtistSongsAll()">${t('artistShowLessT')}</button></p>`; }
+function artistSongRowHTML(x,j){ return `<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playArtistIdx(${j})" style="cursor:pointer"><div class="am-meta" onclick="playArtistIdx(${j})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(artistSongSub(x))}${x.vipOnly?' · 会员歌':''}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addArtistIdx(${j})">+</button></div></div>`; }
+function artistSongSub(x){ const al=x.album||''; const yr=x.albumYear||0; if(al&&yr) return al+' - Single · '+yr+'年'; if(al) return al+' - Single'; if(yr) return x.title+' · '+yr+'年'; return x.artist||''; }
+function toggleArtistSongsAll(){ artistShowAll=!artistShowAll; artistSongPage=0; renderArtistSongs(); }
+function artistIsSingle(x){ if(!x) return false; if(/single/i.test(x.name||'')) return true; const n=Number(x.songCount)||0; return n>=1&&n<=2; }
+function artistAlbCardHTML(x,idx,isSingle){ const yr=x.publishTime?new Date(x.publishTime).getFullYear():''; let nm=x.name||''; if(isSingle&&!/single/i.test(nm)) nm=nm+' - Single'; return `<div class="ad-alb" onclick="openAlbumDetail(${idx})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy" alt=""><div class="ad-alb-name">${esc(nm)}</div>${yr?`<div class="ad-alb-meta">${yr}年</div>`:''}</div>`; }
+function renderArtistAlbums(){ const ab=document.getElementById('artistAlbums'); const sg=document.getElementById('artistSingles'); if(!ab&&!sg) return; const items=lastArtistAlbums.map(function(x,i){ return {x:x,i:i}; }); const singles=items.filter(function(o){ return artistIsSingle(o.x); }); const albums=items.filter(function(o){ return !artistIsSingle(o.x); }); const secA=document.getElementById('artistAlbumsSec'); if(secA) secA.style.display=albums.length?'':'none'; if(ab) ab.innerHTML=albums.length?albums.map(function(o){ return artistAlbCardHTML(o.x,o.i,false); }).join(''):`<p class="muted">${t('artistNoAlbums')}</p>`; const secS=document.getElementById('artistSinglesSec'); if(secS) secS.style.display=singles.length?'':'none'; if(sg) sg.innerHTML=singles.map(function(o){ return artistAlbCardHTML(o.x,o.i,true); }).join(''); }
+function renderArtistFanFav(){ const el=document.getElementById('artistFanFav'); const sec=document.getElementById('artistFanFavSec'); if(!el) return; const top=lastArtistSongs.slice(0,8); if(!top.length){ if(sec) sec.style.display='none'; return; } el.innerHTML=top.map(function(x,j){ const yr=x.albumYear||0; return `<div class="ad-alb" onclick="playArtistIdx(${j})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy" alt=""><div class="ad-alb-name">${esc(x.title)}</div><div class="ad-alb-meta">${yr?yr+'年':esc(x.artist||'')}</div></div>`; }).join(''); if(sec) sec.style.display=''; }
+let adRaf=0, artistHeroBase=0;
+function artistHeroScroll(){ const hero=document.getElementById('artistHero'); if(!hero) return; const y=(window.scrollY||window.pageYOffset||0)-artistHeroBase; const p=Math.min(Math.max(y/360,0),1); const img=document.getElementById('artistHeroImg'); const dim=document.getElementById('artistHeroDim'); const info=document.getElementById('artistHeroInfo'); const bar=document.getElementById('artistTopbar'); hero.style.transform='translateY('+Math.max(0,y)+'px)'; if(img) img.style.transform='scale('+(1-0.10*p).toFixed(3)+')'; if(dim) dim.style.opacity=(0.28+0.42*p).toFixed(3); if(info){ info.style.opacity=(1-0.85*p).toFixed(3); info.style.transform='translateY('+(-36*p).toFixed(1)+'px)'; } if(bar){ bar.style.transform='translateY('+Math.max(0,y+10)+'px)'; bar.classList.toggle('scrolled',y>60); } }
+function artistHeroOnScroll(){ if(adRaf) return; adRaf=requestAnimationFrame(function(){ adRaf=0; artistHeroScroll(); }); }
+function artistHeroInit(){ artistHeroScroll(); window.removeEventListener('scroll',artistHeroOnScroll); window.addEventListener('scroll',artistHeroOnScroll,{passive:true}); }
+function artistInfo(){ const a=curArtistDetail&&curArtistDetail._a; if(!a) return; const parts=[]; if(a.musicSize) parts.push(a.musicSize+' '+t('songsUnit')); if(a.albumSize) parts.push(a.albumSize+' '+t('artistAlbumsT')); toast((a.name||'')+(parts.length?' · '+parts.join(' · '):'')); }
+function artistFavKey(){ const d=curArtistDetail||{}; return (d.platform||'wy')+'|'+(d.id||d.name||''); }
+function isArtistFav(){ const l=haoLSGet('haoFavArtists',[]); return l.some(function(f){ return f.key===artistFavKey(); }); }
+function toggleArtistFav(){ const k=artistFavKey(); let l=haoLSGet('haoFavArtists',[]); const wasOn=l.some(function(f){ return f.key===k; }); if(wasOn) l=l.filter(function(f){ return f.key!==k; }); else { const a=curArtistDetail&&curArtistDetail._a; l.push({key:k,platform:(curArtistDetail&&curArtistDetail.platform)||'wy',id:(curArtistDetail&&curArtistDetail.id)||'',name:(a&&a.name)||(curArtistDetail&&curArtistDetail.name)||'',pic:(a&&a.pic)||''}); } haoLSSet('haoFavArtists',l); const nowOn=!wasOn; const b=document.getElementById('artistFavBtn'); if(b) b.innerHTML=nowOn?ic('star'):ic('starO'); const mb=document.getElementById('artistMoreFavBtn'); if(mb) mb.innerHTML=(nowOn?ic('star'):ic('starO'))+' '+(nowOn?t('artistUnfavT'):t('artistFavT')); toast(nowOn?t('favAdded'):t('favRemoved')); }
+async function shareArtist(){ const a=curArtistDetail&&curArtistDetail._a; if(!a) return; const text=(a.name||'')+' - HAo Studio'; if(navigator.share){ try{ await navigator.share({title:a.name||'',text:text}); }catch(e){} } else copyText(text); }
+function openArtistMore(){ const sh=document.getElementById('artistMoreSheet'); if(sh) sh.style.display='flex'; }
+function artistMoreClose(){ const sh=document.getElementById('artistMoreSheet'); if(sh) sh.style.display='none'; }
+function artistMoreFav(){ artistMoreClose(); toggleArtistFav(); }
+function artistMoreCopy(){ artistMoreClose(); const a=curArtistDetail&&curArtistDetail._a; if(a&&a.name) copyText(a.name); }
 function artistSongPrev(){ if(artistSongPage>0){ artistSongPage--; renderArtistSongs(); pageScrollTop(document.getElementById('artistSongs')); } }
 function artistSongNext(){ const pages=Math.max(1,Math.ceil(lastArtistSongs.length/20)); if(artistSongPage<pages-1){ artistSongPage++; renderArtistSongs(); pageScrollTop(document.getElementById('artistSongs')); } }
 function playArtistIdx(j){ const x=lastArtistSongs[j]; if(!x) return; playerPlaylist=lastArtistSongs.map(s=>({songId:s.songId,title:s.title,artist:s.artist,platform:s.platform||'wy',cover:s.cover,vipOnly:s.vipOnly,dur:durOf(s)})); curTrackIdx=j; playerIsMine=false; curQueue='search'; renderSheetPlaylist(); openPlayerSheet(); playTrack(x.songId,x.title,x.platform||'wy',x.cover,x.artist,x.vipOnly); }
 function addArtistIdx(j){ const x=lastArtistSongs[j]; if(!x) return; openPickSong(x); }
-async function openAlbumDetail(i){ const x=lastArtistAlbums[i]; if(!x) return; const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=skelAmRowsHTML(6); const albPf=(curArtistDetail&&curArtistDetail.platform)||'wy'; const albArtist=x.artist||(curArtistDetail&&curArtistDetail.name)||''; let r=null; if(nativeFetchAvailable()){ try{ r=await directAlbumSongs(x.id, albPf, x.name, albArtist); }catch(e){ r=null; } } if(!r||!r.ok){ el.innerHTML=loadErrHTML('openAlbumDetail('+i+')'); return; } curAlbumDetail={id:x.id, name:r.album.name||x.name||''}; lastAlbumSongs=r.songs||[]; albumSongPage=0; const a=r.album||{}; el.innerHTML=`<p><a href="javascript:void(0)" onclick="backToArtistDetail()">‹ ${esc(curArtistDetail?curArtistDetail.name:'')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(a.pic||x.cover||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:12px;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(a.name||x.name||'')}</b><div class="muted" style="font-size:12px">${esc(a.artist||'')}</div></div></div><h3 style="margin:16px 0 8px">${t('albumSongsT')}</h3><div id="albumSongs"></div>`; renderAlbumSongs(); }
-function renderAlbumSongs(){ const el=document.getElementById('albumSongs'); if(!el) return; const pages=Math.max(1,Math.ceil(lastAlbumSongs.length/20)); albumSongPage=Math.min(albumSongPage,pages-1); const start=albumSongPage*20; const items=lastAlbumSongs.slice(start,start+20); el.innerHTML=lastAlbumSongs.length?`<div class="am-list">${items.map((x,k)=>{ const j=start+k; return `<div class="am-row"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playAlbumIdx(${j})" style="cursor:pointer"><div class="am-meta" onclick="playAlbumIdx(${j})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub">${esc(x.artist)} · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addAlbumIdx(${j})">+</button></div></div>`; }).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="albumSongPrev()" ${albumSongPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${albumSongPage+1}/${pages}</span><button onclick="albumSongNext()" ${albumSongPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:''):`<p class="muted">${t('artistNoSongs')}</p>`; }
+async function openAlbumDetail(i){ const x=lastArtistAlbums[i]; if(!x) return; const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=skelAmRowsHTML(6); const albPf=(curArtistDetail&&curArtistDetail.platform)||'wy'; const albArtist=x.artist||(curArtistDetail&&curArtistDetail.name)||''; let r=null; if(nativeFetchAvailable()){ try{ r=await directAlbumSongs(x.id, albPf, x.name, albArtist); }catch(e){ r=null; } } if(!r||!r.ok){ el.innerHTML=loadErrHTML('openAlbumDetail('+i+')'); return; } curAlbumDetail={id:x.id, name:r.album.name||x.name||'', artist:r.album.artist||x.artist||'', publishTime:x.publishTime||0}; lastAlbumSongs=r.songs||[]; albumSongPage=0; const a=r.album||{}; const _yr=curAlbumDetail.publishTime?new Date(curAlbumDetail.publishTime).getFullYear():0; const _meta=[_yr?(_yr+(lang==='en'?'':'年')):'', t('qHires')].filter(Boolean).join(' · '); el.innerHTML=`<div class="album-detail"><div class="album-top"><button type="button" class="album-glass-btn" onclick="backToArtistDetail()" aria-label="${t('back')}">‹</button><div class="album-top-capsule"><button type="button" class="album-cap-btn" onclick="shareAlbumDetail()" aria-label="${t('shareSong')}">${ic('share')}</button><span class="album-cap-sep"></span><button type="button" class="album-cap-btn" onclick="openAlbumMore()" aria-label="${t('menuT')}">${ic('more')}</button></div></div><img class="album-cover" src="${esc(a.pic||x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'"><div class="album-name">${esc(a.name||x.name||'')}</div><div class="album-artist">${esc(a.artist||x.artist||'')}</div>${_meta?`<div class="album-meta">${esc(_meta)}</div>`:''}<div class="album-actions"><button type="button" class="album-circle-btn" onclick="playAlbumAll(true)" aria-label="${t('shuffleMode')}">${ic('shuffle')}</button><button type="button" class="album-play-btn" onclick="playAlbumAll(false)">${ic('play')} ${t('playBtn')}</button><button type="button" class="album-circle-btn" onclick="openPickAlbum()" aria-label="${t('joinPlaylist')}">+</button></div><div class="album-div"></div><div id="albumSongs"></div></div>`; renderAlbumSongs(); }
+function renderAlbumSongs(){ const el=document.getElementById('albumSongs'); if(!el) return; el.innerHTML=lastAlbumSongs.length?`<div class="album-track-list">${lastAlbumSongs.map((x,j)=>`<div class="album-track"><span class="album-num">${j+1}</span><div class="album-track-meta" onclick="playAlbumIdx(${j})" style="cursor:pointer"><div class="album-track-title">${esc(x.title)}</div><div class="album-track-sub">${esc(x.artist)}${durSuffix(x)}</div></div><button type="button" class="album-track-more" onclick="albumTrackMore(${j})" aria-label="${t('menuT')}">···</button></div>`).join('')}</div>`:`<p class="muted">${t('artistNoSongs')}</p>`; }
 function albumSongPrev(){ if(albumSongPage>0){ albumSongPage--; renderAlbumSongs(); } }
 function albumSongNext(){ const pages=Math.max(1,Math.ceil(lastAlbumSongs.length/20)); if(albumSongPage<pages-1){ albumSongPage++; renderAlbumSongs(); } }
 function playAlbumIdx(j){ const x=lastAlbumSongs[j]; if(!x) return; playerPlaylist=lastAlbumSongs.map(s=>({songId:s.songId,title:s.title,artist:s.artist,platform:s.platform||'wy',cover:s.cover,vipOnly:s.vipOnly,dur:durOf(s)})); curTrackIdx=j; playerIsMine=false; curQueue='search'; renderSheetPlaylist(); openPlayerSheet(); playTrack(x.songId,x.title,x.platform||'wy',x.cover,x.artist,x.vipOnly); }
 function addAlbumIdx(j){ const x=lastAlbumSongs[j]; if(!x) return; openPickSong(x); }
+// ---- album detail actions (Apple Music style album page) ----
+function albumQueueList(){ return lastAlbumSongs.map(s=>({songId:s.songId,title:s.title,artist:s.artist,platform:s.platform||'wy',cover:s.cover,vipOnly:s.vipOnly,dur:durOf(s)})); }
+function playAlbumAll(shuffle){ if(!lastAlbumSongs.length) return; playMode=shuffle?'shuffle':'seq'; localStorage.setItem('playMode',playMode); updatePlayModeBtn(); const start=(shuffle&&lastAlbumSongs.length>1)?Math.floor(Math.random()*lastAlbumSongs.length):0; playAlbumIdx(start); }
+function albumTrackMore(j){ const x=lastAlbumSongs[j]; if(!x) return; playerPlaylist=albumQueueList(); curTrackIdx=j; playerIsMine=false; curQueue='search'; curSongId=x.songId; curPf=x.platform||'wy'; curTrack=x.title; curArtist=x.artist||''; curCover=x.cover||''; renderSheetPlaylist(); openTrackMore(); }
+function openPickAlbum(){ if(!lastAlbumSongs.length) return; const lists=haoListsGet(); myLists=lists; if(!lists.length){ const nl={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:t('myPlaylistT'), tracks:[]}; lists.push(nl); haoListsSave(lists); myLists=lists; addAlbumToList(nl.id); return; } if(lists.length===1){ addAlbumToList(lists[0].id); return; } const el=document.getElementById('pickListBtns'); if(el){ el.innerHTML=lists.map(l=>`<button onclick="addAlbumToList('${esc(l.id)}')" style="width:100%;text-align:left;margin:4px 0">${esc(l.name)}</button>`).join(''); } const sh=document.getElementById('pickSheet'); if(sh) sh.style.display='block'; }
+function addAlbumToList(listId){ const lists=haoListsGet(); const list=lists.find(function(l){ return String(l.id)===String(listId); }); closePickSheet(); if(!list||!lastAlbumSongs.length) return; list.tracks=list.tracks||[]; let added=0; lastAlbumSongs.forEach(function(x){ if(list.tracks.length>=200) return; if(list.tracks.some(function(tt){ return String(tt.songId)===String(x.songId); })) return; list.tracks.push({id:'t'+Date.now()+Math.floor(Math.random()*100000), songId:x.songId, title:x.title, artist:x.artist, platform:x.platform||'wy', cover:x.cover||'', vipOnly:x.vipOnly, dur:durOf(x)}); favIds.add((x.platform||'wy')+'|'+x.songId); added++; }); haoListsSave(lists); loadMyPlaylist(); toast(added?t('joinedPlaylist'):t('alreadyIn')); }
+async function shareAlbumDetail(){ const a=curAlbumDetail||{}; const an=a.name||''; const ar=a.artist||(curArtistDetail&&curArtistDetail.name)||''; const text='《'+an+'》- '+ar; const url=location.origin+'/#/search'; if(navigator.share){ try{ await navigator.share({title:an,text:text,url:url}); }catch(e){} } else { try{ await navigator.clipboard.writeText(text+' '+url); toast(t('shareCopied')); }catch(e){ toast(text+' '+url); } } }
+function openAlbumMore(){ let sh=document.getElementById('albumMoreSheet'); if(!sh){ sh=document.createElement('div'); sh.id='albumMoreSheet'; sh.className='lp-sheet'; sh.style.display='none'; sh.setAttribute('onclick','if(event.target===this)closeAlbumMore()'); sh.innerHTML='<div class="lp-box"><div class="lp-title" id="albumMoreTitle"></div><button onclick="closeAlbumMore();shareAlbumDetail()"><span>'+t('shareSong')+'</span></button><button onclick="closeAlbumMore();openPickAlbum()"><span>'+t('joinPlaylist')+'</span></button><button onclick="closeAlbumMore()">'+t('cancelOp')+'</button></div>'; document.body.appendChild(sh); } const tt=document.getElementById('albumMoreTitle'); if(tt) tt.textContent=(curAlbumDetail&&curAlbumDetail.name)||''; sh.style.display='flex'; }
+function closeAlbumMore(){ const sh=document.getElementById('albumMoreSheet'); if(sh) sh.style.display='none'; }
 async function openArtistByName(name, platform){ if(!name) return; closePlayerSheet(); const nm=String(name).split(' / ')[0].split('/')[0].trim(); if(!nm) return; if(location.hash!=='#/search'){ location.hash='#/search'; for(let i=0;i<20;i++){ await new Promise(r=>setTimeout(r,250)); if(document.getElementById('mySongQ')) break; } } searchType='artist'; localStorage.setItem('searchType','artist'); syncSearchTypeUI(); const q=document.getElementById('mySongQ'); if(q) q.value=nm; await searchArtists(nm); if(lastArtistSearch.length) openArtistDetail(0); }
 function openArtistByNameIdx(i){ const x=lastMySearch[i]; if(!x) return; openArtistByName(x.artist, x.platform); }
 function renderPlSearch(){ const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=(plSearchTotal?`<p class="muted" style="font-size:12px">${t('plTotalT').replace('{n}',plSearchTotal)}</p>`:'')+(lastPlSearch.length?`<div class="plaza-grid">${lastPlSearch.map((x,i)=>`<div class="plaza-card" onclick="openSearchPlDetail(${i})"><img src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" loading="lazy"><div class="plaza-name">${esc(x.name)}</div><div class="plaza-meta">${pfName(x.platform)}${x.creator?' · '+esc(x.creator):''}${x.trackCount?' · '+x.trackCount+'首':''}${x.playCount?' · '+fmtCount(x.playCount):''}</div></div>`).join('')}</div>`:`<p class="muted">没搜到歌单，换个关键词试试</p>`)+(plSearchHasMore?`<p><button type="button" id="plMoreBtn" onclick="loadMorePlSearch()" style="width:100%">${t('loadMoreT')}</button></p>`:''); }
 async function openSearchPlDetail(i){ const x=lastPlSearch[i]; if(!x) return; plazaPf=x.platform; plazaDetail=x; plazaDetailIdx=i; plazaDetailFrom='search'; plazaTrackPage=0; const el=document.getElementById('mySearchRes'); if(!el) return; el.innerHTML=`<p><a href="javascript:void(0)" onclick="renderPlSearch()">‹ ${t('searchTypePl')}</a></p><div style="display:flex;gap:12px;align-items:center"><img src="${esc(x.cover||'./music-cover.svg')}" style="width:84px;height:84px;border-radius:12px;object-fit:cover" onerror="this.src='./music-cover.svg'"><div><b>${esc(x.name)}</b><div class="muted" style="font-size:12px">${esc(x.creator||'')}${x.trackCount?' · '+x.trackCount+'首':''}${x.playCount?' · '+fmtCount(x.playCount)+'播放':''}</div>${x.desc?`<div class="muted" style="font-size:12px;margin-top:4px">${esc(x.desc.slice(0,80))}</div>`:''}</div></div><p><button type="button" onclick="importPlazaDetail()">${ic('download')} ${t('importAllT')}</button></p><div id="plazaTracks">${skelAmRowsHTML(5)}</div>`; try{ let r=null; if(nativeFetchAvailable()){ try{ r=await directPlazaDetail(plazaPf,x.id); }catch(e){ r=null; } } if(!r||!r.ok) throw new Error('detail'); lastPlazaTracks=r.tracks||[]; renderPlazaTracks(); }catch{ const te=document.getElementById('plazaTracks'); if(te) te.innerHTML=loadErrHTML('retryPlazaDetail()'); } }
-async function searchMySongs(){ const q=document.getElementById('mySongQ').value.trim(); if(!q) return; saveRecentSearch(q); const resEl=document.getElementById('mySearchRes'); if(resEl) resEl.innerHTML=skelAmRowsHTML(5); if(searchType==='playlist'){ searchPlaylists(q); return; } if(searchType==='artist'){ searchArtists(q); return; } if(searchType==='userpl'){ searchUserPls(q); return; } const gen=++mySearchGen; lastMySearch=[]; mySearchPage=0; let settled=0, responded=false;
- const plats=['tx','wy','kg','kw'];
- const dedupeKey=x=>x.platform+'|'+(x.title||'').replace(/[\s\(\)（）\[\]·-]/g,'').toLowerCase()+'|'+(x.artist||'').split('/')[0].toLowerCase();
- const mergeBatch=items=>{ const seen=new Set(lastMySearch.map(dedupeKey)); for(const x of (items||[])){ const k=dedupeKey(x); if(!seen.has(k)){ seen.add(k); lastMySearch.push(x); } } lastMySearch.sort((a,b)=>(({tx:0,wy:1,kg:2,kw:3}[a.platform]??9)-({tx:0,wy:1,kg:2,kw:3}[b.platform]??9))); lastMySearch=lastMySearch.slice(0,80); };
- plats.forEach(pf=>{ const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),12000); const fetchOne=nativeFetchAvailable()?directSearchOne(pf,q).catch(function(){ return null; }):Promise.resolve(null); fetchOne.then(r=>{ clearTimeout(to); if(gen!==mySearchGen) return; if(r&&r.ok){ responded=true; if((r.results||[]).length){ mergeBatch(r.results); renderMySearch(); } } }).catch(()=>{ clearTimeout(to); }).finally(()=>{ if(gen!==mySearchGen) return; if(++settled===plats.length&&!lastMySearch.length){ if(!responded){ if(resEl) resEl.innerHTML=loadErrHTML('searchMySongs()'); } else renderMySearch(); } }); });
-}
-function renderMySearch(){ const el=document.getElementById('mySearchRes'); if(!el) return; const pages=Math.max(1,Math.ceil(lastMySearch.length/20)); mySearchPage=Math.min(mySearchPage,pages-1); const start=mySearchPage*20; const items=lastMySearch.slice(start,start+20); el.innerHTML=items.length?`<div class="am-list">${items.map((x,k)=>{ const i=start+k; return `<div class="am-row" data-idx="${i}"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playMySearchIdx(${i})" style="cursor:pointer"><div class="am-meta" onclick="playMySearchIdx(${i})" style="cursor:pointer"><div class="am-title">${esc(x.title)}</div><div class="am-sub"><span onclick="event.stopPropagation();openArtistByNameIdx(${i})" style="color:var(--accent);cursor:pointer">${esc(x.artist)}</span> · ${pfName(x.platform)}${x.vipOnly?' · 会员歌':''}${durSuffix(x)}</div></div><div class="am-act"><button class="am-add" onclick="addMyTrackIdx(${i})">+</button></div></div>`; }).join('')}</div>`+(pages>1?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><button onclick="mySearchPrev()" ${mySearchPage===0?'disabled':''}>${t('prevPage')}</button><span class="muted">${mySearchPage+1}/${pages}</span><button onclick="mySearchNext()" ${mySearchPage>=pages-1?'disabled':''}>${t('nextPage')}</button></div>`:''):`<p class="muted">没搜到，换个歌名试试</p>`; }
-function mySearchPrev(){ if(mySearchPage>0){ mySearchPage--; renderMySearch(); pageScrollTop(document.getElementById('mySearchRes')); } }
-function mySearchNext(){ const pages=Math.max(1,Math.ceil(lastMySearch.length/20)); if(mySearchPage<pages-1){ mySearchPage++; renderMySearch(); pageScrollTop(document.getElementById('mySearchRes')); } }
+async function searchMySongs(){ const q=document.getElementById('mySongQ').value.trim(); if(!q) return; saveRecentSearch(q); const resEl=document.getElementById('mySearchRes'); if(resEl) resEl.innerHTML=skelAmRowsHTML(5); if(searchType==='playlist'){ searchPlaylists(q); return; } if(searchType==='artist'){ searchArtists(q); return; } const gen=++mySearchGen; lastMySearch=[]; mySearchShown=20; const fn={wy:directSearchWY,tx:directSearchTX,kg:directSearchKG,kw:directSearchKW}[searchPf]||directSearchWY; if(!nativeFetchAvailable()){ if(resEl) resEl.innerHTML=loadErrHTML('searchMySongs()'); return; } let items=null; try{ items=await fn(q,60); }catch(e){ items=null; } if(gen!==mySearchGen) return; if(!items){ if(resEl) resEl.innerHTML=loadErrHTML('searchMySongs()'); return; } const seen=new Set(); for(const x of (items||[])){ const k=(x.platform||searchPf)+'|'+(x.songId||'')+'|'+(x.title||''); if(seen.has(k)) continue; seen.add(k); lastMySearch.push(x); } renderMySearch(); }
+function srcPfLabel(p){ return {wy:'网易云',tx:'QQ音乐',kg:'酷狗',kw:'酷我'}[p]||'网易云'; }
+function srcPfBadge(p){ return {wy:'网易',tx:'腾讯',kg:'酷狗',kw:'酷我'}[p]||pfName(p); }
+function syncSearchPfUI(){ const b=document.getElementById('searchPfBtn'); if(b) b.textContent=srcPfLabel(searchPf)+' ▾'; document.querySelectorAll('.st-check[data-pf]').forEach(e=>{ e.classList.toggle('on',e.dataset.pf===searchPf); }); }
+function toggleSearchPfMenu(){ const m=document.getElementById('searchPfPop'); if(!m) return; if(m.style.display==='block'){ m.style.display='none'; return; } const b=document.getElementById('searchPfBtn'); if(!b) return; const r=b.getBoundingClientRect(); const box=m.querySelector('.st-pop-box'); if(box){ box.style.top=(r.bottom+6)+'px'; box.style.right=Math.max(8,window.innerWidth-r.right)+'px'; } m.style.display='block'; }
+function setSearchPf(v){ if(['wy','tx','kg','kw'].indexOf(v)<0) v='wy'; searchPf=v; localStorage.setItem('searchPf',v); const m=document.getElementById('searchPfPop'); if(m) m.style.display='none'; syncSearchPfUI(); const q=(document.getElementById('mySongQ')||{}).value||''; if(q.trim()) searchMySongs(); }
+function loadMoreMySearch(){ if(mySearchShown<lastMySearch.length){ mySearchShown+=20; renderMySearch(); } }
+function observeSrcMore(){ if(mySearchObs){ mySearchObs.disconnect(); mySearchObs=null; } const s=document.getElementById('srcMoreSentinel'); if(!s||!('IntersectionObserver' in window)) return; mySearchObs=new IntersectionObserver(function(es){ if(es[0]&&es[0].isIntersecting) loadMoreMySearch(); },{rootMargin:'200px 0px'}); mySearchObs.observe(s); }
+function renderMySearch(){ const el=document.getElementById('mySearchRes'); if(!el) return; haoRefreshFavIds(); const items=lastMySearch.slice(0,mySearchShown); const hasMore=lastMySearch.length>mySearchShown; el.innerHTML=items.length?`<div class="am-list">${items.map((x,i)=>{ const f=x.songId&&favIds.has((x.platform||'wy')+'|'+x.songId); return `<div class="am-row" data-idx="${i}"><img class="am-art" src="${esc(x.cover||'./music-cover.svg')}" onerror="this.src='./music-cover.svg'" onclick="playMySearchIdx(${i})" style="cursor:pointer"><div class="am-meta" onclick="playMySearchIdx(${i})" style="cursor:pointer"><div class="am-title">${esc(x.title)} <i class="pf-tag">${srcPfBadge(x.platform)}</i></div><div class="am-sub"><span onclick="event.stopPropagation();openArtistByNameIdx(${i})" style="color:var(--accent);cursor:pointer">${esc(x.artist)}</span>${x.vipOnly?' · 会员歌':''}${x.album?'':durSuffix(x)}</div>${x.album?`<div class="src-album">${esc(x.album)}${durSuffix(x)}</div>`:''}</div><div class="am-act src-act"><button type="button" class="src-fav${f?' on':''}" onclick="event.stopPropagation();toggleFavSearchIdx(${i})">${ic(f?'heart':'heartO')}</button><button type="button" class="src-play" onclick="event.stopPropagation();playMySearchIdx(${i})">${ic('play')}</button><button class="am-add" onclick="event.stopPropagation();addMyTrackIdx(${i})">+</button></div></div>`; }).join('')}</div>`:`<p class="muted">没搜到，换个歌名试试</p>`; if(items.length&&hasMore) el.insertAdjacentHTML('beforeend','<div id="srcMoreSentinel" class="src-more" onclick="loadMoreMySearch()"><span class="muted">'+t('loading')+'</span></div>'); else if(items.length) el.insertAdjacentHTML('beforeend','<p class="muted src-end">'+t('allLoadedT')+'</p>'); observeSrcMore(); }
+function toggleFavSearchIdx(i){ const x=lastMySearch[i]; if(!x) return; const k=(x.platform||'wy')+'|'+x.songId; if(favIds.has(k)){ const lists=haoListsGet(); lists.forEach(function(l){ l.tracks=(l.tracks||[]).filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; }); }); haoListsSave(lists); haoFavSave(haoFavGet().filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; })); haoRefreshFavIds(); toast(t('favRemoved')); renderMySearch(); } else { openPickSong(x); if(favIds.has(k)) renderMySearch(); } }
 function playMySearchIdx(i){ const x=lastMySearch[i]; if(!x) return; playerPlaylist=lastMySearch.map(t=>({songId:t.songId,title:t.title,artist:t.artist,platform:t.platform||'wy',cover:t.cover||'',vipOnly:t.vipOnly,dur:durOf(t)})); curTrackIdx=i; playerIsMine=false; curQueue='search'; renderSheetPlaylist(); openPlayerSheet(); playTrack(x.songId,x.title,x.platform,x.cover,x.artist,x.vipOnly); }
 async function addMyTrackIdx(i){ const x=lastMySearch[i]; if(!x) return; openPickSong(x); }
 async function loadMyPlaylist(){ const lists=haoListsGet(); myLists=lists; const list=lists.find(function(l){ return String(l.id)===String(curListId); })||lists[0]||null; lastMyPlaylist=(list&&list.tracks)||[]; renderMyPlaylistRows(); const c=document.getElementById('myPlCount'); if(c) c.textContent=lastMyPlaylist.length?lastMyPlaylist.length+' '+t('myPlaylistCount'):''; }
@@ -6582,8 +6626,8 @@ let gestPtrInd=null;
 function gestSetSuppressClick(){ gestClickSuppress=true; clearTimeout(gestClickSuppressTm); gestClickSuppressTm=setTimeout(()=>{ gestClickSuppress=false; },350); }
 function gestIsTouch(){ return Date.now()-gestLastTouchAt<1500; }
 function gestInInput(el){ return !!el.closest('input,textarea,select,[contenteditable="true"]'); }
-const GEST_HSCROLL='.hot-scroll,.table-wrap,.video-daily-row,.live-tabs,.live-cat-strip,.vod-wide-row,.vod-coll-row,.vod-poster-row,.vod-ep-cards,.vod-cast-row,.vod-filter-group';
-function gestSheetOpen(){ const ps=document.getElementById('playerSheet'); if(ps&&ps.classList.contains('open')) return 'playerSheet'; const ids=['qualitySheet','trackMoreSheet','pickSheet','songInfoSheet','commentsSheet','listOptSheet','confirmSheet','lpSheet','vodLpSheet']; for(const id of ids){ const el=document.getElementById(id); if(el&&(el.style.display==='flex'||el.style.display==='block')) return id; } return null; }
+const GEST_HSCROLL='.ad-hrow,.hot-scroll,.table-wrap,.video-daily-row,.live-tabs,.live-cat-strip,.vod-wide-row,.vod-coll-row,.vod-poster-row,.vod-ep-cards,.vod-cast-row,.vod-filter-group';
+function gestSheetOpen(){ const ids=['qualitySheet','trackMoreSheet','pickSheet','songInfoSheet','commentsSheet','listOptSheet','confirmSheet','lpSheet','vodLpSheet']; for(const id of ids){ const el=document.getElementById(id); if(el&&(el.style.display==='flex'||el.style.display==='block')) return id; } const ps=document.getElementById('playerSheet'); if(ps&&ps.classList.contains('open')) return 'playerSheet'; return null; }
 function gestCloseSheet(id){ if(id==='playerSheet') closePlayerSheet(); else if(id==='qualitySheet') closeQualitySheet(); else if(id==='trackMoreSheet') closeTrackMore(); else if(id==='pickSheet') closePickSheet(); else if(id==='songInfoSheet') closeSongInfo(); else if(id==='commentsSheet') closeCommentsSheet(); else if(id==='listOptSheet') closeListOpts(); else if(id==='confirmSheet') closeConfirmSheet(false); else if(id==='lpSheet') lpClose(); else if(id==='vodLpSheet') vodLpClose(); }
 async function gestToggleSongFav(x){ if(!favLoaded) await refreshFavState(); const k=(x.platform||'wy')+'|'+x.songId; if(favIds.has(k)){ const lists=haoListsGet(); lists.forEach(function(l){ l.tracks=(l.tracks||[]).filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; }); }); haoListsSave(lists); haoFavSave(haoFavGet().filter(function(t){ return ((t.platform||'wy')+'|'+t.songId)!==k; })); favIds.delete(k); updateFavBtn(); toast(t('favRemoved')); if(document.getElementById('myPlaylist')) loadMyPlaylist(); return; } const lists=haoListsGet(); myLists=lists; let list=lists.find(function(l){ return String(l.id)===String(curListId); })||lists[0]; if(!list){ list={id:'l'+Date.now()+Math.floor(Math.random()*1000), name:t('myPlaylistT'), tracks:[]}; lists.push(list); } if((list.tracks||[]).some(function(t){ return String(t.songId)===String(x.songId); })){ toast(t('alreadyIn')); return; } if((list.tracks||[]).length>=200){ toast(t('myPlaylistFull')); return; } list.tracks.push({id:'t'+Date.now()+Math.floor(Math.random()*1000), songId:x.songId, title:x.title||'', artist:x.artist||'', platform:x.platform||'wy', cover:x.cover||'', vipOnly:x.vipOnly?1:0, dur:durOf(x)}); haoListsSave(lists); favIds.add(k); toast(t('favAdded')); updateFavBtn(); }
 function gestToggleSongFavByIdx(i){ const x=lastMyPlaylist[i]; if(x) gestToggleSongFav(x); }
@@ -6597,7 +6641,6 @@ function vodLpFav(){ if(!vodLpData) return; const d=vodLpData; vodLpClose(); ges
 function vodLpShare(){ if(!vodLpData) return; const d=vodLpData; const url=location.origin+'/#/video/'+d.source+'/'+encodeURIComponent(d.vodid); const text='《'+d.name+'》- HAo Studio '+url; vodLpClose(); if(navigator.share){ navigator.share({title:d.name,text:text,url:url}).catch(()=>{}); } else { copyText(text); } }
 function vodLpOpen(){ if(!vodLpData) return; const d=vodLpData; vodLpClose(); openVideoDetail(d.source, d.vodid, d); }
 function gestRefreshPage(){ const h=location.hash||'#/'; if(h==='#/'||h===''){ load(); return true; } if(h==='#/video'){ renderVideoPage(); return true; } if(h==='#/live'||/^#\/live\/(bili|douyu|huya|douyin|ks)$/.test(h)){ renderLivePage(); return true; } if(h==='#/search'){ const q=document.getElementById('mySongQ'); if(q&&q.value.trim()){ searchMySongs(); return true; } } return false; }
-let _swX=0,_swY=0,_swiped=false;
 // ---- gesture pointer engine (dc) ----
 function gestOnPointerDown(e){ if(!e.isPrimary){ gestPtr=null; return; } if(e.pointerType==='touch') gestLastTouchAt=Date.now(); const t=e.target; if(!t||!t.closest) return; gestPtr={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0,type:e.pointerType,edge:false,lock:null,row:null,rowSwiping:false,seek:null,sheet:null,ptr:null};
  const card=t.closest('.vod-poster-card');
@@ -6664,6 +6707,19 @@ function gestOnTouchMove(e){ if(!gestPtr||!e.touches||!e.touches[0]) return; con
 }
 function gestInit(){ gestPtrInd=document.createElement('div'); gestPtrInd.id='ptrInd'; gestPtrInd.style.display='none'; document.body.appendChild(gestPtrInd); const sh=document.createElement('div'); sh.id='vodLpSheet'; sh.className='lp-sheet'; sh.style.display='none'; sh.setAttribute('onclick',"if(event.target===this)vodLpClose()"); sh.innerHTML='<div class="lp-box"><div class="lp-title" id="vodLpTitle"></div><button onclick="vodLpFav()">☆ '+t('favT')+'</button><button onclick="vodLpShare()">'+t('shareSong')+'</button><button onclick="vodLpOpen()">打开详情</button><button onclick="vodLpClose()">'+t('cancelOp')+'</button></div>'; document.body.appendChild(sh); document.addEventListener('pointerdown',gestOnPointerDown); document.addEventListener('pointermove',gestOnPointerMove); document.addEventListener('pointerup',gestOnPointerUp); document.addEventListener('pointercancel',gestOnPointerCancel); document.addEventListener('touchmove',gestOnTouchMove,{passive:false}); document.addEventListener('click',gestOnClickCapture,true); }
 gestInit();
+/* ---- Scroll lock guard (chen 2026-11-16: 全app锁死) ----
+   Safety net under the CSS overscroll-behavior rules + native
+   bounces=false. Only the out-of-bounds direction is blocked: while
+   the finger drags past the top/bottom edge of the scroller under it
+   (window, or an inner overflow container), preventDefault stops the
+   rubber-band. In-range scrolling, dragging back into content, and
+   horizontal gestures (tab swipe / poster rows) are untouched — the
+   check uses the per-move delta, not the distance from touchstart,
+   so a drag that turns around mid-gesture works normally. */
+let _slLastX=null,_slLastY=null,_slEl=null;
+function _slFindScroller(el){ while(el&&el!==document.body){ try{ const cs=getComputedStyle(el); if(/(auto|scroll)/.test(cs.overflowY)&&el.scrollHeight>el.clientHeight+1) return el; }catch(e){} el=el.parentElement; } return null; }
+document.addEventListener('touchstart',function(e){ const t=e.touches&&e.touches[0]; _slLastX=t?t.clientX:null; _slLastY=t?t.clientY:null; _slEl=(e.target&&e.target.nodeType===1)?_slFindScroller(e.target):null; },{passive:true});
+document.addEventListener('touchmove',function(e){ if(_slLastX===null||_slLastY===null||!e.touches||!e.touches[0]||!e.cancelable) return; const t=e.touches[0]; const dY=t.clientY-_slLastY, dX=t.clientX-_slLastX; _slLastX=t.clientX; _slLastY=t.clientY; if(Math.abs(dY)<3||Math.abs(dY)<=Math.abs(dX)) return; if(_slEl){ const atTop=_slEl.scrollTop<=0, atBot=_slEl.scrollTop+_slEl.clientHeight>=_slEl.scrollHeight-1; if((atTop&&dY>0)||(atBot&&dY<0)) e.preventDefault(); } else { const maxY=document.documentElement.scrollHeight-window.innerHeight; if(maxY<=0){ e.preventDefault(); } else if((window.scrollY<=0&&dY>0)||(window.scrollY>=maxY-1&&dY<0)) e.preventDefault(); } },{passive:false});
 /* ---- floating bars (Apple Music): hide on scroll down, show on scroll up / tap bottom ---- */
 let barsLastY=0;
 const barsLandMq=window.matchMedia('(orientation:landscape) and (max-height:500px)');
@@ -6681,9 +6737,9 @@ document.addEventListener('click',function(e){
   if(!document.body.classList.contains('bars-compact')) return;
   if(e.clientY>window.innerHeight-70) document.body.classList.remove('bars-compact');
 },true);
-function tabSwipeStart(e){ const tt=e.changedTouches[0]; _swX=tt.clientX; _swY=tt.clientY; }
-function tabSwipeEnd(e){ if(gestSheetOpen()) return; const sm=document.getElementById('sideMenu'); if(sm&&sm.classList.contains('open')) return; const tt=e.changedTouches[0]; const dx=tt.clientX-_swX,dy=tt.clientY-_swY; if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5) return; const bar=document.getElementById('tabbar'); if(!bar) return; const tabs=[...bar.querySelectorAll('[data-tab]')].filter(a=>a.style.display!=='none'); if(tabs.length<2) return; const cur=tabs.find(a=>a.classList.contains('on')); let i=tabs.indexOf(cur); if(i<0) i=0; const n=dx<0?i+1:i-1; if(n<0||n>=tabs.length) return; _swiped=true; setTimeout(()=>{_swiped=false;},350); location.hash=tabs[n].getAttribute('href'); }
-const _tabbar=document.getElementById('tabbar'); if(_tabbar){ _tabbar.addEventListener('touchstart',tabSwipeStart,{passive:true}); _tabbar.addEventListener('touchend',tabSwipeEnd,{passive:true}); _tabbar.addEventListener('click',(e)=>{ if(_swiped){ e.preventDefault(); e.stopPropagation(); } },true); }
+// (old tabbar flick swipe removed 2026-11-16: dragging on the tabbar jumped
+// tabs with no follow; tab taps still work via the anchor click, and the
+// content-area drag in tabSwipeInit is now the only tab swipe.)
 
 // ---- bottom tab swipe (Muse-style): swipe the content to switch tabs ----
 let _tabIndEl=null, _tabIndFirst=true, _tabSwipe=null, _tabAnim=false, _tabIndLast=0, _appFadeT=null;
@@ -6691,12 +6747,16 @@ function tabIndEnsure(){ const bar=document.getElementById('tabbar'); if(!bar) r
 function tabList(){ const bar=document.getElementById('tabbar'); if(!bar) return []; return [...bar.querySelectorAll('[data-tab]')].filter(a=>a.style.display!=='none'); }
 function tabCurIdx(){ const tabs=tabList(); if(!tabs.length) return 0; const cur=tabs.find(a=>a.classList.contains('on')); const i=tabs.indexOf(cur); return i<0?0:i; }
 function tabHashFor(tab){ return {video:'#/video', live:'#/live', music:'#/music', settings:'#/settings'}[tab]||'#/video'; }
-function tabIndSync(){ const ind=tabIndEnsure(); const tabs=tabList(); if(!ind||!tabs.length) return; ind.style.width=(100/tabs.length)+'%'; const tx=tabCurIdx()*100; if(_tabIndFirst){ _tabIndFirst=false; _tabIndLast=tx; ind.style.transition='none'; ind.style.transform='translateX('+tx+'%)'; void ind.offsetWidth; ind.style.transition=''; return; } if(tx!==_tabIndLast){ const from=_tabIndLast; _tabIndLast=tx; try{ ind.animate([{transform:'translateX('+from+'%) scaleX(1)'},{transform:'translateX('+((from+tx)/2)+'%) scaleX(1.12)',offset:.5},{transform:'translateX('+tx+'%) scaleX(1)'}],{duration:350,easing:'cubic-bezier(.32,.72,.35,1)',fill:'forwards'}); }catch(e){} appFadeIn(); } ind.style.transform='translateX('+tx+'%)'; }
+function tabIndCancel(ind){ if(!ind) return; try{ ind.getAnimations().forEach(function(a){ a.cancel(); }); }catch(e){} }
+function tabIndSync(){ const ind=tabIndEnsure(); const tabs=tabList(); if(!ind||!tabs.length) return; ind.style.width=(100/tabs.length)+'%'; const tx=tabCurIdx()*100; if(_tabIndFirst){ _tabIndFirst=false; _tabIndLast=tx; tabIndCancel(ind); ind.style.transition='none'; ind.style.transform='translateX('+tx+'%)'; void ind.offsetWidth; ind.style.transition=''; return; } if(tx!==_tabIndLast){ const from=_tabIndLast; _tabIndLast=tx; tabIndCancel(ind); try{ const _an=ind.animate([{transform:'translateX('+from+'%) scaleX(1)'},{transform:'translateX('+((from+tx)/2)+'%) scaleX(1.12)',offset:.5},{transform:'translateX('+tx+'%) scaleX(1)'}],{duration:350,easing:'cubic-bezier(.32,.72,.35,1)',fill:'forwards'}); _an.onfinish=function(){ try{ _an.cancel(); }catch(e){} ind.style.transform='translateX('+tx+'%)'; }; }catch(e){} if(!_tabAnim) appFadeIn(); } ind.style.transform='translateX('+tx+'%)'; }
 function appFadeIn(){ const app=document.getElementById('app'); if(!app) return; if(_appFadeT){ clearTimeout(_appFadeT); _appFadeT=null; } app.style.transition='opacity .18s ease'; app.style.opacity='0'; requestAnimationFrame(function(){ _appFadeT=setTimeout(function(){ _appFadeT=null; app.style.opacity='1'; },30); }); setTimeout(function(){ if(app.style.opacity==='0') app.style.opacity='1'; },450); }
-function tabIndDrag(prog){ const ind=tabIndEnsure(); if(!ind) return; ind.style.transition='none'; ind.style.transform='translateX('+((tabCurIdx()+prog)*100)+'%)'; }
-function tabIndSnap(){ const ind=tabIndEnsure(); if(!ind) return; ind.style.transition=''; ind.style.transform='translateX('+(tabCurIdx()*100)+'%)'; }
-function tabIndSnapTo(i){ const ind=tabIndEnsure(); if(!ind) return; ind.style.transition=''; ind.style.transform='translateX('+(i*100)+'%)'; }
+function tabIndDrag(prog){ const ind=tabIndEnsure(); if(!ind) return; tabIndCancel(ind); ind.style.transition='none'; ind.style.transform='translateX('+((tabCurIdx()+prog)*100)+'%)'; }
+function tabIndSnap(){ const ind=tabIndEnsure(); if(!ind) return; tabIndCancel(ind); ind.style.transition=''; ind.style.transform='translateX('+(tabCurIdx()*100)+'%)'; }
+function tabIndSnapTo(i){ const ind=tabIndEnsure(); if(!ind) return; tabIndCancel(ind); _tabIndLast=i*100; ind.style.transition=''; ind.style.transform='translateX('+(i*100)+'%)'; }
 function tabSwipeContentOK(e){
+  // live ROOM only (#/live/<platform>/<roomId>); live home / platform lists may swipe.
+  // (The old '#/live' prefix check blocked the live tab itself.)
+  if(/^#\/live\/[^\/]+\/[^\/]/.test(location.hash||'')) return false;
   if(_tabAnim) return false;
   if(typeof gestSheetOpen==='function'&&gestSheetOpen()) return false;
   const ps=document.getElementById('playerSheet'); if(ps&&ps.classList.contains('open')) return false;
@@ -6707,9 +6767,12 @@ function tabSwipeContentOK(e){
   const sm=document.getElementById('sideMenu'); if(sm&&sm.classList.contains('open')) return false;
   const bar=document.getElementById('tabbar'); if(!bar||getComputedStyle(bar).display==='none') return false;
   const t=e.target; if(!t||!t.closest) return false;
-  if(typeof GEST_HSCROLL!=='undefined'&&t.closest(GEST_HSCROLL)) return false;
-  if(t.closest('#videoWrap,#liveVideoWrap,.am-row,.swipe-row,.lp-sheet,#playerSheet,#tabbar,#vinyl,input,textarea,select')) return false;
-  if(e.clientX<=24) return false;
+  // NOTE: no blanket block for GEST_HSCROLL rows, .am-row/.swipe-row or the
+  // left 24px edge here — those are arbitrated at drag-lock time in
+  // tabSwipeInit (row scrolls if it can move, else the tab swipe wins;
+  // left-edge rightward drags stay with edge-back). A hard block here
+  // made ~78% of the video home unswipeable.
+  if(t.closest('#videoWrap,#liveVideoWrap,.lp-sheet,#playerSheet,#tabbar,#vinyl,input,textarea,select')) return false;
   return true;
 }
 function tabSwipeInit(){
@@ -6718,24 +6781,42 @@ function tabSwipeInit(){
     if(!e.isPrimary) return;
     if(e.pointerType!=='touch'&&e.pointerType!=='mouse') return;
     if(!tabSwipeContentOK(e)) return;
-    _tabSwipe={x:e.clientX,y:e.clientY,dx:0,dy:0,active:false,id:e.pointerId};
+    const t=e.target;
+    _tabSwipe={x:e.clientX,y:e.clientY,dx:0,dy:0,active:false,id:e.pointerId,
+      hs:(t&&t.closest&&typeof GEST_HSCROLL!=='undefined')?t.closest(GEST_HSCROLL):null,
+      row:(t&&t.closest)?t.closest('.am-row,.swipe-row'):null,
+      edge:e.clientX<=24,lastX:e.clientX,lastT:performance.now(),t0:performance.now(),vel:0};
   });
   app.addEventListener('pointermove',function(e){
     if(!_tabSwipe||e.pointerId!==_tabSwipe.id) return;
     const dx=e.clientX-_tabSwipe.x, dy=e.clientY-_tabSwipe.y;
     _tabSwipe.dx=dx; _tabSwipe.dy=dy;
     if(!_tabSwipe.active){
-      if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)*1.5){ _tabSwipe.active=true; app.style.transition='none'; }
+      if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)*1.5){
+        // left-edge rightward drag belongs to edge-back (gest engine)
+        if(_tabSwipe.edge&&dx>0){ _tabSwipe=null; return; }
+        // song row: left drag is swipe-to-delete, right drag closes a swiped row
+        if(_tabSwipe.row){ if(dx<0){ _tabSwipe=null; return; } if(document.querySelector('.swipe-row.swiped')){ _tabSwipe=null; return; } }
+        // horizontal row (poster/carousel/filter chips): if it can still
+        // scroll in the drag direction it owns the gesture; at its edge
+        // the tab swipe takes over instead of the row rubber-banding.
+        if(_tabSwipe.hs){ const r=_tabSwipe.hs; if(r.scrollWidth>r.clientWidth+1){ const canLeft=dx<0&&r.scrollLeft<r.scrollWidth-r.clientWidth-1, canRight=dx>0&&r.scrollLeft>1; if(canLeft||canRight){ _tabSwipe=null; return; } } }
+        _tabSwipe.active=true; app.style.transition='none';
+      }
       else if(Math.abs(dy)>12){ _tabSwipe=null; return; }
       else return;
     }
-    const bar=document.getElementById('tabbar'), tabs=tabList(), cur=tabCurIdx();
-    const tabW=(bar&&tabs.length)?bar.clientWidth/tabs.length:90;
-    let prog=dx/tabW;
-    const atStart=prog>0&&cur<=0, atEnd=prog<0&&cur>=tabs.length-1;
-    if(atStart||atEnd) prog=prog*0.2;
+    const now=performance.now(), dt=now-_tabSwipe.lastT;
+    if(dt>0){ _tabSwipe.vel=(_tabSwipe.vel*0.6)+((e.clientX-_tabSwipe.lastX)/dt*0.4); _tabSwipe.lastX=e.clientX; _tabSwipe.lastT=now; }
+    const w=window.innerWidth||360, tabs=tabList(), cur=tabCurIdx();
+    const atStart=dx>0&&cur<=0, atEnd=dx<0&&cur>=tabs.length-1;
+    const ddx=(atStart||atEnd)?dx*0.2:dx;
+    // indicator tracks PAGE progress (dx / viewport width), and in the
+    // same direction as the page: dragging left reveals the next tab on
+    // the right, so the indicator slides right (prog positive).
+    let prog=-ddx/w;
     prog=Math.max(-1,Math.min(1,prog));
-    app.style.transform='translateX('+((atStart||atEnd)?dx*0.2:dx)+'px)';
+    app.style.transform='translateX('+ddx+'px)';
     tabIndDrag(prog);
   });
   const tabSwipeEnd=function(){
@@ -6743,16 +6824,18 @@ function tabSwipeInit(){
     if(!sw.active) return;
     const w=window.innerWidth||360, tabs=tabList(), cur=tabCurIdx();
     const dir=sw.dx<0?1:-1, target=cur+dir;
-    const commit=Math.abs(sw.dx)>Math.max(80,w*0.25);
+    const dist=Math.abs(sw.dx), avgV=dist/Math.max(1,performance.now()-sw.t0),
+      fling=dist>60&&((Math.abs(sw.vel)>0.4&&((sw.vel<0)===(sw.dx<0)))||avgV>0.35);
+    const commit=dist>Math.max(80,w*0.25)||fling;
     if(!commit||target<0||target>=tabs.length){
-      app.style.transition='transform .22s var(--ease)'; app.style.transform='';
+      app.style.transition='transform .28s cubic-bezier(.32,.72,.35,1)'; app.style.transform='';
       tabIndSnap();
-      setTimeout(function(){ app.style.transition=''; },240);
+      setTimeout(function(){ app.style.transition=''; },300);
       return;
     }
     _tabAnim=true;
     const href=tabHashFor(tabs[target].dataset.tab);
-    app.style.transition='transform .18s ease'; app.style.transform='translateX('+(-dir*100)+'%)';
+    app.style.transition='transform .2s cubic-bezier(.32,.72,.35,1)'; app.style.transform='translateX('+(-dir*100)+'%)';
     tabIndSnapTo(target);
     setTimeout(function(){
       location.hash=href;
@@ -6760,13 +6843,16 @@ function tabSwipeInit(){
         const app2=document.getElementById('app');
         app2.style.transition='none'; app2.style.transform='translateX('+(dir*100)+'%)';
         void app2.offsetWidth;
-        app2.style.transition='transform .22s var(--ease)'; app2.style.transform='';
-        setTimeout(function(){ app2.style.transition=''; _tabAnim=false; },240);
+        app2.style.transition='transform .28s cubic-bezier(.32,.72,.35,1)'; app2.style.transform='';
+        setTimeout(function(){ app2.style.transition=''; _tabAnim=false; },300);
       });
     },180);
   };
   app.addEventListener('pointerup',tabSwipeEnd);
   app.addEventListener('pointercancel',tabSwipeEnd);
+  // pointerup outside #app (finger slid off-screen) must still settle the swipe
+  document.addEventListener('pointerup',tabSwipeEnd);
+  document.addEventListener('pointercancel',tabSwipeEnd);
   app.addEventListener('touchmove',function(e){ if(_tabSwipe&&_tabSwipe.active) e.preventDefault(); },{passive:false});
 }
 try{ tabSwipeInit(); }catch(e){}
@@ -6795,7 +6881,6 @@ load(); // 后台再去拉最新数据，到了自动刷新页面
       var imgs = appEl.querySelectorAll('img[loading="lazy"]');
       var n = 0;
       for(var i = 0; i < imgs.length && n < 9; i++){
-        if(imgs[i].closest('.comm-post')) continue; // community lazy stays lazy
         imgs[i].setAttribute('loading','eager');
         imgs[i].setAttribute('fetchpriority','high');
         n++;
@@ -6855,6 +6940,19 @@ function plSyncBuffered(pos,dur){
   if(dot) dot.style.left=pct+'%';
   if(buf){ let b=0; if(!nativeMusicOn&&audio&&audio.duration&&audio.buffered&&audio.buffered.length){ try{ b=Math.min(100,audio.buffered.end(audio.buffered.length-1)/audio.duration*100); }catch(e){} } buf.style.width=b+'%'; }
 }
+// Player chrome redo (chen reference 2026-11-16): bottom row = lyrics /
+// AirPlay / queue only. AirPlay moves from the title row into the bottom
+// row; comments + play-mode move to the "..." menu (openTrackMore).
+let __plChromeDone=false;
+function plInitPlayerChrome(){
+  if(__plChromeDone) return; __plChromeDone=true;
+  try{
+    var row=document.querySelector('.sheet-bottom-row'), ap=document.getElementById('sheetAirplay'), up=null;
+    if(row){ var btns=row.querySelectorAll('.sheet-bottom-btn'); for(var i=0;i<btns.length;i++){ if(btns[i].getAttribute('onclick')==='openUpNext()') up=btns[i]; } }
+    if(row&&ap&&up){ ap.classList.remove('sheet-icon-btn'); ap.classList.add('sheet-bottom-btn'); row.insertBefore(ap,up); }
+  }catch(e){}
+}
+plInitPlayerChrome();
 function plSyncStatus(){
   const st=document.getElementById('sheetStatus'); if(!st) return;
   const line=(plPage===0)?currentLyricLine():'';
