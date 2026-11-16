@@ -72,6 +72,14 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>bilibili</string>
+		<string>snssdk1128</string>
+		<string>yykiwi</string>
+		<string>douyulink</string>
+		<string>kwai</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

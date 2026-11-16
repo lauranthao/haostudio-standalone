@@ -28,6 +28,7 @@ class SongRow extends StatelessWidget {
     this.leading,
     this.showPlatformBadge = true,
     this.showDuration = true,
+    this.onLongPress,
   });
 
   final Song song;
@@ -36,6 +37,9 @@ class SongRow extends StatelessWidget {
   final VoidCallback onToggleFav;
   final VoidCallback? onOpenArtist;
   final VoidCallback? onOpenAlbum;
+
+  /// Long-press opens the song `···` menu (下一首播放 / 下载 / 倍速).
+  final VoidCallback? onLongPress;
 
   /// Optional leading widget (rank number, drag handle, ...).
   final Widget? leading;
@@ -48,6 +52,7 @@ class SongRow extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return InkWell(
       onTap: onPlay,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(

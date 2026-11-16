@@ -16,6 +16,7 @@ import 'artist_detail_page.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 class DailyPage extends StatefulWidget {
   const DailyPage({super.key});
@@ -198,6 +199,8 @@ class _DailyPageState extends State<DailyPage> {
                                     ),
                                   ),
                                 ),
+                                onLongPress: () =>
+                                    unawaited(openTrackMoreSheet(context, song)),
                               ),
                               Padding(
                                 padding: const EdgeInsets.only(

@@ -1,30 +1,43 @@
 // Audio quality — ported from resolvers.js / app.js.
 //
-// MASTER FINDING (investigated 2026-11-16): there is NO Master tier in the
-// old code. Evidence:
-//  - `QUALITY_CHAIN = ['hires', 'lossless', '320k', '128k']`
-//    (resolvers.js:26); `QRANK = {hires:4, lossless:3, '320k':2, '128k':1}`.
-//  - The quality sheet in web/index.html has exactly FOUR buttons
-//    (hires / lossless / 320k / 128k); i18n has only qHires / qLossless /
-//    qHigh / qStd — no qMaster key in any locale.
-//  - `grep -i master` over resolvers.js / app.js / sources.js finds only
-//    the GitHub `master` branch name in the version.json URL.
-//  - The QQ `tang` resolver reads a `song_play_url_pq` field for the hires
-//    tier, but the old code folds that field INTO the hires tier (it is the
-//    hires-tier URL source), never a separate selectable tier — and no
-//    other platform exposes an equivalent distinct tier, so there is no
-//    parameter that could request "Master" above hires from any resolver.
-// The 5-option sheet in the product notes is aspirational; inventing a
-// Master tier would label ordinary hires streams as Master. This port
-// therefore ships the 4 real tiers. If chen wants a Master row, it needs a
-// resolver that can actually return a distinct Master stream first.
+// MASTER FINDING (verified live 2026-11-16, supersedes the old "no
+// Master" note): Master IS a real, distinct tier — not a relabelled
+// hires stream. Evidence:
+//  - ikun script (research/kmusic/ikun音源.js:13): wy quality list
+//    ["128k","320k","flac","flac24bit","hires","atmos","master"].
+//  - zddyr API, called live from this VM:
+//    GET https://yy.zddyr.top/lx/api/?source=wy&songmid=1851244158
+//    &quality=master → code 200, real .flac URL,
+//    "quality":"master", "quality_requested":"master",
+//    "quality_fallback":false, br 4.27M (vs hires control br 694782,
+//    quality "flac"). Same result via the xinghai (token) path.
+//  - ikun's own API (api.ikunshare.com) is DEAD from this VM
+//    (curl 52 Empty reply, http+https, several songIds; python
+//    RemoteDisconnected; control hosts work through the same proxy),
+//    so the ikun direct resolver exists but is unproven — chen's
+//    phone test must confirm whether it works. The master tier does
+//    NOT depend on it: zddyr/xinghai already serve master.
+//  - huibq (lxmusicapi.onrender.com) returns 503 "Service Suspended"
+//    as of 2026-11-16 — the order-1 resolver is down (pre-existing,
+//    not caused by this change; the loop falls through to others).
+// Honesty rule: only resolvers with a real Master path may claim
+// Master (see [extraQuality]): at the master tier the resolver loop
+// drops every non-master candidate and downgrades to hires instead
+// of labelling a lesser stream as Master. The badge therefore shows
+// the tier actually played, never a Master label on a hires stream.
+// i18n note: this app has NO locale system (no .arb /
+// AppLocalizations; labels are hardcoded here, as for the other
+// tiers), so there is no qMaster locale key to add — Master reuses
+// the same hardcoded-label pattern ("Master").
 
-/// The four real quality tiers, best first.
-enum AudioQuality { hires, lossless, q320k, q128k }
+/// The five real quality tiers, best first.
+enum AudioQuality { master, hires, lossless, q320k, q128k }
 
 extension AudioQualityX on AudioQuality {
   String get code {
     switch (this) {
+      case AudioQuality.master:
+        return 'master';
       case AudioQuality.hires:
         return 'hires';
       case AudioQuality.lossless:
@@ -38,6 +51,8 @@ extension AudioQualityX on AudioQuality {
 
   static AudioQuality fromCode(String? code) {
     switch (code) {
+      case 'master':
+        return AudioQuality.master;
       case 'lossless':
         return AudioQuality.lossless;
       case '320k':
@@ -51,9 +66,11 @@ extension AudioQualityX on AudioQuality {
   }
 
   /// qLabel (app.js:2149): hires→Hi-Res 24bit, lossless→无损 FLAC,
-  /// 320k→高品质 320k, 128k→标准 128k.
+  /// 320k→高品质 320k, 128k→标准 128k. Master is the tier above Hi-Res.
   String get label {
     switch (this) {
+      case AudioQuality.master:
+        return 'Master';
       case AudioQuality.hires:
         return 'Hi-Res 24bit';
       case AudioQuality.lossless:
@@ -68,6 +85,8 @@ extension AudioQualityX on AudioQuality {
   /// Short badge label shown below the player cover.
   String get badgeLabel {
     switch (this) {
+      case AudioQuality.master:
+        return 'Master';
       case AudioQuality.hires:
         return 'Hi-Res';
       case AudioQuality.lossless:
@@ -81,6 +100,8 @@ extension AudioQualityX on AudioQuality {
 
   int get rank {
     switch (this) {
+      case AudioQuality.master:
+        return 5;
       case AudioQuality.hires:
         return 4;
       case AudioQuality.lossless:
@@ -95,6 +116,7 @@ extension AudioQualityX on AudioQuality {
 
 /// Downgrade chain from the requested tier (resolvers.js:383-385).
 const List<AudioQuality> kQualityChain = [
+  AudioQuality.master,
   AudioQuality.hires,
   AudioQuality.lossless,
   AudioQuality.q320k,
@@ -108,34 +130,50 @@ List<AudioQuality> qualityChainFrom(AudioQuality requested) {
 }
 
 /// Quality parameter mappings (resolvers.js:65-78).
-String srcQuality(AudioQuality q) =>
-    (q == AudioQuality.hires || q == AudioQuality.lossless) ? 'flac' : q.code;
+///
+/// Master maps to each API's BEST KNOWN parameter — never to a
+/// parameter the API does not understand, and never to a low tier:
+/// huibq/wwwweb get 'flac' (they have no master value), NCM-level
+/// APIs get 'lossless', bitrate APIs get their top value. Only
+/// [lxQuality] passes 'master' through, because the zddyr/xinghai
+/// LX APIs genuinely accept it (verified live, see header).
+String srcQuality(AudioQuality q) {
+  if (q == AudioQuality.master) return 'flac';
+  return (q == AudioQuality.hires || q == AudioQuality.lossless)
+      ? 'flac'
+      : q.code;
+}
 
 String songLevel(AudioQuality q) {
+  if (q == AudioQuality.master) return 'lossless';
   if (q == AudioQuality.hires || q == AudioQuality.lossless) return 'lossless';
   if (q == AudioQuality.q320k) return 'exhigh';
   return 'standard';
 }
 
 int gdBr(AudioQuality q) {
+  if (q == AudioQuality.master) return 999;
   if (q == AudioQuality.hires || q == AudioQuality.lossless) return 999;
   if (q == AudioQuality.q320k) return 320;
   return 128;
 }
 
 int kwBr(AudioQuality q) {
+  if (q == AudioQuality.master) return 1;
   if (q == AudioQuality.hires || q == AudioQuality.lossless) return 1;
   if (q == AudioQuality.q320k) return 2;
   return 3;
 }
 
 String lxQuality(AudioQuality q) {
+  if (q == AudioQuality.master) return 'master';
   if (q == AudioQuality.hires) return 'hires';
   if (q == AudioQuality.lossless) return 'flac';
   return q.code;
 }
 
 String wwwwebQuality(AudioQuality q, String platformCode) {
+  if (q == AudioQuality.master) return 'flac';
   if (platformCode == 'kw') {
     return (q == AudioQuality.hires || q == AudioQuality.lossless)
         ? '320k'
@@ -146,10 +184,57 @@ String wwwwebQuality(AudioQuality q, String platformCode) {
       : q.code;
 }
 
+/// Pick the quality string to ask an LX script for, given the
+/// qualities that script declares for the platform. Returns null
+/// when the script cannot serve the requested tier at all (the
+/// caller then skips the script; the resolver chain downgrades).
+/// - master: only a literal 'master' counts — never substitute hires.
+/// - hires: 'hires', else 'flac24bit', else 'flac'.
+/// - lossless: 'flac', else 'flac24bit'.
+String? lxQualityForScript(AudioQuality q, List<String> available) {
+  switch (q) {
+    case AudioQuality.master:
+      return available.contains('master') ? 'master' : null;
+    case AudioQuality.hires:
+      if (available.contains('hires')) return 'hires';
+      if (available.contains('flac24bit')) return 'flac24bit';
+      if (available.contains('flac')) return 'flac';
+      return null;
+    case AudioQuality.lossless:
+      if (available.contains('flac')) return 'flac';
+      if (available.contains('flac24bit')) return 'flac24bit';
+      return null;
+    case AudioQuality.q320k:
+      return available.contains('320k') ? '320k' : null;
+    case AudioQuality.q128k:
+      return available.contains('128k') ? '128k' : null;
+  }
+}
+
 /// extraQuality: what a resolver ACTUALLY returns at the requested tier
 /// (resolvers.js:82-96). Used for candidate sorting and the quality badge.
 /// Undeclared resolvers count as 320k.
+///
+/// Master gate: only resolvers with a verified real Master path may
+/// claim Master — 'ikun' (direct ikun API, quality=master), 'zddyr'
+/// and 'xinghai' (LX APIs, quality=master verified live 2026-11-16),
+/// and 'lx:*' script resolvers (the engine only creates a master job
+/// when the script lists 'master' for the platform). Every other
+/// resolver caps at hires: its best output at the master tier is a
+/// hires-level stream, and the resolver loop drops non-master
+/// candidates at that tier, so these never surface as Master.
 AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
+  if (q == AudioQuality.master) {
+    switch (key) {
+      case 'ikun':
+      case 'zddyr':
+      case 'xinghai':
+        return AudioQuality.master;
+      default:
+        if (key.startsWith('lx:')) return AudioQuality.master;
+        return AudioQuality.hires;
+    }
+  }
   switch (key) {
     case 'gd':
     case 'yutang':

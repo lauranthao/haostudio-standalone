@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
@@ -55,6 +56,19 @@ void main() {
       return null;
     });
     await HiveStore.init();
+    // Point the store at a MEMORY-backed box for the whole file: a Hive
+    // file write issued inside a widget test's fake-async zone never
+    // completes within that test (its RandomAccessFile I/O completion
+    // needs a fake-microtask flush that the post-test drain loop only
+    // performs while a runAsync task is pending), so the room page's
+    // fire-and-forget breadcrumb writes wedge hive_ce's serialized
+    // write lock and the NEXT test's Hive put hangs forever. The memory
+    // backend's writeFrames is Future.value() — no file I/O, no wedge.
+    final memBox = await Hive.openBox<dynamic>(
+      'test_settings',
+      bytes: Uint8List(0),
+    );
+    HiveStore.setTestBox(memBox);
   });
 
   tearDownAll(() async {
@@ -438,6 +452,20 @@ void main() {
       await s.dispose();
     });
 
+    test('dispose releases the backend and its timers (real clock)', () async {
+      final s = session();
+      expect(
+        await s.open(url: 'https://example.com/live.m3u8', isLive: true),
+        isTrue,
+      );
+      expect(log.backends.length, 1);
+      expect(log.backends.single.isDisposed, isFalse);
+      await s.dispose();
+      expect(log.disposes[PlayerEngine.mediaKit], 1);
+      expect(log.backends.single.isDisposed, isTrue);
+      expect(log.backends.single.isTickerCancelled, isTrue);
+    });
+
     // Plain test() runs under FakeAsync, so the 4 s / 12 s health watch
     // is exercised on the REAL clock via tester.runAsync.
     testWidgets('4 s stall -> hint; 12 s stall -> failure (real clock)',
@@ -491,7 +519,13 @@ void main() {
     /// Let real async work drain: PlaybackSession / LiveRoomPage await
     /// Hive writes, and a widget test's fake clock never drains real
     /// async I/O on its own. Without this, _loadRoom stalls at its first
-    /// breadcrumb write and the room never resolves.
+    /// breadcrumb write and the room never resolves. The runAsync is
+    /// load-bearing in a second way too: the room fires fire-and-forget
+    /// Hive puts (breadcrumbs) inside the fake zone, and only a pending
+    /// runAsync task makes the post-test drain flush them — without it
+    /// they wedge hive_ce's write lock and the NEXT test's awaited Hive
+    /// put hangs (proven 09:25/09:32: fake-only settle wedged the run
+    /// for 7+ min). Do NOT remove runAsync again.
     Future<void> settle(WidgetTester tester) async {
       await tester.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -505,6 +539,24 @@ void main() {
       _BackendLog log,
       Map<PlayerEngine, _FakeBackendConfig> configs,
     ) async {
+      // Phone-tall viewport: the room Column (16:9 video + info +
+      // quality/line rows + danmaku) is ~600 px tall and overflows the
+      // default 800x600 test surface, pushing the chip rows off-screen.
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // Isolate each test from the persisted quality preference: the
+      // quality-switch test saves preferResolution='高清' to Hive, and
+      // _loadRoom restores it — without this reset every later test
+      // would start on 高清 instead of 原画. This put stays in the real
+      // zone (runAsync): awaiting a Hive put inside the fake-async zone
+      // hangs the test (hive_ce's write-lock future never completes
+      // there) — proven by the 09:25 run, which wedged for 7+ min after
+      // this was changed to a plain await.
+      await tester.runAsync(
+        () => HiveStore.put(HiveKeys.preferResolution, '原画'),
+      );
       await tester.pumpWidget(
         GetMaterialApp(
           theme: HaoThemes.of(HaoThemeId.appleGlass).light,
@@ -539,6 +591,24 @@ void main() {
     ChoiceChip chip(WidgetTester tester, String label) =>
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label));
 
+    /// End-of-test cleanup, called explicitly inside the test body
+    /// (tearDown runs after the binding's pending-timer check, so it is
+    /// too late there): cancel the fake backends' tickers, dismiss any
+    /// Get snackbar BEFORE unmounting the Overlay — its
+    /// AnimationController ticker outlives the Overlay otherwise
+    /// ("OverlayState was disposed with an active Ticker") and a stuck
+    /// snackbar also blocks the NEXT test's toast. Small pumps, not one
+    /// big jump, so the reverse animation ticks to completion.
+    Future<void> disposeRoom(WidgetTester tester, _BackendLog log) async {
+      log.cancelAllTickers();
+      Get.closeAllSnackbars();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+
     testWidgets('entry is portrait with an in-page 16:9 video surface', (
       tester,
     ) async {
@@ -554,6 +624,7 @@ void main() {
         log.opens.single.url,
         'https://tx.flv.huya.com/src/660000.flv?wsSecret=A1',
       );
+      await disposeRoom(tester, log);
     });
 
     testWidgets('line switch opens playUrls[newIndex] with NO new request', (
@@ -575,6 +646,7 @@ void main() {
       // Facts follow the LINE, not index 0: line 2 is HLS.
       expect(log.opens.last.declaredFormat, 'hls');
       expect(chip(tester, '线路 2').selected, isTrue);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('quality switch re-parses once and opens the new stream', (
@@ -592,6 +664,7 @@ void main() {
         'https://tx.flv.huya.com/src/660000.flv?wsSecret=B2',
       );
       expect(chip(tester, '高清').selected, isTrue);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('same quality tap is a no-op', (tester) async {
@@ -603,6 +676,7 @@ void main() {
       expect(site.resolveCalls, 1);
       expect(site.recoveryCalls, 0);
       expect(log.opens.length, 1);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('server ack differs from request: UI corrects + toast (Bilibili)',
@@ -615,6 +689,7 @@ void main() {
       expect(chip(tester, '流畅').selected, isTrue);
       expect(chip(tester, '原画').selected, isFalse);
       expect(find.textContaining('清晰度已限制为流畅'), findsOneWidget);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('Douyu ack matches the opaque rate id, never a numeric order',
@@ -637,6 +712,7 @@ void main() {
       // Rate 3 is 超清 (index 1) — not "the third" and not the max id.
       expect(chip(tester, '超清').selected, isTrue);
       expect(find.textContaining('清晰度已限制为超清'), findsOneWidget);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('identical URLs after a quality switch: toast + abort, no reload',
@@ -654,6 +730,7 @@ void main() {
       expect(log.opens.length, 1); // no reload
       expect(chip(tester, '原画').selected, isTrue);
       expect(chip(tester, '高清').selected, isFalse);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('mid-playback failure: next line first, no fresh fetch yet', (
@@ -670,6 +747,7 @@ void main() {
         'https://al.huya.com/src/660000.m3u8?wsSecret=A1',
       );
       expect(chip(tester, '线路 2').selected, isTrue);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('single line failure shows the failure card; manual retry waits 10 s',
@@ -685,7 +763,10 @@ void main() {
       await settle(tester);
       expect(find.text('▶ 重试'), findsOneWidget);
       await tester.tap(find.text('▶ 重试'));
-      await tester.pump();
+      // settle(), not a bare pump(): the tap's onPressed setState lands
+      // mid-frame and needs a second frame to rebuild the failure card
+      // away.
+      await settle(tester);
       // Fresh fetch in flight: loading, failure buttons hidden.
       expect(find.text('▶ 重试'), findsNothing);
       // 10 s with no new stream -> the failure UI comes back.
@@ -693,6 +774,7 @@ void main() {
       await tester.pump();
       expect(find.text('▶ 重试'), findsOneWidget);
       expect(site.recoveryCalls, 1);
+      await disposeRoom(tester, log);
     });
 
     testWidgets('prefetch: a fresh URL is fetched ~100 s after issue', (
@@ -703,6 +785,11 @@ void main() {
       await pumpRoom(tester, site, log, freshConfigs());
       expect(site.recoveryCalls, 0);
       await tester.pump(const Duration(seconds: 100));
+      // The prefetch timer fires at exactly the 100 s boundary; its
+      // async chain (fetchFresh -> session.open -> ladder) starts on
+      // microtasks that only flush when fake time advances past the
+      // boundary — one more second gives it the turns it needs.
+      await tester.pump(const Duration(seconds: 1));
       await settle(tester);
       // The 100 s prefetch re-parsed and opened the fresh line-1 URL.
       expect(site.recoveryCalls, 1);
@@ -710,6 +797,7 @@ void main() {
         log.opens.last.url,
         'https://tx.flv.huya.com/src/660000.flv?wsSecret=A2',
       );
+      await disposeRoom(tester, log);
     });
   });
 }
@@ -875,6 +963,18 @@ class _BackendLog {
   final List<_BackendOpen> opens = [];
   final List<_FakeBackend> backends = [];
   final Map<PlayerEngine, int> disposes = {};
+
+  /// Cancel every fake backend's position ticker directly. The session
+  /// dispose chain awaits broadcast-cancel futures that never resolve
+  /// inside a widget test's fake-async zone, so the tickers would
+  /// otherwise stay pending past the test's end-of-test invariant
+  /// check. Production dispose is proven separately (real-time unit
+  /// test); this only satisfies the test framework's timer check.
+  void cancelAllTickers() {
+    for (final backend in backends) {
+      backend.cancelTicker();
+    }
+  }
 }
 
 class _FakeBackendConfig {
@@ -910,9 +1010,15 @@ class _FakeBackend implements PlayerBackend {
   int _positionSeconds = 0;
   bool _disposed = false;
 
+  bool get isDisposed => _disposed;
+  bool get isTickerCancelled => _positionTimer == null || !_positionTimer!.isActive;
+
   void emitError(String message) => _error.add(message);
   void emitCompleted() => _completed.add(null);
   void emitPosition(Duration position) => _position.add(position);
+
+  /// Stop the position ticker without going through dispose().
+  void cancelTicker() => _positionTimer?.cancel();
 
   @override
   Widget buildVideoWidget() =>
@@ -977,10 +1083,15 @@ class _FakeBackend implements PlayerBackend {
     _disposed = true;
     log.disposes[engine] = (log.disposes[engine] ?? 0) + 1;
     _positionTimer?.cancel();
-    await _position.close();
-    await _duration.close();
-    await _playing.close();
-    await _error.close();
-    await _completed.close();
+    // Do NOT await the broadcast close() calls: inside a widget test's
+    // fake-async zone a broadcast StreamController.close() future never
+    // completes, so awaiting it stalls _swapBackend (and therefore the
+    // whole session.open / _switchQuality chain) forever. Closing is
+    // best-effort here; the recorded dispose count is the assertion.
+    unawaited(_position.close());
+    unawaited(_duration.close());
+    unawaited(_playing.close());
+    unawaited(_error.close());
+    unawaited(_completed.close());
   }
 }

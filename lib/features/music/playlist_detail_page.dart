@@ -15,6 +15,7 @@ import 'artist_detail_page.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 class PlaylistDetailPage extends StatefulWidget {
   const PlaylistDetailPage({super.key, required this.playlistId});
@@ -284,6 +285,8 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                               ),
                             ),
                           ),
+                          onLongPress: () =>
+                              unawaited(openTrackMoreSheet(context, song)),
                         ),
                       );
                     },

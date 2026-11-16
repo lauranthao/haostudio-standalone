@@ -23,6 +23,7 @@ import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
@@ -515,6 +516,8 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                               await _player.toggleFav(song);
                               setState(() {});
                             },
+                            onLongPress: () =>
+                                unawaited(openTrackMoreSheet(context, song)),
                           );
                         },
                       ),

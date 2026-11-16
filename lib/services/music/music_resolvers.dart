@@ -22,6 +22,8 @@ import 'package:dio/dio.dart';
 
 import '../../core/network/http_client.dart';
 import '../../core/storage/hive_store.dart';
+import 'lx_script_engine.dart';
+import 'lx_script_store.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
 
@@ -62,6 +64,14 @@ typedef _ResolverFn = Future<String> Function(
   AudioQuality quality,
   String title,
 );
+
+/// One collection job: a built-in resolver or an LX script job, unified
+/// so [_collectAt] runs both in the same parallel batch.
+typedef _Job = ({
+  String key,
+  String name,
+  _ResolverFn fn,
+});
 
 class _Resolver {
   _Resolver({
@@ -105,9 +115,16 @@ class _PlayUrlCache {
 }
 
 class MusicResolvers {
-  MusicResolvers({Dio? dio}) : _dio = dio ?? sharedDio();
+  MusicResolvers({Dio? dio, LxScriptEngine? scriptEngine})
+      : _dio = dio ?? sharedDio(),
+        _scriptEngine = scriptEngine ?? LxScriptEngine.instance;
 
   final Dio _dio;
+
+  /// LX script engine (M-P0-6). Defaults to the process singleton;
+  /// tests pass their own engine (or a never-initialised one to
+  /// disable script jobs entirely).
+  final LxScriptEngine _scriptEngine;
   final _cache = _PlayUrlCache();
 
   String? _huibqKey;
@@ -266,6 +283,38 @@ class MusicResolvers {
           enabled: true,
           order: 1,
           fn: (id, pf, q, title) => _huibqUrl(id, pf, q),
+        ),
+        _Resolver(
+          key: 'ikun',
+          name: 'ikun',
+          platforms: const [MusicPlatform.wy],
+          enabled: true,
+          order: 2,
+          fn: (id, pf, q, title) async {
+            // Master only: the ikun API is the only direct resolver
+            // with a distinct master tier (quality=master). Other
+            // tiers already have many resolvers; asking ikun for them
+            // would only add load on a fragile API.
+            // STATUS 2026-11-16: api.ikunshare.com is DEAD from this
+            // VM (empty replies, http+https) — this resolver returns ''
+            // until the API revives. Master does not depend on it:
+            // zddyr/xinghai serve master live (see music_quality.dart).
+            // iOS note: plain http:// — blocked by ATS unless an
+            // exception is added; zddyr/xinghai are https.
+            if (q != AudioQuality.master) return '';
+            final j = await _fetchJson(
+              'http://api.ikunshare.com/url?source=wy&songId=${Uri.encodeComponent(id)}&quality=master',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'lx-music-request/1.0',
+                'X-Request-Key': '',
+              },
+              timeout: const Duration(seconds: 8),
+            );
+            return (j != null && j['code'] == 200)
+                ? toHttps(j['url']?.toString() ?? '')
+                : '';
+          },
         ),
         _Resolver(
           key: 'tang',
@@ -530,8 +579,10 @@ class MusicResolvers {
           order: 130,
           fn: (id, pf, q, title) async {
             if (title.isEmpty) return '';
-            // Refuses hires/lossless outright (returns empty → downgrade).
-            if (q == AudioQuality.hires || q == AudioQuality.lossless) {
+            // Refuses master/hires/lossless outright (returns empty → downgrade).
+            if (q == AudioQuality.master ||
+                q == AudioQuality.hires ||
+                q == AudioQuality.lossless) {
               return '';
             }
             final j = await _fetchJson(
@@ -561,9 +612,22 @@ class MusicResolvers {
     MusicPlatform pf,
     String title,
   ) async {
-    final jobs = _applicable(pf);
+    final builtin = _applicable(pf);
+    // LX script jobs (M-P0-6): kick off engine load on first use; jobs
+    // appear once the engine has loaded, so the first resolve after
+    // launch may predate them — later resolves include them.
+    unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
+    final song = Song(songId: songId, title: title, platform: pf);
+    final scriptJobs = _scriptEngine.scriptJobsFor(pf, q, song);
+    final jobs = <_Job>[
+      for (final r in builtin) (key: r.key, name: r.name, fn: r.fn),
+      for (final s in scriptJobs)
+        (key: s.key, name: s.name, fn: (_, _, _, _) => s.fn()),
+    ];
     if (jobs.isEmpty) return [];
-    final isHi = q == AudioQuality.hires || q == AudioQuality.lossless;
+    final isHi = q == AudioQuality.master ||
+        q == AudioQuality.hires ||
+        q == AudioQuality.lossless;
     final results = List<String?>.filled(jobs.length, null);
     var done = 0;
     var finished = false;
@@ -606,8 +670,14 @@ class MusicResolvers {
           results[i] = u;
           if (u.isNotEmpty) {
             final ql = extraQuality(jobs[i].key, q, pf.code);
+            // Hi tiers finish early only on a candidate AT the tier
+            // (master: only a real master candidate counts — a
+            // hires-level answer must not cut the master wait short).
             final early = isHi
-                ? (ql == AudioQuality.lossless || ql == AudioQuality.hires)
+                ? (q == AudioQuality.master
+                    ? ql == AudioQuality.master
+                    : (ql == AudioQuality.lossless ||
+                        ql == AudioQuality.hires))
                 : results.where((r) => r != null && r.isNotEmpty).length == 1;
             if (early) {
               Timer(const Duration(milliseconds: 350), finish);
@@ -638,7 +708,14 @@ class MusicResolvers {
     final cached = _cache.get(cacheKey);
     if (cached != null) return cached;
     for (final tier in qualityChainFrom(quality)) {
-      final cands = await _collectAt(tier, songId, platform, title);
+      var cands = await _collectAt(tier, songId, platform, title);
+      if (tier == AudioQuality.master) {
+        // Master honesty gate: only a genuine master candidate may
+        // satisfy the master tier. Anything lesser is dropped and the
+        // loop downgrades to hires instead of mislabelling it Master.
+        cands =
+            cands.where((c) => c.quality == AudioQuality.master).toList();
+      }
       if (cands.isNotEmpty) {
         final result = PlayUrlResult(
           url: cands.first.url,
@@ -653,10 +730,11 @@ class MusicResolvers {
     return null;
   }
 
-  /// Resolver inventory (for settings / debugging).
+  /// Resolver inventory (for settings / debugging). Script resolvers
+  /// (M-P0-6) are appended once the engine has loaded them.
   List<({String key, String name, List<MusicPlatform> platforms, bool enabled, int order})>
       listResolvers() {
-    return _resolvers
+    final out = _resolvers
         .map(
           (r) => (
             key: r.key,
@@ -668,5 +746,24 @@ class MusicResolvers {
         )
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+    for (final info in _scriptEngine.scripts) {
+      if (!info.loaded) continue;
+      final pfs = <MusicPlatform>[];
+      for (final s in info.sources) {
+        if (const ['wy', 'tx', 'kg', 'kw', 'mg'].contains(s.platform)) {
+          pfs.add(MusicPlatformX.fromCode(s.platform));
+        }
+      }
+      out.add(
+        (
+          key: 'lx:${info.id}',
+          name: info.name,
+          platforms: pfs,
+          enabled: LxScriptSourcesStore.isEnabled(info.id),
+          order: 2,
+        ),
+      );
+    }
+    return out;
   }
 }

@@ -125,15 +125,12 @@ class LiveSourcesStore {
 
 /// Danmaku settings.
 //
-// HONEST STATUS (2026-11-16): the live room renders danmaku as a plain
-// scrolling list under the video (live_room_page.dart) and does NOT yet
-// read these keys — that file belongs to the player work. These settings
-// ARE persisted here the moment the user changes them, and the room page
-// only has to read [DanmakuSettings] to honour them; the settings page
-// says so on-screen instead of pretending the toggles already work.
-// Speed / area have no control at all: a list has no scroll speed and
-// no overlay area to size, so they are shown as explanatory text, not
-// sliders.
+// The live room reads these keys (live_room_page.dart) and honours
+// them: per-platform on/off gates the transport, font size + opacity
+// style the list, and a Hive listenable applies changes while the room
+// is open, no restart. Speed / area have no control at all: a list has
+// no scroll speed and no overlay area to size, so they are shown as
+// explanatory text, not sliders.
 class DanmakuSettings {
   static const double defaultFontSize = 14;
   static const double minFontSize = 12;
@@ -204,6 +201,193 @@ class DanmakuSettings {
     final b = _safeBox(box);
     if (b == null) return;
     await b.put(HiveKeys.danmakuOpacity, value.clamp(minOpacity, maxOpacity));
+  }
+
+  // -- Chat-list style (S2) -------------------------------------------
+  //
+  // The list font size is the existing [fontSize] setting (it already
+  // styles the list); these three are the remaining S2 controls.
+
+  /// 'compact' (one line per message, default) or 'card'.
+  static const String listStyleCompact = 'compact';
+  static const String listStyleCard = 'card';
+
+  static String listStyle({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final raw = b?.get(HiveKeys.danmakuListStyle);
+    if (raw is String && raw == listStyleCard) return listStyleCard;
+    return listStyleCompact;
+  }
+
+  static Future<void> setListStyle(String value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuListStyle,
+      value == listStyleCard ? listStyleCard : listStyleCompact,
+    );
+  }
+
+  /// 'compact' | 'standard' (default) | 'loose'. Mirrors Pure Live's
+  /// ChatSpacing: gaps halved / as-is / x1.5, text height 1.4 /
+  /// theme default / 1.7.
+  static const String listSpacingCompact = 'compact';
+  static const String listSpacingStandard = 'standard';
+  static const String listSpacingLoose = 'loose';
+
+  static String listSpacing({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final raw = b?.get(HiveKeys.danmakuListSpacing);
+    if (raw is String &&
+        (raw == listSpacingCompact || raw == listSpacingLoose)) {
+      return raw;
+    }
+    return listSpacingStandard;
+  }
+
+  static Future<void> setListSpacing(
+    String value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    final v = value == listSpacingCompact || value == listSpacingLoose
+        ? value
+        : listSpacingStandard;
+    await b.put(HiveKeys.danmakuListSpacing, v);
+  }
+
+  /// Show the sender name in the chat list. Default true.
+  static bool showUsernames({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuShowUsernames);
+    if (v is bool) return v;
+    return true;
+  }
+
+  static Future<void> setShowUsernames(
+    bool value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuShowUsernames, value);
+  }
+
+  // -- Content filtering (S3) -----------------------------------------
+  //
+  // Defaults: similarity ON at 85 (Pure Live's threshold; this app
+  // defaults the filter on, Pure Live defaults it off), pure-emoji /
+  // overlong / Douyu-bot OFF (they hide content a user may want, so
+  // they are opt-in). Overlong length defaults to 30, Pure Live's
+  // default, clamped 10..100 like Pure Live.
+
+  static const int defaultSimilarityThreshold = 85;
+  static const int minSimilarityThreshold = 0;
+  static const int maxSimilarityThreshold = 100;
+
+  static const int defaultBlockLongLength = 30;
+  static const int minBlockLongLength = 10;
+  static const int maxBlockLongLength = 100;
+
+  static bool similarityEnabled({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuSimilarityEnabled);
+    if (v is bool) return v;
+    return true;
+  }
+
+  static Future<void> setSimilarityEnabled(
+    bool value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuSimilarityEnabled, value);
+  }
+
+  static int similarityThreshold({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = (b?.get(HiveKeys.danmakuSimilarityThreshold) as num?)?.toInt();
+    if (v == null) return defaultSimilarityThreshold;
+    return v.clamp(minSimilarityThreshold, maxSimilarityThreshold);
+  }
+
+  static Future<void> setSimilarityThreshold(
+    int value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuSimilarityThreshold,
+      value.clamp(minSimilarityThreshold, maxSimilarityThreshold),
+    );
+  }
+
+  static bool blockEmoteOnly({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuBlockEmoteOnly);
+    if (v is bool) return v;
+    return false;
+  }
+
+  static Future<void> setBlockEmoteOnly(
+    bool value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuBlockEmoteOnly, value);
+  }
+
+  static bool blockLong({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuBlockLong);
+    if (v is bool) return v;
+    return false;
+  }
+
+  static Future<void> setBlockLong(bool value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuBlockLong, value);
+  }
+
+  static int blockLongLength({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = (b?.get(HiveKeys.danmakuBlockLongLength) as num?)?.toInt();
+    if (v == null) return defaultBlockLongLength;
+    return v.clamp(minBlockLongLength, maxBlockLongLength);
+  }
+
+  static Future<void> setBlockLongLength(
+    int value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuBlockLongLength,
+      value.clamp(minBlockLongLength, maxBlockLongLength),
+    );
+  }
+
+  /// Douyu suspected-automated-message filter. Default false.
+  static bool douyuBotFilter({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuDouyuBotFilter);
+    if (v is bool) return v;
+    return false;
+  }
+
+  static Future<void> setDouyuBotFilter(
+    bool value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuDouyuBotFilter, value);
   }
 }
 

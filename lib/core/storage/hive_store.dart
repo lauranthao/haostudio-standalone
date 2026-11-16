@@ -5,6 +5,7 @@
 // explicitly. Settings keys follow Pure Live where the setting is ported
 // (videoPlayerKey, preferResolution, preferResolutionCellular).
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 class HiveStore {
@@ -18,6 +19,13 @@ class HiveStore {
   static Future<void> init() async {
     await Hive.initFlutter();
     _box = await Hive.openBox<dynamic>(boxName);
+  }
+
+  /// Test-only: point the store at an opened test box instead of the
+  /// real `app_settings` box. Never used in production code.
+  @visibleForTesting
+  static void setTestBox(Box<dynamic> box) {
+    _box = box;
   }
 
   static Box<dynamic> get box => _box;
@@ -62,17 +70,28 @@ class HiveKeys {
   /// Durations are stored in SECONDS (audit P0-3).
   static const String musicQuality = 'musicQuality'; // 'hires' default
   static const String musicLists = 'hao_lists'; // [UserPlaylist]
-  static const String musicFav = 'hao_fav'; // ['wy|songId', ...]
+  static const String musicFav = 'hao_fav'; // [{key, song?}] — full Song
+  // JSON is stored with each favourite (M-P0-7) so the favourites page
+  // can list songs; legacy key-only entries ({key} only) still read.
   static const String musicRecent = 'hao_recent'; // [Song] max 100
   static const String musicListen = 'hao_listen'; // [ListenEvent] max 3000
   static const String musicPlazaPf = 'musicPlazaPf'; // 'wy' default
   static const String musicVolume = 'musicVolume'; // double 0..1
+  static const String musicSpeed = 'musicSpeed'; // double 0.6..2.0, default 1.0 (M-P0-2)
+  static const String musicQueue = 'musicQueue'; // {songs: [Song], index: int} (M-P0-4)
+  static const String musicDownloads = 'musicDownloads'; // [DownloadedSong] (M-P0-5)
   static const String musicResume = 'musicResume'; // {identityKey: seconds}
   static const String musicCurListId = 'curListId';
-  static const String musicPlayMode = 'playMode'; // 'seq' | 'shuffle'
+  static const String musicPlayMode = 'playMode'; // 'seq' | 'loop' | 'one' | 'shuffle' | 'once'
 
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
+
+  /// VOD auto-play next episode (`hao_video_auto_next`): bool,
+  /// default true. When off, playback stops at the end of the
+  /// episode (end state, no advance). Read by the native VOD player
+  /// on completion and by the settings toggle.
+  static const String videoAutoNext = 'hao_video_auto_next';
 
   /// Video home cache (fix 13): cached home rows JSON, rendered
   /// immediately while fresh data loads in the background.
@@ -113,6 +132,20 @@ class HiveKeys {
   /// when absent. At least one must remain enabled.
   static const String liveSources = 'hao_live_sources';
 
+  /// Live watch history (L01, `hao_live_hist`): JSON list of
+  /// LiveHistoryEntry, most recent first, default max 50.
+  static const String liveHistory = 'hao_live_hist';
+
+  /// Live history limit (`hao_live_hist_limit`): int, 0 = unlimited,
+  /// default 50. Mirrors the video-history limit pattern.
+  static const String liveHistoryLimit = 'hao_live_hist_limit';
+
+  /// Live follows (L03, `hao_live_follows`): JSON list of LiveFollow,
+  /// most recently followed first. NOTE: no follow store existed in
+  /// the Flutter app before L03 — this is the first one (the web app's
+  /// flat follow list was never ported).
+  static const String liveFollows = 'hao_live_follows';
+
   /// Danmaku settings (settings page persists; the live room reads
   /// them once its danmaku wiring lands — see DanmakuSettings).
   /// Per-platform enable map: JSON {siteId: bool}.
@@ -120,6 +153,63 @@ class HiveKeys {
 
   /// Danmaku list font size (double, 12..20, default 14).
   static const String danmakuFontSize = 'hao_danmaku_font_size';
+
+  /// Danmaku block list (S3/S4, `hao_dm_block`): JSON list of
+  /// {id, text, kind} where kind is 'word' (keyword, substring match
+  /// on the message) or 'user' (username, substring match). Same
+  /// shape and match semantics as the web app's `hao_dm_block`.
+  static const String danmakuBlockList = 'hao_dm_block';
+
+  /// Danmaku chat-list style (S2, `hao_danmaku_list_style`):
+  /// 'compact' (one line per message, default) or 'card'.
+  static const String danmakuListStyle = 'hao_danmaku_list_style';
+
+  /// Danmaku chat-list line spacing (S2, `hao_danmaku_list_spacing`):
+  /// 'compact' | 'standard' (default) | 'loose'. Mirrors Pure Live's
+  /// ChatSpacing (gaps halved / as-is / x1.5; text height 1.4 / theme
+  /// default / 1.7).
+  static const String danmakuListSpacing = 'hao_danmaku_list_spacing';
+
+  /// Show the sender name in the danmaku chat list (S2,
+  /// `hao_danmaku_show_names`): bool, default true.
+  static const String danmakuShowUsernames = 'hao_danmaku_show_names';
+
+  /// Similarity filter on/off (S3, `hao_danmaku_similarity`): bool,
+  /// default true (this app's choice — Pure Live defaults it off).
+  static const String danmakuSimilarityEnabled = 'hao_danmaku_similarity';
+
+  /// Similarity threshold (S3, `hao_danmaku_similarity_threshold`):
+  /// int 0..100 (partial-ratio score), default 85 (Pure Live's
+  /// default).
+  static const String danmakuSimilarityThreshold =
+      'hao_danmaku_similarity_threshold';
+
+  /// Block pure-emoji danmaku (S3, `hao_danmaku_block_emote`): bool,
+  /// default false.
+  static const String danmakuBlockEmoteOnly = 'hao_danmaku_block_emote';
+
+  /// Block overlong danmaku (S3, `hao_danmaku_block_long`): bool,
+  /// default false.
+  static const String danmakuBlockLong = 'hao_danmaku_block_long';
+
+  /// Overlong length limit in characters (S3,
+  /// `hao_danmaku_block_long_len`): int 10..100, default 30 (Pure
+  /// Live's default).
+  static const String danmakuBlockLongLength = 'hao_danmaku_block_long_len';
+
+  /// Douyu suspected-automated-message filter (S3,
+  /// `hao_danmaku_douyu_bot`): bool, default false. Hides Douyu
+  /// chatmsg packets Pure Live tags as suspected automated
+  /// (no `dms` field and `if` != '1'); other platforms unaffected.
+  static const String danmakuDouyuBotFilter = 'hao_danmaku_douyu_bot';
+
+  /// LX script sources (M-P0-6): disabled script ids (`hao_lx_disabled`,
+  /// JSON list; absent = all enabled) and user-added custom scripts
+  /// (`hao_lx_custom`, JSON list of {id, name, url, code, addedAt}).
+  /// Scripts are additive to the built-in resolvers — no "at least one"
+  /// guard, unlike the platform source groups.
+  static const String lxScriptDisabled = 'hao_lx_disabled';
+  static const String lxCustomScripts = 'hao_lx_custom';
 
   /// Danmaku list text opacity (double, 0.3..1.0, default 1.0).
   static const String danmakuOpacity = 'hao_danmaku_opacity';

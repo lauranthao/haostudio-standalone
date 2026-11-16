@@ -191,6 +191,7 @@ class LiveMessage {
     this.isOwn = false,
     this.type = LiveMessageType.chat,
     this.data,
+    this.suspectedAutomated = false,
   });
 
   final String message;
@@ -205,4 +206,10 @@ class LiveMessage {
   /// Kind-specific payload — a [LiveSuperChatMessage] when [type] is
   /// [LiveMessageType.superChat], null otherwise.
   final dynamic data;
+
+  /// Douyu only: Pure Live's suspected-automated tag — a `chatmsg`
+  /// with no `dms` field and `if` != '1'. The Douyu transport sets
+  /// it; every other adapter leaves it false. The S3 Douyu-bot
+  /// filter hides tagged messages when enabled.
+  final bool suspectedAutomated;
 }

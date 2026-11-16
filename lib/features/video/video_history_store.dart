@@ -65,6 +65,21 @@ class VideoHistoryStore {
     await HiveStore.put(HiveKeys.videoHistory, '[]');
   }
 
+  /// Clear history AND all saved resume positions (history page
+  /// "清空"). Clearing only the list would leave stale "继续播放"
+  /// buttons on detail pages for videos no longer in history.
+  static Future<void> clearAll() async {
+    await clear();
+    final box = HiveStore.box;
+    final keys = box.keys
+        .whereType<String>()
+        .where((k) => k.startsWith(HiveKeys.videoResumePrefix))
+        .toList();
+    for (final k in keys) {
+      await HiveStore.delete(k);
+    }
+  }
+
   // -- Resume (vodLocalSave / vodLocalLoad) -------------------------------
 
   static String _resumeKey(dynamic source, String vodId) =>
@@ -190,6 +205,24 @@ class VideoHistoryStore {
       jsonEncode(list.take(20).toList()),
     );
   }
+}
+
+/// VOD playback preferences (V-P0-2).
+///
+/// Auto-play-next defaults to ON; the reader never throws (uninitialised
+/// Hive in a unit test falls back to the default, like
+/// [VideoSourcesStore.getAll]).
+class VideoPlaybackSettings {
+  static bool get autoNext {
+    try {
+      return HiveStore.getBool(HiveKeys.videoAutoNext, true);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> setAutoNext(bool value) =>
+      HiveStore.put(HiveKeys.videoAutoNext, value);
 }
 
 /// User-editable CMS source list (`hao_sa_video`).

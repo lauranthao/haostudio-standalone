@@ -21,6 +21,7 @@ import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'plaza_page.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 enum _SearchType { song, playlist, artist }
 
@@ -250,6 +251,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
               onOpenAlbum: song.album.isEmpty
                   ? null
                   : () => _openAlbum(song),
+              onLongPress: () => unawaited(openTrackMoreSheet(context, song)),
             );
           },
         );

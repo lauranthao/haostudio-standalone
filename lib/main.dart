@@ -19,6 +19,7 @@ import 'package:get/get.dart';
 import 'core/storage/hive_store.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/live/live_breadcrumb.dart';
+import 'features/settings/update_dialog.dart';
 import 'services/update_service.dart';
 import 'widgets/app_shell.dart';
 
@@ -36,15 +37,18 @@ Future<void> main() async {
   themeController.loadFromBox(HiveStore.box);
 
   // Automatic update check, 2 s after start, at most once per 20 h.
-  // Silent when throttled / up to date / fetch fails (fix 8).
+  // Silent when throttled / up to date / fetch fails (fix 8). When a
+  // newer version IS found, show the same download dialog as the
+  // manual check — not just a snackbar.
   final updateService = UpdateService();
   unawaited(
     Future<void>.delayed(const Duration(seconds: 2), () async {
       final info = await updateService.checkAuto();
-      if (info != null) {
-        await updateService.recordKnownUpdate(info.version);
-        Get.snackbar('发现新版本', '发现新版本 v${info.version}');
-      }
+      if (info == null) return;
+      await updateService.recordKnownUpdate(info.version);
+      final context = Get.context;
+      if (context == null || !context.mounted) return;
+      await showUpdateDialog(context, info, service: updateService);
     }),
   );
 

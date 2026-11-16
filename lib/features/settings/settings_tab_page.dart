@@ -32,10 +32,12 @@ import '../../core/theme/theme_controller.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
 import '../live/live_breadcrumb.dart';
+import '../video/video_history_store.dart';
 import 'cache_settings_page.dart';
 import 'danmaku_settings_page.dart';
 import 'live_sources_page.dart';
 import 'music_sources_page.dart';
+import 'update_dialog.dart';
 import 'video_sources_page.dart';
 
 class SettingsTabPage extends StatefulWidget {
@@ -47,12 +49,14 @@ class SettingsTabPage extends StatefulWidget {
 
 class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _engineKey;
+  late bool _autoNext;
   final _updateService = UpdateService();
 
   @override
   void initState() {
     super.initState();
     _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
+    _autoNext = VideoPlaybackSettings.autoNext;
   }
 
   @override
@@ -198,6 +202,22 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           ),
           const SizedBox(height: 24),
           _SectionTitle(title: '播放与缓存', theme: theme),
+          SwitchListTile(
+            title: Text(
+              '自动连播下一集',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '播完一集后自动播放下一集；关闭则播完停在片尾',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _autoNext,
+            activeThumbColor: theme.accent,
+            onChanged: (value) async {
+              await VideoPlaybackSettings.setAutoNext(value);
+              setState(() => _autoNext = value);
+            },
+          ),
           ListTile(
             title: Text('弹幕设置', style: TextStyle(color: theme.textPrimary)),
             subtitle: Text(
@@ -227,14 +247,19 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     switch (result) {
       case UpdateCheckResult.newerAvailable:
         await _updateService.recordKnownUpdate(info!.version);
-        Get.snackbar('发现新版本', '发现新版本 v${info.version}');
+        if (!context.mounted) return;
+        await showUpdateDialog(
+          context,
+          info,
+          service: _updateService,
+        );
       case UpdateCheckResult.skipped:
         Get.snackbar('提示', '已跳过该版本');
       case UpdateCheckResult.upToDate:
         await _updateService.clearKnownUpdate();
         Get.snackbar('提示', '已是最新版本');
       case UpdateCheckResult.unavailable:
-        Get.snackbar('提示', '更新检查即将上线');
+        Get.snackbar('提示', '检查失败，请检查网络后重试');
     }
   }
 

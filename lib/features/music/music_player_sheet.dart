@@ -325,25 +325,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   }
 
   Future<void> _openTrackMore(Song song) async {
-    final action = await showTrackMoreSheet(context, song);
-    if (action == null || !mounted) return;
-    switch (action) {
-      case TrackMoreAction.info:
-        await showSongInfoDialog(context, song);
-      case TrackMoreAction.queue:
-        _c.showQueuePanel.value = true;
-      case TrackMoreAction.sequential:
-        await _c.togglePlayMode();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_c.playMode.value == 'shuffle' ? '随机播放' : '顺序播放'),
-            ),
-          );
-        }
-      case TrackMoreAction.cancel:
-        break;
-    }
+    await openTrackMoreSheet(context, song, fromPlayer: true);
   }
 
   /// Thin 4 px progress bar (fix 6): a 24 px hit area paints only a 4 px

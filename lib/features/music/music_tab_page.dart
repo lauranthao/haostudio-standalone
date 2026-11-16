@@ -20,6 +20,8 @@ import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
 import 'daily_page.dart';
+import 'downloads_page.dart';
+import 'favourites_page.dart';
 import 'listen_report_page.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
@@ -28,6 +30,7 @@ import 'playlist_detail_page.dart';
 import 'song_search_page.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 class MusicTabPage extends StatefulWidget {
   const MusicTabPage({super.key});
@@ -296,6 +299,12 @@ class _MusicTabPageState extends State<MusicTabPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Favourites entry (M-P0-7): opens the 我的收藏 page.
+          _favCard(theme),
+          const SizedBox(height: 8),
+          // Downloads entry (M-P0-5): opens the 已下载 page.
+          _downloadsCard(theme),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -353,6 +362,116 @@ class _MusicTabPageState extends State<MusicTabPage> {
           ),
           const SizedBox(height: 8),
         ],
+      ),
+    );
+  }
+
+  Widget _favCard(HaoTheme theme) {
+    final count = MusicStore.getFavIds().length;
+    return Card(
+      color: theme.surface,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => _push(const FavouritesPage()),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: theme.accentSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.favorite, color: theme.accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '我的收藏',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      count == 0 ? '还没有收藏的歌曲' : '$count 首歌曲',
+                      style: TextStyle(
+                        color: theme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: theme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _downloadsCard(HaoTheme theme) {
+    final count = _player.downloads.downloadedCount;
+    return Card(
+      color: theme.surface,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => _push(const DownloadsPage()),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: theme.accentSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.download, color: theme.accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '已下载',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      count == 0 ? '离线听歌，还没有下载' : '$count 首歌曲',
+                      style: TextStyle(
+                        color: theme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: theme.textMuted),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -461,6 +580,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 artistName: firstArtist(song.artist),
               ),
             ),
+            onLongPress: () => unawaited(openTrackMoreSheet(context, song)),
           ),
       ],
     );
@@ -531,6 +651,14 @@ class _MusicTabPageState extends State<MusicTabPage> {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                icon: Icon(
+                  playModeIcon(_player.mode),
+                  color: theme.textPrimary,
+                ),
+                tooltip: '播放模式',
+                onPressed: () => _player.cyclePlayMode(),
               ),
               IconButton(
                 icon: Icon(

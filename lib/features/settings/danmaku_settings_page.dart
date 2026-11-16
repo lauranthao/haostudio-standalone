@@ -1,17 +1,16 @@
 // Danmaku settings — per-platform on/off, font size, opacity.
 //
-// HONEST STATUS: the live room renders danmaku as a plain scrolling
-// list under the video and does NOT yet read these keys (that file
-// belongs to the player work). Every control below DOES save to Hive
-// immediately via [DanmakuSettings]; the live room only has to read
-// it to honour them — the banner says so instead of pretending the
-// toggles already change the room. Speed / area have no control:
-// a list has no scroll speed and no overlay area to size, so they are
-// explained as text, not fake sliders.
+// Every control below saves to Hive immediately via [DanmakuSettings]
+// and the live room honours it (live_room_page.dart): the per-platform
+// switch gates the transport, font size / opacity style the list, and
+// changes apply while a room is open, no restart. Speed / area have
+// no control: a list has no scroll speed and no overlay area to size,
+// so they are explained as text, not fake sliders.
 
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../domains/live/presentation/playback/danmaku_block_store.dart';
 import '../../shared/platforms/sites.dart';
 import 'source_stores.dart';
 
@@ -27,12 +26,61 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
   late double _fontSize;
   late double _opacity;
 
+  // S2 chat-list style.
+  late String _listStyle;
+  late String _listSpacing;
+  late bool _showUsernames;
+
+  // S3 content filtering.
+  late bool _similarityEnabled;
+  late int _similarityThreshold;
+  late bool _blockEmoteOnly;
+  late bool _blockLong;
+  late int _blockLongLength;
+  late bool _douyuBotFilter;
+
+  // Keyword + username block list (S3/S4).
+  late List<DanmakuBlockEntry> _blocks;
+  final _blockInput = TextEditingController();
+  String _blockKind = 'word';
+
   @override
   void initState() {
     super.initState();
     _enabled = DanmakuSettings.enabledMap();
     _fontSize = DanmakuSettings.fontSize();
     _opacity = DanmakuSettings.opacity();
+    _listStyle = DanmakuSettings.listStyle();
+    _listSpacing = DanmakuSettings.listSpacing();
+    _showUsernames = DanmakuSettings.showUsernames();
+    _similarityEnabled = DanmakuSettings.similarityEnabled();
+    _similarityThreshold = DanmakuSettings.similarityThreshold();
+    _blockEmoteOnly = DanmakuSettings.blockEmoteOnly();
+    _blockLong = DanmakuSettings.blockLong();
+    _blockLongLength = DanmakuSettings.blockLongLength();
+    _douyuBotFilter = DanmakuSettings.douyuBotFilter();
+    _blocks = DanmakuBlockStore.getAll();
+  }
+
+  @override
+  void dispose() {
+    _blockInput.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addBlock() async {
+    final added = await DanmakuBlockStore.add(_blockInput.text, _blockKind);
+    if (!mounted) return;
+    if (added) {
+      _blockInput.clear();
+      setState(() => _blocks = DanmakuBlockStore.getAll());
+    }
+  }
+
+  Future<void> _removeBlock(String id) async {
+    await DanmakuBlockStore.remove(id);
+    if (!mounted) return;
+    setState(() => _blocks = DanmakuBlockStore.getAll());
   }
 
   @override
@@ -48,7 +96,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                '设置已保存到本地；直播间弹幕列表接入后生效（直播间页面由播放器专项负责）。',
+                '设置立即生效：直播间打开时读取，直播中修改也会实时更新。',
                 style: TextStyle(color: theme.textSecondary, fontSize: 13),
               ),
             ),
@@ -127,6 +175,261 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          _SectionTitle(title: '弹幕列表', theme: theme),
+          ListTile(
+            title: Text('列表样式', style: TextStyle(color: theme.textPrimary)),
+            subtitle: Text(
+              '紧凑：一行一条；卡片：每条一张卡片',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            trailing: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'compact', label: Text('紧凑')),
+                ButtonSegment(value: 'card', label: Text('卡片')),
+              ],
+              selected: {_listStyle},
+              onSelectionChanged: (selected) async {
+                final v = selected.first;
+                await DanmakuSettings.setListStyle(v);
+                setState(() => _listStyle = v);
+              },
+            ),
+          ),
+          ListTile(
+            title: Text('行间距', style: TextStyle(color: theme.textPrimary)),
+            subtitle: Text(
+              '紧密 / 标准 / 宽松',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            trailing: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'compact', label: Text('紧密')),
+                ButtonSegment(value: 'standard', label: Text('标准')),
+                ButtonSegment(value: 'loose', label: Text('宽松')),
+              ],
+              selected: {_listSpacing},
+              onSelectionChanged: (selected) async {
+                final v = selected.first;
+                await DanmakuSettings.setListSpacing(v);
+                setState(() => _listSpacing = v);
+              },
+            ),
+          ),
+          SwitchListTile(
+            title: Text(
+              '显示用户名',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '关闭后列表只显示弹幕内容',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _showUsernames,
+            activeThumbColor: theme.accent,
+            onChanged: (v) async {
+              await DanmakuSettings.setShowUsernames(v);
+              setState(() => _showUsernames = v);
+            },
+          ),
+          const SizedBox(height: 24),
+          _SectionTitle(title: '内容过滤', theme: theme),
+          SwitchListTile(
+            title: Text(
+              '过滤相似弹幕',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '与刚显示过的弹幕相似（如加标点、数字变体）时隐藏',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _similarityEnabled,
+            activeThumbColor: theme.accent,
+            onChanged: (v) async {
+              await DanmakuSettings.setSimilarityEnabled(v);
+              setState(() => _similarityEnabled = v);
+            },
+          ),
+          ListTile(
+            title: Text(
+              '相似度阈值',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '越高越严格（只挡更像的）；当前 $_similarityThreshold',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Slider(
+                  value: _similarityThreshold.toDouble(),
+                  min: DanmakuSettings.minSimilarityThreshold.toDouble(),
+                  max: DanmakuSettings.maxSimilarityThreshold.toDouble(),
+                  divisions: 20,
+                  label: '$_similarityThreshold',
+                  activeColor: theme.accent,
+                  onChanged: _similarityEnabled
+                      ? (v) => setState(() => _similarityThreshold = v.round())
+                      : null,
+                  onChangeEnd: (v) =>
+                      DanmakuSettings.setSimilarityThreshold(v.round()),
+                ),
+              ),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  '$_similarityThreshold',
+                  style: TextStyle(color: theme.textPrimary),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          SwitchListTile(
+            title: Text(
+              '屏蔽纯表情弹幕',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '只由表情（或 [表情]）组成的弹幕不显示',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _blockEmoteOnly,
+            activeThumbColor: theme.accent,
+            onChanged: (v) async {
+              await DanmakuSettings.setBlockEmoteOnly(v);
+              setState(() => _blockEmoteOnly = v);
+            },
+          ),
+          SwitchListTile(
+            title: Text(
+              '屏蔽超长弹幕',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '超过设定字数的弹幕不显示；当前上限 $_blockLongLength 字',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _blockLong,
+            activeThumbColor: theme.accent,
+            onChanged: (v) async {
+              await DanmakuSettings.setBlockLong(v);
+              setState(() => _blockLong = v);
+            },
+          ),
+          if (_blockLong)
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _blockLongLength.toDouble(),
+                    min: DanmakuSettings.minBlockLongLength.toDouble(),
+                    max: DanmakuSettings.maxBlockLongLength.toDouble(),
+                    divisions: 18,
+                    label: '$_blockLongLength 字',
+                    activeColor: theme.accent,
+                    onChanged: (v) =>
+                        setState(() => _blockLongLength = v.round()),
+                    onChangeEnd: (v) =>
+                        DanmakuSettings.setBlockLongLength(v.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 44,
+                  child: Text(
+                    '$_blockLongLength',
+                    style: TextStyle(color: theme.textPrimary),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          SwitchListTile(
+            title: Text(
+              '斗鱼疑似机器人过滤',
+              style: TextStyle(color: theme.textPrimary),
+            ),
+            subtitle: Text(
+              '仅斗鱼：隐藏平台标记为疑似自动发送的弹幕',
+              style: TextStyle(color: theme.textSecondary),
+            ),
+            value: _douyuBotFilter,
+            activeThumbColor: theme.accent,
+            onChanged: (v) async {
+              await DanmakuSettings.setDouyuBotFilter(v);
+              setState(() => _douyuBotFilter = v);
+            },
+          ),
+          const SizedBox(height: 24),
+          _SectionTitle(title: '屏蔽管理', theme: theme),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _blockInput,
+                  decoration: InputDecoration(
+                    hintText: '输入要屏蔽的词或用户名',
+                    hintStyle: TextStyle(color: theme.textMuted),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: theme.hairline),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                  style: TextStyle(color: theme.textPrimary),
+                  onSubmitted: (_) => _addBlock(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              DropdownButton<String>(
+                value: _blockKind,
+                items: const [
+                  DropdownMenuItem(value: 'word', child: Text('关键词')),
+                  DropdownMenuItem(value: 'user', child: Text('用户名')),
+                ],
+                onChanged: (v) {
+                  if (v != null) setState(() => _blockKind = v);
+                },
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _addBlock,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.accent,
+                ),
+                child: const Text('添加'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_blocks.isEmpty)
+            Text(
+              '暂无屏蔽词',
+              style: TextStyle(color: theme.textMuted),
+            )
+          else
+            for (final entry in _blocks)
+              ListTile(
+                dense: true,
+                title: Text(
+                  entry.text,
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  entry.isUser ? '用户名' : '关键词',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: '删除',
+                  onPressed: () => _removeBlock(entry.id),
+                ),
+              ),
           const SizedBox(height: 24),
           _SectionTitle(title: '暂无此设置', theme: theme),
           ListTile(

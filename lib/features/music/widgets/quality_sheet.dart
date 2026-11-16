@@ -5,9 +5,12 @@
 // vertically, current choice marked with a check. Colours follow the
 // active theme in both light and dark mode.
 //
-// The four REAL tiers (see music_quality.dart): Hi-Res, 无损 FLAC,
-// 高音质 320k, 标准 128k. There is no Master tier in any resolver —
-// inventing one would mislabel hires streams as Master.
+// The FIVE tiers (see music_quality.dart): Master on top, then Hi-Res,
+// 无损 FLAC, 高音质 320k, 标准 128k. Rows come from [kQualityChain], so
+// Master is first by construction. The badge in the player shows the
+// tier ACTUALLY played (controller.actualQuality): if Master is
+// unavailable the resolver downgrades and the badge shows hires (or
+// whatever really played) — a hires stream is never labelled Master.
 
 import 'dart:ui';
 

@@ -139,6 +139,11 @@ class DouyuDanmaku extends LiveDanmaku {
           userName: parsed['nn']?.toString() ?? '',
           message: parsed['txt']?.toString() ?? '',
           color: douyuColorArgb(color),
+          // Pure Live's suspected-automated rule (sites/douyu.dart):
+          // a chatmsg with no `dms` field and `if` != '1'. The S3
+          // Douyu-bot filter hides tagged messages when enabled.
+          suspectedAutomated: parsed['dms'] == null &&
+              parsed['if']?.toString() != '1',
         );
       }
       // `comm_chatmsg` / `voice_trlt` (super chat) carry a nested

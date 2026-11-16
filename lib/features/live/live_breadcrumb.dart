@@ -28,8 +28,16 @@ class LiveBreadcrumb {
   static String get current =>
       HiveStore.getString(HiveKeys.liveCrashStage, '');
 
-  static Future<void> write(String stage) =>
-      HiveStore.put(HiveKeys.liveCrashStage, stage);
+  /// Best-effort crash telemetry: a breadcrumb write must NEVER throw
+  /// or block playback — if storage is unavailable the write is dropped
+  /// silently and the player carries on.
+  static Future<void> write(String stage) async {
+    try {
+      await HiveStore.put(HiveKeys.liveCrashStage, stage);
+    } catch (_) {
+      // Dropped breadcrumb; playback continues.
+    }
+  }
 
   static Future<void> clear() => HiveStore.delete(HiveKeys.liveCrashStage);
 }

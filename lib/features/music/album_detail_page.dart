@@ -23,6 +23,7 @@ import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
+import 'widgets/track_more_sheet.dart';
 
 class AlbumDetailPage extends StatefulWidget {
   const AlbumDetailPage({
@@ -387,6 +388,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           fontWeight: FontWeight.w700,
         ),
       ),
+      onLongPress: () => unawaited(openTrackMoreSheet(context, song)),
     );
   }
 }

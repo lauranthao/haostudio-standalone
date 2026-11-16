@@ -5,7 +5,12 @@
 // which stays portrait until the [ ] button. There is NO quality
 // selector on VOD ever (one play URL per episode, no quality tiers —
 // live only, hard rule). Episode auto-plays the next episode on end
-// (same line, `vodAutoNext`).
+// - Episode auto-plays the next episode on end (same line) when the
+//   `vodAutoNext` toggle is ON (default ON, persisted in Hive —
+//   `VideoPlaybackSettings.autoNext`; toggle in the player top bar and
+//   in Settings → 播放与缓存). Toggle OFF or the last episode -> the
+//   end state, never a loop. Advancing clears the resume position:
+//   the new episode always starts at 0.
 //
 // The player is native (PlaybackSession → MPV/IJK/AVPlayer ladder),
 // never a web <video>. No inline web playback path exists in-app.
@@ -27,11 +32,28 @@ import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
 
+/// Next episode index when the current episode ends, or null when
+/// playback must stop at the end state (V-P0-2, pure — unit-tested):
+/// - autoNext OFF -> stop (previous behaviour, no advance);
+/// - last episode -> stop (end state, never loops);
+/// - otherwise -> the next episode in the same line.
+int? autoNextEpisodeIndex({
+  required int current,
+  required int total,
+  required bool autoNext,
+}) {
+  if (!autoNext) return null;
+  final next = current + 1;
+  return next < total ? next : null;
+}
+
 /// Opens [detail] at [initialLineIndex]/[initialEpisodeIndex] in
 /// landscape fullscreen. [onClose] reports the last line/episode/
 /// position so the detail page can refresh its resume state.
 /// [initialPosition] (seconds) seeks once after open when > 10 s — the
 /// detail page passes the saved resume position for the resumed episode.
+/// [session] is a test seam only: production always passes null and the
+/// page owns a fresh [PlaybackSession].
 class NativeVideoPlayerPage extends StatefulWidget {
   const NativeVideoPlayerPage({
     super.key,
@@ -40,6 +62,7 @@ class NativeVideoPlayerPage extends StatefulWidget {
     this.initialEpisodeIndex = 0,
     this.initialPosition = 0,
     this.onClose,
+    this.session,
   });
 
   final VideoDetail detail;
@@ -49,6 +72,10 @@ class NativeVideoPlayerPage extends StatefulWidget {
 
   /// (lineIdx, epIdx, positionSeconds)
   final void Function(int lineIdx, int epIdx, double position)? onClose;
+
+  /// Test seam: an injected [PlaybackSession] (fake backends in
+  /// tests). Null in production.
+  final PlaybackSession? session;
 
   @override
   State<NativeVideoPlayerPage> createState() => _NativeVideoPlayerPageState();
@@ -60,6 +87,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
 
   late int _lineIdx;
   late int _epIdx;
+  late bool _autoNext;
   double _position = 0;
   double _duration = 0;
   double _resumePosition = 0;
@@ -75,6 +103,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   Timer? _hideTimer;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<PlaybackStatus>? _statusSub;
+  StreamSubscription<String>? _errorSub;
   var _openEpoch = 0;
 
   VideoDetail get _detail => widget.detail;
@@ -96,9 +126,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     _lineIdx = widget.initialLineIndex.clamp(0, _detail.lines.length - 1);
     final eps = _detail.lines[_lineIdx].episodes;
     _epIdx = widget.initialEpisodeIndex.clamp(0, eps.length - 1);
-    _session = PlaybackSession();
+    _autoNext = VideoPlaybackSettings.autoNext;
+    _session = widget.session ?? PlaybackSession();
     _fullscreen = Get.put(FullscreenController());
-    _session.onStatus.listen((status) {
+    _statusSub = _session.onStatus.listen((status) {
       if (!mounted) return;
       if (status == PlaybackStatus.completed) {
         _onEpisodeEnded();
@@ -116,7 +147,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
         });
       }
     });
-    _session.onError.listen((_) {
+    _errorSub = _session.onError.listen((_) {
       if (mounted) {
         setState(() {
           _loading = false;
@@ -223,12 +254,24 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     await _recordHistory();
   }
 
-  /// Auto-play the next episode on end (same line only).
+  /// Auto-play the next episode on end (same line only, V-P0-2).
+  /// Toggle OFF or the last episode -> the end state, never a loop.
+  /// Advancing clears the resume position: the new episode starts
+  /// at 0, never at the previous episode's saved position. The
+  /// transition stays in this player — no fake player, no detail
+  /// reload.
   void _onEpisodeEnded() {
     if (!mounted) return;
     final eps = _detail.lines[_lineIdx].episodes;
-    if (_epIdx + 1 < eps.length) {
-      setState(() => _epIdx++);
+    final next = autoNextEpisodeIndex(
+      current: _epIdx,
+      total: eps.length,
+      autoNext: _autoNext,
+    );
+    if (next != null) {
+      unawaited(_saveProgress());
+      _resumePosition = 0;
+      setState(() => _epIdx = next);
       unawaited(_openCurrent());
     } else {
       setState(() {
@@ -236,6 +279,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
         _showControls = true;
       });
     }
+  }
+
+  Future<void> _toggleAutoNext() async {
+    final next = !_autoNext;
+    await VideoPlaybackSettings.setAutoNext(next);
+    if (!mounted) return;
+    setState(() => _autoNext = next);
   }
 
   Future<void> _goEpisode(int delta) async {
@@ -343,6 +393,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                           Navigator.of(context).pop();
                           if (i == _epIdx) return;
                           await _saveProgress();
+                          // A different episode starts at 0, not at the
+                          // previous resume point (same rule as auto-next).
+                          _resumePosition = 0;
                           setState(() => _epIdx = i);
                           await _openCurrent();
                         },
@@ -369,6 +422,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     _hideTimer?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
+    _statusSub?.cancel();
+    _errorSub?.cancel();
     unawaited(_saveProgress());
     unawaited(_session.dispose());
     Get.delete<FullscreenController>();
@@ -450,6 +505,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                         ),
                         // NO quality selector on VOD — one URL per
                         // episode, no quality tiers (live only).
+                        // Auto-play-next toggle (V-P0-2, default ON):
+                        // dimmed when off, white when on.
+                        IconButton(
+                          icon: Icon(
+                            Icons.playlist_play,
+                            color: _autoNext
+                                ? Colors.white
+                                : Colors.white38,
+                          ),
+                          tooltip: '自动连播',
+                          onPressed: _toggleAutoNext,
+                        ),
                         IconButton(
                           icon: const Icon(
                             Icons.list,

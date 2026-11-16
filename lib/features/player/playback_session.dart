@@ -123,9 +123,13 @@ class PlaybackSession {
 
   /// Switch the preferred engine immediately: rebuild the backend, keep
   /// source/position/intent (study §3.3). Persists the choice.
+  /// The persistence write is fire-and-forget: an engine switch must
+  /// never wait on storage I/O.
   Future<void> switchEngine(PlayerEngine engine, {bool isManual = false}) async {
     _preferred = engine;
-    await HiveStore.put(HiveKeys.videoPlayerKey, engine.key);
+    unawaited(
+      HiveStore.put(HiveKeys.videoPlayerKey, engine.key).catchError((_) {}),
+    );
     if (_currentUrl != null) {
       await open(
         url: _currentUrl!,
@@ -172,7 +176,9 @@ class PlaybackSession {
     _declaredFormat = declaredFormat;
     _headers = headers;
     _emitStatus(PlaybackStatus.opening);
-    await LiveBreadcrumb.write('live-prepared');
+    // Breadcrumb is best-effort telemetry: never let playback start wait
+    // on a storage write.
+    unawaited(LiveBreadcrumb.write('live-prepared'));
 
     final engines = candidatesFor(
       url: url,
@@ -210,7 +216,7 @@ class PlaybackSession {
           }
           // Staged swap: only now does the new backend replace the old.
           await _swapBackend(candidate);
-          await LiveBreadcrumb.write('live-first-frame');
+          unawaited(LiveBreadcrumb.write('live-first-frame'));
           return true;
         } catch (_) {
           await candidate.dispose();
@@ -224,7 +230,7 @@ class PlaybackSession {
       // Settings follows the engine actually playing.
       _preferred = won.engine;
       _emitStatus(PlaybackStatus.playing);
-      await LiveBreadcrumb.write('live-playing');
+      unawaited(LiveBreadcrumb.write('live-playing'));
       _startHealthWatch();
       return true;
     }
@@ -359,6 +365,6 @@ class PlaybackSession {
     await _stallNoticeController.close();
     await _positionController.close();
     await _durationController.close();
-    await LiveBreadcrumb.write('live-closed');
+    unawaited(LiveBreadcrumb.write('live-closed'));
   }
 }

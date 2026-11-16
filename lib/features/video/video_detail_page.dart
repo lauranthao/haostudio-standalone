@@ -47,6 +47,7 @@ class VideoDetailPage extends StatefulWidget {
     required this.sourceId,
     required this.vodId,
     this.preload,
+    this.autoResume = false,
   });
 
   final dynamic sourceId;
@@ -54,6 +55,13 @@ class VideoDetailPage extends StatefulWidget {
 
   /// The list item the user tapped (cover + title instantly).
   final VideoItem? preload;
+
+  /// History page resume (V-P0-1): when true and a saved resume
+  /// position exists, the player opens automatically once the detail
+  /// loads — tapping a history entry resumes at the saved position.
+  /// When no resume exists (never watched / finished), the page just
+  /// opens normally and play starts from the beginning.
+  final bool autoResume;
 
   @override
   State<VideoDetailPage> createState() => _VideoDetailPageState();
@@ -77,6 +85,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   bool _epsExpanded = false;
   bool _synExpanded = false;
   bool _fadedIn = false;
+  bool _autoResumeDone = false;
 
   dynamic get _sid => _detailSourceId ?? widget.sourceId;
   String get _vid => _detailVodId.isEmpty ? widget.vodId : _detailVodId;
@@ -149,6 +158,14 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     });
     // Douban enrichment AFTER the CMS render — never blocks it.
     unawaited(_enrichDouban(detail));
+    // History resume (V-P0-1): open the player at the saved position
+    // once, only when a resume exists. No resume -> stay on the page.
+    if (widget.autoResume && resume != null && !_autoResumeDone) {
+      _autoResumeDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_play());
+      });
+    }
   }
 
   Future<void> _enrichDouban(VideoDetail detail) async {

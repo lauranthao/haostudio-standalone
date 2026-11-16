@@ -17,7 +17,6 @@
 // - Next/previous advance exactly one track (fix 14 Dart-side rule).
 
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
@@ -25,23 +24,35 @@ import 'package:media_kit/media_kit.dart';
 
 import '../../core/native/now_playing.dart';
 import '../../services/music/music_api.dart';
+import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_quality.dart';
 import '../../services/music/music_resolvers.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/play_mode.dart';
+import '../../services/music/sleep_timer.dart';
 
 const Duration _crossfadeDuration = Duration(milliseconds: 2500);
 
 class MusicPlayerController extends GetxController
     with WidgetsBindingObserver {
-  MusicPlayerController({MusicApi? api, MusicResolvers? resolvers, NowPlayingService? nowPlaying})
-      : _api = api ?? MusicApi(),
+  MusicPlayerController({
+    MusicApi? api,
+    MusicResolvers? resolvers,
+    NowPlayingService? nowPlaying,
+    MusicDownloadService? downloads,
+  })  : _api = api ?? MusicApi(),
         _resolvers = resolvers ?? MusicResolvers(),
-        _nowPlayingOverride = nowPlaying;
+        _nowPlayingOverride = nowPlaying,
+        downloads = downloads ?? MusicDownloadService();
 
   final MusicApi _api;
   final MusicResolvers _resolvers;
   final NowPlayingService? _nowPlayingOverride;
+
+  /// Offline downloads (M-P0-5): the player checks this before
+  /// resolving a remote URL, so a downloaded song plays from disk.
+  final MusicDownloadService downloads;
 
   // Now Playing shell (Fix 14): publishes the current track to
   // MPNowPlayingInfoCenter and receives Lock Screen / Control Center /
@@ -59,11 +70,22 @@ class MusicPlayerController extends GetxController
   final Rx<AudioQuality> userQuality = AudioQuality.hires.obs;
   final Rx<AudioQuality> actualQuality = AudioQuality.hires.obs;
   final RxDouble volume = 0.8.obs;
-  final RxString playMode = 'seq'.obs; // 'seq' | 'shuffle'
+  final RxDouble speed = 1.0.obs; // M-P0-2: 0.6..2.0, persisted
+  final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
   final RxBool lyricsFailed = false.obs;
   final RxBool showQueuePanel = false.obs;
   final RxString queueLabel = ''.obs;
+
+  /// Current mode as the typed enum (legacy stored codes map through
+  /// PlayModeX.fromCode, so old 'seq'/'shuffle' values keep working).
+  PlayMode get mode => PlayModeX.fromCode(playMode.value);
+
+  // Sleep timer (M-P0-3): wall-clock countdown, survives track changes.
+  // The Rx mirrors let the UI show the active state / remaining time.
+  late final SleepTimer _sleepTimer;
+  final Rx<SleepTimerOption> sleepOption = SleepTimerOption.off.obs;
+  final Rx<Duration?> sleepRemaining = Rx<Duration?>(null);
 
   Song? get currentSong {
     final i = currentIndex.value;
@@ -76,6 +98,12 @@ class MusicPlayerController extends GetxController
   late final Player _playerB;
   late Player _active;
   Player get _standby => identical(_active, _playerA) ? _playerB : _playerA;
+
+  /// True once the players exist (end of onInit). Rate application is
+  /// a no-op before that, so unit tests can construct the controller
+  /// (no Get.put, no onInit) and exercise speed/queue logic without
+  /// native players.
+  var _playersReady = false;
 
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration>? _durSub;
@@ -102,16 +130,36 @@ class MusicPlayerController extends GetxController
     userQuality.value = MusicStore.quality;
     actualQuality.value = userQuality.value;
     volume.value = MusicStore.volume;
+    speed.value = MusicStore.speed;
     playMode.value = MusicStore.playMode;
+    // Restore the persisted queue (M-P0-4) — order + current index,
+    // but do NOT auto-play: playback only starts on a user tap.
+    final savedQueue = MusicStore.getQueue();
+    if (savedQueue.songs.isNotEmpty) {
+      queue.assignAll(savedQueue.songs);
+      currentIndex.value = savedQueue.index;
+    }
     _playerA = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
     _playerB = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
     _active = _playerA;
+    _playersReady = true;
     unawaited(_active.setVolume(volume.value * 100));
+    unawaited(_active.setRate(speed.value));
     unawaited(_standby.setVolume(0));
+    unawaited(_standby.setRate(speed.value));
     WidgetsBinding.instance.addObserver(this);
     _attach(_active);
     _nowPlaying = _nowPlayingOverride ?? NowPlayingService();
     _nowPlaying.onRemoteCommand = _onRemoteCommand;
+    _sleepTimer = SleepTimer(
+      onFire: () {
+        // Wall-clock timer fired: STOP playback and clear the timer.
+        unawaited(_active.pause());
+        _syncSleepState();
+      },
+      onChanged: _syncSleepState,
+    );
+    _syncSleepState();
     // Publish on track change / play / pause; elapsed time is
     // throttled to 1 s while playing (see _publishNowPlayingThrottled).
     ever(currentIndex, (_) => _publishNowPlaying());
@@ -122,6 +170,7 @@ class MusicPlayerController extends GetxController
   @override
   void onClose() {
     _disposed = true;
+    _sleepTimer.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
     unawaited(_nowPlaying.clear());
@@ -249,6 +298,9 @@ class MusicPlayerController extends GetxController
   Future<void> _openOn(Player player, String url, {double? vol}) async {
     await player.open(Media(url), play: true);
     if (vol != null) await player.setVolume(vol * 100);
+    // Rate survives an open: re-apply the user's speed every time a
+    // track (or a fallback candidate) is opened.
+    await player.setRate(speed.value);
   }
 
   // -- queue / track loading ---------------------------------------------------
@@ -264,7 +316,69 @@ class MusicPlayerController extends GetxController
   Future<void> playIndex(int index, {bool auto = false}) async {
     if (index < 0 || index >= queue.length) return;
     currentIndex.value = index;
+    _persistQueue();
     await _loadCurrent(auto: auto);
+  }
+
+  // -- queue reorder + play next (M-P0-4) -----------------------------------
+
+  /// Persist the queue order + current index (the player playlist).
+  void _persistQueue() {
+    unawaited(MusicStore.saveQueue(queue.toList(), currentIndex.value));
+  }
+
+  /// Move the queue item at [from] to [to] (final index). The current
+  /// index follows the playing song when the move crosses it.
+  void moveQueueItem(int from, int to) {
+    if (from < 0 ||
+        from >= queue.length ||
+        to < 0 ||
+        to >= queue.length ||
+        from == to) {
+      return;
+    }
+    final song = queue.removeAt(from);
+    queue.insert(to, song);
+    final cur = currentIndex.value;
+    if (cur == from) {
+      currentIndex.value = to;
+    } else if (from < cur && to >= cur) {
+      currentIndex.value = cur - 1;
+    } else if (from > cur && to <= cur) {
+      currentIndex.value = cur + 1;
+    }
+    _persistQueue();
+  }
+
+  /// Move the item at [index] one slot up (towards the front).
+  void moveQueueUp(int index) {
+    if (index <= 0 || index >= queue.length) return;
+    moveQueueItem(index, index - 1);
+  }
+
+  /// Move the item at [index] one slot down (towards the end).
+  void moveQueueDown(int index) {
+    if (index < 0 || index >= queue.length - 1) return;
+    moveQueueItem(index, index + 1);
+  }
+
+  /// Insert [song] right after the current track ("下一首播放").
+  /// Returns false when the song is already the one playing (inserting
+  /// it after itself would only duplicate it). An empty queue just
+  /// starts playing the song.
+  Future<bool> playNext(Song song) async {
+    final current = currentSong;
+    if (current != null && current.identityKey == song.identityKey) {
+      return false;
+    }
+    if (queue.isEmpty) {
+      await playQueue([song], 0);
+      return true;
+    }
+    final at = currentIndex.value < 0 ? 0 : currentIndex.value + 1;
+    queue.insert(at, song);
+    _persistQueue();
+    return true;
   }
 
   Future<void> _loadCurrent({bool auto = false}) async {
@@ -285,39 +399,56 @@ class MusicPlayerController extends GetxController
     // crossfade continuation.
     final resumeSec = MusicStore.resumeFor(song.identityKey);
 
-    final cacheKey = '${song.songId}|${song.platform.code}|${userQuality.value.code}';
-    PlayUrlResult? r;
-    if (_nextCache != null && _nextCache!.key == cacheKey) {
-      r = PlayUrlResult(
-        url: _nextCache!.url,
-        candidates: _nextCache!.candidates,
-        quality: _nextCache!.quality,
-        via: '',
-      );
-      _nextCache = null;
+    // Offline first (M-P0-5): a downloaded song plays from the local
+    // file — no resolve, no network. Otherwise resolve the remote URL
+    // at the user's quality (with the prefetch cache).
+    String url;
+    List<String> candidates;
+    AudioQuality quality;
+    final localPath = downloads.localPathFor(song);
+    if (localPath != null) {
+      url = Uri.file(localPath).toString();
+      candidates = [url];
+      quality = userQuality.value;
     } else {
-      r = await _resolvers.resolvePlayUrl(
-        song.songId,
-        song.platform,
-        userQuality.value,
-        song.title,
-      );
+      final cacheKey =
+          '${song.songId}|${song.platform.code}|${userQuality.value.code}';
+      PlayUrlResult? r;
+      if (_nextCache != null && _nextCache!.key == cacheKey) {
+        r = PlayUrlResult(
+          url: _nextCache!.url,
+          candidates: _nextCache!.candidates,
+          quality: _nextCache!.quality,
+          via: '',
+        );
+        _nextCache = null;
+      } else {
+        r = await _resolvers.resolvePlayUrl(
+          song.songId,
+          song.platform,
+          userQuality.value,
+          song.title,
+        );
+      }
+      if (gen != _playGen || _disposed) return;
+      if (r == null || r.url.isEmpty) {
+        await _tryAltOrNext(song);
+        return;
+      }
+      url = r.url;
+      candidates = r.candidates;
+      quality = r.quality;
     }
-    if (gen != _playGen || _disposed) return;
-    if (r == null || r.url.isEmpty) {
-      await _tryAltOrNext(song);
-      return;
-    }
-    _candidates = r.candidates;
+    _candidates = candidates;
     _candidateIdx = 0;
-    actualQuality.value = r.quality;
+    actualQuality.value = quality;
     _failStreak = 0;
     await MusicStore.addRecent(song);
     await MusicStore.recordListen(song);
     if (auto) {
-      await _crossfadeTo(r.url);
+      await _crossfadeTo(url);
     } else {
-      await _openOn(_active, r.url, vol: volume.value);
+      await _openOn(_active, url, vol: volume.value);
     }
     if (gen != _playGen || _disposed) return;
     if (resumeSec > 5) {
@@ -343,6 +474,7 @@ class MusicPlayerController extends GetxController
     _fadeTimer?.cancel();
     await incoming.open(Media(url), play: false);
     await incoming.setVolume(0);
+    await incoming.setRate(speed.value);
     await incoming.play();
     _active = incoming;
     _attach(incoming);
@@ -402,6 +534,7 @@ class MusicPlayerController extends GetxController
         if (r != null && r.url.isNotEmpty) {
           queue[currentIndex.value] = alt;
           queue.refresh();
+          _persistQueue();
           _candidates = r.candidates;
           _candidateIdx = 0;
           actualQuality.value = r.quality;
@@ -418,13 +551,34 @@ class MusicPlayerController extends GetxController
     if (song != null) {
       unawaited(MusicStore.clearResume(song.identityKey));
     }
+    // Sleep timer, 到歌单结束: the queue ends here — stop, do not
+    // advance or loop, and clear the timer.
+    if (_sleepTimer.isQueueEnd) {
+      _sleepTimer.cancel();
+      unawaited(_active.pause());
+      _syncSleepState();
+      return;
+    }
+    // Single loop: replay the same song from the start.
+    if (mode == PlayMode.singleLoop) {
+      unawaited(_replayCurrent());
+      return;
+    }
     unawaited(next(auto: true));
   }
 
+  Future<void> _replayCurrent() async {
+    if (currentSong == null) return;
+    await _active.seek(Duration.zero);
+    await _active.play();
+  }
+
   void _prefetchNext() {
-    final next = _peekNextIndex();
-    if (next < 0) return;
+    final next = _peekNextIndex(auto: true);
+    if (next < 0 || next == currentIndex.value) return;
     final tr = queue[next];
+    // A downloaded next track plays from disk — nothing to prefetch.
+    if (downloads.localPathFor(tr) != null) return;
     final key = '${tr.songId}|${tr.platform.code}|${userQuality.value.code}';
     if (_nextCache != null && _nextCache!.key == key) return;
     unawaited(
@@ -443,36 +597,35 @@ class MusicPlayerController extends GetxController
     );
   }
 
-  int _peekNextIndex() {
-    if (queue.length <= 1) return -1;
-    if (playMode.value == 'shuffle') {
-      var n = currentIndex.value;
-      while (n == currentIndex.value) {
-        n = Random().nextInt(queue.length);
-      }
-      return n;
+  /// Next index honouring the play mode; -1 = stop at the queue end.
+  /// Auto-advance and a manual tap differ for single loop / single
+  /// play — see nextTrackIndex in play_mode.dart.
+  int _peekNextIndex({required bool auto}) {
+    if (queue.length <= 1) {
+      // A one-song queue: single loop replays on auto-advance (handled
+      // in _onTrackCompleted via _replayCurrent); anything else stops.
+      return -1;
     }
-    return (currentIndex.value + 1) % queue.length;
+    return nextTrackIndex(
+      mode,
+      currentIndex.value,
+      queue.length,
+      auto: auto,
+    );
   }
 
   int _peekPrevIndex() {
     if (queue.length <= 1) return -1;
-    if (playMode.value == 'shuffle') {
-      var n = currentIndex.value;
-      while (n == currentIndex.value) {
-        n = Random().nextInt(queue.length);
-      }
-      return n;
-    }
-    return (currentIndex.value - 1 + queue.length) % queue.length;
+    return prevTrackIndex(mode, currentIndex.value, queue.length);
   }
 
   // -- transport ---------------------------------------------------------------
 
   Future<void> next({bool auto = false}) async {
-    final n = _peekNextIndex();
+    final n = _peekNextIndex(auto: auto);
     if (n < 0) return;
     currentIndex.value = n;
+    _persistQueue();
     await _loadCurrent(auto: auto);
   }
 
@@ -486,6 +639,7 @@ class MusicPlayerController extends GetxController
     final n = _peekPrevIndex();
     if (n < 0) return;
     currentIndex.value = n;
+    _persistQueue();
     await _loadCurrent();
   }
 
@@ -505,9 +659,57 @@ class MusicPlayerController extends GetxController
     await MusicStore.setVolume(volume.value);
   }
 
-  Future<void> togglePlayMode() async {
-    playMode.value = playMode.value == 'shuffle' ? 'seq' : 'shuffle';
+  // -- playback speed (M-P0-2) ------------------------------------------------
+
+  /// Clamp a speed to the supported range (slider 0.6–2.0).
+  static double clampSpeed(double v) => v.clamp(0.6, 2.0);
+
+  /// Set the playback speed. Takes effect immediately on the audio
+  /// rate (both players, so a crossfade partner keeps the same rate)
+  /// and persists like quality. Lyrics need no adjustment: they are
+  /// keyed to the media clock (`lyricIndexFor(position)`), and the
+  /// media clock advances at the playback rate, so lyrics stay in
+  /// sync at any speed.
+  Future<void> setSpeed(double v) async {
+    final s = clampSpeed(v);
+    speed.value = s;
+    await MusicStore.setSpeed(s);
+    _applyRate();
+  }
+
+  void _applyRate() {
+    if (!_playersReady) return;
+    unawaited(_active.setRate(speed.value));
+    unawaited(_standby.setRate(speed.value));
+  }
+
+  /// Cycle through the five play modes (顺序播放 → 列表循环 → 单曲循环 →
+  /// 随机播放 → 单曲播放) and persist the choice in Hive.
+  Future<void> cyclePlayMode() async {
+    playMode.value = mode.next.code;
     await MusicStore.setPlayMode(playMode.value);
+  }
+
+  /// Back-compat alias: the old two-mode toggle is now the five-mode cycle.
+  Future<void> togglePlayMode() => cyclePlayMode();
+
+  // -- sleep timer (M-P0-3) -----------------------------------------------------
+
+  void _syncSleepState() {
+    sleepOption.value = _sleepTimer.option;
+    sleepRemaining.value = _sleepTimer.remaining;
+  }
+
+  /// Start (or replace) the sleep timer. `off` cancels it.
+  void setSleepTimer(SleepTimerOption option) {
+    _sleepTimer.start(option);
+    _syncSleepState();
+  }
+
+  /// Cancel the sleep timer.
+  void cancelSleepTimer() {
+    _sleepTimer.cancel();
+    _syncSleepState();
   }
 
   // -- quality (setQuality, app.js:2145) ----------------------------------------
@@ -520,6 +722,19 @@ class MusicPlayerController extends GetxController
     userQuality.value = q;
     await MusicStore.setQuality(q);
     if (song == null) return true;
+    final localPath = downloads.localPathFor(song);
+    if (localPath != null) {
+      // Downloaded song: the file IS the quality — no re-resolve,
+      // just re-open the local file at the new (nominal) tier.
+      actualQuality.value = q;
+      _candidates = [Uri.file(localPath).toString()];
+      _candidateIdx = 0;
+      _playGen++;
+      await _openOn(_active, _candidates[0], vol: volume.value);
+      if (pos > Duration.zero) await _active.seek(pos);
+      if (wasPlaying) await _active.play();
+      return true;
+    }
     final r = await _resolvers.resolvePlayUrl(
       song.songId,
       song.platform,

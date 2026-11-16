@@ -59,24 +59,86 @@ class MusicStore {
   static Future<void> setCurrentListId(String id) =>
       HiveStore.put(HiveKeys.musicCurListId, id);
 
-  // ---- Favourites (hao_fav: identity keys 'pf|songId') ----
-  static Set<String> getFavIds() =>
-      _readList(HiveKeys.musicFav)
-          .map((m) => m['key']?.toString() ?? '')
-          .where((k) => k.isNotEmpty)
-          .toSet();
+  // ---- Favourites (hao_fav, M-P0-7) ----
+  //
+  // Each entry is {'key': identityKey, 'song': Song JSON}. The full
+  // Song is stored so the favourites page can list songs without
+  // re-resolving them. Legacy entries are key-only ({'key': k}) — they
+  // still count as favourites and are resolved from recent / listen
+  // history where possible; unresolvable ones are dropped from the
+  // page (no fake data), never shown as blank rows.
+  static List<Map<String, dynamic>> _readFavEntries() =>
+      _readList(HiveKeys.musicFav);
 
-  static Future<void> saveFavIds(Set<String> ids) => _writeList(
-        HiveKeys.musicFav,
+  static Future<void> _writeFavEntries(
+    List<Map<String, dynamic>> entries,
+  ) =>
+      _writeList(HiveKeys.musicFav, entries);
+
+  static Set<String> getFavIds() => _readFavEntries()
+      .map((m) => m['key']?.toString() ?? '')
+      .where((k) => k.isNotEmpty)
+      .toSet();
+
+  static Future<void> saveFavIds(Set<String> ids) => _writeFavEntries(
         ids.map((k) => {'key': k}).toList(),
       );
 
+  /// Favourited songs, newest first. Key-only legacy entries are
+  /// resolved from recent plays / the listen log; entries that cannot
+  /// be resolved to a real song are skipped.
+  static List<Song> getFavSongs() {
+    final entries = _readFavEntries();
+    if (entries.isEmpty) return [];
+    final byKey = <String, Song>{};
+    for (final s in getRecent()) {
+      byKey.putIfAbsent(s.identityKey, () => s);
+    }
+    for (final e in getListenLog()) {
+      byKey.putIfAbsent(
+        '${e.platform.code}|${e.songId}',
+        () => Song(
+          songId: e.songId,
+          title: e.title,
+          artist: e.artist,
+          platform: e.platform,
+          cover: e.cover,
+          dur: e.dur,
+        ),
+      );
+    }
+    final out = <Song>[];
+    final seen = <String>{};
+    for (final m in entries) {
+      final key = m['key']?.toString() ?? '';
+      if (key.isEmpty || !seen.add(key)) continue;
+      final stored = m['song'];
+      if (stored is Map<String, dynamic>) {
+        out.add(Song.fromJson(stored));
+      } else if (byKey.containsKey(key)) {
+        out.add(byKey[key]!);
+      }
+      // Else: legacy key with no stored song and no history — skip.
+    }
+    return out;
+  }
+
+  /// Toggle favourite. New favourites store the full Song JSON at the
+  /// front (newest first). Returns true when the song was added.
   static Future<bool> toggleFav(Song song) async {
-    final ids = getFavIds();
-    final added = ids.add(song.identityKey);
-    if (!added) ids.remove(song.identityKey);
-    await saveFavIds(ids);
-    return added;
+    final entries = _readFavEntries();
+    final key = song.identityKey;
+    final idx = entries.indexWhere(
+      (m) => m['key']?.toString() == key,
+    );
+    if (idx >= 0) {
+      entries.removeAt(idx);
+      await _writeFavEntries(entries);
+      return false;
+    }
+    entries.insert(0, {'key': key, 'song': song.toJson()});
+    await _writeFavEntries(entries);
+    return true;
   }
 
   // ---- Recently played (hao_recent, max 100) ----
@@ -183,6 +245,45 @@ class MusicStore {
 
   static Future<void> setVolume(double v) =>
       HiveStore.put(HiveKeys.musicVolume, v.clamp(0.0, 1.0));
+
+  // ---- Playback speed (M-P0-2): 0.6..2.0, default 1.0 ----
+  static double get speed =>
+      HiveStore.getDouble(HiveKeys.musicSpeed, 1.0).clamp(0.6, 2.0);
+
+  static Future<void> setSpeed(double v) =>
+      HiveStore.put(HiveKeys.musicSpeed, v.clamp(0.6, 2.0));
+
+  // ---- Play queue (M-P0-4): the player playlist + current index,
+  // persisted so a reorder / play-next survives app restarts. ----
+  static ({List<Song> songs, int index}) getQueue() {
+    final raw = HiveStore.box.get(HiveKeys.musicQueue) as String?;
+    if (raw == null || raw.isEmpty) return (songs: <Song>[], index: -1);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        final tracks = decoded['songs'] as List<dynamic>? ?? [];
+        final songs = tracks
+            .whereType<Map<String, dynamic>>()
+            .map(Song.fromJson)
+            .toList();
+        final index = (decoded['index'] as num?)?.toInt() ?? -1;
+        return (
+          songs: songs,
+          index: (index >= 0 && index < songs.length) ? index : -1,
+        );
+      }
+    } catch (_) {}
+    return (songs: <Song>[], index: -1);
+  }
+
+  static Future<void> saveQueue(List<Song> songs, int index) =>
+      HiveStore.put(
+        HiveKeys.musicQueue,
+        jsonEncode({
+          'songs': songs.map((s) => s.toJson()).toList(),
+          'index': index,
+        }),
+      );
 
   static String get playMode => HiveStore.getString(HiveKeys.musicPlayMode, 'seq');
 

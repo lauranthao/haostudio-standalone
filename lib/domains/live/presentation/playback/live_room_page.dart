@@ -31,30 +31,42 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../features/settings/source_stores.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
+import '../../live_history_store.dart';
+import 'danmaku_block_store.dart';
+import 'danmaku_filter.dart';
+import 'room_detail_sheet.dart';
+import 'room_switch_panel.dart';
 
 /// Live room entry. [startLandscape] is ALWAYS false on entry (fix 2);
 /// the parameter exists only so the flag is threaded explicitly and the
 /// VOD direct-to-landscape path cannot leak into live.
 ///
-/// [site] / [backendFactory] are test seams only: production passes
-/// neither and gets Sites.of(platform) + the real native backends.
+/// [playlist] is the room's source list (the live tab's room list) for
+/// the L04 switch-room panel's "当前列表" group; empty when the room
+/// was opened without one. [site] / [backendFactory] are test seams
+/// only: production passes neither and gets Sites.of(platform) + the
+/// real native backends.
 class LiveRoomPage extends StatefulWidget {
   const LiveRoomPage({
     super.key,
     required this.room,
     this.startLandscape = false,
+    this.playlist = const [],
     this.site,
     this.backendFactory,
   });
@@ -63,6 +75,9 @@ class LiveRoomPage extends StatefulWidget {
 
   /// Must be false for live entry. Kept explicit per fix 2.
   final bool startLandscape;
+
+  /// The room's source list for the switch-room panel.
+  final List<LiveRoom> playlist;
 
   final LiveSite? site;
   final BackendFactory? backendFactory;
@@ -92,6 +107,33 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   LiveDanmaku? _danmakuTransport;
   bool _danmakuEnded = false;
 
+  // Danmaku display settings (DanmakuSettings, Hive-backed): read on
+  // entry and re-read live while the room is open, so a change in the
+  // settings page takes effect without leaving the room.
+  // Speed / area do NOT exist in DanmakuSettings: a list has no scroll
+  // speed and no overlay area to size, so there is nothing to honour
+  // for them — the settings page says so instead of faking sliders.
+  bool _danmakuEnabled = true;
+  double _danmakuFontSize = DanmakuSettings.defaultFontSize;
+  double _danmakuOpacity = DanmakuSettings.defaultOpacity;
+  bool _danmakuStarted = false;
+  bool _roomDetailLoaded = false;
+  ValueListenable<Box<dynamic>>? _danmakuSettingsListenable;
+
+  // Chat-list style (S2): density, line spacing, show-username.
+  String _listStyle = DanmakuSettings.listStyleCompact;
+  String _listSpacing = DanmakuSettings.listSpacingStandard;
+  bool _showUsernames = true;
+
+  // Content filter (S3): block list + similarity + emote-only /
+  // overlong + Douyu-bot, applied before a danmaku item renders.
+  // One filter per room — its similarity cache dies with the room.
+  late final DanmakuContentFilter _danmakuFilter;
+
+  // S4: tap highlights one danmaku item (accent wash); tapping it
+  // again clears the highlight. Long-press opens the block menu.
+  int? _highlightedDanmakuIndex;
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +143,9 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     _fullscreen = Get.put(FullscreenController());
     _recovery = LiveRecovery(site: _site, room: _room);
     _recovery.onPrefetchDue = _onPrefetchDue;
+    _danmakuFilter = DanmakuContentFilter();
+    _readDanmakuSettings();
+    _subscribeDanmakuSettings();
     _session.onError.listen(_onSessionError);
     _session.onStallNotice.listen((_) {
       if (mounted) setState(() => _showingStallNotice = true);
@@ -125,11 +170,19 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   }
 
   Future<void> _loadRoom() async {
-    await LiveBreadcrumb.write('live-viewDidLoad');
+    // Breadcrumb is best-effort telemetry: never let room entry wait on
+    // a storage write.
+    unawaited(LiveBreadcrumb.write('live-viewDidLoad'));
     try {
       final detail = await _site.getRoomDetail(_room);
       if (!mounted) return;
+      _roomDetailLoaded = true;
       setState(() => _room = detail);
+      // Entering a room records one history entry (L01 store; the
+      // record moves a re-entry to the front). Best-effort and
+      // idempotent — the L01 history page and the L04 switch panel
+      // read the same store.
+      unawaited(LiveHistoryStore.record(detail));
       // Danmaku is best-effort and independent of playback: it starts
       // from the room detail's danmakuData and must never crash the room.
       unawaited(_startDanmaku());
@@ -157,11 +210,103 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     }
   }
 
+  /// Read the danmaku display settings for this room's platform.
+  /// DanmakuSettings falls back to its defaults when Hive is not
+  /// initialised, so this never crashes the room.
+  void _readDanmakuSettings() {
+    _danmakuEnabled = DanmakuSettings.isEnabled(_site.id);
+    _danmakuFontSize = DanmakuSettings.fontSize();
+    _danmakuOpacity = DanmakuSettings.opacity();
+    _listStyle = DanmakuSettings.listStyle();
+    _listSpacing = DanmakuSettings.listSpacing();
+    _showUsernames = DanmakuSettings.showUsernames();
+    // The filter re-reads its config (block list, similarity,
+    // emote-only / overlong / Douyu-bot) from the same settings.
+    _danmakuFilter.config = DanmakuFilterConfig.fromSettings();
+  }
+
+  /// Watch the danmaku keys while the room is open: a change in the
+  /// settings page re-reads and applies immediately, no restart
+  /// and no leaving the room. Guarded: when Hive is not initialised
+  /// (unit tests without HiveStore.init) there is simply no live
+  /// update and the defaults from [_readDanmakuSettings] apply.
+  void _subscribeDanmakuSettings() {
+    try {
+      final listenable = HiveStore.box.listenable(keys: [
+        HiveKeys.danmakuEnabled,
+        HiveKeys.danmakuFontSize,
+        HiveKeys.danmakuOpacity,
+        HiveKeys.danmakuListStyle,
+        HiveKeys.danmakuListSpacing,
+        HiveKeys.danmakuShowUsernames,
+        HiveKeys.danmakuSimilarityEnabled,
+        HiveKeys.danmakuSimilarityThreshold,
+        HiveKeys.danmakuBlockEmoteOnly,
+        HiveKeys.danmakuBlockLong,
+        HiveKeys.danmakuBlockLongLength,
+        HiveKeys.danmakuDouyuBotFilter,
+        HiveKeys.danmakuBlockList,
+      ]);
+      _danmakuSettingsListenable = listenable;
+      listenable.addListener(_onDanmakuSettingsChanged);
+    } catch (_) {
+      // Hive unavailable — defaults apply, no live updates.
+    }
+  }
+
+  void _onDanmakuSettingsChanged() {
+    if (!mounted) return;
+    final wasEnabled = _danmakuEnabled;
+    _readDanmakuSettings();
+    if (wasEnabled == _danmakuEnabled) {
+      // Style / filter change only: restyle the list, re-apply the
+      // block parts of the filter to what is already shown (a newly
+      // blocked word/user disappears in place), and keep the
+      // transport running untouched. Similarity is NOT re-applied to
+      // shown items (see DanmakuContentFilter.blocksExisting).
+      setState(() {
+        _danmaku.removeWhere(
+          (m) => _danmakuFilter.blocksExisting(m, platform: _site.id),
+        );
+        if (_highlightedDanmakuIndex != null &&
+            _highlightedDanmakuIndex! >= _danmaku.length) {
+          _highlightedDanmakuIndex = null;
+        }
+      });
+      return;
+    }
+    if (_danmakuEnabled) {
+      // Re-enabled while the room is open: start the transport, unless
+      // the room detail has not loaded yet — _loadRoom starts it then.
+      setState(() {});
+      if (_roomDetailLoaded) unawaited(_startDanmaku());
+    } else {
+      // Disabled mid-room: stop the transport and drop the list, so
+      // the "弹幕已关闭" state is honest instead of a stale list.
+      unawaited(_danmakuTransport?.stop());
+      _danmakuTransport = null;
+      _danmakuStarted = false;
+      _danmakuFilter.clear();
+      _highlightedDanmakuIndex = null;
+      setState(() {
+        _danmaku.clear();
+        _danmakuEnded = false;
+      });
+    }
+  }
+
   /// Start the platform danmaku transport for this room. Args merge the
   /// room id with the room detail's play descriptor (`data`) and chat
   /// credentials (`danmakuData` — wins on key collision). Best-effort:
   /// any failure only marks danmaku ended; video is unaffected.
   Future<void> _startDanmaku() async {
+    // Per-platform danmaku switch (DanmakuSettings): disabled means NO
+    // transport at all — the room shows "弹幕已关闭" instead of a fake
+    // empty list or an error. _danmakuStarted stops a second start
+    // when the setting is toggled back on while the room is open (the
+    // settings listener calls this too).
+    if (!DanmakuSettings.isEnabled(_site.id) || _danmakuStarted) return;
+    _danmakuStarted = true;
     final transport = _site.getDanmaku();
     _danmakuTransport = transport;
     transport.onMessage = _onDanmakuMessage;
@@ -182,9 +327,12 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   }
 
   /// Append one danmaku message, capped at 200 (oldest dropped first),
-  /// and stick to the bottom while the user is already near it.
+  /// and stick to the bottom while the user is already near it. The
+  /// S3 content filter runs FIRST: a blocked message never reaches
+  /// the list (and never enters the similarity cache).
   void _onDanmakuMessage(LiveMessage message) {
     if (!mounted) return;
+    if (!_danmakuFilter.shouldShow(message, platform: _site.id)) return;
     final stick = !_danmakuScroll.hasClients ||
         _danmakuScroll.position.pixels >=
             _danmakuScroll.position.maxScrollExtent - 200;
@@ -343,7 +491,14 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       _currentQuality = index;
       _loading = true;
     });
-    await HiveStore.put(HiveKeys.preferResolution, quality.quality);
+    // Fire-and-forget persistence: the quality switch must not wait on
+    // storage I/O (and must keep working when storage is unavailable).
+    unawaited(
+      HiveStore.put(
+        HiveKeys.preferResolution,
+        quality.quality,
+      ).catchError((_) {}),
+    );
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
@@ -408,9 +563,135 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     }
   }
 
+  /// L04: open the switch-room panel. Tapping a room replaces this
+  /// room page with the new room (same playlist), so Back returns to
+  /// the list, not through every switched room. Tapping the current
+  /// room is a no-op.
+  void _openSwitchPanel() {
+    unawaited(
+      showRoomSwitchPanel(
+        context: context,
+        currentRoom: _room,
+        playlist: widget.playlist,
+        onSelect: (next) {
+          if (next.platform == _room.platform &&
+              next.roomId == _room.roomId) {
+            return;
+          }
+          Get.off(
+            () => LiveRoomPage(
+              room: next,
+              playlist: widget.playlist,
+              site: widget.site,
+              backendFactory: widget.backendFactory,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// L05: open the room detail sheet (never covers the video).
+  void _openRoomDetail() {
+    unawaited(showRoomDetailSheet(context: context, room: _room));
+  }
+
+  /// S4: long-press a danmaku item — block this user / block this
+  /// message / cancel, in place, without leaving the room. The block
+  /// lands in [DanmakuBlockStore] (shared with the settings page),
+  /// the filter config is re-read so later messages are filtered on
+  /// arrival, and matching messages already shown are removed now.
+  void _onDanmakuLongPress(LiveMessage message) {
+    final theme = HaoTheme.of(context);
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: theme.surfaceStrong,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (message.userName.isNotEmpty)
+                ListTile(
+                  leading: Icon(
+                    Icons.person_off_outlined,
+                    color: theme.textPrimary,
+                  ),
+                  title: Text(
+                    '屏蔽该用户 (${message.userName})',
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await _blockDanmakuUser(message.userName);
+                  },
+                ),
+              ListTile(
+                leading: Icon(
+                  Icons.block_outlined,
+                  color: theme.textPrimary,
+                ),
+                title: Text(
+                  '屏蔽这句话',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  message.message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  await _blockDanmakuMessage(message.message);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.close, color: theme.textPrimary),
+                title: Text(
+                  '取消',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                onTap: () => Navigator.of(sheetContext).pop(),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _blockDanmakuUser(String userName) async {
+    await DanmakuBlockStore.add(userName, 'user');
+    _danmakuFilter.config = DanmakuFilterConfig.fromSettings();
+    if (!mounted) return;
+    setState(() {
+      _danmaku.removeWhere((m) => m.userName.contains(userName));
+      _highlightedDanmakuIndex = null;
+    });
+    Get.snackbar('已屏蔽', '已屏蔽用户 $userName');
+  }
+
+  Future<void> _blockDanmakuMessage(String text) async {
+    await DanmakuBlockStore.add(text, 'word');
+    _danmakuFilter.config = DanmakuFilterConfig.fromSettings();
+    if (!mounted) return;
+    setState(() {
+      _danmaku.removeWhere((m) => m.message.contains(text));
+      _highlightedDanmakuIndex = null;
+    });
+    Get.snackbar('已屏蔽', '已屏蔽该弹幕');
+  }
+
   @override
   void dispose() {
     _prefetchTimer?.cancel();
+    _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
     unawaited(_danmakuTransport?.stop());
     _recovery.dispose();
@@ -433,6 +714,13 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
           title: Text(_room.title.isEmpty ? '直播间' : _room.title),
           actions: [
             IconButton(
+              icon: const Icon(Icons.swap_horiz),
+              tooltip: '切换',
+              // L04: switch-room panel (follows / current list /
+              // history / replay follows).
+              onPressed: _openSwitchPanel,
+            ),
+            IconButton(
               icon: const Icon(Icons.fullscreen),
               tooltip: '全屏',
               // The [ ] button is the ONLY path to landscape (fix 2).
@@ -451,6 +739,18 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                   fit: StackFit.expand,
                   children: [
                     _session.buildVideoWidget(),
+                    // Play/pause tap on the video surface. It MUST sit
+                    // below the failure card (and spinner / stall notice):
+                    // as the last Stack child it was hit-tested first and
+                    // its translucent tap recognizer won the gesture arena
+                    // over the failure card's ▶ 重试 button, so a retry
+                    // tap toggled play/pause instead of retrying.
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: () => _session.togglePlayPause(),
+                      ),
+                    ),
                     if (_loading)
                       const Center(
                         child: CircularProgressIndicator(color: Colors.white),
@@ -472,75 +772,86 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                           ),
                         ),
                       ),
-                    // Play/pause tap on the video surface.
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: () => _session.togglePlayPause(),
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
             // Room info + quality / line controls below the video.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundImage: _room.avatar.isEmpty
-                        ? null
-                        : NetworkImage(_room.avatar),
-                    child: _room.avatar.isEmpty
-                        ? Text(_room.nick.isEmpty ? '?' : _room.nick[0])
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _room.nick.isEmpty ? '主播' : _room.nick,
-                          style: TextStyle(
-                            color: theme.textPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          _room.watching > 0
-                              ? '${_room.watching} 人在看'
-                              : '',
-                          style: TextStyle(
-                            color: theme.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+            // L05: the whole info bar is tappable — it opens the room
+            // detail sheet (never covering the video).
+            InkWell(
+              onTap: _openRoomDetail,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundImage: _room.avatar.isEmpty
+                          ? null
+                          : NetworkImage(_room.avatar),
+                      child: _room.avatar.isEmpty
+                          ? Text(_room.nick.isEmpty ? '?' : _room.nick[0])
+                          : null,
                     ),
-                  ),
-                  if (_room.liveStatus)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        // Red ONLY for the LIVE badge (standing rule).
-                        color: theme.liveRed,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'LIVE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _room.nick.isEmpty ? '主播' : _room.nick,
+                            style: TextStyle(
+                              color: theme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            _room.watching > 0
+                                ? '${_room.watching} 人在看'
+                                : '',
+                            style: TextStyle(
+                              color: theme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
+                    if (_room.liveStatus)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          // Red ONLY for the LIVE badge (standing rule).
+                          color: theme.liveRed,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '详情',
+                      style: TextStyle(
+                        color: theme.accent,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: theme.accent,
+                    ),
+                  ],
+                ),
               ),
             ),
             // Quality selector.
@@ -600,33 +911,144 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
               ),
             // Danmaku list below the video (per-platform transport
             // started from the room detail; capped at 200, newest last).
+            // Font size + opacity come from DanmakuSettings and update
+            // live; when danmaku is disabled for this platform the
+            // transport never starts and the room says so honestly.
+            // S2: the list is a proper reviewable chat list — compact
+            // or card density, line spacing, show-username toggle.
+            // S3: every item passed the content filter before landing
+            // here. S4: tap highlights an item; long-press opens the
+            // block menu. The gestures live on the list items only —
+            // the video surface keeps its own tap-to-play/pause, and
+            // the list still scrolls (a drag is a scroll, not a tap).
             Expanded(
-              child: _danmaku.isEmpty
+              child: !_danmakuEnabled
                   ? Center(
-                      child: Text(
-                        _loading
-                            ? '弹幕加载中…'
-                            : (_danmakuEnded ? '弹幕已断开' : '暂无弹幕'),
-                        style: TextStyle(color: theme.textMuted),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '弹幕已关闭',
+                            style: TextStyle(color: theme.textMuted),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '可在「设置 → 弹幕设置」中开启',
+                            style: TextStyle(
+                              color: theme.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     )
-                  : ListView.builder(
-                      controller: _danmakuScroll,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _danmaku.length,
-                      itemBuilder: (context, i) {
-                        final m = _danmaku[i];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                  : _danmaku.isEmpty
+                      ? Center(
                           child: Text(
-                            m.userName.isEmpty
-                                ? m.message
-                                : '${m.userName}: ${m.message}',
-                            style: TextStyle(color: theme.textSecondary),
+                            _loading
+                                ? '弹幕加载中…'
+                                : (_danmakuEnded ? '弹幕已断开' : '暂无弹幕'),
+                            style: TextStyle(color: theme.textMuted),
                           ),
-                        );
-                      },
-                    ),
+                        )
+                      : Opacity(
+                          opacity: _danmakuOpacity,
+                          child: ListView.builder(
+                            controller: _danmakuScroll,
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _danmaku.length,
+                            itemBuilder: (context, i) {
+                              final m = _danmaku[i];
+                              final highlighted =
+                                  i == _highlightedDanmakuIndex;
+                              final text = _showUsernames &&
+                                      m.userName.isNotEmpty
+                                  ? '${m.userName}: ${m.message}'
+                                  : m.message;
+                              // S2 line spacing (Pure Live ChatSpacing):
+                              // compact halves the gaps (text 1.4 high),
+                              // standard keeps them, loose x1.5 (1.7).
+                              final gap = switch (_listSpacing) {
+                                DanmakuSettings.listSpacingCompact => 2.0,
+                                DanmakuSettings.listSpacingLoose => 12.0,
+                                _ => 8.0,
+                              };
+                              final textHeight = switch (_listSpacing) {
+                                DanmakuSettings.listSpacingCompact => 1.4,
+                                DanmakuSettings.listSpacingLoose => 1.7,
+                                _ => null,
+                              };
+                              final body = Text(
+                                text,
+                                style: TextStyle(
+                                  color: theme.textSecondary,
+                                  fontSize: _danmakuFontSize,
+                                  height: textHeight,
+                                ),
+                              );
+                              final Widget row;
+                              if (_listStyle ==
+                                  DanmakuSettings.listStyleCard) {
+                                row = Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: theme.hairline,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        margin: const EdgeInsets.only(
+                                          top: 6,
+                                          right: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: theme.accent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      Expanded(child: body),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                row = Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: gap / 2,
+                                  ),
+                                  child: body,
+                                );
+                              }
+                              return GestureDetector(
+                                onTap: () => setState(() {
+                                  _highlightedDanmakuIndex =
+                                      highlighted ? null : i;
+                                }),
+                                onLongPress: () => _onDanmakuLongPress(m),
+                                child: Container(
+                                  color: highlighted
+                                      ? theme.accentSoft
+                                      : Colors.transparent,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 2,
+                                  ),
+                                  child: row,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
             ),
           ],
         ),

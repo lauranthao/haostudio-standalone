@@ -9,6 +9,7 @@
 // Room entry is unchanged: tap opens LiveRoomPage in portrait with an
 // inline 16:9 video; only the [ ] button in the room goes landscape.
 
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,10 @@ import '../../../core/models/live_models.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../features/settings/source_stores.dart';
 import '../../../shared/platforms/sites.dart';
+import '../live_follow_store.dart';
+import '../live_history_store.dart';
+import 'live_follows_page.dart';
+import 'live_history_page.dart';
 import 'live_tab_controller.dart';
 import 'playback/live_room_page.dart';
 
@@ -71,7 +76,21 @@ class _LiveTabPageState extends State<LiveTabPage> {
     final theme = HaoTheme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
-      appBar: AppBar(title: const Text('直播')),
+      appBar: AppBar(
+        title: const Text('直播'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: '直播历史',
+            onPressed: () => Get.to(() => const LiveHistoryPage()),
+          ),
+          IconButton(
+            icon: const Icon(Icons.favorite_border),
+            tooltip: '我的关注',
+            onPressed: () => Get.to(() => const LiveFollowsPage()),
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
@@ -133,7 +152,18 @@ class _LiveTabPageState extends State<LiveTabPage> {
               final room = _controller.rooms[i];
               return _RoomCard(
                 room: room,
-                onTap: () => Get.to(() => LiveRoomPage(room: room)),
+                onTap: () {
+                  // L01: entering a room records a history entry.
+                  unawaited(LiveHistoryStore.record(room));
+                  // L04: the room's source list feeds the switch-room
+                  // panel's "当前列表" group.
+                  Get.to(
+                    () => LiveRoomPage(
+                      room: room,
+                      playlist: _controller.rooms,
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -271,146 +301,179 @@ class _CategoryRow extends StatelessWidget {
 
 /// One room: full-bleed cover, LIVE badge top-left (the only red in the
 /// app), watching pill bottom-right, title + nick over a bottom scrim.
-class _RoomCard extends StatelessWidget {
+/// The follow heart top-right is a Stack sibling of the card's InkWell,
+/// so tapping it never opens the room.
+class _RoomCard extends StatefulWidget {
   const _RoomCard({required this.room, required this.onTap});
 
   final LiveRoom room;
   final VoidCallback onTap;
 
   @override
+  State<_RoomCard> createState() => _RoomCardState();
+}
+
+class _RoomCardState extends State<_RoomCard> {
+  @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          // Dark tile under the artwork (same over-image treatment as
-          // the video poster card: artwork area is always dark).
-          color: const Color(0xFF1C1C1E),
+    final room = widget.room;
+    final followed = LiveFollowStore.isFollowed(room.platform, room.roomId);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        InkWell(
+          onTap: widget.onTap,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.hairline),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (room.cover.isNotEmpty)
-              Image.network(
-                room.cover,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const _MissingCover(),
-              )
-            else
-              const _MissingCover(),
-            // Bottom scrim so title / nick stay readable over any cover.
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: 0.55),
-                    ],
-                    stops: const [0.55, 1.0],
-                  ),
-                ),
-              ),
+          child: Container(
+            decoration: BoxDecoration(
+              // Dark tile under the artwork (same over-image treatment as
+              // the video poster card: artwork area is always dark).
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: theme.hairline),
             ),
-            if (room.liveStatus)
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    // Red is reserved for the LIVE badge — see hao_themes.
-                    color: theme.liveRed,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (room.cover.isNotEmpty)
+                  Image.network(
+                    room.cover,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const _MissingCover(),
+                  )
+                else
+                  const _MissingCover(),
+                // Bottom scrim so title / nick stay readable over any cover.
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.55),
+                        ],
+                        stops: const [0.55, 1.0],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (room.watching > 0)
-              Positioned(
-                right: 8,
-                bottom: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xA6000000),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.visibility_outlined,
-                        color: Colors.white,
-                        size: 12,
+                if (room.liveStatus)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
                       ),
-                      const SizedBox(width: 3),
-                      Text(
-                        formatWatching(room.watching),
-                        style: const TextStyle(
+                      decoration: BoxDecoration(
+                        // Red is reserved for the LIVE badge — see hao_themes.
+                        color: theme.liveRed,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'LIVE',
+                        style: TextStyle(
                           color: Colors.white,
                           fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (room.watching > 0)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xA6000000),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.visibility_outlined,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            formatWatching(room.watching),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        room.title.isEmpty ? room.nick : room.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        room.nick,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 11,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 8,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    room.title.isEmpty ? room.nick : room.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    room.nick,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+        Positioned(
+          top: 2,
+          right: 2,
+          child: Material(
+            color: Colors.transparent,
+            child: IconButton(
+              icon: Icon(
+                followed ? Icons.favorite : Icons.favorite_border,
+                color: followed ? theme.accent : Colors.white,
+                size: 20,
+              ),
+              tooltip: followed ? '取消关注' : '关注',
+              onPressed: () async {
+                await LiveFollowStore.toggle(room);
+                if (mounted) setState(() {});
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

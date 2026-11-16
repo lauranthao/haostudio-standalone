@@ -15,7 +15,10 @@
 // → 音源管理): all four by default, fewer when the user disabled one
 // there. At least one platform always stays enabled (store guard).
 
+import 'dart:async';
+
 import '../../features/settings/source_stores.dart';
+import 'lx_script_engine.dart';
 import 'music_api.dart';
 import 'music_models.dart';
 
@@ -51,9 +54,15 @@ List<Song> mergeSearchResults(List<List<Song>> perPlatform) {
 }
 
 class SongSearchService {
-  SongSearchService({MusicApi? api}) : _api = api ?? MusicApi();
+  SongSearchService({MusicApi? api, LxScriptEngine? scriptEngine})
+      : _api = api ?? MusicApi(),
+        _scriptEngine = scriptEngine ?? LxScriptEngine.instance;
 
   final MusicApi _api;
+
+  /// LX script engine (M-P0-6). Defaults to the process singleton;
+  /// tests pass their own engine.
+  final LxScriptEngine _scriptEngine;
   var _generation = 0;
 
   /// Fan out to the enabled platforms (40 results each, app.js:6406)
@@ -63,6 +72,34 @@ class SongSearchService {
   Future<List<Song>> searchAll(String query) async {
     final gen = ++_generation;
     final platforms = MusicSourcesStore.enabled();
+    // LX script search legs (M-P0-6): only scripts declaring `search`
+    // for an enabled platform (today: 溯音 for kw — mg is not a search
+    // platform, so in practice kw only). They start concurrently with
+    // the platform legs; a slow script never delays the search past
+    // 8 s. Kick off engine load on first use; legs appear once loaded.
+    unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
+    final scriptLegs = <({MusicPlatform pf, String scriptId})>[];
+    for (final pf in platforms) {
+      for (final leg in _scriptEngine.searchLegsFor(pf)) {
+        scriptLegs.add((pf: pf, scriptId: leg.scriptId));
+      }
+    }
+    final scriptFutures = scriptLegs
+        .map(
+          (leg) => _scriptEngine
+              .search(
+                scriptId: leg.scriptId,
+                platform: leg.pf.code,
+                keyword: query,
+                limit: 20,
+              )
+              .timeout(
+                const Duration(seconds: 8),
+                onTimeout: () => const <Map<String, dynamic>>[],
+              )
+              .catchError((_) => const <Map<String, dynamic>>[]),
+        )
+        .toList();
     final settled = await Future.wait(
       platforms.map(
         (pf) => _api
@@ -77,8 +114,32 @@ class SongSearchService {
         (e) => e.$1 == pf,
         orElse: () => (pf, <Song>[]),
       );
-      return hit.$2;
+      return List.of(hit.$2);
     }).toList();
+    if (scriptLegs.isNotEmpty) {
+      final scriptResults = await Future.wait(scriptFutures);
+      if (gen != _generation) return [];
+      for (var i = 0; i < scriptLegs.length; i++) {
+        final pf = scriptLegs[i].pf;
+        final idx = platforms.indexOf(pf);
+        if (idx < 0) continue;
+        // Script ids are sometimes generated (溯音 falls back to
+        // `kw_<ts>_<rand>`), so dedupe script hits against the
+        // platform's own results by title+artist, not by id.
+        final have = perPf[idx]
+            .map((s) => '${s.title.toLowerCase()}|${s.artist.toLowerCase()}')
+            .toSet();
+        for (final raw in scriptResults[i]) {
+          final song = LxScriptEngine.lxSongFromJson(raw, pf);
+          if (song == null) continue;
+          final key =
+              '${song.title.toLowerCase()}|${song.artist.toLowerCase()}';
+          if (have.contains(key)) continue;
+          have.add(key);
+          perPf[idx].add(song);
+        }
+      }
+    }
     if (!perPf.any((l) => l.isNotEmpty)) return [];
     return mergeSearchResults(perPf);
   }

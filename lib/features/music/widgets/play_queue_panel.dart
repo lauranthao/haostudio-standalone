@@ -14,7 +14,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../services/music/play_mode.dart';
 import '../music_player_controller.dart';
+import 'track_more_sheet.dart';
 
 class PlayQueuePanel extends StatelessWidget {
   const PlayQueuePanel({super.key, required this.onClose});
@@ -68,6 +70,28 @@ class PlayQueuePanel extends StatelessWidget {
                               ),
                             ),
                           ),
+                          // Play-mode button (M-P0-1): cycles the five
+                          // modes, icon + label, same control as the
+                          // player `···` sheet.
+                          Obx(
+                            () => TextButton.icon(
+                              onPressed: () =>
+                                  unawaited(controller.cyclePlayMode()),
+                              icon: Icon(
+                                playModeIcon(controller.mode),
+                                color: theme.accent,
+                                size: 18,
+                              ),
+                              label: Text(
+                                controller.mode.label,
+                                style: TextStyle(
+                                  color: theme.accent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
                           IconButton(
                             icon: Icon(Icons.close, color: theme.textSecondary),
                             onPressed: onClose,
@@ -86,13 +110,34 @@ class PlayQueuePanel extends StatelessWidget {
                             ),
                           );
                         }
-                        return ListView.builder(
+                        // M-P0-4: rows reorder by drag handle or ↑/↓
+                        // buttons; the current track stays highlighted.
+                        // Keys are occurrence-qualified (precomputed in
+                        // list order) so a song that appears twice in
+                        // the queue still has unique keys, which
+                        // ReorderableListView requires.
+                        final rowKeys = <String>[];
+                        final seenKeys = <String, int>{};
+                        for (final s in queue) {
+                          final n =
+                              (seenKeys[s.identityKey] ?? 0) + 1;
+                          seenKeys[s.identityKey] = n;
+                          rowKeys.add('${s.identityKey}#$n');
+                        }
+                        // onReorderItem already adjusts newIndex for
+                        // the removed item — it is the final index.
+                        return ReorderableListView.builder(
+                          buildDefaultDragHandles: false,
                           itemCount: queue.length,
+                          onReorderItem: (oldIndex, newIndex) {
+                            controller.moveQueueItem(oldIndex, newIndex);
+                          },
                           itemBuilder: (ctx, i) {
                             final song = queue[i];
                             final isCurrent =
                                 i == controller.currentIndex.value;
                             return InkWell(
+                              key: ValueKey(rowKeys[i]),
                               onTap: () {
                                 onClose();
                                 unawaited(controller.playIndex(i));
@@ -102,11 +147,20 @@ class PlayQueuePanel extends StatelessWidget {
                                     ? theme.accentSoft
                                     : Colors.transparent,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                                  horizontal: 8,
                                   vertical: 8,
                                 ),
                                 child: Row(
                                   children: [
+                                    ReorderableDragStartListener(
+                                      index: i,
+                                      child: Icon(
+                                        Icons.drag_handle,
+                                        color: theme.textMuted,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(6),
                                       child: song.cover.isEmpty
@@ -176,6 +230,43 @@ class PlayQueuePanel extends StatelessWidget {
                                         color: theme.accent,
                                         size: 20,
                                       ),
+                                    // ↑/↓ move buttons (M-P0-4).
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.arrow_upward,
+                                        size: 18,
+                                      ),
+                                      color: theme.textSecondary,
+                                      disabledColor: theme.textMuted
+                                          .withValues(alpha: 0.35),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      onPressed: i == 0
+                                          ? null
+                                          : () =>
+                                              controller.moveQueueUp(i),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.arrow_downward,
+                                        size: 18,
+                                      ),
+                                      color: theme.textSecondary,
+                                      disabledColor: theme.textMuted
+                                          .withValues(alpha: 0.35),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 32,
+                                        minHeight: 32,
+                                      ),
+                                      onPressed: i == queue.length - 1
+                                          ? null
+                                          : () =>
+                                              controller.moveQueueDown(i),
+                                    ),
                                   ],
                                 ),
                               ),

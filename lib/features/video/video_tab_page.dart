@@ -28,6 +28,7 @@ import '../../core/theme/hao_themes.dart';
 import 'video_detail_page.dart';
 import 'video_detail_service.dart';
 import 'video_favs_page.dart';
+import 'video_history_page.dart';
 import 'video_history_store.dart';
 import 'video_home_service.dart';
 import 'video_models.dart';
@@ -136,6 +137,21 @@ class _VideoTabPageState extends State<VideoTabPage> {
     );
   }
 
+  void _openHistory() {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => const VideoHistoryPage(),
+          ),
+        )
+        .then((_) {
+          // History may have been cleared or advanced while away.
+          if (mounted) {
+            setState(() => _history = VideoHistoryStore.getAll());
+          }
+        });
+  }
+
   Set<String> get _watchedKeys => _history
       .where((e) => e.isFinished)
       .map((e) => e.identityKey)
@@ -226,6 +242,24 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                       ),
                                       child: IconButton(
                                         icon: Icon(
+                                          Icons.history,
+                                          color: theme.textPrimary,
+                                        ),
+                                        tooltip: '历史记录',
+                                        onPressed: _openHistory,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: theme.surface,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: theme.hairline,
+                                        ),
+                                      ),
+                                      child: IconButton(
+                                        icon: Icon(
                                           Icons.favorite_border,
                                           color: theme.textPrimary,
                                         ),
@@ -267,7 +301,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                               if (_history.isNotEmpty) ...[
                                 _SectionHead(
                                   title: '继续观看',
-                                  onMore: null,
+                                  onMore: _openHistory,
                                 ),
                                 SizedBox(
                                   height: 172,
