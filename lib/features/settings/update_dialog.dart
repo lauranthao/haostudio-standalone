@@ -71,7 +71,10 @@ Future<UpdateDialogAction?> showUpdateDialog(
               color: theme.surfaceStrong,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35),
+                // Theme hairline: a white 0.35 edge washed out on light
+                // glass and looked grey on dark glass; the hairline
+                // reads correctly in all 8 combinations.
+                color: theme.hairline,
                 width: 1,
               ),
             ),
@@ -122,8 +125,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
                     backgroundColor: theme.accent,
                     // Theme-derived (light: white, dark: near-black) so
                     // the label stays readable on every accent, incl. gold.
-                    foregroundColor:
-                        Theme.of(ctx).colorScheme.onPrimary,
+                    foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

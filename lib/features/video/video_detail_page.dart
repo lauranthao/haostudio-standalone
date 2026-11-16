@@ -30,6 +30,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -41,6 +42,26 @@ import 'video_history_store.dart';
 import 'widgets/referer_image.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
+
+/// Clamp persisted line/episode indices to a freshly loaded detail.
+///
+/// History (`WatchHistoryEntry`) stores raw indices that were valid
+/// when the source list was seeded; after a re-seed the line count
+/// (or episode count) can shrink, and an unclamped index makes
+/// `lines[_lineIdx]` throw RangeError and crash the whole page.
+/// `ResumeInfo.fromStored` already validates, but the history fallback
+/// below it does not — so clamp here, once, at the single entry point.
+({int lineIdx, int epIdx}) clampDetailIndices(
+  List<PlayLine> lines,
+  int lineIdx,
+  int epIdx,
+) {
+  if (lines.isEmpty) return (lineIdx: 0, epIdx: 0);
+  final li = lineIdx.clamp(0, lines.length - 1);
+  final eps = lines[li].episodes;
+  final ei = eps.isEmpty ? 0 : epIdx.clamp(0, eps.length - 1);
+  return (lineIdx: li, epIdx: ei);
+}
 
 class VideoDetailPage extends StatefulWidget {
   const VideoDetailPage({
@@ -128,7 +149,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     _applyDetail(result.detail, result.sourceId, result.vodId);
     if (_switchedSource && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('正在换源播放…')),
+        const SnackBar(content: Text('已切换到更快片源')),
       );
     }
   }
@@ -144,14 +165,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       pic: detail.meta.pic,
       year: detail.meta.year,
     );
+    final clamped = clampDetailIndices(
+      detail.lines,
+      resume?.lineIdx ?? hist?.lineIdx ?? 0,
+      resume?.epIdx ?? hist?.epIdx ?? 0,
+    );
     setState(() {
       _detail = detail;
       _detailSourceId = sourceId;
       _detailVodId = vodId;
       _loading = false;
       _failed = false;
-      _lineIdx = resume?.lineIdx ?? hist?.lineIdx ?? 0;
-      _epIdx = resume?.epIdx ?? hist?.epIdx ?? 0;
+      _lineIdx = clamped.lineIdx;
+      _epIdx = clamped.epIdx;
       _resume = resume;
       _watched = hist != null;
       _epsExpanded = false;
@@ -183,6 +209,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   String get _currentEpName {
     final d = _detail;
     if (d == null) return '第${_epIdx + 1}集';
+    if (_lineIdx < 0 || _lineIdx >= d.lines.length) {
+      return '第${_epIdx + 1}集';
+    }
     final eps = d.lines[_lineIdx].episodes;
     if (_epIdx < 0 || _epIdx >= eps.length) return '第${_epIdx + 1}集';
     return eps[_epIdx].name;
@@ -204,10 +233,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _lineIdx = li;
       _epIdx = ei;
     });
+    // CupertinoPageRoute (not MaterialPageRoute): the iOS edge-swipe
+    // back gesture works, giving the player a second exit path that
+    // never goes through _close() at all — the swipe pops the route,
+    // PopScope exits fullscreen, dispose() stops playback and saves
+    // progress. (v1.0.6 "still won't exit": MaterialPageRoute has no
+    // swipe-back on iOS, so a user who swipes — the natural iOS
+    // gesture — had no way out while the back button was hidden by
+    // the auto-hiding controls.)
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      CupertinoPageRoute<void>(
         builder: (_) => NativeVideoPlayerPage(
           detail: d,
+          detailService: _detailService,
           initialLineIndex: li,
           initialEpisodeIndex: ei,
           // Resume seek: only when launching the exact episode the
@@ -313,8 +351,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               // No centre play button anywhere on the cover.
               _CoverHero(
                 pic: m.pic,
-                picAlt: m.picAlt,
-                name: m.name,
                 epLabel: _currentEpName,
               ),
               // --- Big blue play button below the cover ---
@@ -333,12 +369,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: theme.accent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      // onPrimary is theme-defined per mode: white on
+                      // the dark-mode light-gold / light-teal /
+                      // light-blue accents is unreadable, near-black
+                      // on them is not.
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                       // Rounded rectangle (14px), NOT a pill (Infuse D5).
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
+                      elevation: 2,
+                      shadowColor: theme.accent.withValues(alpha: 0.35),
                     ),
                     onPressed: () => _play(),
                   ),
@@ -372,7 +415,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                               (g) => Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
-                                  vertical: 4,
+                                  vertical: 5,
                                 ),
                                 decoration: BoxDecoration(
                                   color: theme.surface,
@@ -455,10 +498,20 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                           label: Text(lines[i].name),
                           selected: selected,
                           selectedColor: theme.accentSoft,
+                          backgroundColor: theme.surface,
+                          side: BorderSide(
+                            color: selected
+                                ? theme.accent
+                                : theme.hairline,
+                          ),
                           labelStyle: TextStyle(
                             color: selected
                                 ? theme.accent
                                 : theme.textSecondary,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            fontSize: 14,
                           ),
                           onSelected: (_) {
                             setState(() {
@@ -527,6 +580,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     child: OutlinedButton(
                       onPressed: () =>
                           setState(() => _epsExpanded = true),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: theme.hairline),
+                        foregroundColor: theme.accent,
+                      ),
                       child: Text('加载更多 (${episodes.length - epCap})'),
                     ),
                   ),
@@ -597,6 +654,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                 decoration: BoxDecoration(
                                   color: theme.surface,
                                   borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: theme.hairline,
+                                  ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: RefererImage(
@@ -647,14 +707,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 class _CoverHero extends StatelessWidget {
   const _CoverHero({
     required this.pic,
-    required this.picAlt,
-    required this.name,
     required this.epLabel,
   });
 
   final String pic;
-  final String picAlt;
-  final String name;
   final String epLabel;
 
   @override
@@ -743,9 +799,12 @@ class _CoverFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFF1C1C1E),
-      child: const Center(
-        child: Icon(Icons.movie, color: Color(0xFF8E8E93), size: 64),
+      // Theme glass, not a hardcoded dark tile (black hole in the
+      // four light modes). The icon is theme-muted, legible in all
+      // 8 combinations.
+      color: theme.surfaceStrong,
+      child: Center(
+        child: Icon(Icons.movie, color: theme.textMuted, size: 64),
       ),
     );
   }
@@ -894,10 +953,12 @@ class _EpisodeCard extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: selected ? theme.accentSoft : theme.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: selected
-                    ? Border.all(color: theme.accent, width: 1.5)
-                    : null,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color:
+                      selected ? theme.accent : theme.hairline,
+                  width: selected ? 1.5 : 1,
+                ),
               ),
               child: Text(
                 (index + 1).toString().padLeft(2, '0'),
@@ -954,13 +1015,13 @@ class _DetailSkeleton extends StatelessWidget {
                       RefererImage(
                         url: preload!.pic,
                         fit: BoxFit.cover,
-                        fallback: const ColoredBox(
-                          color: Color(0xFF1C1C1E),
+                        fallback: ColoredBox(
+                          color: theme.surfaceStrong,
                         ),
                       )
                     else
-                      const ColoredBox(
-                        color: Color(0xFF1C1C1E),
+                      ColoredBox(
+                        color: theme.surfaceStrong,
                       ),
                     Container(
                       decoration: BoxDecoration(
@@ -1076,7 +1137,9 @@ class _ErrorCard extends StatelessWidget {
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
-                foregroundColor: Colors.white,
+                // Theme-defined onPrimary per mode (see play button).
+                foregroundColor:
+                    Theme.of(context).colorScheme.onPrimary,
               ),
             ),
           ],

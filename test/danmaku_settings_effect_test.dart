@@ -357,6 +357,9 @@ class _FakeBackend implements PlayerBackend {
   Future<void> setRate(double rate) async {}
 
   @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
+
+  @override
   Stream<Duration> get positionStream => _position.stream;
 
   @override

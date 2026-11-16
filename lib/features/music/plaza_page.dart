@@ -132,7 +132,7 @@ class _PlazaPageState extends State<PlazaPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     decoration: BoxDecoration(
                       border: Border.all(color: theme.hairline),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       color: theme.surface,
                     ),
                     child: DropdownButton<MusicPlatform>(
@@ -164,10 +164,14 @@ class _PlazaPageState extends State<PlazaPage> {
                       label: Text(label),
                       selected: _sort == sort,
                       selectedColor: theme.accentSoft,
+                      side: BorderSide(color: theme.hairline),
                       labelStyle: TextStyle(
                         color: _sort == sort
                             ? theme.accent
                             : theme.textSecondary,
+                        fontWeight: _sort == sort
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                       ),
                       onSelected: (_) => setState(() => _sort = sort),
                     ),
@@ -225,13 +229,20 @@ class _PlazaPageState extends State<PlazaPage> {
                                   p.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: theme.textPrimary),
+                                  style: TextStyle(
+                                    color: theme.textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 subtitle: Text(
                                   '${p.creator.isEmpty ? p.platform.displayName : p.creator} · ${p.playCount}次播放',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: theme.textSecondary),
+                                  style: TextStyle(
+                                    color: theme.textSecondary,
+                                    fontSize: 13,
+                                  ),
                                 ),
                                 trailing: Icon(
                                   Icons.chevron_right,
@@ -259,7 +270,11 @@ class _PlazaPageState extends State<PlazaPage> {
         children: [
           Text(
             '${_platform.displayName}歌单加载失败',
-            style: TextStyle(color: theme.textPrimary),
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -274,7 +289,7 @@ class _PlazaPageState extends State<PlazaPage> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.accent,
-              foregroundColor: Colors.white,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),
             child: const Text('重试'),
           ),
@@ -339,10 +354,10 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
       name: widget.playlist.name,
     );
     if (!lists.contains(list)) lists.add(list);
-    final seen = list.tracks.map((t) => t.songId).toSet();
+    final seen = list.tracks.map((t) => t.identityKey).toSet();
     var added = 0;
     for (final t in tracks) {
-      if (seen.contains(t.songId)) continue;
+      if (seen.contains(t.identityKey)) continue;
       if (list.tracks.length >= 200) break;
       list.tracks.add(t);
       added++;
@@ -370,6 +385,10 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     final p = widget.playlist;
+    // Favourites read once per build, not per row: getFavIds() parses
+    // the whole favourites JSON on every call, and the row builder
+    // runs once per visible row per scroll frame.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: Text(p.name, maxLines: 1)),
@@ -380,7 +399,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('歌单加载失败', style: TextStyle(color: theme.textPrimary)),
+                      Text('歌单加载失败', style: TextStyle(color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () {
@@ -389,7 +408,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.accent,
-                          foregroundColor: Colors.white,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
                         ),
                         child: const Text('重试'),
                       ),
@@ -403,7 +422,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                       child: Row(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                             child: p.cover.isEmpty
                                 ? Container(
                                     width: 96,
@@ -442,18 +461,25 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                   p.name,
                                   style: TextStyle(
                                     color: theme.textPrimary,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '${p.platform.displayName} · ${p.creator}',
-                                  style: TextStyle(color: theme.textSecondary),
+                                  style: TextStyle(
+                                    color: theme.textSecondary,
+                                    fontSize: 13,
+                                  ),
                                 ),
+                                const SizedBox(height: 2),
                                 Text(
                                   '${_tracks?.length ?? 0} 首歌曲',
-                                  style: TextStyle(color: theme.textSecondary),
+                                  style: TextStyle(
+                                    color: theme.textSecondary,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ],
                             ),
@@ -472,7 +498,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                               label: const Text('播放全部'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: theme.accent,
-                                foregroundColor: Colors.white,
+                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                               ),
                             ),
                           ),
@@ -497,7 +523,6 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                         itemCount: _tracks?.length ?? 0,
                         itemBuilder: (ctx, i) {
                           final song = _tracks![i];
-                          final favIds = MusicStore.getFavIds();
                           return SongRow(
                             song: song,
                             isFav: favIds.contains(song.identityKey),

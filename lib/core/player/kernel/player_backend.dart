@@ -45,6 +45,16 @@ abstract class PlayerBackend {
   Future<void> pause();
   Future<void> setVolume(double volume);
 
+  /// Audio-only mode (Pure Live background playback): disable the
+  /// video track so a suspended video output cannot pause the whole
+  /// stream when the app backgrounds (mpv pauses when vo=libmpv can
+  /// no longer present frames; a music player has no video track and
+  /// is unaffected — that is why music keeps playing in background
+  /// while live stops). MPV implements it via
+  /// setVideoTrack(VideoTrack.no()/auto()); other engines keep the
+  /// default no-op. Default is a no-op so fakes keep compiling.
+  Future<void> setAudioOnly(bool audioOnly) async {}
+
   /// Playback speed (VOD only; live never sets it). Default is a
   /// no-op so fakes keep compiling; the three real backends override
   /// it (MPV setRate / IJK setSpeed / AVPlayer setSpeed).

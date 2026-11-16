@@ -44,20 +44,22 @@ import '../../../../core/theme/hao_themes.dart';
 import '../../../../features/settings/source_stores.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
+import '../../data/playback_header_resolver.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../features/player/screen_brightness.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
+import '../../../../features/music/music_player_controller.dart';
 import '../../live_history_store.dart';
 import 'danmaku_block_store.dart';
 import 'danmaku_filter.dart';
 import 'room_detail_sheet.dart';
 import 'room_switch_panel.dart';
 
-/// Live room entry. [startLandscape] is ALWAYS false on entry (fix 2);
-/// the parameter exists only so the flag is threaded explicitly and the
-/// VOD direct-to-landscape path cannot leak into live.
+/// Live room entry. Entry is ALWAYS portrait (fix 2): there is no
+/// parameter to request landscape — the VOD direct-to-landscape path
+/// cannot leak into live, and only the [ ] button rotates the room.
 ///
 /// [playlist] is the room's source list (the live tab's room list) for
 /// the L04 switch-room panel's "当前列表" group; empty when the room
@@ -68,16 +70,12 @@ class LiveRoomPage extends StatefulWidget {
   const LiveRoomPage({
     super.key,
     required this.room,
-    this.startLandscape = false,
     this.playlist = const [],
     this.site,
     this.backendFactory,
   });
 
   final LiveRoom room;
-
-  /// Must be false for live entry. Kept explicit per fix 2.
-  final bool startLandscape;
 
   /// The room's source list for the switch-room panel.
   final List<LiveRoom> playlist;
@@ -89,7 +87,8 @@ class LiveRoomPage extends StatefulWidget {
   State<LiveRoomPage> createState() => _LiveRoomPageState();
 }
 
-class _LiveRoomPageState extends State<LiveRoomPage> {
+class _LiveRoomPageState extends State<LiveRoomPage>
+    with WidgetsBindingObserver {
   late final LiveSite _site;
   late final PlaybackSession _session;
   late final FullscreenController _fullscreen;
@@ -120,6 +119,13 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   Timer? _hideControlsTimer;
   bool _playing = false;
   bool _paused = false;
+  // Background audio-only: true while the app is backgrounded and the
+  // room was playing, so the foreground handler knows to restore the
+  // video track (and to resume if mpv paused natively anyway).
+  bool _backgroundAudioOnly = false;
+  // Whether this room already paused the user's music on its first
+  // transition to playing (chen: open a live room pauses music).
+  bool _pausedMusicForRoom = false;
   // Danmaku display toggle (Pure Live PlayerDanmakuButton): display
   // only — the transport keeps running; hides the portrait list and
   // the fullscreen barrage alike.
@@ -145,15 +151,6 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   // (spinner stuck, taps ignored, failure card never reachable).
   // Reset on healthy playback and on every user-initiated (re)open.
   int _consecutiveAutoFailures = 0;
-  // Auto quality-downgrade budget: when a mid-playback stall has
-  // exhausted every line at the current quality, the room drops one
-  // quality level instead of giving up (fix: Douyu/Huya lag — the
-  // network cannot sustain this bitrate and line switching cannot
-  // help: Douyu's lines all resolve to the same wsa edge, Huya opens
-  // at 50 Mbps). Capped at 2 per episode; an auto-downgrade never
-  // persists the lower quality. Reset wherever the failure budget is.
-  int _autoDowngrades = 0;
-  Timer? _prefetchTimer;
 
   final List<LiveMessage> _danmaku = [];
   final ScrollController _danmakuScroll = ScrollController();
@@ -190,6 +187,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _room = widget.room;
     _site = widget.site ?? Sites.of(widget.room.platform);
     _session = PlaybackSession(backendFactory: widget.backendFactory);
@@ -220,17 +218,25 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
           _ladderHint = null;
           // Healthy playback resets the auto-recovery budget.
           _consecutiveAutoFailures = 0;
-          _autoDowngrades = 0;
         }
       });
-      if (playing && _controlsVisible) _armControlsHide();
+      if (playing) {
+        // Pause any playing music the moment this live room starts
+        // playing (chen: same rule as VOD — only when the stream
+        // actually starts, never on browsing the live list or on
+        // entering the room before playback starts). First playing
+        // transition of this room only: line/quality switches and
+        // recovery re-opens are the same room, not a new entry.
+        // No auto-resume on exit; the user resumes manually.
+        if (!_pausedMusicForRoom && Get.isRegistered<MusicPlayerController>()) {
+          _pausedMusicForRoom = true;
+          unawaited(MusicPlayerController.ensure().pause());
+        }
+        if (_controlsVisible) _armControlsHide();
+      }
     });
-    // Entry is portrait, always — even if startLandscape was (wrongly)
-    // passed true, live entry stays portrait (fix 2).
-    assert(
-      !widget.startLandscape,
-      'Live entry must be portrait; landscape only via the [ ] button.',
-    );
+    // Entry is portrait, always, by construction — there is no
+    // landscape-entry parameter (fix 2).
     unawaited(LiveBreadcrumb.write('live-msg'));
     unawaited(LiveBreadcrumb.write('live-present'));
     unawaited(_loadRoom());
@@ -257,23 +263,16 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       if (!mounted) return;
       setState(() => _qualities = qualities);
       // Restore the PREFERRED quality (persisted), not the last session's.
-      final preferred = HiveStore.getString(
-        HiveKeys.preferResolution,
-        '原画',
-      );
+      final preferred = HiveStore.getString(HiveKeys.preferResolution, '原画');
       final preferredIndex = qualities.indexWhere(
         (q) => q.quality == preferred,
       );
-      // No exact match: do NOT blindly take index 0. Huya's first
-      // quality is 蓝光50M (50 Mbps, selectionId '0'); mpv's 32 MB
-      // cache holds only ~5 s of it, so any throughput dip freezes
-      // the picture — while Bilibili (server downgrades to ~2.5 Mbps,
-      // 100+ s of cache) plays fine. _fallbackQualityIndex prefers
-      // 8 Mbps, then 超清, then index 0.
-      _currentQuality =
-          preferredIndex >= 0
-              ? preferredIndex
-              : _fallbackQualityIndex(qualities);
+      // No exact match: Pure Live maps the saved preference
+      // proportionally onto the available qualities
+      // (_fallbackQualityIndex) instead of blindly taking index 0.
+      _currentQuality = preferredIndex >= 0
+          ? preferredIndex
+          : _fallbackQualityIndex(qualities, preferred);
       await _resolveAndPlay();
     } catch (_) {
       if (mounted) {
@@ -308,21 +307,23 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   /// update and the defaults from [_readDanmakuSettings] apply.
   void _subscribeDanmakuSettings() {
     try {
-      final listenable = HiveStore.box.listenable(keys: [
-        HiveKeys.danmakuEnabled,
-        HiveKeys.danmakuFontSize,
-        HiveKeys.danmakuOpacity,
-        HiveKeys.danmakuListStyle,
-        HiveKeys.danmakuListSpacing,
-        HiveKeys.danmakuShowUsernames,
-        HiveKeys.danmakuSimilarityEnabled,
-        HiveKeys.danmakuSimilarityThreshold,
-        HiveKeys.danmakuBlockEmoteOnly,
-        HiveKeys.danmakuBlockLong,
-        HiveKeys.danmakuBlockLongLength,
-        HiveKeys.danmakuDouyuBotFilter,
-        HiveKeys.danmakuBlockList,
-      ]);
+      final listenable = HiveStore.box.listenable(
+        keys: [
+          HiveKeys.danmakuEnabled,
+          HiveKeys.danmakuFontSize,
+          HiveKeys.danmakuOpacity,
+          HiveKeys.danmakuListStyle,
+          HiveKeys.danmakuListSpacing,
+          HiveKeys.danmakuShowUsernames,
+          HiveKeys.danmakuSimilarityEnabled,
+          HiveKeys.danmakuSimilarityThreshold,
+          HiveKeys.danmakuBlockEmoteOnly,
+          HiveKeys.danmakuBlockLong,
+          HiveKeys.danmakuBlockLongLength,
+          HiveKeys.danmakuDouyuBotFilter,
+          HiveKeys.danmakuBlockList,
+        ],
+      );
       _danmakuSettingsListenable = listenable;
       listenable.addListener(_onDanmakuSettingsChanged);
     } catch (_) {
@@ -409,7 +410,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   void _onDanmakuMessage(LiveMessage message) {
     if (!mounted) return;
     if (!_danmakuFilter.shouldShow(message, platform: _site.id)) return;
-    final stick = !_danmakuScroll.hasClients ||
+    final stick =
+        !_danmakuScroll.hasClients ||
         _danmakuScroll.position.pixels >=
             _danmakuScroll.position.maxScrollExtent - 200;
     setState(() {
@@ -423,15 +425,15 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     // bounded by the engine (maxPendingCount 120 / maxPendingAge 5 s),
     // and nothing is sent in portrait — the list below is the danmaku
     // surface there.
-    if (_fullscreen.isFullscreen.value &&
-        _danmakuEnabled &&
-        _danmakuVisible) {
-      _barrageController.send(BarrageItem(
-        content: _showUsernames && message.userName.isNotEmpty
-            ? '${message.userName}: ${message.message}'
-            : message.message,
-        userName: message.userName,
-      ));
+    if (_fullscreen.isFullscreen.value && _danmakuEnabled && _danmakuVisible) {
+      _barrageController.send(
+        BarrageItem(
+          content: _showUsernames && message.userName.isNotEmpty
+              ? '${message.userName}: ${message.message}'
+              : message.message,
+          userName: message.userName,
+        ),
+      );
     }
     if (stick) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -445,7 +447,6 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   Future<void> _resolveAndPlay() async {
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // new episode, fresh retry budget
-    _autoDowngrades = 0;
     final quality = _qualities.isEmpty ? null : _qualities[_currentQuality];
     final resolution = await _site.resolvePlayUrls(
       liveRoom: _room,
@@ -484,6 +485,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     final ok = await _session.open(
       url: firstUrl,
       isLive: true,
+      headers: _playbackHeaders,
       declaredFormat: resolution.factsFor(0).format,
       refreshUrls: _refreshUrls,
     );
@@ -496,6 +498,19 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       });
     }
   }
+
+  /// Playback headers for this room — Pure Live PlaybackHeaderResolver:
+  /// Huya/Douyu streams MUST carry UA + Origin + Referer or the CDN
+  /// cuts the connection after a few seconds (measured: Huya FLV dies
+  /// at ~7 s with no headers, plays 25 s+ with them). Every session
+  /// open in this room passes these headers; the Douyu cookie reuses
+  /// this room's site instance so its dy_did matches the device id
+  /// that signed the stream URL.
+  Map<String, String> get _playbackHeaders => PlaybackHeaderResolver.resolve(
+    platform: _site.id,
+    roomId: _room.roomId,
+    douyuCookie: _site is DouyuSite ? _site.playbackCookie : '',
+  );
 
   /// Fresh-URL callback for the session: re-parse, never the dead URL.
   Future<List<String>?> _refreshUrls() async {
@@ -515,6 +530,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     await _session.open(
       url: url,
       isLive: true,
+      headers: _playbackHeaders,
       // Facts of the SAME line index, not factsFor(0): a refresh can
       // change this line's format (TX FLV -> TX HLS).
       declaredFormat: _recovery.factsFor(index).format,
@@ -533,22 +549,12 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     // The initial open already tried one line, so lines.length - 1
     // further advances cover every line exactly once.
     if (_consecutiveAutoFailures >= _recovery.lines.length - 1) {
-      // Lines exhausted at this quality. A mid-playback stall
-      // (buffering_stall) means the network cannot sustain this
-      // bitrate — and line switching cannot fix it: Douyu's lines all
-      // resolve to the same wsa edge, and Huya's top quality is
-      // 50 Mbps. Drop one quality level instead of giving up; capped
-      // at 2 auto-downgrades per episode and never persisted (the
-      // user's saved preference is untouched).
-      if (message == 'buffering_stall' &&
-          _autoDowngrades < 2 &&
-          _currentQuality + 1 < _qualities.length) {
-        _autoDowngrades++;
-        unawaited(
-          _switchQuality(_currentQuality + 1, persist: false, auto: true),
-        );
-        return;
-      }
+      // Lines exhausted at this quality: show the failure card.
+      // Pure Live never auto-downgrades — recovery is re-parse +
+      // sweep at the same quality, and when the sweep is exhausted
+      // the room fails visibly instead of silently dropping quality
+      // (the old auto-downgrade could never fire anyway: every
+      // successful recovery reset its counter to 0).
       setState(() {
         _failed = true;
         _errorMessage = message;
@@ -580,6 +586,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       await _session.open(
         url: fresh.urls[index],
         isLive: true,
+        headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(index).format,
         refreshUrls: _refreshUrls,
       );
@@ -590,8 +597,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       await _session.open(
         url: next,
         isLive: true,
-        declaredFormat:
-            _recovery.factsFor(_recovery.currentLineIndex).format,
+        headers: _playbackHeaders,
+        declaredFormat: _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
       );
       return;
@@ -610,12 +617,12 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     if (index < 0 || index >= _recovery.lines.length) return;
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
-    _autoDowngrades = 0;
     _recovery.currentLineIndex = index;
     setState(() => _loading = true);
     final ok = await _session.open(
       url: _recovery.lines[index],
       isLive: true,
+      headers: _playbackHeaders,
       declaredFormat: _recovery.factsFor(index).format,
       refreshUrls: _refreshUrls,
     );
@@ -629,23 +636,14 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   /// Switch quality: re-parse. Identical URLs after the switch -> toast
   /// "清晰度流未变化" and abort.
   ///
-  /// [persist] false skips saving the preference (auto-downgrade:
-  /// session-only, the user's saved quality is untouched). [auto] true
-  /// is a stall-driven downgrade: failures show the failure card
-  /// instead of a toast (the room already exhausted its lines), and a
-  /// successful downgrade toasts so the user knows why the picture
-  /// changed.
-  Future<void> _switchQuality(
-    int index, {
-    bool persist = true,
-    bool auto = false,
-  }) async {
+  /// [persist] false skips saving the preference. There is NO
+  /// automatic downgrade (Pure Live has none either): a stall recovers
+  /// by re-parsing + sweeping lines at the same quality, and when the
+  /// lines are exhausted the room shows the failure card.
+  Future<void> _switchQuality(int index, {bool persist = true}) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
-    // An auto-downgrade must NOT reset its own cap — only a manual
-    // quality pick starts a new episode.
-    if (!auto) _autoDowngrades = 0;
     final before = List<String>.of(_recovery.lines);
     final quality = _qualities[index];
     final resolution = await _site.resolvePlayUrlsForRecovery(
@@ -654,25 +652,11 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     );
     if (epoch != _selectionEpoch || !mounted) return; // stale response
     if (resolution.urls.isEmpty) {
-      if (auto) {
-        setState(() {
-          _failed = true;
-          _errorMessage = '该清晰度暂无可用线路';
-        });
-      } else {
-        Get.snackbar('提示', '该清晰度暂无可用线路');
-      }
+      Get.snackbar('提示', '该清晰度暂无可用线路');
       return;
     }
     if (_sameUrlList(before, resolution.urls)) {
-      if (auto) {
-        setState(() {
-          _failed = true;
-          _errorMessage = '网络不稳定，无法切换到更低清晰度';
-        });
-      } else {
-        Get.snackbar('提示', '清晰度流未变化');
-      }
+      Get.snackbar('提示', '清晰度流未变化');
       return;
     }
     setState(() {
@@ -699,36 +683,44 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     final ok = await _session.open(
       url: resolution.urls.first,
       isLive: true,
+      headers: _playbackHeaders,
       declaredFormat: resolution.factsFor(0).format,
       refreshUrls: _refreshUrls,
     );
     if (epoch != _selectionEpoch || !mounted) return;
-    if (auto && ok) {
-      Get.snackbar('提示', '网络不稳定，已自动切换到${quality.quality}');
-    }
     setState(() {
       _loading = !ok;
       _failed = !ok;
-      if (!ok && auto) _errorMessage = '播放失败，请检查网络后重试';
     });
   }
 
-  /// Default quality when the saved preference has no exact match.
-  ///
-  /// Huya's source quality is 50 Mbps (selectionId '0', 蓝光50M) and
-  /// it is the first quality in the list, so a plain index-0 fallback
-  /// opens every Huya room at 50 Mbps. Prefer 8 Mbps (selectionId
-  /// '8000', 蓝光8M — 32 MB cache holds ~32 s of it), then 2 Mbps
-  /// (selectionId '2000', 超清), then index 0. Only platforms whose
-  /// selectionIds are kbps bitrates (Huya) are affected: Douyu and
-  /// Bilibili use opaque rate/qn ids, so they fall through to index 0
-  /// unchanged (Douyu's server downgrades anonymous 原画 to 4M anyway).
-  static int _fallbackQualityIndex(List<LivePlayQuality> qualities) {
-    for (final id in const ['8000', '2000']) {
-      final i = qualities.indexWhere((q) => q.selectionId == id);
-      if (i >= 0) return i;
-    }
-    return 0;
+  /// Default quality when the saved preference has no exact match —
+  /// Pure Live `_setDefaultResolution` (player_controller.dart): map
+  /// the saved preference's position in PL's system resolution list
+  /// proportionally onto the room's available qualities. (The old
+  /// 8M fallback was built on a wrong diagnosis — "蓝光50M" is NOT
+  /// 50 Mbps, ffprobe measures ~8.2 Mbps — and PL plays the mapped
+  /// quality, which for the default '原画' preference is index 0.)
+  /// System list, verbatim from PL PlayerConsts.resolutions.
+  static const List<String> _systemResolutions = [
+    '原画',
+    '蓝光8M',
+    '蓝光4M',
+    '超清',
+    '流畅',
+  ];
+
+  static int _fallbackQualityIndex(
+    List<LivePlayQuality> qualities,
+    String preferred,
+  ) {
+    final preferLevel = _systemResolutions.indexOf(preferred);
+    if (preferLevel < 0 || qualities.isEmpty) return 0;
+    final preferRatio = preferLevel / (_systemResolutions.length - 1);
+    return (preferRatio * (qualities.length - 1)).round().clamp(
+      0,
+      qualities.length - 1,
+    );
   }
 
   bool _sameUrlList(List<String> a, List<String> b) {
@@ -749,7 +741,6 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       _errorMessage = null;
       _ladderHint = null;
       _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
-      _autoDowngrades = 0;
     });
     final fresh = await _recovery.fetchFresh();
     if (fresh != null && fresh.urls.isNotEmpty && mounted) {
@@ -759,6 +750,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       await _session.open(
         url: fresh.urls[index],
         isLive: true,
+        headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(index).format,
         refreshUrls: _refreshUrls,
       );
@@ -769,8 +761,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       await _session.open(
         url: next,
         isLive: true,
-        declaredFormat:
-            _recovery.factsFor(_recovery.currentLineIndex).format,
+        headers: _playbackHeaders,
+        declaredFormat: _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
       );
     } else if (mounted) {
@@ -792,18 +784,30 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
         currentRoom: _room,
         playlist: widget.playlist,
         onSelect: (next) {
-          if (next.platform == _room.platform &&
-              next.roomId == _room.roomId) {
+          if (next.platform == _room.platform && next.roomId == _room.roomId) {
             return;
           }
+          // Close the panel after switching: the sheet is a Flutter
+          // route Get doesn't track, so Get.off alone replaces the
+          // page UNDER the sheet and the panel stays open over the
+          // new room. pop() must come AFTER off: popping first then
+          // replacing in the same frame locks the navigator
+          // ('!_debugLocked' / empty history assertion).
           Get.off(
             () => LiveRoomPage(
               room: next,
               playlist: widget.playlist,
-              site: widget.site,
+              // NO site: the new room resolves its own adapter via
+              // Sites.of(next.platform). Forwarding widget.site would
+              // reuse the previous room's adapter when the panel
+              // switches across platforms (e.g. Huya -> Douyu via
+              // follows), and the new room would resolve URLs with
+              // the wrong platform's signing. backendFactory stays:
+              // it builds backends by engine, not by platform.
               backendFactory: widget.backendFactory,
             ),
           );
+          Navigator.of(context).pop();
         },
       ),
     );
@@ -824,60 +828,60 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     unawaited(
       showModalBottomSheet<void>(
         context: context,
+        // isScrollControlled + scrollable content: without them a tall
+        // sheet is capped at ~half the screen and the bottom rows are
+        // clipped — same bug class as the music track sheet (v1.0.6).
+        isScrollControlled: true,
         showDragHandle: true,
         backgroundColor: theme.surfaceStrong,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         builder: (sheetContext) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (message.userName.isNotEmpty)
-                ListTile(
-                  leading: Icon(
-                    Icons.person_off_outlined,
-                    color: theme.textPrimary,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message.userName.isNotEmpty)
+                  ListTile(
+                    leading: Icon(
+                      Icons.person_off_outlined,
+                      color: theme.textPrimary,
+                    ),
+                    title: Text(
+                      '屏蔽该用户 (${message.userName})',
+                      style: TextStyle(color: theme.textPrimary),
+                    ),
+                    onTap: () async {
+                      Navigator.of(sheetContext).pop();
+                      await _blockDanmakuUser(message.userName);
+                    },
                   ),
+                ListTile(
+                  leading: Icon(Icons.block_outlined, color: theme.textPrimary),
                   title: Text(
-                    '屏蔽该用户 (${message.userName})',
+                    '屏蔽这句话',
                     style: TextStyle(color: theme.textPrimary),
+                  ),
+                  subtitle: Text(
+                    message.message,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: theme.textSecondary),
                   ),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
-                    await _blockDanmakuUser(message.userName);
+                    await _blockDanmakuMessage(message.message);
                   },
                 ),
-              ListTile(
-                leading: Icon(
-                  Icons.block_outlined,
-                  color: theme.textPrimary,
+                ListTile(
+                  leading: Icon(Icons.close, color: theme.textPrimary),
+                  title: Text('取消', style: TextStyle(color: theme.textPrimary)),
+                  onTap: () => Navigator.of(sheetContext).pop(),
                 ),
-                title: Text(
-                  '屏蔽这句话',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  message.message,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: theme.textSecondary),
-                ),
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  await _blockDanmakuMessage(message.message);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.close, color: theme.textPrimary),
-                title: Text(
-                  '取消',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                onTap: () => Navigator.of(sheetContext).pop(),
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -966,7 +970,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
 
   void _onVerticalDragStart(DragStartDetails details) {
     final size = _videoSurfaceKey.currentContext?.size;
-    _dragInSystemZone = size != null &&
+    _dragInSystemZone =
+        size != null &&
         _startsInSystemHomeGestureZone(details.localPosition, size);
   }
 
@@ -984,8 +989,9 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     final isBrightness = details.localPosition.dx <= size.width / 2;
     if (_dragIsBrightness != isBrightness || !_dragHudVisible) {
       _dragIsBrightness = isBrightness;
-      final observed =
-          isBrightness ? await ScreenBrightness.getBrightness() : _volume;
+      final observed = isBrightness
+          ? await ScreenBrightness.getBrightness()
+          : _volume;
       if (!mounted) return;
       setState(() => _dragValue = observed.clamp(0.0, 1.0));
     }
@@ -993,8 +999,10 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     _keepDragHudVisible();
     // Full travel of the surface maps to a quarter of the level range
     // per half-height: target = value - dy / (height / 2) * 0.25.
-    final target =
-        (_dragValue - delta.dy / (size.height / 2) * 0.25).clamp(0.0, 1.0);
+    final target = (_dragValue - delta.dy / (size.height / 2) * 0.25).clamp(
+      0.0,
+      1.0,
+    );
     if ((target - _dragValue).abs() <= 0.001) return;
     setState(() => _dragValue = target);
     if (isBrightness) {
@@ -1021,9 +1029,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   IconData get _dragHudIcon {
     if (_dragIsBrightness) {
       if (_dragValue <= 0) return Icons.brightness_low;
-      return _dragValue < 0.5
-          ? Icons.brightness_medium
-          : Icons.brightness_high;
+      return _dragValue < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
     }
     if (_dragValue <= 0) return Icons.volume_mute;
     return _dragValue < 0.5 ? Icons.volume_down : Icons.volume_up;
@@ -1045,26 +1051,56 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   /// Quality selector (Pure Live FullscreenStreamSelectorButton).
   void _openQualitySheet() {
     if (_qualities.isEmpty) return;
+    final theme = HaoTheme.of(context);
     unawaited(
       showModalBottomSheet<void>(
         context: context,
+        // isScrollControlled + scrollable content: 9 Huya qualities
+        // alone are ~500px — without these the bottom rows are clipped
+        // (same bug class as the music track sheet, v1.0.6).
+        isScrollControlled: true,
         showDragHandle: true,
+        backgroundColor: theme.surfaceStrong,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
         builder: (sheetContext) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < _qualities.length; i++)
-                ListTile(
-                  title: Text(_qualities[i].quality),
-                  trailing:
-                      i == _currentQuality ? const Icon(Icons.check) : null,
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    unawaited(_switchQuality(i));
-                  },
-                ),
-              const SizedBox(height: 8),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < _qualities.length; i++)
+                  ListTile(
+                    selected: i == _currentQuality,
+                    selectedTileColor: theme.accentSoft,
+                    selectedColor: theme.accent,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: Text(
+                      _qualities[i].quality,
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: i == _currentQuality
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    trailing: i == _currentQuality
+                        ? Icon(Icons.check, color: theme.accent)
+                        : null,
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      unawaited(_switchQuality(i));
+                    },
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -1074,27 +1110,55 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   /// Line selector (Pure Live FullscreenStreamSelectorButton).
   void _openLineSheet() {
     if (_recovery.lines.length < 2) return;
+    final theme = HaoTheme.of(context);
     unawaited(
       showModalBottomSheet<void>(
         context: context,
+        // isScrollControlled + scrollable content: same bug class as
+        // the music track sheet (v1.0.6) — tall content was clipped.
+        isScrollControlled: true,
         showDragHandle: true,
+        backgroundColor: theme.surfaceStrong,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
         builder: (sheetContext) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < _recovery.lines.length; i++)
-                ListTile(
-                  title: Text('线路 ${i + 1}'),
-                  trailing: i == _recovery.currentLineIndex
-                      ? const Icon(Icons.check)
-                      : null,
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    unawaited(_switchLine(i));
-                  },
-                ),
-              const SizedBox(height: 8),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < _recovery.lines.length; i++)
+                  ListTile(
+                    selected: i == _recovery.currentLineIndex,
+                    selectedTileColor: theme.accentSoft,
+                    selectedColor: theme.accent,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    title: Text(
+                      '线路 ${i + 1}',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: i == _recovery.currentLineIndex
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    trailing: i == _recovery.currentLineIndex
+                        ? Icon(Icons.check, color: theme.accent)
+                        : null,
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      unawaited(_switchLine(i));
+                    },
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -1103,7 +1167,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
 
   @override
   void dispose() {
-    _prefetchTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
     _dragHudTimer?.cancel();
     _barrageController.dispose();
@@ -1114,6 +1178,67 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     unawaited(_session.dispose());
     Get.delete<FullscreenController>();
     super.dispose();
+  }
+
+  // -- App lifecycle: keep LIVE playing in background -----------------
+  //
+  // Root cause of "切到后台直播就停": nothing in Dart pauses the
+  // session — mpv itself pauses when its video output is suspended
+  // in background (vo=libmpv cannot present frames, so the core
+  // stalls the whole stream). Music keeps playing because it has no
+  // video track. The fix is Pure Live's audio-only background mode:
+  // on background, drop the video track (audio keeps flowing); on
+  // foreground, restore it and resume if mpv paused natively anyway
+  // (play() is a no-op when already playing).
+  //
+  // LIVE ONLY — VOD keeps its own behaviour (pause in background is
+  // normal for video-on-demand; live is real-time and cannot be
+  // sped up or re-watched, so it must not stop). This observer lives
+  // on the room page, never on the shared session.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _enterBackground();
+      case AppLifecycleState.resumed:
+        unawaited(_enterForeground());
+      case AppLifecycleState.inactive:
+        // Transient (call, Control Center, app switcher): the room
+        // is still foreground — do not touch the video track.
+        break;
+    }
+  }
+
+  void _enterBackground() {
+    if (_backgroundAudioOnly) return;
+    // Only when the room is actually trying to play; a user-paused
+    // room stays paused, and an error/finished room has nothing to
+    // keep alive.
+    final s = _session.status;
+    if (s != PlaybackStatus.playing &&
+        s != PlaybackStatus.buffering &&
+        s != PlaybackStatus.opening) {
+      return;
+    }
+    _backgroundAudioOnly = true;
+    unawaited(_session.setAudioOnly(true));
+  }
+
+  Future<void> _enterForeground() async {
+    if (!_backgroundAudioOnly) return;
+    _backgroundAudioOnly = false;
+    await _session.setAudioOnly(false);
+    // If mpv paused natively anyway (non-MPV engine, or a vo error
+    // before the audio-only switch landed), resume: play() on an
+    // already-playing player is a no-op.
+    final s = _session.status;
+    if (s == PlaybackStatus.playing ||
+        s == PlaybackStatus.buffering ||
+        s == PlaybackStatus.opening) {
+      unawaited(_session.play());
+    }
   }
 
   @override
@@ -1195,18 +1320,25 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                 child: AnimatedOpacity(
                   opacity: _dragHudVisible ? 0.8 : 0.0,
                   duration: const Duration(milliseconds: 300),
+                  // Over-video HUD: black stays legible over any frame
+                  // in every theme/mode, so the card keeps its black.
                   child: Card(
                     color: Colors.black,
+                    elevation: 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(_dragHudIcon, color: Colors.white),
                           Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: SizedBox(
@@ -1215,9 +1347,9 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                                 child: LinearProgressIndicator(
                                   value: _dragValue,
                                   backgroundColor: Colors.white38,
-                                  valueColor:
-                                      const AlwaysStoppedAnimation(
-                                          Colors.white),
+                                  valueColor: const AlwaysStoppedAnimation(
+                                    Colors.white,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1262,8 +1394,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back,
-                            color: Colors.white),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
                         tooltip: '退出全屏',
                         onPressed: () => _fullscreen.toggleFullscreen(),
                       ),
@@ -1274,8 +1405,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -1314,8 +1445,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                         onPressed: () => _session.togglePlayPause(),
                       ),
                       IconButton(
-                        icon:
-                            const Icon(Icons.refresh, color: Colors.white),
+                        icon: const Icon(Icons.refresh, color: Colors.white),
                         tooltip: '刷新',
                         onPressed: _manualRetry,
                       ),
@@ -1327,8 +1457,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                           color: Colors.white,
                         ),
                         tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
-                        onPressed: () => setState(
-                            () => _danmakuVisible = !_danmakuVisible),
+                        onPressed: () =>
+                            setState(() => _danmakuVisible = !_danmakuVisible),
                       ),
                       Obx(() {
                         final fs = _fullscreen.isFullscreen.value;
@@ -1341,7 +1471,11 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                             _qualities.isEmpty
                                 ? '清晰度'
                                 : _qualities[_currentQuality].quality,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         );
                       }),
@@ -1354,24 +1488,29 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                               : _openLineSheet,
                           child: Text(
                             '线路 ${_recovery.currentLineIndex + 1}',
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         );
                       }),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.lock_open,
-                            color: Colors.white),
+                        icon: const Icon(Icons.lock_open, color: Colors.white),
                         tooltip: '锁定控制条',
                         onPressed: _lockControls,
                       ),
                       IconButton(
-                        icon: Obx(() => Icon(
-                              _fullscreen.isFullscreen.value
-                                  ? Icons.fullscreen_exit
-                                  : Icons.fullscreen,
-                              color: Colors.white,
-                            )),
+                        icon: Obx(
+                          () => Icon(
+                            _fullscreen.isFullscreen.value
+                                ? Icons.fullscreen_exit
+                                : Icons.fullscreen,
+                            color: Colors.white,
+                          ),
+                        ),
                         tooltip: '全屏',
                         onPressed: () => _fullscreen.toggleFullscreen(),
                       ),
@@ -1399,9 +1538,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(
-                    color: Colors.white,
-                  ),
+                  const CircularProgressIndicator(color: Colors.white),
                   if (_ladderHint != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -1421,14 +1558,28 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
               onRetry: _manualRetry,
             ),
           if (_showingStallNotice && !_failed)
-            const Positioned(
-              top: 8,
+            Positioned(
+              top: 10,
               left: 0,
               right: 0,
               child: Center(
-                child: Text(
-                  '重新连接…',
-                  style: TextStyle(color: Colors.white70),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '重新连接…',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1446,231 +1597,305 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
           // portrait; a blocked pop only exits fullscreen.
           unawaited(_fullscreen.exitFullscreen());
         },
-      child: Scaffold(
-        backgroundColor: theme.scaffoldBackground,
-        // Pure Live fullscreen has NO AppBar: the overlay top bar is
-        // the exit path and the video fills the whole screen. Keeping
-        // the AppBar in fullscreen was the "横屏显示不好" — the video
-        // never filled the screen.
-        appBar: fullscreen
-            ? null
-            : AppBar(
-                title: Text(_room.title.isEmpty ? '直播间' : _room.title),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz),
-                    tooltip: '切换',
-                    // L04: switch-room panel (follows / current list /
-                    // history / replay follows).
-                    onPressed: _openSwitchPanel,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.fullscreen),
-                    tooltip: '全屏',
-                    // The [ ] button is the ONLY path to landscape (fix 2).
-                    onPressed: () => _fullscreen.toggleFullscreen(),
-                  ),
-                ],
-              ),
-        body: Column(
-          children: [
-            // 16:9 native video surface on top — in-page, portrait;
-            // fills the screen in landscape fullscreen.
-            if (fullscreen)
-              Expanded(child: videoSurface)
-            else
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: videoSurface,
-              ),
-            // Room info + quality / line controls below the video.
-            // L05: the whole info bar is tappable — it opens the room
-            // detail sheet (never covering the video).
-            if (!fullscreen) InkWell(
-              onTap: _openRoomDetail,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundImage: _room.avatar.isEmpty
-                          ? null
-                          : NetworkImage(_room.avatar),
-                      child: _room.avatar.isEmpty
-                          ? Text(_room.nick.isEmpty ? '?' : _room.nick[0])
-                          : null,
+        child: Scaffold(
+          backgroundColor: theme.scaffoldBackground,
+          // Pure Live fullscreen has NO AppBar: the overlay top bar is
+          // the exit path and the video fills the whole screen. Keeping
+          // the AppBar in fullscreen was the "横屏显示不好" — the video
+          // never filled the screen.
+          appBar: fullscreen
+              ? null
+              : AppBar(
+                  title: Text(_room.title.isEmpty ? '直播间' : _room.title),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.swap_horiz),
+                      tooltip: '切换',
+                      // L04: switch-room panel (follows / current list /
+                      // history / replay follows).
+                      onPressed: _openSwitchPanel,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _room.nick.isEmpty ? '主播' : _room.nick,
-                            style: TextStyle(
-                              color: theme.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            _room.watching > 0
-                                ? '${_room.watching} 人在看'
-                                : '',
-                            style: TextStyle(
-                              color: theme.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_room.liveStatus)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          // Red ONLY for the LIVE badge (standing rule).
-                          color: theme.liveRed,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '详情',
-                      style: TextStyle(
-                        color: theme.accent,
-                        fontSize: 13,
-                      ),
-                    ),
-                    Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: theme.accent,
+                    IconButton(
+                      icon: const Icon(Icons.fullscreen),
+                      tooltip: '全屏',
+                      // The [ ] button is the ONLY path to landscape (fix 2).
+                      onPressed: () => _fullscreen.toggleFullscreen(),
                     ),
                   ],
                 ),
-              ),
-            ),
-            // Quality selector.
-            if (!fullscreen && _qualities.isNotEmpty)
-              SizedBox(
-                height: 44,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: _qualities.length,
-                  itemBuilder: (context, i) {
-                    final q = _qualities[i];
-                    final selected = i == _currentQuality;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ChoiceChip(
-                        label: Text(q.quality),
-                        selected: selected,
-                        selectedColor: theme.accentSoft,
-                        labelStyle: TextStyle(
-                          color: selected
-                              ? theme.accent
-                              : theme.textSecondary,
-                        ),
-                        onSelected: (_) => _switchQuality(i),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            // Line selector: buttons show only "线路 N", never CDN names.
-            if (!fullscreen && _recovery.lines.length > 1)
-              SizedBox(
-                height: 44,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: _recovery.lines.length,
-                  itemBuilder: (context, i) {
-                    final selected = i == _recovery.currentLineIndex;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ChoiceChip(
-                        label: Text('线路 ${i + 1}'),
-                        selected: selected,
-                        selectedColor: theme.accentSoft,
-                        labelStyle: TextStyle(
-                          color: selected
-                              ? theme.accent
-                              : theme.textSecondary,
-                        ),
-                        onSelected: (_) => _switchLine(i),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            // Danmaku list below the video (per-platform transport
-            // started from the room detail; capped at 200, newest last).
-            // Font size + opacity come from DanmakuSettings and update
-            // live; when danmaku is disabled for this platform the
-            // transport never starts and the room says so honestly.
-            // S2: the list is a proper reviewable chat list — compact
-            // or card density, line spacing, show-username toggle.
-            // S3: every item passed the content filter before landing
-            // here. S4: tap highlights an item; long-press opens the
-            // block menu. The gestures live on the list items only —
-            // the video surface keeps its own tap-to-play/pause, and
-            // the list still scrolls (a drag is a scroll, not a tap).
-            if (!fullscreen) Expanded(
-              child: !_danmakuEnabled
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '弹幕已关闭',
-                            style: TextStyle(color: theme.textMuted),
+          body: Column(
+            children: [
+              // 16:9 native video surface on top — in-page, portrait;
+              // fills the screen in landscape fullscreen.
+              if (fullscreen)
+                Expanded(child: videoSurface)
+              else
+                AspectRatio(aspectRatio: 16 / 9, child: videoSurface),
+              // Room info + quality / line controls below the video.
+              // L05: the whole info bar is tappable — it opens the room
+              // detail sheet (never covering the video).
+              if (!fullscreen)
+                InkWell(
+                  onTap: _openRoomDetail,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: theme.hairline),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '可在「设置 → 弹幕设置」中开启',
-                            style: TextStyle(
-                              color: theme.textMuted,
-                              fontSize: 12,
+                          child: CircleAvatar(
+                            backgroundImage: _room.avatar.isEmpty
+                                ? null
+                                : NetworkImage(_room.avatar),
+                            child: _room.avatar.isEmpty
+                                ? Text(
+                                    _room.nick.isEmpty ? '?' : _room.nick[0],
+                                  )
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _room.nick.isEmpty ? '主播' : _room.nick,
+                                style: TextStyle(
+                                  color: theme.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                _room.watching > 0
+                                    ? '${_room.watching} 人在看'
+                                    : '',
+                                style: TextStyle(
+                                  color: theme.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_room.liveStatus)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              // Red ONLY for the LIVE badge (standing rule).
+                              color: theme.liveRed,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'LIVE',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    )
-                  : _danmaku.isEmpty
+                        const SizedBox(width: 8),
+                        Text(
+                          '详情',
+                          style: TextStyle(
+                            color: theme.accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 18,
+                          color: theme.accent,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Quality selector.
+              if (!fullscreen && _qualities.isNotEmpty)
+                SizedBox(
+                  height: 44,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _qualities.length,
+                    itemBuilder: (context, i) {
+                      final q = _qualities[i];
+                      final selected = i == _currentQuality;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Text(q.quality),
+                          selected: selected,
+                          selectedColor: theme.accentSoft,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          side: BorderSide(
+                            color: selected
+                                ? theme.accent
+                                : theme.hairline,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 2,
+                          ),
+                          labelStyle: TextStyle(
+                            color: selected
+                                ? theme.accent
+                                : theme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                          onSelected: (_) => _switchQuality(i),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              // Line selector: buttons show only "线路 N", never CDN names.
+              if (!fullscreen && _recovery.lines.length > 1)
+                SizedBox(
+                  height: 44,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: _recovery.lines.length,
+                    itemBuilder: (context, i) {
+                      final selected = i == _recovery.currentLineIndex;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Text('线路 ${i + 1}'),
+                          selected: selected,
+                          selectedColor: theme.accentSoft,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          side: BorderSide(
+                            color: selected
+                                ? theme.accent
+                                : theme.hairline,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 2,
+                          ),
+                          labelStyle: TextStyle(
+                            color: selected
+                                ? theme.accent
+                                : theme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: selected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                          onSelected: (_) => _switchLine(i),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              // Danmaku list below the video (per-platform transport
+              // started from the room detail; capped at 200, newest last).
+              // Font size + opacity come from DanmakuSettings and update
+              // live; when danmaku is disabled for this platform the
+              // transport never starts and the room says so honestly.
+              // S2: the list is a proper reviewable chat list — compact
+              // or card density, line spacing, show-username toggle.
+              // S3: every item passed the content filter before landing
+              // here. S4: tap highlights an item; long-press opens the
+              // block menu. The gestures live on the list items only —
+              // the video surface keeps its own tap-to-play/pause, and
+              // the list still scrolls (a drag is a scroll, not a tap).
+              if (!fullscreen)
+                Expanded(
+                  child: !_danmakuEnabled
                       ? Center(
-                          child: Text(
-                            _loading
-                                ? '弹幕加载中…'
-                                : (_danmakuEnded ? '弹幕已断开' : '暂无弹幕'),
-                            style: TextStyle(color: theme.textMuted),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: theme.accentSoft,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 32,
+                                  color: theme.accent,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                '弹幕已关闭',
+                                style: TextStyle(
+                                  color: theme.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '可在「设置 → 弹幕设置」中开启',
+                                style: TextStyle(
+                                  color: theme.textMuted,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _danmaku.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                size: 36,
+                                color: theme.textMuted,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _loading
+                                    ? '弹幕加载中…'
+                                    : (_danmakuEnded
+                                        ? '弹幕已断开'
+                                        : '暂无弹幕'),
+                                style: TextStyle(
+                                  color: theme.textMuted,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
                         )
                       : Opacity(
                           opacity: _danmakuOpacity,
                           child: ListView.builder(
                             controller: _danmakuScroll,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
                             itemCount: _danmaku.length,
                             itemBuilder: (context, i) {
                               final m = _danmaku[i];
-                              final highlighted =
-                                  i == _highlightedDanmakuIndex;
-                              final text = _showUsernames &&
-                                      m.userName.isNotEmpty
+                              final highlighted = i == _highlightedDanmakuIndex;
+                              final text =
+                                  _showUsernames && m.userName.isNotEmpty
                                   ? '${m.userName}: ${m.message}'
                                   : m.message;
                               // S2 line spacing (Pure Live ChatSpacing):
@@ -1686,28 +1911,48 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                                 DanmakuSettings.listSpacingLoose => 1.7,
                                 _ => null,
                               };
-                              final body = Text(
-                                text,
-                                style: TextStyle(
-                                  color: theme.textSecondary,
-                                  fontSize: _danmakuFontSize,
-                                  height: textHeight,
-                                ),
-                              );
+                              // Username in primary + semibold, message
+                              // in secondary: same string, clearer scan.
+                              final body =
+                                  _showUsernames && m.userName.isNotEmpty
+                                  ? Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: '${m.userName}: ',
+                                            style: TextStyle(
+                                              color: theme.textPrimary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          TextSpan(text: m.message),
+                                        ],
+                                      ),
+                                      style: TextStyle(
+                                        color: theme.textSecondary,
+                                        fontSize: _danmakuFontSize,
+                                        height: textHeight,
+                                      ),
+                                    )
+                                  : Text(
+                                      text,
+                                      style: TextStyle(
+                                        color: theme.textSecondary,
+                                        fontSize: _danmakuFontSize,
+                                        height: textHeight,
+                                      ),
+                                    );
                               final Widget row;
-                              if (_listStyle ==
-                                  DanmakuSettings.listStyleCard) {
+                              if (_listStyle == DanmakuSettings.listStyleCard) {
                                 row = Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
-                                    vertical: 8,
+                                    vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
                                     color: theme.surface,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: theme.hairline,
-                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: theme.hairline),
                                   ),
                                   child: Row(
                                     crossAxisAlignment:
@@ -1739,8 +1984,9 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                               }
                               return GestureDetector(
                                 onTap: () => setState(() {
-                                  _highlightedDanmakuIndex =
-                                      highlighted ? null : i;
+                                  _highlightedDanmakuIndex = highlighted
+                                      ? null
+                                      : i;
                                 }),
                                 onLongPress: () => _onDanmakuLongPress(m),
                                 child: Container(
@@ -1756,11 +2002,11 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                             },
                           ),
                         ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
     });
   }
 }
@@ -1773,23 +2019,48 @@ class _FailureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Over-video failure card: black scrim stays (theme surface
+    // would wash out over the video in light mode).
     return Container(
       color: Colors.black54,
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              message,
-              style: const TextStyle(color: Colors.white),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: onRetry,
-              child: const Text('▶ 重试'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: onRetry,
+                style: FilledButton.styleFrom(
+                  backgroundColor: HaoTheme.of(context).accent,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: const Text(
+                  '▶ 重试',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

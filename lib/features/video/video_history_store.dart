@@ -328,13 +328,28 @@ class VideoSourcesStore {
     }
     // Best-effort persist so the settings page shows the merged list;
     // behaviour does not depend on it (the merge recomputes in memory).
+    // The revision is bumped ONLY after the merged list lands: the
+    // old code fired both writes independently, so a crash (or a
+    // failed save) between them left the revision bumped while the
+    // list still lacked the new defaults — and the merge, guarded by
+    // that revision, would never run again for them.
     if (changed) {
-      unawaited(save(merged).catchError((_) {}));
+      unawaited(
+        save(merged)
+            .then(
+              (_) => HiveStore.put(
+                HiveKeys.videoSourcesRevision,
+                kVideoSourcesRevision,
+              ),
+            )
+            .catchError((_) {}),
+      );
+    } else {
+      unawaited(
+        HiveStore.put(HiveKeys.videoSourcesRevision, kVideoSourcesRevision)
+            .catchError((_) {}),
+      );
     }
-    unawaited(
-      HiveStore.put(HiveKeys.videoSourcesRevision, kVideoSourcesRevision)
-          .catchError((_) {}),
-    );
     return merged;
   }
 

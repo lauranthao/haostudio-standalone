@@ -139,11 +139,11 @@ class _LiveTabPageState extends State<LiveTabPage> {
           onRefresh: _controller.refresh,
           child: GridView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
+              mainAxisSpacing: 14,
               childAspectRatio: 16 / 10,
             ),
             itemCount: _controller.rooms.length + _footerItemCount,
@@ -230,8 +230,18 @@ class _PlatformRow extends StatelessWidget {
               label: Text(site.name),
               selected: selected,
               selectedColor: theme.accentSoft,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              side: BorderSide(
+                color: selected ? theme.accent : theme.hairline,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
               labelStyle: TextStyle(
                 color: selected ? theme.accent : theme.textSecondary,
+                fontSize: 13,
+                fontWeight:
+                    selected ? FontWeight.w700 : FontWeight.w500,
               ),
               onSelected: (_) => onSelect(id),
             ),
@@ -289,9 +299,17 @@ class _CategoryRow extends StatelessWidget {
         label: Text(label),
         selected: isSelected,
         selectedColor: theme.accentSoft,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        side: BorderSide(
+          color: isSelected ? theme.accent : theme.hairline,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         labelStyle: TextStyle(
           color: isSelected ? theme.accent : theme.textSecondary,
           fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
         ),
         onSelected: (_) => onTap(),
       ),
@@ -324,14 +342,21 @@ class _RoomCardState extends State<_RoomCard> {
       children: [
         InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
-              // Dark tile under the artwork (same over-image treatment as
-              // the video poster card: artwork area is always dark).
-              color: const Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.circular(16),
+              // Tile under the artwork: theme surface so it adapts to
+              // all 4 themes x light/dark (was hard-coded 0xFF1C1C1E).
+              color: theme.surfaceSolid,
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: theme.hairline),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
@@ -345,7 +370,10 @@ class _RoomCardState extends State<_RoomCard> {
                   )
                 else
                   const _MissingCover(),
-                // Bottom scrim so title / nick stay readable over any cover.
+                // Bottom scrim so title / nick stay readable over any
+                // cover in every theme/mode. Black-alpha is deliberate
+                // here: a theme surface would be white in light mode
+                // and unreadable over artwork.
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -354,9 +382,10 @@ class _RoomCardState extends State<_RoomCard> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.55),
+                          Colors.black.withValues(alpha: 0.18),
+                          Colors.black.withValues(alpha: 0.62),
                         ],
-                        stops: const [0.55, 1.0],
+                        stops: const [0.45, 0.78, 1.0],
                       ),
                     ),
                   ),
@@ -367,13 +396,20 @@ class _RoomCardState extends State<_RoomCard> {
                     left: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2,
+                        horizontal: 8,
+                        vertical: 3,
                       ),
                       decoration: BoxDecoration(
                         // Red is reserved for the LIVE badge — see hao_themes.
                         color: theme.liveRed,
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.30),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                       child: const Text(
                         'LIVE',
@@ -381,6 +417,7 @@ class _RoomCardState extends State<_RoomCard> {
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
                         ),
                       ),
                     ),
@@ -395,8 +432,10 @@ class _RoomCardState extends State<_RoomCard> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
+                        // Over-cover pill: black-alpha stays readable
+                        // over any cover in all 8 combos.
                         color: const Color(0xA6000000),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -420,9 +459,9 @@ class _RoomCardState extends State<_RoomCard> {
                     ),
                   ),
                 Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 8,
+                  left: 12,
+                  right: 12,
+                  bottom: 10,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -433,8 +472,8 @@ class _RoomCardState extends State<_RoomCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -444,7 +483,7 @@ class _RoomCardState extends State<_RoomCard> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -455,21 +494,34 @@ class _RoomCardState extends State<_RoomCard> {
           ),
         ),
         Positioned(
-          top: 2,
-          right: 2,
-          child: Material(
-            color: Colors.transparent,
-            child: IconButton(
-              icon: Icon(
-                followed ? Icons.favorite : Icons.favorite_border,
-                color: followed ? theme.accent : Colors.white,
-                size: 20,
+          top: 6,
+          right: 6,
+          // Frosted dark dot behind the heart so it stays tappable
+          // and legible over bright covers in every theme/mode.
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.30),
+              shape: BoxShape.circle,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: IconButton(
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(
+                  minWidth: 32,
+                  minHeight: 32,
+                ),
+                icon: Icon(
+                  followed ? Icons.favorite : Icons.favorite_border,
+                  color: followed ? theme.accent : Colors.white,
+                  size: 20,
+                ),
+                tooltip: followed ? '取消关注' : '关注',
+                onPressed: () async {
+                  await LiveFollowStore.toggle(room);
+                  if (mounted) setState(() {});
+                },
               ),
-              tooltip: followed ? '取消关注' : '关注',
-              onPressed: () async {
-                await LiveFollowStore.toggle(room);
-                if (mounted) setState(() {});
-              },
             ),
           ),
         ),
@@ -483,10 +535,17 @@ class _MissingCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: Color(0xFF1C1C1E),
+    // Theme surface + muted icon: was hard-coded dark tile + grey,
+    // which read as a black hole on light themes.
+    final theme = HaoTheme.of(context);
+    return ColoredBox(
+      color: theme.surfaceSolid,
       child: Center(
-        child: Icon(Icons.live_tv_outlined, color: Color(0xFF8E8E93), size: 32),
+        child: Icon(
+          Icons.live_tv_outlined,
+          color: theme.textMuted,
+          size: 32,
+        ),
       ),
     );
   }
@@ -501,12 +560,12 @@ class _SkeletonGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GridView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        mainAxisSpacing: 14,
         childAspectRatio: 16 / 10,
       ),
       itemCount: 6,
@@ -559,26 +618,48 @@ class _StateView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: theme.textMuted),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: theme.accentSoft,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 40, color: theme.accent),
+            ),
             const SizedBox(height: 16),
             Text(
               title,
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+              style: TextStyle(
+                color: theme.textSecondary,
+                fontSize: 14,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 20),
             FilledButton(
               onPressed: onAction,
-              style: FilledButton.styleFrom(backgroundColor: theme.accent),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.accent,
+                foregroundColor:
+                    Theme.of(context).colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
               child: Text(actionLabel),
             ),
           ],

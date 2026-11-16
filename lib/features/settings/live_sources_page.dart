@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/settings_ui.dart';
 import '../../shared/platforms/sites.dart';
 import 'source_stores.dart';
 
@@ -34,6 +35,7 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
       Get.snackbar('至少保留一个直播源', '直播页至少需要一个开启的平台');
       return;
     }
+    if (!mounted) return;
     setState(() => _enabled = LiveSourcesStore.enabledIds());
   }
 
@@ -46,25 +48,29 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            '下次打开直播页时仅显示已开启的平台；关闭后该平台的直播间不再出现在直播页。',
-            style: TextStyle(color: theme.textSecondary, fontSize: 13),
-          ),
+          const HaoHint('下次打开直播页时仅显示已开启的平台；关闭后该平台的直播间不再出现在直播页。'),
           const SizedBox(height: 16),
-          ...Sites.supportedSiteIds.map((id) {
-            final site = Sites.of(id);
-            final on = _enabled.contains(id);
-            return SwitchListTile(
-              title: Text(
-                site.name,
-                style: TextStyle(color: theme.textPrimary),
-              ),
-              subtitle: Text(id, style: TextStyle(color: theme.textSecondary)),
-              value: on,
-              activeThumbColor: theme.accent,
-              onChanged: (v) => _toggle(id, v),
-            );
-          }),
+          SettingsGroup(
+            children: [
+              ...Sites.supportedSiteIds.map((id) {
+                final site = Sites.of(id);
+                final on = _enabled.contains(id);
+                return SwitchListTile(
+                  title: Text(
+                    site.name,
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  subtitle: Text(
+                    id,
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
+                  value: on,
+                  activeThumbColor: theme.accent,
+                  onChanged: (v) => _toggle(id, v),
+                );
+              }),
+            ],
+          ),
         ],
       ),
     );

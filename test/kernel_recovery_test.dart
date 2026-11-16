@@ -137,6 +137,28 @@ void main() {
       await ladder.run();
       expect(attempts, 2);
     });
+
+    test('default retryDelays add no dead wait on exhaustion', () async {
+      // Was: after the single sweep the ladder waited out the default
+      // retry delays (750 ms + 2 s) in a second sweep that could
+      // attempt nothing — every pair was already in `_tried` — so a
+      // failed open reported exhausted 2.75 s late for no reason.
+      var attempts = 0;
+      final ladder = RecoveryLadder(
+        engines: const [PlayerEngine.mediaKit, PlayerEngine.fijk],
+        urls: const ['https://x/a.flv'],
+        attempt: ({required engine, required url}) async {
+          attempts++;
+          return false;
+        },
+      );
+      final sw = Stopwatch()..start();
+      expect(await ladder.run(), isNull);
+      sw.stop();
+      expect(attempts, 2);
+      expect(ladder.status, RecoveryLadderStatus.exhausted);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 2)));
+    });
   });
 
   group('LiveRecovery line identity by URL (step 4)', () {

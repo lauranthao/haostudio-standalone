@@ -10,8 +10,11 @@
 // format) SKIPS the in-place reopen: replaying the same URL reproduces
 // the fault, so live goes to the fresh-URL path (fix 3) instead.
 //
-// Timeouts (study §1.3): sourceOpen 18 s, live retry delays [750 ms, 2 s],
-// healthy 30 s of playback resets the budget.
+// Timeouts (study §1.3): sourceOpen 18 s, healthy 30 s of playback
+// resets the budget. No retry pass: every (engine, url) pair is tried
+// exactly once per run — a second sweep over the same pairs would
+// re-attempt nothing (`_tried` already holds them) and only burn the
+// retry delays (750 ms + 2 s of dead wait) before reporting exhausted.
 
 import 'dart:async';
 
@@ -51,7 +54,11 @@ class RecoveryLadder {
   /// ladder progress ("正在尝试 MPV…") instead of a bare spinner.
   final void Function(PlayerEngine engine, String url)? onAttempt;
 
-  /// Bounded retry delays between ladder passes (750 ms, 2 s).
+  /// Ignored. Kept only so existing call sites (and tests) passing
+  /// `retryDelays:` keep compiling: the ladder tries each (engine, url)
+  /// pair exactly once and never re-attempts the same pair, so a
+  /// delay-based retry sweep can attempt nothing — the old loop waited
+  /// out the delays and then reported exhausted.
   final List<Duration> retryDelays;
 
   RecoveryLadderStatus status = RecoveryLadderStatus.idle;
@@ -77,23 +84,6 @@ class RecoveryLadder {
           if (ok) {
             status = RecoveryLadderStatus.completed;
             return (engine: engine, url: url);
-          }
-        }
-      }
-      // One bounded retry pass with delays (live only in practice).
-      for (final delay in retryDelays) {
-        await Future<void>.delayed(delay);
-        for (final engine in engines) {
-          for (final url in urls) {
-            final key = _attemptKey(engine, url);
-            if (_tried.contains(key)) continue;
-            _tried.add(key);
-            onAttempt?.call(engine, url);
-            final ok = await attempt(engine: engine, url: url);
-            if (ok) {
-              status = RecoveryLadderStatus.completed;
-              return (engine: engine, url: url);
-            }
           }
         }
       }

@@ -83,6 +83,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
         );
       },
     );
+    nameController.dispose();
     if (name == null || name.isEmpty || name == list.name) return;
     list.name = name;
     await _save();
@@ -113,7 +114,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('删除', style: TextStyle(color: Colors.red)),
+              child: Text('删除', style: TextStyle(color: theme.liveRed)),
             ),
           ],
         );
@@ -155,6 +156,10 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
         ),
       );
     }
+    // Favourites read once per build, not per row: getFavIds() parses
+    // the whole favourites JSON on every call, and the row builder
+    // runs once per visible row per scroll frame.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
@@ -173,7 +178,11 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                 Text(
                   // Audit P0-1: count is tracks.length.
                   '${list.trackCount} 首歌曲',
-                  style: TextStyle(color: theme.textSecondary),
+                  style: TextStyle(
+                    color: theme.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const Spacer(),
                 ElevatedButton.icon(
@@ -182,7 +191,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                   label: const Text('播放全部'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.accent,
-                    foregroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ],
@@ -200,7 +209,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                     itemCount: list.tracks.length,
                     itemBuilder: (ctx, i) {
                       final song = list.tracks[i];
-                      final favIds = MusicStore.getFavIds();
                       return Dismissible(
                         key: ValueKey(
                           '${song.identityKey}|$i',
@@ -242,9 +250,9 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                                   TextButton(
                                     onPressed: () =>
                                         Navigator.of(dctx).pop(true),
-                                    child: const Text(
+                                    child: Text(
                                       '删除',
-                                      style: TextStyle(color: Colors.red),
+                                      style: TextStyle(color: t.liveRed),
                                     ),
                                   ),
                                 ],

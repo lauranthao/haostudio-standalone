@@ -192,9 +192,9 @@ void main() {
         await File('${tempDir.path}/ikun.js').exists(),
         isFalse,
       );
-      // The other five were attempted (failed infos on Linux — the
+      // The other nineteen were attempted (failed infos on Linux — the
       // JS runtime factory throws without the native QuickJS lib).
-      expect(engine.scripts.length, 5);
+      expect(engine.scripts.length, 19);
       for (final s in engine.scripts) {
         expect(s.loaded, isFalse, reason: s.id);
       }

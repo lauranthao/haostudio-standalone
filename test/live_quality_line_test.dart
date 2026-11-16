@@ -13,6 +13,9 @@
 // - Kernel ladder: FLV never enters AVPlayer; failure walks the ladder
 //   (mpv -> ijk -> avplayer by capability + preference); a manual engine
 //   switch does not lose the stream.
+// - Playback headers (Pure Live PlaybackHeaderResolver): every open
+//   carries UA + Origin + Referer for Huya/Douyu — without them
+//   Huya's CDN cuts the FLV after ~7 s (measured with ffmpeg).
 // - Stall/failure timing: 4 s stall hint / 12 s failure in PlaybackSession.
 //
 // Fakes only — no network. Canned resolutions carry refreshAt/invalidAt
@@ -36,7 +39,10 @@ import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/domains/live/presentation/playback/live_room_page.dart';
 import 'package:standalone/features/live/live_recovery.dart';
+import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/player/playback_session.dart';
+import 'package:standalone/shared/platforms/douyu/douyu_utils.dart';
+import 'package:standalone/shared/platforms/huya/huya_request_params.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 
 void main() {
@@ -76,8 +82,14 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  tearDown(() {
+  tearDown(() async {
     Get.reset();
+    // Isolate the persisted engine preference: PlaybackSession.switchEngine
+    // persists the choice to Hive (videoPlayerKey), so a test that switches
+    // to IJK would otherwise leak fijk into every later test in this file
+    // (the 4 session tests that assume MPV first all failed on the leaked
+    // preference). Reset to the default ('mpv') after every test.
+    await HiveStore.put(HiveKeys.videoPlayerKey, 'mpv');
   });
 
   group('LiveRecovery lease + prefetch (Huya)', () {
@@ -542,8 +554,9 @@ void main() {
       WidgetTester tester,
       _FakeSite site,
       _BackendLog log,
-      Map<PlayerEngine, _FakeBackendConfig> configs,
-    ) async {
+      Map<PlayerEngine, _FakeBackendConfig> configs, {
+      String platform = 'huya',
+    }) async {
       // Phone-tall viewport: the room Column (16:9 video + info +
       // quality/line rows + danmaku) is ~600 px tall and overflows the
       // default 800x600 test surface, pushing the chip rows off-screen.
@@ -566,9 +579,9 @@ void main() {
         GetMaterialApp(
           theme: HaoThemes.of(HaoThemeId.appleGlass).light,
           home: LiveRoomPage(
-            room: const LiveRoom(
+            room: LiveRoom(
               roomId: '660000',
-              platform: 'huya',
+              platform: platform,
               title: 'test room',
               nick: 'tester',
               liveStatus: true,
@@ -787,40 +800,44 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('Huya default is 蓝光8M, not the 50 Mbps source quality', (
-      tester,
-    ) async {
-      final site = _FakeSite()
-        ..qualities = const [
-          LivePlayQuality(quality: '蓝光50M', id: '0'),
-          LivePlayQuality(quality: '蓝光20M', id: '20000'),
-          LivePlayQuality(quality: '蓝光8M', id: '8000'),
-          LivePlayQuality(quality: '蓝光4M', id: '4000'),
-          LivePlayQuality(quality: '超清', id: '2000'),
-          LivePlayQuality(quality: '流畅', id: '500'),
-        ]
-        ..urlsByQuality = const {
-          '0': ['https://tx.flv.huya.com/src/660000.flv?ratio=0'],
-          '20000': ['https://tx.flv.huya.com/src/660000.flv?ratio=20000'],
-          '8000': ['https://tx.flv.huya.com/src/660000.flv?ratio=8000'],
-          '4000': ['https://tx.flv.huya.com/src/660000.flv?ratio=4000'],
-          '2000': ['https://tx.flv.huya.com/src/660000.flv?ratio=2000'],
-          '500': ['https://tx.flv.huya.com/src/660000.flv?ratio=500'],
-        };
-      final log = _BackendLog();
-      await pumpRoom(tester, site, log, freshConfigs());
-      // Saved preference '原画' has no exact match in Huya's list:
-      // the fallback must not take index 0 (蓝光50M — mpv's 32 MB
-      // cache holds ~5 s of it, so any throughput dip freezes the
-      // picture) but the 8 Mbps quality instead.
-      expect(chip(tester, '蓝光8M').selected, isTrue);
-      expect(chip(tester, '蓝光50M').selected, isFalse);
-      expect(log.opens.last.url, contains('ratio=8000'));
-      await disposeRoom(tester, log);
-    });
+    testWidgets(
+      'Huya default follows Pure Live proportional mapping, not 8M',
+      (tester) async {
+        final site = _FakeSite()
+          ..qualities = const [
+            LivePlayQuality(quality: '蓝光50M', id: '0'),
+            LivePlayQuality(quality: '蓝光20M', id: '20000'),
+            LivePlayQuality(quality: '蓝光8M', id: '8000'),
+            LivePlayQuality(quality: '蓝光4M', id: '4000'),
+            LivePlayQuality(quality: '超清', id: '2000'),
+            LivePlayQuality(quality: '流畅', id: '500'),
+          ]
+          ..urlsByQuality = const {
+            '0': ['https://tx.flv.huya.com/src/660000.flv?ratio=0'],
+            '20000': ['https://tx.flv.huya.com/src/660000.flv?ratio=20000'],
+            '8000': ['https://tx.flv.huya.com/src/660000.flv?ratio=8000'],
+            '4000': ['https://tx.flv.huya.com/src/660000.flv?ratio=4000'],
+            '2000': ['https://tx.flv.huya.com/src/660000.flv?ratio=2000'],
+            '500': ['https://tx.flv.huya.com/src/660000.flv?ratio=500'],
+          };
+        final log = _BackendLog();
+        await pumpRoom(tester, site, log, freshConfigs());
+        // Saved preference '原画' has no exact match in Huya's list:
+        // Pure Live _setDefaultResolution maps it proportionally
+        // ('原画' is index 0 of the system list, so the target is
+        // index 0 = 蓝光50M). The old 8M fallback was built on a
+        // wrong diagnosis — "蓝光50M" is NOT 50 Mbps (ffprobe: ~8.2
+        // Mbps) — and the real few-seconds cause was the missing
+        // playback headers, not the bitrate.
+        expect(chip(tester, '蓝光50M').selected, isTrue);
+        expect(chip(tester, '蓝光8M').selected, isFalse);
+        expect(log.opens.last.url, contains('ratio=0'));
+        await disposeRoom(tester, log);
+      },
+    );
 
     testWidgets(
-      'stall with lines exhausted auto-downgrades one quality, never persists',
+      'stall with lines exhausted shows the failure card, never downgrades',
       (tester) async {
         final site = _FakeSite()
           ..urlsByQuality = const {
@@ -833,17 +850,15 @@ void main() {
         expect(chip(tester, '原画').selected, isTrue);
         log.backends.last.emitError('buffering_stall');
         await settle(tester);
-        // Single line, already exhausted: instead of the failure card
-        // the room drops one quality level (recovery re-parse, B2 URLs).
-        expect(site.recoveryCalls, 1);
-        expect(chip(tester, '高清').selected, isTrue);
-        expect(
-          log.opens.last.url,
-          'https://tx.flv.huya.com/src/660000.flv?wsSecret=B2',
-        );
-        expect(find.text('▶ 重试'), findsNothing);
-        expect(find.textContaining('已自动切换到高清'), findsOneWidget);
-        // Auto-downgrade is session-only: the saved preference stays 原画.
+        // Single line, already exhausted: Pure Live never
+        // auto-downgrades — the room fails visibly instead of
+        // silently dropping quality. (The old auto-downgrade could
+        // never fire anyway: every successful recovery reset its
+        // counter to 0.)
+        expect(site.recoveryCalls, 0);
+        expect(chip(tester, '原画').selected, isTrue);
+        expect(chip(tester, '高清').selected, isFalse);
+        expect(find.text('▶ 重试'), findsOneWidget);
         expect(
           HiveStore.getString(HiveKeys.preferResolution, ''),
           '原画',
@@ -851,6 +866,49 @@ void main() {
         await disposeRoom(tester, log);
       },
     );
+
+    testWidgets('huya open carries Pure Live playback headers', (
+      tester,
+    ) async {
+      final site = _FakeSite();
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      // Root cause of "只放几秒就放不了": the room used to open the
+      // stream with NO headers, and Huya's CDN closes a header-less
+      // FLV connection after ~7 s (measured with ffmpeg). Pure Live
+      // sends the SDK UA + Origin + Referer on every open.
+      expect(log.opens.length, 1);
+      final headers = log.opens.single.headers;
+      expect(headers, isNotNull);
+      expect(headers!['user-agent'], HuyaRequestParams.hysdkUa);
+      expect(headers['origin'], 'https://www.huya.com');
+      expect(headers['referer'], 'https://www.huya.com/660000');
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets('douyu open carries Pure Live playback headers', (
+      tester,
+    ) async {
+      final site = _FakeSite()..platformId = 'douyu';
+      final log = _BackendLog();
+      await pumpRoom(
+        tester,
+        site,
+        log,
+        freshConfigs(),
+        platform: 'douyu',
+      );
+      final headers = log.opens.single.headers;
+      expect(headers, isNotNull);
+      expect(headers!['origin'], 'https://www.douyu.com');
+      expect(headers['referer'], 'https://www.douyu.com/660000');
+      expect(headers['user-agent'], DouyuUtils.userAgent);
+      // The fake site is not a real DouyuSite, so no cookie is
+      // attached here; the resolver-level cookie is covered by
+      // playback_header_resolver_test.dart.
+      expect(headers.containsKey('cookie'), isFalse);
+      await disposeRoom(tester, log);
+    });
 
     testWidgets('prefetch: a fresh URL is fetched ~100 s after issue', (
       tester,
@@ -874,6 +932,48 @@ void main() {
       );
       await disposeRoom(tester, log);
     });
+
+    testWidgets('room starting to play pauses music (chen 2026-11-17)', (
+      tester,
+    ) async {
+      final music = _RecordingMusicController();
+      Get.put<MusicPlayerController>(music);
+      music.isPlaying.value = true;
+      final site = _FakeSite();
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      expect(music.pauseCalls, 1);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets('line switch mid-room does not pause music again', (
+      tester,
+    ) async {
+      final music = _RecordingMusicController();
+      Get.put<MusicPlayerController>(music);
+      music.isPlaying.value = true;
+      final site = _FakeSite();
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      expect(music.pauseCalls, 1);
+      await tester.tap(find.text('线路 2'));
+      await settle(tester);
+      expect(music.pauseCalls, 1);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets('room that never plays leaves music alone', (tester) async {
+      final music = _RecordingMusicController();
+      Get.put<MusicPlayerController>(music);
+      music.isPlaying.value = true;
+      final site = _FakeSite();
+      final log = _BackendLog();
+      final configs = freshConfigs()
+        ..updateAll((_, c) => c..openSucceeds = false);
+      await pumpRoom(tester, site, log, configs);
+      expect(music.pauseCalls, 0);
+      await disposeRoom(tester, log);
+    });
   });
 }
 
@@ -889,6 +989,11 @@ LiveRoom _room() => const LiveRoom(
 /// Fake LiveSite with canned resolutions. [urlsByQuality] / [ackByQuality]
 /// are keyed by [LivePlayQuality.selectionId] (the opaque platform id).
 class _FakeSite extends LiveSite {
+  /// Platform id reported by this fake (default huya; the Douyu
+  /// header test overrides it — the room page builds playback
+  /// headers from the site id).
+  String platformId = 'huya';
+
   List<LivePlayQuality> qualities = const [
     LivePlayQuality(quality: '原画', id: '10000'),
     LivePlayQuality(quality: '高清', id: '400'),
@@ -948,7 +1053,7 @@ class _FakeSite extends LiveSite {
   int recoveryCalls = 0;
 
   @override
-  String get id => 'huya';
+  String get id => platformId;
 
   @override
   String get name => 'Huya';
@@ -1026,14 +1131,31 @@ class _BackendOpen {
     required this.engine,
     required this.url,
     this.declaredFormat,
+    this.headers,
   });
 
   final PlayerEngine engine;
   final String url;
   final String? declaredFormat;
+
+  /// HTTP headers the room passed to the session open (Pure Live
+  /// playback headers: Huya/Douyu UA + Origin + Referer).
+  final Map<String, String>? headers;
 }
 
 /// Shared record of every fake backend the factory built.
+/// Music controller double: records pause() calls without touching
+/// the (Linux-absent) audio players — the real pause() would hit the
+/// uninitialised late `_active` player when isPlaying is true.
+class _RecordingMusicController extends MusicPlayerController {
+  int pauseCalls = 0;
+
+  @override
+  Future<void> pause() async {
+    pauseCalls++;
+  }
+}
+
 class _BackendLog {
   final List<_BackendOpen> opens = [];
   final List<_FakeBackend> backends = [];
@@ -1107,7 +1229,12 @@ class _FakeBackend implements PlayerBackend {
     String? declaredFormat,
   }) async {
     log.opens.add(
-      _BackendOpen(engine: engine, url: url, declaredFormat: declaredFormat),
+      _BackendOpen(
+        engine: engine,
+        url: url,
+        declaredFormat: declaredFormat,
+        headers: headers,
+      ),
     );
     if (!config.openSucceeds) throw StateError('fake open failed');
     if (config.emitPositions) {
@@ -1136,6 +1263,10 @@ class _FakeBackend implements PlayerBackend {
 
   @override
   Future<void> setRate(double rate) async {}
+
+  // Audio-only is MPV-only (see PlayerBackend.setAudioOnly).
+  @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
 
   @override
   Stream<Duration> get positionStream => _position.stream;

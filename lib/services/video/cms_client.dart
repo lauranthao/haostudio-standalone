@@ -282,40 +282,56 @@ class CmsClient {
         .toList();
   }
 
-  /// `directVideoSearch(q)` (app.js:1058): fan out to all enabled
-  /// sources with 3 workers, 5 s per source, whole search capped at
-  /// 6 s. If nothing returned and no source answered at all, sequential
-  /// fallback over all sources at 8 s each, total budget 35 s. If still
-  /// nothing and no source ever answered → throws 'video source
-  /// unreachable'. Filter 里番, dedupe by normTitle|year (first wins,
-  /// higher score overwrites; an exact-title later duplicate replaces
-  /// the kept item's source/id/pic), rank, return top 40.
+  /// `directVideoSearch(q)` (app.js:1058): fan out to ALL enabled
+  /// sources in parallel, 3 s per source, whole search capped at
+  /// 3.5 s (page 1) / 6 s (later pages). If nothing returned and no
+  /// source answered at all, sequential fallback over all sources at
+  /// 5 s each, total budget 15 s. If still nothing and no source ever
+  /// answered → throws 'video source unreachable'. Filter 里番, dedupe
+  /// by normTitle|year (first wins, higher score overwrites; an
+  /// exact-title later duplicate replaces the kept item's source/id/
+  /// pic), rank, return top 40.
+  ///
+  /// 2026-11-17 (v1.0.6 phone bug: 搜影片慢 + 片源不全): the old
+  /// 3-worker sequential queues made every search wait the full 6 s
+  /// cap — a slow source at the head of a worker's queue delayed
+  /// every source behind it, and the cap then cut the tail off, so
+  /// typically only ~12 of 17 sources were ever consulted. Parallel
+  /// fan-out: the fast sources (金鹰/非凡, measured 0.4–0.8 s) answer
+  /// first and the search returns on the overall cap with whatever
+  /// arrived from ALL sources.
   Future<List<VideoItem>> search(String query, {int page = 1}) async {
     final results = <VideoItem>[];
     var anyOk = false;
-    var cursor = 0;
 
-    Future<void> worker() async {
-      while (cursor < _sources.length) {
-        final s = _sources[cursor++];
+    Future<void> fanOut(Duration perSource, Duration overall) async {
+      final jobs = _sources.map<Future<void>>((s) async {
         try {
-          final items = await searchOne(s, query, page: page);
+          final items = await searchOne(
+            s,
+            query,
+            page: page,
+            timeout: perSource,
+          );
           anyOk = true;
           results.addAll(items);
         } catch (_) {
           // One source failing never kills the search.
         }
-      }
+      }).toList();
+      await Future.wait(jobs).timeout(overall, onTimeout: () => <void>[]);
     }
 
     if (page == 1) {
-      await Future.wait([worker(), worker(), worker()])
-          .timeout(const Duration(seconds: 6), onTimeout: () => <void>[]);
+      await fanOut(
+        const Duration(seconds: 3),
+        const Duration(milliseconds: 3500),
+      );
       if (results.isEmpty && !anyOk) {
         final fbStart = DateTime.now();
         for (final s in _sources) {
           if (DateTime.now().difference(fbStart) >
-              const Duration(seconds: 35)) {
+              const Duration(seconds: 15)) {
             break;
           }
           try {
@@ -323,7 +339,7 @@ class CmsClient {
               s,
               query,
               page: page,
-              timeout: const Duration(seconds: 8),
+              timeout: const Duration(seconds: 5),
             );
             anyOk = true;
             results.addAll(items);
@@ -331,9 +347,11 @@ class CmsClient {
         }
       }
     } else {
-      // Later pages: same 3 workers, no sequential fallback.
-      await Future.wait([worker(), worker(), worker()])
-          .timeout(const Duration(seconds: 10), onTimeout: () => <void>[]);
+      // Later pages: same parallel fan-out, no sequential fallback.
+      await fanOut(
+        const Duration(seconds: 3),
+        const Duration(seconds: 6),
+      );
     }
 
     if (results.isEmpty && !anyOk) {
@@ -405,20 +423,37 @@ class CmsClient {
 
   // -- Alt sources ----------------------------------------------------------
 
-  /// `directVideoAltSources` (app.js:3576): 3 workers over all sources
-  /// except the current one, exact normalised-title (+ year) match,
-  /// up to 3 `{source, vodId}`, 15 s cap.
-  Future<List<AltVideoSource>> altSources(
+  /// `directVideoAltSources` (app.js:3576), streaming: 3 workers scan
+  /// all sources except the current one in priority order (fastest
+  /// first — 金鹰/非凡 first), exact normalised-title (+ year) match.
+  /// Each match is yielded THE MOMENT it is found — before, the list
+  /// version buffered until 3 matches or a full 15 s scan, so a title
+  /// that only the fastest source had still took up to 15 s to surface
+  /// (and the 7 s detail race gave up first).
+  /// The stream closes when [maxAlts] matches are emitted, all sources
+  /// are scanned, or the 15 s cap fires.
+  Stream<AltVideoSource> altSourcesStream(
     String title,
     String year,
-    dynamic excludeSourceId,
-  ) async {
+    dynamic excludeSourceId, {
+    int maxAlts = 5,
+  }) {
+    final controller = StreamController<AltVideoSource>();
     final qn = videoNormTitle(title);
-    final out = <AltVideoSource>[];
     var cursor = 0;
+    var emitted = 0;
+    var closed = false;
+    void closeOnce() {
+      if (!closed) {
+        closed = true;
+        controller.close();
+      }
+    }
+
+    Timer(const Duration(seconds: 15), closeOnce);
 
     Future<void> worker() async {
-      while (cursor < _sources.length && out.length < 3) {
+      while (!closed && cursor < _sources.length && emitted < maxAlts) {
         final s = _sources[cursor++];
         if (s.idKey == excludeSourceId.toString()) continue;
         try {
@@ -426,16 +461,22 @@ class CmsClient {
             '${s.apiUrl}?ac=videolist&wd=${Uri.encodeComponent(title)}&pg=1',
             timeout: const Duration(seconds: 5),
           );
+          if (closed) return;
           final list = (json['list'] as List<dynamic>? ?? const []);
           for (final raw in list.whereType<Map<String, dynamic>>()) {
             final name = (raw['vod_name'] as String?) ?? '';
             final y = (raw['vod_year'] ?? '').toString();
             if (videoNormTitle(name) == qn &&
                 (year.isEmpty || y.isEmpty || y == year)) {
-              out.add(AltVideoSource(
+              emitted++;
+              controller.add(AltVideoSource(
                 source: s.id,
                 vodId: (raw['vod_id'] ?? '').toString(),
               ));
+              if (emitted >= maxAlts) {
+                closeOnce();
+                return;
+              }
               break;
             }
           }
@@ -443,9 +484,29 @@ class CmsClient {
       }
     }
 
-    await Future.wait([worker(), worker(), worker()])
-        .timeout(const Duration(seconds: 15), onTimeout: () => <void>[]);
-    return out.take(3).toList();
+    Future.wait([worker(), worker(), worker()]).then((_) => closeOnce());
+    return controller.stream;
+  }
+
+  /// List form of [altSourcesStream] (up to 3 matches) — kept for
+  /// callers that want the whole list at once. Breaks out as soon as
+  /// 3 are collected (breaking the await-for cancels the stream).
+  Future<List<AltVideoSource>> altSources(
+    String title,
+    String year,
+    dynamic excludeSourceId,
+  ) async {
+    final out = <AltVideoSource>[];
+    await for (final a in altSourcesStream(
+      title,
+      year,
+      excludeSourceId,
+      maxAlts: 3,
+    )) {
+      out.add(a);
+      if (out.length >= 3) break;
+    }
+    return out;
   }
 
   // -- Type map -------------------------------------------------------------
@@ -455,8 +516,19 @@ class CmsClient {
 
   /// `directVideoTypeMap` (app.js:1351): `GET ?ac=list` on every
   /// kind==='play' source in parallel; map type_name → {source,
-  /// sourceName, typeId}; FIRST source wins per type name. Adult type
-  /// names skipped. 10-min cache.
+  /// sourceName, typeId, childTypeIds, candidates}. 10-min cache.
+  ///
+  /// Two-stage deterministic build (2026-11-17, 分类乱 fix):
+  /// 1. Fetch every source's class table in parallel (6 s cap).
+  /// 2. Build the map in SOURCE-PRIORITY order (`_sources` order):
+  ///    the first source carrying a name wins as the primary entry;
+  ///    same-name entries from other sources become candidates.
+  /// The old code built the map inside the parallel callbacks, so the
+  /// winner per name was whichever source answered first — it changed
+  /// from launch to launch, and a parent category (电影/电视剧/综艺/
+  /// 动漫/连续剧) could land on a source where it holds ~0 items.
+  /// Children come from each source's own class table (`type_pid`):
+  /// items live under leaf type_ids, never under a parent id.
   Future<Map<String, CmsTypeEntry>> typeMap() async {
     if (_typeMap != null &&
         _typeMapAt != null &&
@@ -465,30 +537,47 @@ class CmsClient {
       return _typeMap!;
     }
     final playSources = _sources.where((s) => s.isPlay).toList();
-    final map = <String, CmsTypeEntry>{};
-    await Future.wait(playSources.map((s) async {
+    // Stage 1: fetch all class tables in parallel. Collect results;
+    // do NOT build the map here (that was the race).
+    final tables = <_SourceClassTable>[];
+    // 2026-11-17: 6 s overall cap. Before, typeMap waited for EVERY
+    // play source (each up to 8 s) with no overall timeout, so a cold
+    // home load could stall 8 s here alone before any row was fetched.
+    // A partial map is fine — home rows come from the types that did
+    // answer.
+    await Future.wait(playSources.map<Future<void>>((s) async {
       try {
         final json = await _fetcher(
           '${s.apiUrl}?ac=list',
           timeout: const Duration(seconds: 8),
         );
-        for (final c in (json['class'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()) {
-          final nm = ((c['type_name'] as String?) ?? '').trim();
-          if (nm.isEmpty) continue;
-          if (isAdultVideo(nm, null)) continue;
-          if (nm.contains('里番')) continue;
-          map.putIfAbsent(
-            nm,
-            () => CmsTypeEntry(
-              source: s.id,
-              sourceName: s.name,
-              typeId: (c['type_id'] ?? '').toString(),
-            ),
-          );
-        }
+        tables.add(_SourceClassTable(s, json));
       } catch (_) {}
-    }));
+    })).timeout(const Duration(seconds: 6), onTimeout: () => <void>[]);
+    // Stage 2: deterministic build in source-priority order.
+    final order = <VideoSource, int>{
+      for (var i = 0; i < playSources.length; i++) playSources[i]: i,
+    };
+    tables.sort(
+      (a, b) => (order[a.source] ?? 999) - (order[b.source] ?? 999),
+    );
+    final grouped = <String, List<CmsTypeEntry>>{};
+    for (final t in tables) {
+      for (final e in t.entries.entries) {
+        grouped.putIfAbsent(e.key, () => []).add(e.value);
+      }
+    }
+    final map = <String, CmsTypeEntry>{};
+    for (final g in grouped.entries) {
+      final first = g.value.first;
+      map[g.key] = CmsTypeEntry(
+        source: first.source,
+        sourceName: first.sourceName,
+        typeId: first.typeId,
+        childTypeIds: first.childTypeIds,
+        candidates: g.value.skip(1).toList(),
+      );
+    }
     _typeMap = map;
     _typeMapAt = DateTime.now();
     return map;
@@ -496,16 +585,18 @@ class CmsClient {
 
   // -- Home / daily / by-type ----------------------------------------------
 
-  /// One home row: `?ac=videolist&t=<typeId>&pg=1`, 8 s timeout.
-  Future<VideoHomeRow?> homeRowOne(
-    String typeName,
-    CmsTypeEntry entry,
-  ) async {
-    final s = sourceById(entry.source);
-    if (s == null) return null;
+  /// One `?ac=videolist&t=<typeId>&pg=<p>` page from one source:
+  /// parsed items (name + pic required, adult dropped) + the source's
+  /// total/pagecount. Null when the request fails.
+  Future<_CmsTypePage?> _fetchTypePage(
+    VideoSource s,
+    String typeId,
+    int page, {
+    String extraQ = '',
+  }) async {
     try {
       final json = await _fetcher(
-        '${s.apiUrl}?ac=videolist&t=${Uri.encodeComponent(entry.typeId)}&pg=1',
+        '${s.apiUrl}?ac=videolist&t=${Uri.encodeComponent(typeId)}&pg=$page$extraQ',
         timeout: const Duration(seconds: 8),
       );
       final items = (json['list'] as List<dynamic>? ?? const [])
@@ -519,14 +610,56 @@ class CmsClient {
               ))
           .map((x) => parseCmsVideoItem(s, x))
           .toList();
-      return VideoHomeRow(
-        name: typeName,
-        count: (json['total'] as num?)?.toInt() ?? items.length,
-        items: items.take(10).toList(),
+      return _CmsTypePage(
+        items: items,
+        total: (json['total'] as num?)?.toInt() ?? items.length,
+        pagecount: (json['pagecount'] as num?)?.toInt() ?? 1,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  /// One home row: leaf → `?ac=videolist&t=<typeId>&pg=1` on the
+  /// primary source, falling back to same-name candidates when it
+  /// answers empty or with the wrong type; parent → all child
+  /// type_ids in parallel, merged. 8 s timeout (caller-side).
+  Future<VideoHomeRow?> homeRowOne(
+    String typeName,
+    CmsTypeEntry entry,
+  ) async {
+    // At most 4 attempts (primary + 3 candidates): the outer home()
+    // call caps each row at 8 s anyway, but a cap keeps one row from
+    // burning the whole window on dead sources.
+    final attempts = [entry, ...entry.candidates].take(4).toList();
+    for (final target in attempts) {
+      final s = sourceById(target.source);
+      if (s == null) continue;
+      if (target.isParent) {
+        final fetched = await Future.wait(
+          target.childTypeIds.map((tid) => _fetchTypePage(s, tid, 1)),
+        );
+        final pages = fetched.whereType<_CmsTypePage>().toList();
+        if (pages.isEmpty) continue;
+        final items = _interleaveTypePages(
+          pages.map((p) => p.items).toList(),
+        ).take(10).toList();
+        if (items.isEmpty) continue;
+        return VideoHomeRow(
+          name: typeName,
+          count: pages.fold<int>(0, (a, p) => a + p.total),
+          items: items,
+        );
+      }
+      final pg = await _fetchTypePage(s, target.typeId, 1);
+      if (pg == null || !_leafPageMatches(typeName, pg.items)) continue;
+      return VideoHomeRow(
+        name: typeName,
+        count: pg.total,
+        items: pg.items.take(10).toList(),
+      );
+    }
+    return null;
   }
 
   /// `directVideoHome` (app.js:1443): first 12 types (priority order),
@@ -583,14 +716,20 @@ class CmsClient {
       }
     }
 
-    await Future.wait([worker(), worker(), worker()]);
+    // 2026-11-17: 10 s overall cap. Before, daily() had NO timeout
+    // at all — 3 sequential workers × ~6 sources × 8 s each = up to
+    // ~48 s worst case, hogging the shared Dio while home loaded.
+    await Future.wait([worker(), worker(), worker()])
+        .timeout(const Duration(seconds: 10), onTimeout: () => <void>[]);
     final seen = <String, VideoItem>{};
     final series = <VideoItem>[];
     final other = <VideoItem>[];
     for (final x in all) {
       if (x.name.isEmpty || x.pic.isEmpty) continue;
       if (isAdultVideo(x.type, x.name)) continue;
-      final k = '${x.name}|${x.year}';
+      // Same normalised key as dedupeAndRankSearch — a raw name|year
+      // key keeps "庆余年(高清)" and "庆余年" as two different titles.
+      final k = '${videoNormTitle(x.name)}|${x.year}';
       final ex = seen[k];
       if (ex != null) {
         if (x.scoreNum > ex.scoreNum) {
@@ -611,11 +750,14 @@ class CmsClient {
   }
 
   /// `directVideoByType(name, pg, area, year, by)` (app.js:1402):
-  /// single source from the type map. Filtered (area≠all or year≠all)
-  /// fetches a window of 10 CMS pages in parallel, then client-side
-  /// filters; page count is divided by 10 when filtered. Unfiltered
-  /// fetches one page. Only `by=hits|score` is passed through;
-  /// `area`/`year` omitted for `all`/`other`/`earlier`.
+  /// parent categories fan out to their child type_ids and merge;
+  /// leaf categories query one source, falling back to same-name
+  /// candidates when it answers empty or with the wrong type.
+  /// Filtered (area≠all or year≠all) fetches a window of 10 CMS pages
+  /// in parallel for leaves, then client-side filters; page count is
+  /// divided by 10 when filtered. Unfiltered fetches one page. Only
+  /// `by=hits|score` is passed through; `area`/`year` omitted for
+  /// `all`/`other`/`earlier`.
   Future<VideoByTypeResult> byType(
     String name,
     int page, {
@@ -626,94 +768,224 @@ class CmsClient {
     final map = await typeMap();
     final entry = map[name];
     if (entry == null) throw CmsException('type not found');
-    final s = sourceById(entry.source);
-    if (s == null) throw CmsException('source gone');
+    if (entry.isParent) {
+      return _byParentType(
+        name,
+        entry,
+        page,
+        area: area,
+        year: year,
+        by: by,
+      );
+    }
+    return _byLeafType(
+      name,
+      entry,
+      page,
+      area: area,
+      year: year,
+      by: by,
+    );
+  }
+
+  /// Leaf category: one source at a time (primary, then same-name
+  /// candidates one by one). Filtered fetches a 10-page window in
+  /// parallel; unfiltered fetches one page. The raw window is
+  /// validated for this category's type BEFORE area/year filtering —
+  /// a source whose items all carry a different type name is
+  /// mis-mapped for this name and the next candidate gets a turn.
+  Future<VideoByTypeResult> _byLeafType(
+    String name,
+    CmsTypeEntry entry,
+    int page, {
+    required String area,
+    required String year,
+    required String by,
+  }) async {
     final filtered = (area != 'all') || (year != 'all');
     const win = 10;
-    final pagesToFetch = filtered
-        ? List<int>.generate(win, (i) => (page - 1) * win + 1 + i)
-        : [page];
-    final baseQ = 't=${Uri.encodeComponent(entry.typeId)}';
-    var extraQ = '';
-    if (area != 'all' && area != 'other') {
-      extraQ += '&area=${Uri.encodeComponent(area)}';
-    }
-    if (year != 'all' && year != 'earlier') {
-      extraQ += '&year=${Uri.encodeComponent(year)}';
-    }
-    if (by == 'hits' || by == 'score') {
-      extraQ += '&by=${Uri.encodeComponent(by)}';
-    }
+    final attempts = [entry, ...entry.candidates].take(4).toList();
     var anyOk = false;
-    final raws = await Future.wait(
-      pagesToFetch.map((p) async {
-        try {
-          final json = await _fetcher(
-            '${s.apiUrl}?ac=videolist&$baseQ&pg=$p$extraQ',
-            timeout: const Duration(seconds: 8),
-          );
-          anyOk = true;
-          return json;
-        } catch (_) {
-          return null;
-        }
-      }),
-    );
-    if (!anyOk) throw CmsException('video source unreachable');
-    var srcPagecount = 1;
-    var srcTotal = 0;
-    for (final j in raws.whereType<Map<String, dynamic>>()) {
-      final pc = (j['pagecount'] as num?)?.toInt() ?? 1;
-      if (pc > srcPagecount) srcPagecount = pc;
-      final tot = (j['total'] as num?)?.toInt() ?? 0;
-      if (tot > srcTotal) srcTotal = tot;
-    }
-    var items = <VideoItem>[];
-    for (final j in raws.whereType<Map<String, dynamic>>()) {
-      for (final x in (j['list'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>()) {
-        if (((x['vod_name'] as String?) ?? '').isEmpty) continue;
-        if (((x['vod_pic'] as String?) ?? '').isEmpty) continue;
-        items.add(parseCmsVideoItem(s, x));
+    var bestPagecount = 1;
+    for (final target in attempts) {
+      final s = sourceById(target.source);
+      if (s == null) continue;
+      final pagesToFetch = filtered
+          ? List<int>.generate(win, (i) => (page - 1) * win + 1 + i)
+          : [page];
+      final baseQ = 't=${Uri.encodeComponent(target.typeId)}';
+      var extraQ = '';
+      if (area != 'all' && area != 'other') {
+        extraQ += '&area=${Uri.encodeComponent(area)}';
       }
+      if (year != 'all' && year != 'earlier') {
+        extraQ += '&year=${Uri.encodeComponent(year)}';
+      }
+      if (by == 'hits' || by == 'score') {
+        extraQ += '&by=${Uri.encodeComponent(by)}';
+      }
+      final raws = await Future.wait(
+        pagesToFetch.map((p) async {
+          try {
+            final json = await _fetcher(
+              '${s.apiUrl}?ac=videolist&$baseQ&pg=$p$extraQ',
+              timeout: const Duration(seconds: 8),
+            );
+            anyOk = true;
+            return json;
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      var srcPagecount = 1;
+      var srcTotal = 0;
+      for (final j in raws.whereType<Map<String, dynamic>>()) {
+        final pc = (j['pagecount'] as num?)?.toInt() ?? 1;
+        if (pc > srcPagecount) srcPagecount = pc;
+        final tot = (j['total'] as num?)?.toInt() ?? 0;
+        if (tot > srcTotal) srcTotal = tot;
+      }
+      if (srcPagecount > bestPagecount) bestPagecount = srcPagecount;
+      var items = <VideoItem>[];
+      for (final j in raws.whereType<Map<String, dynamic>>()) {
+        for (final x in (j['list'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()) {
+          if (((x['vod_name'] as String?) ?? '').isEmpty) continue;
+          if (((x['vod_pic'] as String?) ?? '').isEmpty) continue;
+          items.add(parseCmsVideoItem(s, x));
+        }
+      }
+      if (!_leafPageMatches(name, items)) continue;
+      items = _filterByTypeItems(items, area: area, year: year, by: by);
+      final pagecount = filtered
+          ? (srcPagecount / win).ceil().clamp(1, 1 << 30)
+          : srcPagecount;
+      return VideoByTypeResult(
+        name: name,
+        page: page,
+        pagecount: pagecount,
+        total: filtered ? items.length : srcTotal,
+        items: items,
+      );
     }
+    if (!anyOk) throw CmsException('video source unreachable');
+    return VideoByTypeResult(
+      name: name,
+      page: page,
+      pagecount: bestPagecount,
+      total: 0,
+      items: const [],
+    );
+  }
+
+  /// Parent category (电影/电视剧/综艺/动漫/连续剧…): items live
+  /// under the child type_ids, never under the parent id (a direct
+  /// query returns ~0 on every source — measured 2026-11-17).
+  /// Fan out to all children in parallel, round-robin merge, one CMS
+  /// page per child per logical page. Filtered (area/year) fetches the
+  /// same single page per child — the fan-out volume compensates for
+  /// the missing 10-page window. Falls back to same-name candidates
+  /// when the merge comes back empty.
+  Future<VideoByTypeResult> _byParentType(
+    String name,
+    CmsTypeEntry entry,
+    int page, {
+    required String area,
+    required String year,
+    required String by,
+  }) async {
+    final filtered = (area != 'all') || (year != 'all');
+    final attempts = [entry, ...entry.candidates].take(4).toList();
+    var anyOk = false;
+    var bestPagecount = 1;
+    for (final target in attempts) {
+      final s = sourceById(target.source);
+      if (s == null) continue;
+      List<_CmsTypePage> pages;
+      if (target.isParent) {
+        final fetched = await Future.wait(
+          target.childTypeIds.map((tid) => _fetchTypePage(s, tid, page)),
+        );
+        pages = fetched.whereType<_CmsTypePage>().toList();
+        if (pages.isNotEmpty) anyOk = true;
+      } else {
+        final pg = await _fetchTypePage(s, target.typeId, page);
+        if (pg == null) continue;
+        anyOk = true;
+        if (!_leafPageMatches(name, pg.items)) continue;
+        pages = [pg];
+      }
+      if (pages.isEmpty) continue;
+      final total = pages.fold<int>(0, (a, p) => a + p.total);
+      final pagecount =
+          pages.fold<int>(1, (a, p) => p.pagecount > a ? p.pagecount : a);
+      if (pagecount > bestPagecount) bestPagecount = pagecount;
+      var items = _interleaveTypePages(
+        pages.map((p) => p.items).toList(),
+      );
+      if (items.isEmpty) continue;
+      items = _filterByTypeItems(items, area: area, year: year, by: by);
+      // Unfiltered: one logical page = 20 items (CMS page size).
+      // Filtered: return everything the filter kept, like the leaf
+      // path returns its whole window.
+      if (!filtered && items.length > 20) items = items.sublist(0, 20);
+      return VideoByTypeResult(
+        name: name,
+        page: page,
+        pagecount: pagecount,
+        total: filtered ? items.length : total,
+        items: items,
+      );
+    }
+    if (!anyOk) throw CmsException('video source unreachable');
+    return VideoByTypeResult(
+      name: name,
+      page: page,
+      pagecount: bestPagecount,
+      total: 0,
+      items: const [],
+    );
+  }
+
+  /// Area/year filters + hits/score sort shared by the leaf and
+  /// parent by-type paths (extracted from the old `byType` body so
+  /// both paths filter identically).
+  List<VideoItem> _filterByTypeItems(
+    List<VideoItem> items, {
+    required String area,
+    required String year,
+    required String by,
+  }) {
+    var out = items;
     if (area != 'all') {
       if (area == 'other') {
-        items = items
+        out = out
             .where((x) => !kKnownVideoAreas
                 .any((a) => (x.area).contains(a)))
             .toList();
       } else {
         final aliases = kVideoAreaAlias[area] ?? [area];
-        items = items
+        out = out
             .where((x) => aliases.any((a) => x.area.contains(a)))
             .toList();
       }
     }
     if (year != 'all') {
       if (year == 'earlier') {
-        items = items
+        out = out
             .where((x) => (int.tryParse(x.year) ?? 9999) <= 2021)
             .toList();
       } else {
-        items = items.where((x) => x.year == year).toList();
+        out = out.where((x) => x.year == year).toList();
       }
     }
     if (by == 'hits') {
-      items.sort((a, b) => b.hits.compareTo(a.hits));
+      out.sort((a, b) => b.hits.compareTo(a.hits));
     } else if (by == 'score') {
-      items.sort((a, b) => b.scoreNum.compareTo(a.scoreNum));
+      out.sort((a, b) => b.scoreNum.compareTo(a.scoreNum));
     }
-    final pagecount = filtered
-        ? (srcPagecount / win).ceil().clamp(1, 1 << 30)
-        : srcPagecount;
-    return VideoByTypeResult(
-      name: name,
-      page: page,
-      pagecount: pagecount,
-      total: filtered ? items.length : srcTotal,
-      items: items,
-    );
+    return out;
   }
 
   /// Probe (`testSource('video')`): `GET <apiUrl>?ac=videolist&pg=1` —
@@ -731,17 +1003,132 @@ class CmsClient {
   }
 }
 
-/// One entry of the type map: the (first) source carrying a type name.
+/// One entry of the type map: the (first, in source-priority order)
+/// source carrying a type name, plus its children and same-name
+/// candidates from other sources.
 class CmsTypeEntry {
   const CmsTypeEntry({
     required this.source,
     required this.sourceName,
     required this.typeId,
+    this.childTypeIds = const [],
+    this.candidates = const [],
   });
 
   final dynamic source;
   final String sourceName;
   final String typeId;
+
+  /// Child type ids on the SAME source, from that source's class
+  /// table (`type_pid`). Non-empty ⟺ this name is a parent category
+  /// on its source; items live under the children, never under this
+  /// id (a direct query returns ~0 on every source).
+  final List<String> childTypeIds;
+
+  /// Same-name entries from other sources, in source-priority order.
+  /// Tried one by one when this entry's source answers empty or with
+  /// the wrong type.
+  final List<CmsTypeEntry> candidates;
+
+  bool get isParent => childTypeIds.isNotEmpty;
+}
+
+/// One `?ac=videolist&t=<typeId>&pg=<p>` page: parsed items +
+/// the source's total/pagecount.
+class _CmsTypePage {
+  const _CmsTypePage({
+    required this.items,
+    required this.total,
+    required this.pagecount,
+  });
+
+  final List<VideoItem> items;
+  final int total;
+  final int pagecount;
+}
+
+/// One source's `?ac=list` class table, parsed into entries.
+/// Children come from the table's own `type_pid` links; adult and
+/// 里番 names are skipped both as entries and as children.
+class _SourceClassTable {
+  _SourceClassTable(this.source, Map<String, dynamic> json) {
+    final rows = <_ClassRow>[];
+    final ids = <String>{};
+    for (final c in (json['class'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()) {
+      final nm = ((c['type_name'] as String?) ?? '').trim();
+      if (nm.isEmpty) continue;
+      if (isAdultVideo(nm, null)) continue;
+      if (nm.contains('里番')) continue;
+      final id = (c['type_id'] ?? '').toString();
+      if (id.isEmpty) continue;
+      rows.add(_ClassRow(nm, id, (c['type_pid'] ?? 0).toString()));
+      ids.add(id);
+    }
+    final childrenOf = <String, List<String>>{};
+    for (final r in rows) {
+      if (r.pid != '0' && ids.contains(r.pid)) {
+        childrenOf.putIfAbsent(r.pid, () => []).add(r.id);
+      }
+    }
+    for (final r in rows) {
+      entries.putIfAbsent(
+        r.name,
+        () => CmsTypeEntry(
+          source: source.id,
+          sourceName: source.name,
+          typeId: r.id,
+          childTypeIds: childrenOf[r.id] ?? const [],
+        ),
+      );
+    }
+  }
+
+  final VideoSource source;
+
+  /// type_name → entry (first occurrence wins within one source).
+  final entries = <String, CmsTypeEntry>{};
+}
+
+class _ClassRow {
+  const _ClassRow(this.name, this.id, this.pid);
+  final String name;
+  final String id;
+  final String pid;
+}
+
+/// A leaf page is usable when it has items AND at least one item's
+/// type matches the requested name — or when every item's type is
+/// blank (some sources omit type_name, and a blank type can't prove
+/// a mismatch). A page of items all carrying a DIFFERENT type name
+/// is a mis-mapped category: fall back to the next candidate source.
+bool _leafPageMatches(String name, List<VideoItem> items) {
+  if (items.isEmpty) return false;
+  if (items.any((x) => x.type == name)) return true;
+  return items.every((x) => x.type.isEmpty);
+}
+
+/// Round-robin interleave of per-child page lists, deduped by
+/// source|vodId. A plain concat would show only the first child's
+/// 20 items on a parent category's page 1; interleaving mixes the
+/// children so every page shows a bit of each.
+List<VideoItem> _interleaveTypePages(List<List<VideoItem>> pages) {
+  final out = <VideoItem>[];
+  final seen = <String>{};
+  var idx = 0;
+  var added = true;
+  while (added) {
+    added = false;
+    for (final list in pages) {
+      if (idx < list.length) {
+        final item = list[idx];
+        if (seen.add('${item.source}|${item.vodId}')) out.add(item);
+        added = true;
+      }
+    }
+    idx++;
+  }
+  return out;
 }
 
 /// By-type page result.

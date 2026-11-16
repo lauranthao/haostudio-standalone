@@ -42,11 +42,16 @@ class VideoHomeService {
     return null;
   }
 
+  /// Cache persistence must never fail a successful fetch: a Hive
+  /// failure (box closed, disk) used to throw out of [fetchFresh]
+  /// and turn good data into an error state for the caller.
   Future<void> _saveCache(VideoHomeData data) async {
-    await HiveStore.put(
-      HiveKeys.videoHomeCache,
-      jsonEncode(data.toJson()),
-    );
+    try {
+      await HiveStore.put(
+        HiveKeys.videoHomeCache,
+        jsonEncode(data.toJson()),
+      );
+    } catch (_) {}
   }
 
   /// Fresh home fetch with the 12 s + 5 s windows. Returns null when

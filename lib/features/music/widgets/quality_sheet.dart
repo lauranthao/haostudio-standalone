@@ -42,7 +42,7 @@ Future<AudioQuality?> showQualitySheet(
               color: theme.surfaceStrong,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35),
+                color: theme.textPrimary.withValues(alpha: 0.22),
                 width: 1,
               ),
             ),
@@ -100,7 +100,7 @@ class _QualityRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : Colors.transparent,
           borderRadius: BorderRadius.circular(12),

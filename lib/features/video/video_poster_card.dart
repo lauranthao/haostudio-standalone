@@ -51,11 +51,23 @@ class VideoPosterCard extends StatelessWidget {
               aspectRatio: 2 / 3,
               child: Container(
                 decoration: BoxDecoration(
-                  // Dark tile under the image (artwork area is always
-                  // dark, per the Infuse spec — hardcoded here, not a
-                  // theme colour).
-                  color: const Color(0xFF1C1C1E),
+                  // Missing-artwork tile: theme glass, NOT a hardcoded
+                  // dark tile — the old 0xFF1C1C1E read as a black hole
+                  // in all four light modes. Over real artwork the
+                  // badges below still use black scrims (on-photo).
+                  color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.hairline),
+                  // Soft lift in light modes; invisible (harmless)
+                  // on dark scaffolds. Shadow is black-alpha, not a
+                  // theme colour — it is not a surface or text colour.
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
@@ -111,6 +123,7 @@ class VideoPosterCard extends StatelessWidget {
                 color: theme.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
+                height: 1.25,
               ),
             ),
             const SizedBox(height: 2),
@@ -121,7 +134,11 @@ class VideoPosterCard extends StatelessWidget {
               ].join(' · '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: theme.textMuted, fontSize: 12),
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 12,
+                height: 1.25,
+              ),
             ),
           ],
         ),
@@ -135,10 +152,12 @@ class _MissingArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: Color(0xFF1C1C1E),
+    // Theme glass + muted glyph: legible in all 4 themes x light/dark.
+    final theme = HaoTheme.of(context);
+    return ColoredBox(
+      color: theme.surfaceStrong,
       child: Center(
-        child: Icon(Icons.play_arrow, color: Color(0xFF8E8E93), size: 36),
+        child: Icon(Icons.play_arrow, color: theme.textMuted, size: 36),
       ),
     );
   }
@@ -185,7 +204,7 @@ class VideoPosterGrid extends StatelessWidget {
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 12,
-        mainAxisSpacing: 14,
+        mainAxisSpacing: 16,
         // Poster 2:3 + ~44px of title/meta below.
         childAspectRatio: 0.58,
       ),

@@ -3,7 +3,7 @@
 // Mirrors Pure Live's HivePrefUtil shape (one box, typed helpers), without
 // its GetX/Rx persistence layer: values are read at startup and written
 // explicitly. Settings keys follow Pure Live where the setting is ported
-// (videoPlayerKey, preferResolution, preferResolutionCellular).
+// (videoPlayerKey, preferResolution).
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -54,9 +54,15 @@ class HiveKeys {
   /// Preferred player engine key: 'mpv' | 'ijk' | 'exo'. Default 'mpv'.
   static const String videoPlayerKey = 'videoPlayerKey';
 
-  /// Preferred quality (Wi-Fi) / cellular. Default '原画'.
+  /// Player-engine section expanded state on the settings page:
+  /// bool, default false (collapsed). Persisted across restarts.
+  static const String engineSectionExpanded = 'engineSectionExpanded';
+
+  /// Preferred quality (all networks — there is no separate
+  /// cellular preference: the key for one was defined but never read,
+  /// written or shown, so it was deleted rather than left dead).
+  /// Default '原画'.
   static const String preferResolution = 'preferResolution';
-  static const String preferResolutionCellular = 'preferResolutionCellular';
 
   /// Last live crash breadcrumb stage (fix 1). Empty = no record.
   static const String liveCrashStage = 'liveCrashStage';

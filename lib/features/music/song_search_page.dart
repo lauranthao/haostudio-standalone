@@ -84,11 +84,26 @@ class _SongSearchPageState extends State<SongSearchPage> {
     try {
       switch (_type) {
         case _SearchType.song:
-          final results = await _searchService.searchAll(q);
+          // searchAll has no catch-all of its own (a throw from the
+          // sources store or the merge left the page showing the
+          // empty "已加载全部" footer as if nothing matched). The
+          // playlist/artist branches already catch per call; the
+          // song branch needs the same honest error.
+          var results = <Song>[];
+          var failed = false;
+          try {
+            results = await _searchService.searchAll(q);
+          } catch (_) {
+            failed = true;
+          }
           if (!mounted) return;
           setState(() {
             _songs = results;
-            if (results.isEmpty) _error = '没搜到，换个歌名试试';
+            if (failed) {
+              _error = '搜索失败，请重试';
+            } else if (results.isEmpty) {
+              _error = '没搜到，换个歌名试试';
+            }
           });
         case _SearchType.playlist:
           final settled = await Future.wait([
@@ -151,8 +166,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     decoration: InputDecoration(
                       hintText: '搜索歌曲 / 歌手…',
                       hintStyle: TextStyle(color: theme.textMuted),
+                      filled: true,
+                      fillColor: theme.surface,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide(color: theme.hairline),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
@@ -167,7 +184,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
                     border: Border.all(color: theme.hairline),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: DropdownButton<_SearchType>(
                     value: _type,
@@ -193,7 +210,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   onPressed: _loading ? null : _search,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.accent,
-                    foregroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
                   child: const Text('搜索'),
                 ),
@@ -212,12 +229,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
     }
     if (!_searched) {
       return Center(
-        child: Text('搜一首歌、歌单或歌手', style: TextStyle(color: theme.textMuted)),
+        child: Text('搜一首歌、歌单或歌手', style: TextStyle(color: theme.textMuted, fontSize: 15)),
       );
     }
     if (_error.isNotEmpty) {
       return Center(
-        child: Text(_error, style: TextStyle(color: theme.textMuted)),
+        child: Text(_error, style: TextStyle(color: theme.textMuted, fontSize: 15)),
       );
     }
     switch (_type) {
@@ -291,13 +308,17 @@ class _SongSearchPageState extends State<SongSearchPage> {
                 p.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: theme.textPrimary),
+                style: TextStyle(
+                  color: theme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               subtitle: Text(
                 '${p.platform.displayName} · ${p.creator} · ${p.playCount}次播放',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: theme.textSecondary),
+                style: TextStyle(color: theme.textSecondary, fontSize: 13),
               ),
               trailing: Icon(Icons.chevron_right, color: theme.textMuted),
               onTap: () => _openPlazaDetail(p),
@@ -318,10 +339,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     ? Icon(Icons.person, color: theme.textMuted)
                     : null,
               ),
-              title: Text(a.name, style: TextStyle(color: theme.textPrimary)),
+              title: Text(a.name, style: TextStyle(color: theme.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
               subtitle: Text(
                 '${a.platform.displayName} · ${a.musicSize} 首 · ${a.albumSize} 张专辑',
-                style: TextStyle(color: theme.textSecondary),
+                style: TextStyle(color: theme.textSecondary, fontSize: 13),
               ),
               trailing: Icon(Icons.chevron_right, color: theme.textMuted),
               onTap: () => Navigator.of(context).push(

@@ -8,11 +8,11 @@
 // video widget alone. Exiting fullscreen returns to the same portrait
 // room, same stream, without re-fetching the URL or restarting playback.
 //
-// The flag is threaded explicitly: room entry carries startLandscape =
-// false; the [ ] action carries startLandscape = true on the re-open
-// path; if the player is already on screen, [ ] rotates the existing
-// player in place instead of presenting a new one. There is no other path
-// to landscape for a live room: no auto-rotate on entry, no rotate on
+// Room entry is ALWAYS portrait by construction — there is no flag
+// to request landscape on entry; the [ ] action rotates the
+// existing player in place instead of presenting a new page, and
+// there is no re-open path to landscape. There is no other path to
+// landscape for a live room: no auto-rotate on entry, no rotate on
 // device tilt, no rotate when playback starts.
 //
 // VOD is the opposite (tap-play goes DIRECTLY to landscape fullscreen)
@@ -26,7 +26,7 @@ import 'package:get/get.dart';
 class FullscreenController extends GetxController {
   final RxBool isFullscreen = false.obs;
 
-  /// Enter landscape fullscreen (the [ ] action, startLandscape = true).
+  /// Enter landscape fullscreen (the [ ] action).
   ///
   /// Pure Live `WindowService.landScape()` verbatim: on mobile it is ONLY
   /// `SystemChrome.setPreferredOrientations` — no native force-rotation,

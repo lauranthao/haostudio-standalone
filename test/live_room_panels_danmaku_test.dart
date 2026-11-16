@@ -531,21 +531,27 @@ void main() {
       await tester.pump();
       var text = tester.widget<Text>(find.text('Alice: hello'));
       expect(text.style?.height, isNull);
-      await tester.runAsync(() async {
-        await DanmakuSettings.setListSpacing('loose');
-        await DanmakuSettings.setListStyle('card');
-      });
+      // Fire-and-forget, do NOT await: a Hive put started in the
+      // widget-test fake zone can stall behind the room-open
+      // history record (same box, fire-and-forget) — the Future
+      // never resolves here even though the value lands in the box
+      // synchronously (proven by the L05 follow-toggle case). The
+      // room's Hive listenable fires off the landed value, so the
+      // restyle still applies on the next pump.
+      unawaited(DanmakuSettings.setListSpacing('loose'));
+      unawaited(DanmakuSettings.setListStyle('card'));
       await settle(tester);
       text = tester.widget<Text>(find.text('Alice: hello'));
       expect(text.style?.height, 1.7);
-      // Card style wraps the row in a rounded container.
+      // Card style wraps the row in a rounded container (radius 14
+      // in the room page).
       expect(
         find.byWidgetPredicate(
           (w) =>
               w is Container &&
               w.decoration is BoxDecoration &&
               (w.decoration as BoxDecoration).borderRadius ==
-                  BorderRadius.circular(12),
+                  BorderRadius.circular(14),
         ),
         findsWidgets,
       );
@@ -559,14 +565,17 @@ void main() {
         const LiveMessage(userName: 'Alice', message: 'hello'),
       );
       await tester.pump();
+      // The highlight is the theme accent wash (accentSoft). Match that
+      // exact color: the room also has other colored containers (the
+      // black video surface from the v1.0.6 landscape fix), so "any
+      // non-transparent color" counts those too.
+      final highlightColor =
+          HaoTheme.of(tester.element(find.byType(LiveRoomPage))).accentSoft;
       await tester.tap(find.text('Alice: hello'));
       await tester.pump();
       expect(
         find.byWidgetPredicate(
-          (w) =>
-              w is Container &&
-              w.color != null &&
-              w.color != Colors.transparent,
+          (w) => w is Container && w.color == highlightColor,
         ),
         findsOneWidget,
       );
@@ -574,10 +583,7 @@ void main() {
       await tester.pump();
       expect(
         find.byWidgetPredicate(
-          (w) =>
-              w is Container &&
-              w.color != null &&
-              w.color != Colors.transparent,
+          (w) => w is Container && w.color == highlightColor,
         ),
         findsNothing,
       );
@@ -814,6 +820,9 @@ class _FakeBackend implements PlayerBackend {
 
   @override
   Future<void> setRate(double rate) async {}
+
+  @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
 
   @override
   Stream<Duration> get positionStream => _position.stream;

@@ -2,6 +2,7 @@ import AVFoundation
 import Flutter
 import MediaPlayer
 import UIKit
+import os
 
 // Now Playing shell for music (Fix 14) — port of the Swift app's
 // NativeMusicPlayer Now Playing behaviour to the Flutter shell.
@@ -42,6 +43,23 @@ import UIKit
 //    it does nothing. Fix: set up commands eagerly at registration,
 //    call beginReceivingRemoteControlEvents, and re-assert the
 //    session active on every publish (a no-op when already active).
+//  - v1.0.6 follow-up (chen 2026-11-17): STILL does not open on tap.
+//    That fix only re-asserted the session on Dart pushes — and Dart
+//    pushes STOP exactly when they are needed most: the throttled
+//    path returns early while paused, and the isolate can stall in
+//    background, so if mpv releases the session after a pause (or an
+//    interruption ends without mpv reclaiming it) the card keeps
+//    showing the last info while the session is inactive — and a
+//    Now Playing card with an inactive session does NOT open the app.
+//    Also `clearNowPlaying` tore the whole command center down
+//    (endReceivingRemoteControlEvents) whenever the queue transiently
+//    emptied, and the plugin fought mpv over the session category
+//    (forcing mode .default over mpv's .moviePlayback). Fix: the
+//    native side is now self-healing and independent of Dart pushes —
+//    it observes interruptions + foreground, runs a 5 s heartbeat
+//    that re-asserts the session and re-publishes the cached info
+//    when it went missing, never tears the command center down, and
+//    only sets the category when it is not already .playback.
 // MUST inherit from NSObject: MPRemoteCommand.addTarget messages the
 // target through the Objective-C runtime, and a pure Swift class as
 // the target crashes the app the moment a remote command fires (same
@@ -52,11 +70,31 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
     private var commandsActive = false
     private var currentCoverURL = ""
     private var artwork: MPMediaItemArtwork?
-    private var sessionConfigured = false
+    // Last published Now Playing info, cached so the native side can
+    // re-publish it without waiting for a Dart push (interruption end,
+    // foreground, heartbeat). The elapsed time inside may be a few
+    // seconds stale; Dart pushes a fresh one ~1 s while playing.
+    private var lastInfo: [String: Any]?
+    // Safety-net timer: re-asserts the session + re-publishes the
+    // cached info every 5 s. Only acts when something is actually
+    // wrong (setActive is a no-op when active; re-publish only fires
+    // when nowPlayingInfo went nil), so it costs nothing when healthy.
+    private var heartbeat: Timer?
 
     init(channel: FlutterMethodChannel) {
         self.channel = channel
         super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        heartbeat?.invalidate()
     }
 
     static func register(with registrar: FlutterPluginRegistrar) {
@@ -120,13 +158,18 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
             info[MPMediaItemPropertyArtwork] = art
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        lastInfo = info
 
         fetchArtworkIfNeeded(coverURL: coverURL)
     }
 
     private func clearNowPlaying() {
-        guard commandsActive else { return }
-        teardownCommands()
+        // Clear the info only. The command center stays registered for
+        // the app's lifetime: tearing it down here (endReceivingRemote
+        // ControlEvents) left the app deregistered whenever the queue
+        // transiently emptied, with nothing re-registering it until
+        // the next track change.
+        lastInfo = nil
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         currentCoverURL = ""
         artwork = nil
@@ -139,29 +182,86 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
     // here is compatible and guarantees the attribution even if the
     // player has not started its session yet.
     //
-    // The category is set once, but the session is re-activated on
-    // EVERY publish: mpv re-inits its audio output on each track open
-    // / crossfade player swap and its ao_avfoundation deactivates the
-    // shared session on teardown. Without this re-assert the app
-    // silently loses Now Playing attribution after a track change —
-    // the Lock Screen / Dynamic Island keep a stale card and tapping
-    // it does nothing. setActive(true) on an already-active session
-    // is a no-op. The session is left alone on clear — deactivating
-    // it could pause media_kit's playback.
+    // Do NOT fight mpv over the category: mpv's ao_avfoundation sets
+    // .playback + .moviePlayback itself. The category is set here only
+    // when it is not already .playback (e.g. before mpv first starts),
+    // so we never clobber mpv's mode mid-playback.
+    //
+    // The session is re-activated on EVERY publish AND by the
+    // heartbeat / interruption / foreground handlers: mpv re-inits its
+    // audio output on each track open / crossfade player swap and its
+    // ao_avfoundation deactivates the shared session on teardown, and
+    // Dart pushes stop while paused — without these native-side
+    // re-asserts the app silently loses Now Playing attribution after
+    // a pause or an interruption, the Lock Screen / Dynamic Island
+    // keep a stale card and tapping it does nothing. setActive(true)
+    // on an already-active session is a no-op. The session is left
+    // alone on clear — deactivating it could pause media_kit's
+    // playback. A failed activation is logged (os_log) instead of
+    // swallowed: it is the one signal that attribution is lost.
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         do {
-            if !sessionConfigured {
+            if session.category != .playback {
                 try session.setCategory(.playback, mode: .default, options: [])
-                sessionConfigured = true
             }
             try session.setActive(true)
         } catch {
-            // Non-fatal: the player still works; the card may just
-            // not be app-attributed until mpv activates the session.
-            // sessionConfigured stays true once the category itself
-            // succeeded, so the next publish only retries activation.
+            os_log("NowPlaying: setActive failed: %{public}@", log: .default, type: .error, String(describing: error))
         }
+    }
+
+    // MARK: - Self-healing (v1.0.6 follow-up)
+
+    /// Re-publish the cached Now Playing info, but only when it went
+    /// missing. Re-setting an already-set info with a stale elapsed
+    /// time would make the Lock Screen progress jump backwards; the
+    /// fresh Dart push (~1 s while playing) owns the live values.
+    private func republishIfNeeded() {
+        guard let info = lastInfo else { return }
+        if MPNowPlayingInfoCenter.default().nowPlayingInfo == nil {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
+    }
+
+    /// Interruption (call / Siri / alarm) ended: reclaim the session
+    /// and the Now Playing slot. mpv may or may not resume on its own;
+    /// attribution must not depend on it.
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue),
+              type == .ended else { return }
+        configureAudioSession()
+        republishIfNeeded()
+    }
+
+    /// App came to foreground: re-assert the session and the info so
+    /// the card is tappable immediately, without waiting for the next
+    /// Dart position push.
+    @objc private func handleDidBecomeActive() {
+        configureAudioSession()
+        republishIfNeeded()
+    }
+
+    private func startHeartbeatIfNeeded() {
+        guard heartbeat == nil else { return }
+        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.heartbeatTick()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
+    }
+
+    /// Safety net for the case Dart pushes stop — paused, or the
+    /// isolate stalled in background — and mpv released the session in
+    /// the meantime. Without it the card keeps showing stale info but
+    /// tapping it does nothing, because the app is no longer the
+    /// now-playing app.
+    private func heartbeatTick() {
+        guard commandsActive else { return }
+        configureAudioSession()
+        republishIfNeeded()
     }
 
     // MARK: - Remote commands
@@ -183,19 +283,7 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
         // NO skipForward/skipBackward — see the file header.
         center.nextTrackCommand.addTarget(self, action: #selector(remoteNext))
         center.previousTrackCommand.addTarget(self, action: #selector(remotePrevious))
-    }
-
-    private func teardownCommands() {
-        guard commandsActive else { return }
-        commandsActive = false
-        UIApplication.shared.endReceivingRemoteControlEvents()
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(self)
-        center.pauseCommand.removeTarget(self)
-        center.togglePlayPauseCommand.removeTarget(self)
-        center.changePlaybackPositionCommand.removeTarget(self)
-        center.nextTrackCommand.removeTarget(self)
-        center.previousTrackCommand.removeTarget(self)
+        startHeartbeatIfNeeded()
     }
 
     private func forwardCommand(_ command: String, position: Double? = nil) {
@@ -255,6 +343,7 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
                 if var info = MPNowPlayingInfoCenter.default().nowPlayingInfo {
                     info[MPMediaItemPropertyArtwork] = art
                     MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                    self.lastInfo = info
                 }
             }
         }.resume()

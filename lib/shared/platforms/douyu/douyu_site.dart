@@ -60,6 +60,12 @@ class DouyuSite extends LiveSite {
   final Dio _dio;
   late final DouyuUtils _utils;
 
+  /// Anonymous playback cookie (`dy_did`), from the SAME device id
+  /// that signed the stream URL — Pure Live sends it as the Douyu
+  /// playback cookie (PlaybackHeaderResolver). Used by the room page
+  /// when it builds the playback headers for this room.
+  String get playbackCookie => _utils.cookieHeader();
+
   /// Anonymous original-quality URLs carry `expire=300`: the CDN closes
   /// the stream 300 s after the URL was issued. The URL has no absolute
   /// time, so the issue time is remembered when it is resolved.

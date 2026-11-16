@@ -76,6 +76,7 @@ class _FavouritesPageState extends State<FavouritesPage> {
                     style: TextStyle(
                       color: theme.textSecondary,
                       fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),

@@ -104,6 +104,11 @@ class IjkBackend implements PlayerBackend {
   @override
   Future<void> setRate(double rate) => _player.setSpeed(rate);
 
+  // Audio-only is MPV-only (see PlayerBackend.setAudioOnly): IJK
+  // keeps the interface default no-op.
+  @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
+
   @override
   Stream<Duration> get positionStream => _player.onCurrentPosUpdate;
 

@@ -2,12 +2,29 @@
 //
 // resolvePlayUrl(songId, platform, quality, title) ->
 // {url, candidates, quality, via} | null.
-// Downgrade is sequential from the requested tier (hires → lossless →
-// 320k → 128k); first tier with any candidate wins. Per-tier collection
-// (collectAt): all applicable resolvers run in parallel (each capped at
-// 5 s); non-hi tiers finish 350 ms after the first URL; hi tiers wait
-// until a lossless/hires candidate arrives, else up to 2.5 s; hard cap
-// 5 s. Candidates: max 3, deduped by URL, sorted by rank desc.
+//
+// Fastest-first, sequential (chen 2026-11-17 拍板: 每次解析都用最快
+// 的源, 没有想要的资源就换源继续找, 直到找到能播的为止 — 歌一刀/LX
+// 模型: 一次只问一个源, 不搞十几个并行扇出):
+// - Jobs (built-in resolvers + LX script jobs) are ordered by measured
+//   speed, fastest first; an unknown job ranks in the middle (500 ms
+//   placeholder) and falls back to its declared order.
+// - Each pass tries jobs one by one (per-job timeout 3 s, pass budget
+//   6 s). The first URL at-or-above the requested tier wins at once.
+//   A below-tier URL is kept as fallback while at most 2 more jobs
+//   (5 for master) are tried for a tier-matching one, then the
+//   fallback is returned. Master honesty gate: only a real master
+//   URL satisfies master; anything lesser downgrades, never
+//   mislabelled.
+// - A job that fails 3 times in a row is cooled down for 5 min (sorted
+//   last, still tried if nothing else works). Speeds persist in Hive
+//   so the ranking survives restarts.
+// - Passes: requested quality first; only when NO source returns any
+//   URL at all, re-ask at 320k, then 128k. The old tier loop re-fired
+//   every resolver at every tier (worst case ~15 s); now the common
+//   case is one sequential pass over the fastest sources.
+// - Resolved URLs are cached persistently (Hive, 1 h TTL) like LX's
+//   disk cache, so a replayed song resolves instantly.
 // Downgrade never persists (rule "fi"): the caller always passes the
 // user's chosen tier for every new song.
 //
@@ -51,13 +68,6 @@ class PlayUrlResult {
   final String via;
 }
 
-class _Candidate {
-  _Candidate({required this.url, required this.via, required this.quality});
-  final String url;
-  final String via;
-  final AudioQuality quality;
-}
-
 typedef _ResolverFn = Future<String> Function(
   String songId,
   MusicPlatform platform,
@@ -65,11 +75,13 @@ typedef _ResolverFn = Future<String> Function(
   String title,
 );
 
-/// One collection job: a built-in resolver or an LX script job, unified
-/// so [_collectAt] runs both in the same parallel batch.
+/// One resolution job: a built-in resolver or an LX script job, unified
+/// so [_resolvePass] runs them in measured-speed order. `order` is the
+/// declared order, used as the tie-break for never-measured jobs.
 typedef _Job = ({
   String key,
   String name,
+  int order,
   _ResolverFn fn,
 });
 
@@ -93,24 +105,76 @@ class _Resolver {
 
 /// In-memory play-URL cache (haoParseCache): key songId|platform|quality,
 /// TTL 5 min, max 200 entries, oldest evicted.
+///
+/// LX-style persistent layer (2026-11-17, 歌一刀/LX 借鉴): LX stores
+/// every resolved URL on disk (`musicUrl_{id}_{type}`, no expiry), so a
+/// song played before resolves instantly. Ours was memory-only — every
+/// app restart re-resolved from scratch. Persist to Hive with a 1 h
+/// TTL (signed CDN URLs do expire; LX trusts the cache blindly, we
+/// bound it). Hive access is guarded: resolvers also run in unit
+/// tests without HiveStore.init().
 class _PlayUrlCache {
+  static const _ttl = Duration(hours: 1);
+  static const _prefix = 'hao_play_url_cache:';
+
   final _map = <String, (PlayUrlResult, DateTime)>{};
 
   PlayUrlResult? get(String key) {
     final hit = _map[key];
-    if (hit == null) return null;
-    if (DateTime.now().difference(hit.$2) > const Duration(minutes: 5)) {
-      _map.remove(key);
+    if (hit != null) {
+      if (DateTime.now().difference(hit.$2) > _ttl) {
+        _map.remove(key);
+      } else {
+        return hit.$1;
+      }
+    }
+    try {
+      final raw = HiveStore.getString('$_prefix$key', '');
+      if (raw.isEmpty) return null;
+      final j = jsonDecode(raw);
+      if (j is! Map<String, dynamic>) return null;
+      final at = DateTime.fromMillisecondsSinceEpoch(
+        (j['at'] as num?)?.toInt() ?? 0,
+      );
+      if (DateTime.now().difference(at) > _ttl) return null;
+      final url = j['u']?.toString() ?? '';
+      if (url.isEmpty) return null;
+      final result = PlayUrlResult(
+        url: url,
+        candidates: (j['c'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [url],
+        quality: AudioQualityX.fromCode(j['q']?.toString() ?? ''),
+        via: j['v']?.toString() ?? '',
+      );
+      _map[key] = (result, at);
+      return result;
+    } catch (_) {
       return null;
     }
-    return hit.$1;
   }
 
   void put(String key, PlayUrlResult value) {
     if (_map.length >= 200) {
       _map.remove(_map.keys.first);
     }
-    _map[key] = (value, DateTime.now());
+    final now = DateTime.now();
+    _map[key] = (value, now);
+    try {
+      unawaited(
+        HiveStore.put(
+          '$_prefix$key',
+          jsonEncode({
+            'u': value.url,
+            'c': value.candidates,
+            'q': value.quality.code,
+            'v': value.via,
+            'at': now.millisecondsSinceEpoch,
+          }),
+        ).catchError((_) {}),
+      );
+    } catch (_) {}
   }
 }
 
@@ -126,6 +190,129 @@ class MusicResolvers {
   /// disable script jobs entirely).
   final LxScriptEngine _scriptEngine;
   final _cache = _PlayUrlCache();
+
+  /// Measured resolver speeds, for fastest-first ordering (chen
+  /// 2026-11-17: 每次解析都用最快的). Keyed by job key (built-in
+  /// resolver key or `lx:<script id>`). Persisted to Hive so the
+  /// ranking survives restarts; load is lazy and guarded (resolvers
+  /// also run in unit tests without HiveStore.init()).
+  final _speedAvg = <String, int>{};
+  final _speedFails = <String, int>{};
+  final _speedCooledUntil = <String, DateTime>{};
+  bool _speedLoaded = false;
+  bool _speedDirty = false;
+
+  static const _speedHiveKey = 'hao_resolver_speed';
+  static const _unknownSpeedMs = 500;
+  static const _coolAfterFails = 3;
+  static const _coolFor = Duration(minutes: 5);
+
+  void _loadSpeeds() {
+    if (_speedLoaded) return;
+    _speedLoaded = true;
+    try {
+      final raw = HiveStore.getString(_speedHiveKey, '');
+      if (raw.isEmpty) return;
+      final map = jsonDecode(raw);
+      if (map is! Map) return;
+      for (final e in map.entries) {
+        final v = e.value;
+        if (v is! Map) continue;
+        final avg = v['avg'];
+        if (avg is num) _speedAvg[e.key.toString()] = avg.toInt();
+        final fails = v['fails'];
+        if (fails is num) _speedFails[e.key.toString()] = fails.toInt();
+        final cooled = v['cooled'];
+        if (cooled is num) {
+          _speedCooledUntil[e.key.toString()] =
+              DateTime.fromMillisecondsSinceEpoch(cooled.toInt());
+        }
+      }
+    } catch (_) {
+      // No Hive / corrupt data — start unranked, declaration order.
+    }
+  }
+
+  void _saveSpeeds() {
+    if (!_speedDirty) return;
+    _speedDirty = false;
+    try {
+      final map = <String, Map<String, int>>{};
+      for (final k in {
+        ..._speedAvg.keys,
+        ..._speedFails.keys,
+        ..._speedCooledUntil.keys,
+      }) {
+        map[k] = {
+          if (_speedAvg[k] != null) 'avg': _speedAvg[k]!,
+          if (_speedFails[k] != null) 'fails': _speedFails[k]!,
+          if (_speedCooledUntil[k] != null)
+            'cooled': _speedCooledUntil[k]!.millisecondsSinceEpoch,
+        };
+      }
+      unawaited(HiveStore.put(_speedHiveKey, jsonEncode(map)));
+    } catch (_) {
+      // Persistence is best-effort; in-memory ranking still works.
+    }
+  }
+
+  /// Record one job attempt. Success updates the EMA latency and
+  /// resets the failure streak; failure bumps the streak and cools
+  /// the job down after [_coolAfterFails] in a row, so a dead
+  /// "fastest" source stops blocking the race (换源).
+  void _recordAttempt(String key, bool ok, int ms) {
+    if (ok) {
+      final prev = _speedAvg[key];
+      _speedAvg[key] = prev == null ? ms : (prev * 7 + ms * 3) ~/ 10;
+      _speedFails.remove(key);
+      _speedCooledUntil.remove(key);
+    } else {
+      final fails = (_speedFails[key] ?? 0) + 1;
+      _speedFails[key] = fails;
+      if (fails >= _coolAfterFails) {
+        _speedCooledUntil[key] = DateTime.now().add(_coolFor);
+      }
+    }
+    _speedDirty = true;
+  }
+
+  bool _isCooled(String key, DateTime now) {
+    final until = _speedCooledUntil[key];
+    if (until == null) return false;
+    if (now.isBefore(until)) return true;
+    _speedCooledUntil.remove(key);
+    return false;
+  }
+
+  /// Jobs for this platform in fastest-first order: cooled-down jobs
+  /// last, then by measured latency (unknown = middle), then by
+  /// declared order.
+  List<_Job> _rankedJobs(
+    MusicPlatform pf,
+    AudioQuality q,
+    String songId,
+    String title,
+  ) {
+    _loadSpeeds();
+    final song = Song(songId: songId, title: title, platform: pf);
+    final jobs = <_Job>[
+      for (final r in _applicable(pf))
+        (key: r.key, name: r.name, order: r.order, fn: r.fn),
+      for (final s in _scriptEngine.scriptJobsFor(pf, q, song))
+        (key: s.key, name: s.name, order: 2, fn: (_, _, _, _) => s.fn()),
+    ];
+    final now = DateTime.now();
+    jobs.sort((a, b) {
+      final aCool = _isCooled(a.key, now);
+      final bCool = _isCooled(b.key, now);
+      if (aCool != bCool) return aCool ? 1 : -1;
+      final aMs = _speedAvg[a.key] ?? _unknownSpeedMs;
+      final bMs = _speedAvg[b.key] ?? _unknownSpeedMs;
+      if (aMs != bMs) return aMs.compareTo(bMs);
+      return a.order.compareTo(b.order);
+    });
+    return jobs;
+  }
 
   String? _huibqKey;
   DateTime? _huibqKeyAt;
@@ -280,7 +467,12 @@ class MusicResolvers {
           key: 'huibq',
           name: 'Huibq',
           platforms: MusicPlatform.values,
-          enabled: true,
+          // DISABLED 2026-11-17: lxmusicapi.onrender.com returns 503
+          // "Service Suspended" (verified by curl) — the order-1
+          // resolver was dead, and its jsdelivr key fetch (10 s
+          // timeout) ran before every first/hourly call. Re-enable
+          // only if the service revives.
+          enabled: false,
           order: 1,
           fn: (id, pf, q, title) => _huibqUrl(id, pf, q),
         ),
@@ -606,97 +798,99 @@ class MusicResolvers {
 
   // -- collection + main entry ----------------------------------------------
 
-  Future<List<_Candidate>> _collectAt(
+  // -- fastest-first sequential resolution + main entry --------------------
+
+  /// One pass at a single quality: try jobs in measured-speed order,
+  /// one at a time, until a playable URL is found (换源 — chen
+  /// 2026-11-17: 每次解析都用最快的, 没有想要的资源就换源继续找,
+  /// 直到找到能播的为止; 歌一刀/LX 模型: 一次只问一个源, 不搞
+  /// 十几个并行扇出). The first URL at-or-above the requested tier
+  /// wins at once; a below-tier URL is kept as fallback while a few
+  /// more jobs are tried for a tier-matching one (and a short hunt
+  /// window), then the fallback is returned. Returns null when no job
+  /// yields any URL within [budget]. Jobs that time out are added to
+  /// [skipTimedOut] so later tiers in the same resolve don't waste
+  /// their budget re-asking a source that doesn't answer; a
+  /// definitive empty answer is retried at lower tiers, which may
+  /// serve the song (e.g. zddyr has hires but no master).
+  static const _perJobTimeout = Duration(seconds: 3);
+
+  Future<PlayUrlResult?> _resolvePass(
     AudioQuality q,
     String songId,
     MusicPlatform pf,
     String title,
+    Duration budget,
+    Set<String> skipTimedOut,
   ) async {
-    final builtin = _applicable(pf);
     // LX script jobs (M-P0-6): kick off engine load on first use; jobs
     // appear once the engine has loaded, so the first resolve after
     // launch may predate them — later resolves include them.
     unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
-    final song = Song(songId: songId, title: title, platform: pf);
-    final scriptJobs = _scriptEngine.scriptJobsFor(pf, q, song);
-    final jobs = <_Job>[
-      for (final r in builtin) (key: r.key, name: r.name, fn: r.fn),
-      for (final s in scriptJobs)
-        (key: s.key, name: s.name, fn: (_, _, _, _) => s.fn()),
-    ];
-    if (jobs.isEmpty) return [];
-    final isHi = q == AudioQuality.master ||
-        q == AudioQuality.hires ||
-        q == AudioQuality.lossless;
-    final results = List<String?>.filled(jobs.length, null);
-    var done = 0;
-    var finished = false;
-    final completer = Completer<List<_Candidate>>();
-    void finish() {
-      if (finished) return;
-      finished = true;
-      final cands = <_Candidate>[];
-      for (var i = 0; i < jobs.length; i++) {
-        final u = results[i];
-        if (u == null || u.isEmpty || cands.length >= 3) continue;
-        final https = toHttps(u);
-        if (https.isEmpty) continue;
-        if (cands.any((c) => c.url == https)) continue;
-        cands.add(
-          _Candidate(
-            url: https,
-            via: jobs[i].name,
-            quality: extraQuality(jobs[i].key, q, pf.code),
-          ),
-        );
-      }
-      cands.sort((a, b) => b.quality.rank.compareTo(a.quality.rank));
-      completer.complete(cands);
-    }
-
-    final hiCap = isHi
+    final jobs = _rankedJobs(pf, q, songId, title);
+    if (jobs.isEmpty) return null;
+    // Master is explicitly wanted: hunt longer for a real master URL.
+    final huntCap = q == AudioQuality.master ? 5 : 2;
+    final huntWindow = q == AudioQuality.master
         ? const Duration(milliseconds: 2500)
-        : const Duration(seconds: 5);
-    Timer(hiCap, finish);
-    for (var i = 0; i < jobs.length; i++) {
-      unawaited(
-        jobs[i]
-            .fn(songId, pf, q, title)
-            .timeout(
-              const Duration(seconds: 5),
-              onTimeout: () => '',
-            )
-            .then((u) {
-          results[i] = u;
-          if (u.isNotEmpty) {
-            final ql = extraQuality(jobs[i].key, q, pf.code);
-            // Hi tiers finish early only on a candidate AT the tier
-            // (master: only a real master candidate counts — a
-            // hires-level answer must not cut the master wait short).
-            final early = isHi
-                ? (q == AudioQuality.master
-                    ? ql == AudioQuality.master
-                    : (ql == AudioQuality.lossless ||
-                        ql == AudioQuality.hires))
-                : results.where((r) => r != null && r.isNotEmpty).length == 1;
-            if (early) {
-              Timer(const Duration(milliseconds: 350), finish);
-            }
-          }
-        }).catchError((_) {
-          results[i] = '';
-        }).whenComplete(() {
-          done++;
-          if (done == jobs.length) finish();
-        }),
+        : const Duration(seconds: 1);
+    final deadline = DateTime.now().add(budget);
+    PlayUrlResult? best;
+    var extraTries = 0;
+    var haveUrl = false;
+    DateTime? huntDeadline;
+    for (final job in jobs) {
+      if (skipTimedOut.contains(job.key)) continue;
+      var remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      if (haveUrl) {
+        if (extraTries >= huntCap) break;
+        final huntLeft = huntDeadline!.difference(DateTime.now());
+        if (huntLeft <= Duration.zero) break;
+        if (huntLeft < remaining) remaining = huntLeft;
+      }
+      final timeout =
+          remaining < _perJobTimeout ? remaining : _perJobTimeout;
+      final sw = Stopwatch()..start();
+      String url;
+      try {
+        url = await job.fn(songId, pf, q, title).timeout(timeout);
+      } on TimeoutException {
+        _recordAttempt(job.key, false, timeout.inMilliseconds);
+        skipTimedOut.add(job.key);
+        continue;
+      } catch (_) {
+        url = '';
+      }
+      sw.stop();
+      _recordAttempt(job.key, url.isNotEmpty, sw.elapsedMilliseconds);
+      if (url.isEmpty) continue;
+      final https = toHttps(url);
+      if (https.isEmpty) continue;
+      final realQ = extraQuality(job.key, q, pf.code);
+      final cand = PlayUrlResult(
+        url: https,
+        candidates: [https],
+        quality: realQ,
+        via: job.name,
       );
+      // Tier-matching wins immediately. Master honesty gate: only a
+      // real master URL satisfies master.
+      final matched = q == AudioQuality.master
+          ? realQ == AudioQuality.master
+          : realQ.rank >= q.rank;
+      if (matched) return cand;
+      if (best == null || realQ.rank > best.quality.rank) best = cand;
+      if (haveUrl) extraTries++;
+      haveUrl = true;
+      huntDeadline ??= DateTime.now().add(huntWindow);
     }
-    return completer.future;
+    return best;
   }
 
-  /// Main entry. Returns null when no resolver yields a URL at any tier.
-  /// The caller always passes the user's chosen tier for every new song
-  /// (downgrade never persists — rule "fi").
+  /// Main entry. Returns null when no resolver yields a URL at any
+  /// tier. The caller always passes the user's chosen tier for every
+  /// new song (downgrade never persists — rule "fi").
   Future<PlayUrlResult?> resolvePlayUrl(
     String songId,
     MusicPlatform platform,
@@ -707,27 +901,52 @@ class MusicResolvers {
     final cacheKey = '$songId|${platform.code}|${quality.code}';
     final cached = _cache.get(cacheKey);
     if (cached != null) return cached;
-    for (final tier in qualityChainFrom(quality)) {
-      var cands = await _collectAt(tier, songId, platform, title);
-      if (tier == AudioQuality.master) {
-        // Master honesty gate: only a genuine master candidate may
-        // satisfy the master tier. Anything lesser is dropped and the
-        // loop downgrades to hires instead of mislabelling it Master.
-        cands =
-            cands.where((c) => c.quality == AudioQuality.master).toList();
-      }
-      if (cands.isNotEmpty) {
-        final result = PlayUrlResult(
-          url: cands.first.url,
-          candidates: cands.map((c) => c.url).toList(),
-          quality: cands.first.quality,
-          via: cands.first.via,
-        );
-        _cache.put(cacheKey, result);
-        return result;
-      }
+    // Warm the xinghai token in parallel: its first fetch can take
+    // seconds, and the sequential pass must not stall on it.
+    if (_applicable(platform).any((r) => r.key == 'xinghai')) {
+      unawaited(_getXhToken().catchError((_) => ''));
     }
-    return null;
+    // Walk the quality chain, fastest-first per tier. A whole resolve
+    // is bounded by one global deadline — the old tier loop re-fired
+    // every resolver at every tier (worst case ~15 s).
+    final skipTimedOut = <String>{};
+    final deadline = DateTime.now().add(const Duration(seconds: 8));
+    PlayUrlResult? best;
+    var first = true;
+    for (final tier in qualityChainFrom(quality)) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      final cap =
+          first ? const Duration(seconds: 6) : const Duration(seconds: 2);
+      final budget = remaining < cap ? remaining : cap;
+      final r = await _resolvePass(
+        tier,
+        songId,
+        platform,
+        title,
+        budget,
+        skipTimedOut,
+      );
+      first = false;
+      if (r == null) continue;
+      final matched = tier == AudioQuality.master
+          ? r.quality == AudioQuality.master
+          : r.quality.rank >= tier.rank;
+      if (matched) {
+        _saveSpeeds();
+        _cache.put(cacheKey, r);
+        return r;
+      }
+      // Below-tier fallback: keep the best. At a non-master tier this
+      // is the answer (lower tiers can only be worse). At master, a
+      // later tier may still beat it (e.g. hires from zddyr beats a
+      // 320k answer), so keep walking the chain.
+      if (best == null || r.quality.rank > best.quality.rank) best = r;
+      if (tier != AudioQuality.master) break;
+    }
+    _saveSpeeds();
+    if (best != null) _cache.put(cacheKey, best);
+    return best;
   }
 
   /// Resolver inventory (for settings / debugging). Script resolvers

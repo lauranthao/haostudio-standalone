@@ -35,7 +35,7 @@ Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
               color: theme.surfaceStrong,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35),
+                color: theme.textPrimary.withValues(alpha: 0.22),
                 width: 1,
               ),
             ),
@@ -47,7 +47,7 @@ Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
                   child: Obx(() {
                     final remaining = controller.sleepRemaining.value;
                     final title = remaining != null
-                        ? '睡眠定时（剩余 ${_remainingText(remaining)}）'
+                        ? '睡眠定时（剩余 ${SleepTimer.formatRemaining(remaining)}）'
                         : '睡眠定时';
                     return Text(
                       title,
@@ -86,13 +86,6 @@ Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
   );
 }
 
-String _remainingText(Duration remaining) {
-  final total = remaining.inSeconds;
-  final m = total ~/ 60;
-  final s = total % 60;
-  return '$m:${s.toString().padLeft(2, '0')}';
-}
-
 class _SleepRow extends StatelessWidget {
   const _SleepRow({
     required this.option,
@@ -110,7 +103,7 @@ class _SleepRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : Colors.transparent,
           borderRadius: BorderRadius.circular(12),

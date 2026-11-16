@@ -80,10 +80,6 @@ class MusicStore {
       .where((k) => k.isNotEmpty)
       .toSet();
 
-  static Future<void> saveFavIds(Set<String> ids) => _writeFavEntries(
-        ids.map((k) => {'key': k}).toList(),
-      );
-
   /// Favourited songs, newest first. Key-only legacy entries are
   /// resolved from recent plays / the listen log; entries that cannot
   /// be resolved to a real song are skipped.
@@ -163,20 +159,15 @@ class MusicStore {
   static List<ListenEvent> getListenLog() =>
       _readList(HiveKeys.musicListen).map(ListenEvent.fromJson).toList();
 
-  static Future<void> recordListen(Song song) async {
+  /// Persist a FINISHED listen session (real listened seconds — see
+  /// ListenSessionTracker). This replaces the old recordListen(song),
+  /// which wrote the song's FULL duration the moment a track started,
+  /// before a second had played: skipping after 5 s still counted 4
+  /// minutes, and every retry / re-open counted the full song again,
+  /// so the report's total time was inflated and "not real".
+  static Future<void> recordListenEvent(ListenEvent event) async {
     final log = getListenLog();
-    log.insert(
-      0,
-      ListenEvent(
-        songId: song.songId,
-        title: song.title,
-        artist: song.artist,
-        platform: song.platform,
-        cover: song.cover,
-        dur: song.dur,
-        at: DateTime.now().millisecondsSinceEpoch,
-      ),
-    );
+    log.insert(0, event);
     await _writeList(
       HiveKeys.musicListen,
       log.take(3000).map((e) => e.toJson()).toList(),
@@ -440,6 +431,74 @@ class ListenReport {
       topArtists: topArtists.take(10).toList(),
       topPlatforms: topPlatforms,
       perDay: days,
+    );
+  }
+}
+
+/// Accumulates REAL listened seconds for one song session (pure Dart,
+/// unit-tested in music_test.dart).
+///
+/// The old behaviour recorded the song's full duration the moment a
+/// track started, so the report's total time was the sum of full
+/// durations of every song ever started — skipping after 5 s counted
+/// 4 minutes, a failed load + retry counted the song twice. This
+/// tracker only counts wall-clock seconds while the player reports
+/// playing; pause, buffering and seeks add nothing. A session counts
+/// as a play only when at least [kMinListenSeconds] were heard, so a
+/// tap-through does not inflate the play count either.
+class ListenSessionTracker {
+  /// Minimum actually-heard seconds for a session to count as a play.
+  static const int kMinListenSeconds = 5;
+
+  Song? _song;
+  DateTime? _startedAt;
+  DateTime? _playingSince;
+  int _seconds = 0;
+
+  bool get hasSession => _song != null;
+
+  /// Start a session for [song] (no time accrues until playing).
+  void begin(Song song, DateTime now) {
+    _song = song;
+    _startedAt = now;
+    _playingSince = null;
+    _seconds = 0;
+  }
+
+  /// Call on every playing-state change. `now` is injected so tests
+  /// are deterministic. Duplicate playing=true calls are ignored.
+  void setPlaying(bool playing, DateTime now) {
+    if (_song == null) return;
+    if (playing) {
+      _playingSince ??= now;
+    } else if (_playingSince != null) {
+      _seconds += now.difference(_playingSince!).inSeconds;
+      _playingSince = null;
+    }
+  }
+
+  /// Finish the session. Returns the event to persist, or null when
+  /// less than [kMinListenSeconds] were heard. `at` is the session
+  /// start, so per-day bucketing still uses when listening began.
+  ListenEvent? finish(DateTime now) {
+    final song = _song;
+    final at = _startedAt;
+    if (song == null || at == null) return null;
+    setPlaying(false, now);
+    final dur = _seconds;
+    _song = null;
+    _startedAt = null;
+    _playingSince = null;
+    _seconds = 0;
+    if (dur < kMinListenSeconds) return null;
+    return ListenEvent(
+      songId: song.songId,
+      title: song.title,
+      artist: song.artist,
+      platform: song.platform,
+      cover: song.cover,
+      dur: dur,
+      at: at.millisecondsSinceEpoch,
     );
   }
 }

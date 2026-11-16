@@ -31,6 +31,7 @@ import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
 import '../player/screen_brightness.dart';
 import 'cms_sources.dart';
+import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
@@ -57,6 +58,9 @@ int? autoNextEpisodeIndex({
 /// detail page passes the saved resume position for the resumed episode.
 /// [session] is a test seam only: production always passes null and the
 /// page owns a fresh [PlaybackSession].
+/// [detailService] is a test seam only: production passes the detail
+/// page's service (shared cache); null owns a fresh one. It drives the
+/// play-time source switch (same title, next fastest source).
 class NativeVideoPlayerPage extends StatefulWidget {
   const NativeVideoPlayerPage({
     super.key,
@@ -66,6 +70,7 @@ class NativeVideoPlayerPage extends StatefulWidget {
     this.initialPosition = 0,
     this.onClose,
     this.session,
+    this.detailService,
   });
 
   final VideoDetail detail;
@@ -80,6 +85,9 @@ class NativeVideoPlayerPage extends StatefulWidget {
   /// tests). Null in production.
   final PlaybackSession? session;
 
+  /// Test seam: an injected [VideoDetailService]. Null in production.
+  final VideoDetailService? detailService;
+
   @override
   State<NativeVideoPlayerPage> createState() => _NativeVideoPlayerPageState();
 }
@@ -87,6 +95,12 @@ class NativeVideoPlayerPage extends StatefulWidget {
 class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   late final PlaybackSession _session;
   late final FullscreenController _fullscreen;
+  late final VideoDetailService _detailService;
+
+  /// Mutable: a play-time source switch replaces the detail with the
+  /// winning source's detail (same title, same episode), so history,
+  /// resume and play headers follow the source that actually plays.
+  late VideoDetail _detail;
 
   late int _lineIdx;
   late int _epIdx;
@@ -105,6 +119,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   bool _showControls = true;
   bool _playing = false;
   double _rate = 1.0;
+  // Long-press 2x (Bilibili-style): temporary override only — the user's
+  // persisted _rate is never touched, so release always restores it.
+  bool _longPressSpeeding = false;
   double _volume = 1.0;
   double _brightness = 0.5;
   bool _closing = false;
@@ -126,10 +143,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   StreamSubscription<String>? _errorSub;
   var _openEpoch = 0;
 
-  VideoDetail get _detail => widget.detail;
-
-  PlayEpisode get _episode =>
-      _detail.lines[_lineIdx].episodes[_epIdx];
+  PlayEpisode get _episode => _detail.lines[_lineIdx].episodes[_epIdx];
 
   String get _title => _detail.meta.name;
 
@@ -142,6 +156,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    _detail = widget.detail;
+    _detailService = widget.detailService ?? VideoDetailService();
     _lineIdx = widget.initialLineIndex.clamp(0, _detail.lines.length - 1);
     final eps = _detail.lines[_lineIdx].episodes;
     _epIdx = widget.initialEpisodeIndex.clamp(0, eps.length - 1);
@@ -152,9 +168,11 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     unawaited(_session.setRate(_rate));
     // System brightness for the left-half vertical drag (best-effort;
     // 0.5 when the native channel is unavailable, e.g. unit tests).
-    unawaited(ScreenBrightness.getBrightness().then((v) {
-      _brightness = v;
-    }));
+    unawaited(
+      ScreenBrightness.getBrightness().then((v) {
+        _brightness = v;
+      }),
+    );
     _statusSub = _session.onStatus.listen((status) {
       if (!mounted) return;
       if (status == PlaybackStatus.completed) {
@@ -234,6 +252,76 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     return headers;
   }
 
+  /// Open the current episode's URL through the kernel ladder.
+  Future<bool> _openEpisodeUrl() async {
+    final url = _episode.url;
+    return _session.open(
+      url: url,
+      isLive: false,
+      declaredFormat: _declaredFormat(url),
+      headers: _playHeaders(),
+    );
+  }
+
+  /// Play-time source switch (chen 2026-11-17: 换源播放，直到找到能播
+  /// 的为止): the current episode's URL failed to open — find the
+  /// same title on the next fastest source and play the same episode
+  /// there. Tries up to 3 alts (5 s per detail fetch); returns true
+  /// when a switched episode is playing. On success [_detail]/
+  /// [_lineIdx]/[_epIdx] point at the new source, so history, resume
+  /// and play headers follow the source that actually plays.
+  Future<bool> _trySwitchSource() async {
+    final meta = _detail.meta;
+    if (meta.name.isEmpty) return false;
+    // Capture before the loop: a failed switch attempt already
+    // replaced _detail, so later matches must still use the ORIGINAL
+    // episode name/index.
+    final epName = _episode.name;
+    final epIndex = _epIdx;
+    var attempts = 0;
+    try {
+      await for (final alt in _detailService.findAlts(
+        meta.name,
+        meta.year,
+        _detail.source,
+      )) {
+        if (attempts >= 3) break;
+        attempts++;
+        VideoDetail altDetail;
+        try {
+          altDetail = await _detailService
+              .get(alt.source, alt.vodId)
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          continue;
+        }
+        if (!altDetail.usable) continue;
+        final eps = altDetail.lines.first.episodes;
+        if (eps.isEmpty) continue;
+        // Same episode: same name first (e.g. 第21集）, else same
+        // index clamped to the new line's length.
+        var epIdx = eps.indexWhere((e) => e.name == epName);
+        if (epIdx < 0) epIdx = epIndex.clamp(0, eps.length - 1);
+        if (!mounted) return false;
+        setState(() {
+          _detail = altDetail;
+          _lineIdx = 0;
+          _epIdx = epIdx;
+          _resumeSought = false;
+        });
+        if (await _openEpisodeUrl()) {
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(context)
+                ?.showSnackBar(const SnackBar(content: Text('已切换片源，继续播放')));
+          }
+          return true;
+        }
+        // Switched URL also dead — keep looking at the next source.
+      }
+    } catch (_) {}
+    return false;
+  }
+
   Future<void> _openCurrent() async {
     // Pause any playing music the moment this film starts playing
     // (chen: only when a specific film starts — browsing the video
@@ -253,13 +341,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
       _duration = 0;
       _resumeSought = false;
     });
-    final url = _episode.url;
-    final ok = await _session.open(
-      url: url,
-      isLive: false,
-      declaredFormat: _declaredFormat(url),
-      headers: _playHeaders(),
-    );
+    var ok = await _openEpisodeUrl();
+    if (!ok) {
+      // Play URL dead — switch source and keep looking until one
+      // plays (chen 2026-11-17: 换源播放，直到找到能播的为止).
+      if (mounted) setState(() => _loadingHint = '正在换源播放…');
+      ok = await _trySwitchSource();
+    }
     if (epoch != _openEpoch || !mounted) return;
     if (!ok) {
       setState(() {
@@ -353,11 +441,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     }
   }
 
-  Future<void> _toggleAutoNext() async {
+  // Optimistic: flip the UI state first, persist fire-and-forget.
+  // Awaiting the Hive put before setState makes the toggle feel
+  // dead while the store flushes — and in the widget-test fake
+  // zone the put's Future never resolves, so a second tap computes
+  // the same `next` from the stale `_autoNext` (proven by the
+  // in-player toggle test). Same pattern as the L05 follow toggle.
+  void _toggleAutoNext() {
     final next = !_autoNext;
-    await VideoPlaybackSettings.setAutoNext(next);
-    if (!mounted) return;
     setState(() => _autoNext = next);
+    unawaited(VideoPlaybackSettings.setAutoNext(next));
   }
 
   Future<void> _goEpisode(int delta) async {
@@ -400,7 +493,32 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     if (_showControls) _armHideTimer();
   }
 
-  String get _rateLabel => '${_rate}x';
+  String get _rateLabel => '${_longPressSpeeding ? 2.0 : _rate}x';
+
+  // -- Long-press 2x (Bilibili-style): hold the video to play at 2x,
+  // release to go back to the user's rate. Temporary override only —
+  // _rate (and the persisted vodPlaybackRate) is never changed here.
+  // Gesture arena keeps this from fighting the drags: a hold still for
+  // ~500ms wins the long-press, any real movement wins the drag instead.
+  void _onLongPressStart(LongPressStartDetails details) {
+    if (!_playing || _failed || _ended || _longPressSpeeding) return;
+    setState(() => _longPressSpeeding = true);
+    unawaited(_session.setRate(2.0));
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    _restoreRateAfterLongPress();
+  }
+
+  void _onLongPressCancel() {
+    _restoreRateAfterLongPress();
+  }
+
+  void _restoreRateAfterLongPress() {
+    if (!_longPressSpeeding) return;
+    setState(() => _longPressSpeeding = false);
+    unawaited(_session.setRate(_rate));
+  }
 
   /// Full-width horizontal swipe covers up to 5 minutes (or the whole
   /// video when shorter).
@@ -440,8 +558,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     if (width <= 0 || _seekSpan <= 0) return;
     setState(() {
       _dragSeekDelta += details.delta.dx / width * _seekSpan;
-      _dragSeekTarget =
-          (_dragSeekStart + _dragSeekDelta).clamp(0.0, _duration);
+      _dragSeekTarget = (_dragSeekStart + _dragSeekDelta).clamp(0.0, _duration);
     });
   }
 
@@ -450,9 +567,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     if (target == null) return;
     setState(() => _dragSeekTarget = null);
     try {
-      await _session.seekTo(
-        Duration(milliseconds: (target * 1000).round()),
-      );
+      await _session.seekTo(Duration(milliseconds: (target * 1000).round()));
     } catch (_) {}
     _armHideTimer();
   }
@@ -471,8 +586,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     final width = MediaQuery.of(context).size.width;
     final isBrightness = details.globalPosition.dx < width / 2;
     setState(() {
-      _dragSide =
-          isBrightness ? _PlayerDragSide.brightness : _PlayerDragSide.volume;
+      _dragSide = isBrightness
+          ? _PlayerDragSide.brightness
+          : _PlayerDragSide.volume;
       _dragSystemValue = isBrightness ? _brightness : _volume;
     });
   }
@@ -481,8 +597,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     final side = _dragSide;
     if (side == null) return;
     setState(() {
-      _dragSystemValue =
-          (_dragSystemValue - details.delta.dy / 300).clamp(0.0, 1.0);
+      _dragSystemValue = (_dragSystemValue - details.delta.dy / 300).clamp(
+        0.0,
+        1.0,
+      );
     });
     if (side == _PlayerDragSide.brightness) {
       _brightness = _dragSystemValue;
@@ -514,6 +632,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     final eps = _detail.lines[_lineIdx].episodes;
     showModalBottomSheet<void>(
       context: context,
+      // isScrollControlled: without it the sheet is capped at ~half the
+      // screen height, but this sheet asks for 0.6 — the bottom rows
+      // were clipped. Same bug class as the music track sheet (v1.0.6).
+      // Content already scrolls via the ListView below, so no extra
+      // SingleChildScrollView wrapper is needed here.
+      isScrollControlled: true,
       backgroundColor: theme.surfaceSolid,
       builder: (context) {
         return SafeArea(
@@ -522,14 +646,28 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Drag handle (visual cue for the existing
+                // swipe-down-to-dismiss gesture — no new control).
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 10),
+                    decoration: BoxDecoration(
+                      color: theme.hairline,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: Text(
                     '选集 (${eps.length})',
                     style: TextStyle(
                       color: theme.textPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
+                      letterSpacing: -0.02,
                     ),
                   ),
                 ),
@@ -544,9 +682,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                           height: 28,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: selected
-                                ? theme.accentSoft
-                                : theme.surface,
+                            color: selected ? theme.accentSoft : theme.surface,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -562,9 +698,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                         title: Text(
                           eps[i].name,
                           style: TextStyle(
-                            color: selected
-                                ? theme.accent
-                                : theme.textPrimary,
+                            color: selected ? theme.accent : theme.textPrimary,
                             fontWeight: selected
                                 ? FontWeight.w700
                                 : FontWeight.w400,
@@ -592,37 +726,40 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     );
   }
 
-  /// Exit the player. Never blocks on anything: playback is paused
-  /// FIRST (bounded, so the film goes quiet the moment the user taps
-  /// back instead of relying on dispose() racing the route pop —
-  /// the v1.0.5 bug where the film kept playing in the background
-  /// after exit), then fullscreen is exited (bounded, so a hung
-  /// native channel cannot trap the user), then progress is saved
-  /// best-effort, then the route pops. Every step is guarded — a
-  /// storage or callback failure must never leave the user stuck on
-  /// this page (the v1.0.5 "sometimes can't exit" bug: an unguarded
-  /// Hive write throwing before pop, and a failed player hiding its
-  /// only back button).
+  /// Exit the player. The route pops FIRST — nothing slow is awaited
+  /// before it: playback is paused (bounded, so the film goes quiet
+  /// the moment the user taps back instead of relying on dispose()
+  /// racing the route pop), the position is reported to the detail
+  /// page (sync, cannot block), then the route pops immediately.
+  /// The orientation channel and the Hive save run AFTER the pop as
+  /// fire-and-forget cleanup, so a stalled platform channel or a
+  /// wedged storage write can never trap the user on this page again.
+  ///
+  /// (v1.0.6 "still won't exit": the old _close() awaited
+  /// exitFullscreen() and an UNBOUNDED _saveProgress() before pop —
+  /// either one stalling left the film on screen with no way out.
+  /// Widget-test proof: SystemChrome calls never complete in the
+  /// test harness, and the old code only popped after the 2 s
+  /// exitFullscreen timeout; with pop-first the route pops in
+  /// milliseconds even when the channel never replies.)
   Future<void> _close() async {
     if (_closing) return;
     _closing = true;
     try {
-      await _session.pause().timeout(
-            const Duration(seconds: 1),
-          );
-    } catch (_) {}
-    try {
-      await _fullscreen.exitFullscreen().timeout(
-            const Duration(seconds: 2),
-          );
-    } catch (_) {}
-    try {
-      await _saveProgress();
+      await _session.pause().timeout(const Duration(seconds: 1));
     } catch (_) {}
     try {
       widget.onClose?.call(_lineIdx, _epIdx, _position);
     } catch (_) {}
     if (mounted) Navigator.of(context).pop();
+    // Cleanup after the pop — never awaited, never blocking the exit.
+    unawaited(
+      _fullscreen
+          .exitFullscreen()
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) {}),
+    );
+    unawaited(_saveProgress());
   }
 
   @override
@@ -643,7 +780,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
+    // No HaoTheme read here: the player surface is always black video,
+    // so its controls are white-on-black in every theme/mode (the line
+    // chips use white pills, not the theme accent — see below).
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
@@ -654,6 +793,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
         body: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onSurfaceTap,
+          onLongPressStart: _onLongPressStart,
+          onLongPressEnd: _onLongPressEnd,
+          onLongPressCancel: _onLongPressCancel,
           onHorizontalDragStart: _onSeekDragStart,
           onHorizontalDragUpdate: _onSeekDragUpdate,
           onHorizontalDragEnd: _onSeekDragEnd,
@@ -683,10 +825,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                     ],
                   ),
                 ),
-              if (_failed)
-                _FailureCard(onRetry: _retry, onClose: _close),
-              if (_ended && !_failed)
-                _EndedCard(onClose: _close),
+              if (_failed) _FailureCard(onRetry: _retry, onClose: _close),
+              if (_ended && !_failed) _EndedCard(onClose: _close),
               // Top bar: back + title + episode. Shown whenever the
               // controls are up — including the failed state, so a
               // failed player never traps the user without a way out.
@@ -745,18 +885,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                         IconButton(
                           icon: Icon(
                             Icons.playlist_play,
-                            color: _autoNext
-                                ? Colors.white
-                                : Colors.white38,
+                            color: _autoNext ? Colors.white : Colors.white38,
                           ),
                           tooltip: '自动连播',
                           onPressed: _toggleAutoNext,
                         ),
                         IconButton(
-                          icon: const Icon(
-                            Icons.list,
-                            color: Colors.white,
-                          ),
+                          icon: const Icon(Icons.list, color: Colors.white),
                           tooltip: '选集',
                           onPressed: _openEpisodeSheet,
                         ),
@@ -797,15 +932,33 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                                     horizontal: 4,
                                   ),
                                   child: ChoiceChip(
-                                    label: Text(
-                                      _detail.lines[i].name,
-                                    ),
+                                    label: Text(_detail.lines[i].name),
                                     selected: selected,
-                                    selectedColor: theme.accentSoft,
+                                    // Player surface is ALWAYS black
+                                    // video, in every theme/mode — so
+                                    // the light-mode accents (dark gold
+                                    // / dark teal / dark blue, made for
+                                    // light scaffolds) are unreadable
+                                    // here. White-on-black pills are the
+                                    // correct treatment on this surface.
+                                    selectedColor: Colors.white
+                                        .withValues(alpha: 0.20),
+                                    backgroundColor: Colors.white
+                                        .withValues(alpha: 0.08),
+                                    side: BorderSide(
+                                      color: selected
+                                          ? Colors.white
+                                              .withValues(alpha: 0.60)
+                                          : Colors.white
+                                              .withValues(alpha: 0.25),
+                                    ),
                                     labelStyle: TextStyle(
                                       color: selected
-                                          ? theme.accent
+                                          ? Colors.white
                                           : Colors.white70,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                     ),
                                     onSelected: (_) => _switchLine(i),
                                   ),
@@ -817,9 +970,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                           children: [
                             IconButton(
                               icon: Icon(
-                                _playing
-                                    ? Icons.pause
-                                    : Icons.play_arrow,
+                                _playing ? Icons.pause : Icons.play_arrow,
                                 color: Colors.white,
                                 size: 32,
                               ),
@@ -849,9 +1000,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                             // 4 px track; the Slider's hit area stays
                             // generous). No duration yet -> elapsed only.
                             Text(
-                              formatMmSs(_scrubbing
-                                  ? _scrubValue
-                                  : _position),
+                              formatMmSs(_scrubbing ? _scrubValue : _position),
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontSize: 13,
@@ -862,12 +1011,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                                 child: SliderTheme(
                                   data: SliderTheme.of(context).copyWith(
                                     trackHeight: 4,
-                                    thumbShape:
-                                        const RoundSliderThumbShape(
+                                    thumbShape: const RoundSliderThumbShape(
                                       enabledThumbRadius: 7,
                                     ),
-                                    overlayShape:
-                                        const RoundSliderOverlayShape(
+                                    overlayShape: const RoundSliderOverlayShape(
                                       overlayRadius: 14,
                                     ),
                                     activeTrackColor: Colors.white,
@@ -875,10 +1022,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                                     thumbColor: Colors.white,
                                   ),
                                   child: Slider(
-                                    value: (_scrubbing
-                                            ? _scrubValue
-                                            : _position)
-                                        .clamp(0.0, _duration),
+                                    value:
+                                        (_scrubbing ? _scrubValue : _position)
+                                            .clamp(0.0, _duration),
                                     max: _duration,
                                     onChangeStart: (_) {
                                       setState(() {
@@ -948,11 +1094,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                 ),
               if (_dragSide != null)
                 Center(
-                  child: _SystemHint(
-                    side: _dragSide!,
-                    value: _dragSystemValue,
-                  ),
+                  child: _SystemHint(side: _dragSide!, value: _dragSystemValue),
                 ),
+              if (_longPressSpeeding)
+                const Center(child: _LongPressSpeedHint()),
             ],
           ),
         ),
@@ -988,10 +1133,7 @@ class _FailureCard extends StatelessWidget {
             // back button vanished exactly when playback failed).
             TextButton(
               onPressed: onClose,
-              child: const Text(
-                '返回',
-                style: TextStyle(color: Colors.white70),
-              ),
+              child: const Text('返回', style: TextStyle(color: Colors.white70)),
             ),
           ],
         ),
@@ -1044,6 +1186,37 @@ class _SeekHint extends StatelessWidget {
 
 /// Center card shown while the user drags vertically: brightness
 /// (left half) or volume (right half), Pure Live style.
+/// Centre pill shown while long-press 2x is active (Bilibili-style).
+class _LongPressSpeedHint extends StatelessWidget {
+  const _LongPressSpeedHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.fast_forward, color: Colors.white),
+          SizedBox(width: 8),
+          Text(
+            '2.0x',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SystemHint extends StatelessWidget {
   const _SystemHint({required this.side, required this.value});
 

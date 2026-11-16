@@ -28,6 +28,7 @@ class AvPlayerBackend implements PlayerBackend {
   bool _opened = false;
   Duration _lastPosition = Duration.zero;
   Duration _lastDuration = Duration.zero;
+  bool _lastPlaying = false;
 
   @override
   PlayerEngine get engine => PlayerEngine.exo;
@@ -85,7 +86,13 @@ class AvPlayerBackend implements PlayerBackend {
         _lastDuration = duration;
         _durationController.add(duration);
       }
-      _playingController.add(value.isPlaying);
+      // playing: emit only on change, like position/duration below.
+      // Was: every 500 ms tick, so any listener rebuilt twice a second
+      // forever even while nothing changed.
+      if (value.isPlaying != _lastPlaying) {
+        _lastPlaying = value.isPlaying;
+        _playingController.add(value.isPlaying);
+      }
     });
   }
 
@@ -125,6 +132,11 @@ class AvPlayerBackend implements PlayerBackend {
 
   @override
   Future<void> setRate(double rate) async => _controller?.setSpeed(rate);
+
+  // Audio-only is MPV-only (see PlayerBackend.setAudioOnly): AVPlayer
+  // keeps the interface default no-op.
+  @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
 
   @override
   Stream<Duration> get positionStream => _positionController.stream;

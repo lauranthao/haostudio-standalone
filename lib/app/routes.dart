@@ -21,15 +21,18 @@ class AppRoutes {
         GetPage<dynamic>(
           name: liveRoom,
           page: () {
-            final args = Get.arguments as Map<String, dynamic>? ?? {};
+            // `as Map` throws when a deep link / caller passes a
+            // non-Map argument (e.g. a plain room-id string); fall
+            // back to empty args instead of crashing the route.
+            final args = Get.arguments;
+            final map = args is Map ? args : const <String, dynamic>{};
             return LiveRoomPage(
               room: LiveRoom(
-                roomId: args['roomId']?.toString() ?? '',
-                platform: args['platform']?.toString() ?? 'bilibili',
-                title: args['title']?.toString() ?? '',
+                roomId: map['roomId']?.toString() ?? '',
+                platform: map['platform']?.toString() ?? 'bilibili',
+                title: map['title']?.toString() ?? '',
               ),
               // Live entry is ALWAYS portrait (fix 2).
-              startLandscape: false,
             );
           },
         ),

@@ -24,8 +24,16 @@ const String kBrowserUserAgent =
 const String kApiUserAgent = kBrowserUserAgent;
 
 /// Shared Dio instance. Lazily created, single instance for the app.
+///
+/// Was: a fresh Dio per call, despite this doc — every adapter and every
+/// per-request call site (`douban_service`, `referer_image`, danmaku
+/// transports) got its own instance, so no HTTP connection was ever
+/// reused and each request paid a new TLS handshake + HttpClient.
+/// Now memoized: one instance, connection pooling works.
+Dio? _sharedDio;
+
 Dio sharedDio() {
-  final dio = Dio(
+  return _sharedDio ??= Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 8),
@@ -38,7 +46,6 @@ Dio sharedDio() {
       validateStatus: (_) => true,
     ),
   );
-  return dio;
 }
 
 /// Minimal in-memory cookie store for adapters that need session cookies
@@ -51,10 +58,29 @@ class CookieStore {
 
   static void setFromSetCookie(String? setCookieHeader) {
     if (setCookieHeader == null || setCookieHeader.isEmpty) return;
-    for (final part in setCookieHeader.split(',')) {
-      final kv = part.split(';').first.trim().split('=');
-      if (kv.length == 2 && kv[0].isNotEmpty) {
-        _cookies[kv[0].trim()] = kv[1].trim();
+    // Split into individual cookies. A naive split(',') breaks on the
+    // comma inside Expires dates ("Expires=Wed, 21 Oct ..."), and
+    // `part.split('=')` with `length == 2` silently dropped any value
+    // containing '=' (base64-padded values such as `ttwid=abc==`).
+    // So: split only on commas that start a new `name=` pair, and
+    // split name/value on the FIRST '='.
+    final cookieStrings = <String>[];
+    var start = 0;
+    for (var i = 0; i < setCookieHeader.length; i++) {
+      if (setCookieHeader[i] != ',') continue;
+      final rest = setCookieHeader.substring(i + 1);
+      if (RegExp(r'^\s*[^=;\s]+\s*=').hasMatch(rest)) {
+        cookieStrings.add(setCookieHeader.substring(start, i));
+        start = i + 1;
+      }
+    }
+    cookieStrings.add(setCookieHeader.substring(start));
+    for (final cookie in cookieStrings) {
+      final first = cookie.split(';').first.trim();
+      final eq = first.indexOf('=');
+      if (eq > 0) {
+        _cookies[first.substring(0, eq).trim()] =
+            first.substring(eq + 1).trim();
       }
     }
   }

@@ -7,6 +7,7 @@
 // total size, single delete, clear-all, failed downloads leaving no
 // file/index entry, and stale index entries being pruned on refresh.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -15,6 +16,8 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/services/music/music_downloads.dart';
 import 'package:standalone/services/music/music_models.dart';
+import 'package:standalone/services/music/music_quality.dart';
+import 'package:standalone/services/music/music_resolvers.dart';
 
 final _audioBytes = List<int>.generate(4096, (i) => i % 256);
 final _flacBytes = List<int>.generate(2048, (i) => (i * 7) % 256);
@@ -49,6 +52,17 @@ void main() {
             ContentType('audio', 'flac');
         req.response.headers.contentLength = _flacBytes.length;
         req.response.add(_flacBytes);
+      } else if (req.uri.path == '/stall') {
+        // Headers promise 1 MB but the body never arrives: the
+        // download must be cancelled by the stall watchdog, not hang
+        // forever. The handler must stay alive (never-completing
+        // future): dart:io auto-closes the response when the handler
+        // returns, which would end the stall immediately.
+        req.response.headers.contentType =
+            ContentType('audio', 'mpeg');
+        req.response.headers.contentLength = 1024 * 1024;
+        await req.response.flush();
+        await Completer<void>().future;
       } else {
         req.response.statusCode = HttpStatus.notFound;
       }
@@ -163,8 +177,7 @@ void main() {
     });
   });
 
-  group('delete + clear', () {
-    test('delete removes one file + its index entry', () async {
+  group('delete + clear', () {    test('delete removes one file + its index entry', () async {
       final svc = makeService();
       final a = _song('1', 'A');
       final b = _song('2', 'B');
@@ -191,4 +204,70 @@ void main() {
       expect(svc.statusFor(_song('1', 'A')), DownloadStatus.notDownloaded);
     });
   });
+
+  group('concurrency + timeouts (audit 2026-11-17)', () {
+    test('concurrent downloads of the same song share one download',
+        () async {
+      final svc = makeService();
+      final song = _song('1', 'A');
+      final results = await Future.wait([
+        svc.downloadFromUrl(song, serverUrl('/song.mp3')),
+        svc.downloadFromUrl(song, serverUrl('/song.mp3')),
+      ]);
+      expect(results, [true, true]);
+      // One server hit: the second caller shared the first download
+      // instead of writing the same tmp file twice (corrupt bytes).
+      expect(hits, 1);
+      expect(await File(svc.localPathFor(song)!).readAsBytes(), _audioBytes);
+    });
+
+    test('a stalled download fails via the watchdog instead of hanging',
+        () async {
+      final svc = MusicDownloadService(
+        dio: Dio(),
+        directory: tmpDir,
+        stallTimeout: const Duration(milliseconds: 600),
+        stallCheckInterval: const Duration(milliseconds: 100),
+      );
+      final song = _song('9', 'Stalled');
+      final sw = Stopwatch()..start();
+      expect(await svc.downloadFromUrl(song, serverUrl('/stall')), isFalse);
+      sw.stop();
+      // It waited out the stall window (watchdog fired) instead of
+      // failing instantly — and finished in ~1 s instead of hanging.
+      expect(sw.elapsedMilliseconds, greaterThanOrEqualTo(600));
+      expect(sw.elapsedMilliseconds, lessThan(5000));
+      expect(svc.statusFor(song), DownloadStatus.failed);
+      expect(svc.localPathFor(song), isNull);
+      expect(tmpDir.listSync(), isEmpty);
+    });
+
+    test('a throwing resolver is a failed download, not a crash',
+        () async {
+      final svc = MusicDownloadService(
+        dio: Dio(),
+        directory: tmpDir,
+        resolvers: _ThrowingResolvers(),
+      );
+      final song = _song('1', 'A');
+      expect(await svc.download(song), isFalse);
+      expect(svc.statusFor(song), DownloadStatus.failed);
+    });
+  });
+}
+
+/// Resolver double whose resolvePlayUrl always throws, to prove
+/// [MusicDownloadService.download] converts it into a failed
+/// download instead of letting the exception escape to the tap
+/// handler (neither call site catches).
+class _ThrowingResolvers extends MusicResolvers {
+  @override
+  Future<PlayUrlResult?> resolvePlayUrl(
+    String songId,
+    MusicPlatform platform,
+    AudioQuality quality,
+    String title,
+  ) async {
+    throw StateError('boom');
+  }
 }

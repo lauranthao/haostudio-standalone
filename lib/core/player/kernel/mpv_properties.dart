@@ -121,16 +121,3 @@ Map<String, String> mpvLiveSourceProperties({required bool isHls}) {
 const Map<String, String> kMpvVodSourceProperties = {
   'force-seekable': 'yes',
 };
-
-/// iOS profile (mpv_platform_profile.dart): vo {auto, libmpv};
-/// hwdec {auto, auto-safe, auto-copy, no, videotoolbox, videotoolbox-copy};
-/// ao default (mpv default). No iOS-specific tuning properties exist.
-const List<String> kIosVideoOutputs = ['auto', 'libmpv'];
-const List<String> kIosHardwareDecoders = [
-  'auto',
-  'auto-safe',
-  'auto-copy',
-  'no',
-  'videotoolbox',
-  'videotoolbox-copy',
-];

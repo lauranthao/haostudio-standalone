@@ -7,8 +7,12 @@
 // the CURRENT page. The live room is a pushed route (no tab bar at all
 // while open — fix 17.3), separate from this guard.
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+import '../core/theme/hao_themes.dart';
 
 import '../domains/live/presentation/live_tab_page.dart';
 import '../features/music/music_tab_page.dart';
@@ -73,16 +77,55 @@ class _AppShellState extends State<AppShell> {
         },
         children: _pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: _GlassBottomBar(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.movie), label: '影视'),
-          BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: '直播'),
-          BottomNavigationBarItem(icon: Icon(Icons.music_note), label: '音乐'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
-        ],
+      ),
+    );
+  }
+}
+
+/// Frosted-glass bottom bar: theme blur + surface + hairline top edge,
+/// so the bar stays translucent in all 4 themes x light/dark. Selected
+/// icon/label use the theme accent (from BottomNavigationBarTheme);
+/// unselected use the theme muted colour. No behaviour change.
+class _GlassBottomBar extends StatelessWidget {
+  const _GlassBottomBar({required this.currentIndex, required this.onTap});
+
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: theme.glassBlurSigma,
+          sigmaY: theme.glassBlurSigma,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.surface,
+            border: Border(top: BorderSide(color: theme.hairline)),
+          ),
+          child: BottomNavigationBar(
+            currentIndex: currentIndex,
+            onTap: onTap,
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.movie), label: '影视'),
+              BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: '直播'),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.music_note),
+                label: '音乐',
+              ),
+              BottomNavigationBarItem(icon: Icon(Icons.settings), label: '设置'),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,12 +1,11 @@
 // Music models — ported from the old web app (app.js record shapes).
 //
-// Song: {songId, title, artist, album, cover, platform, dur (seconds),
-// vipOnly (0/1)}. Durations are ALWAYS seconds (audit P0-3: total minutes
+// Song: {songId, title, artist, album, cover, platform, dur (seconds)}.
+// Durations are ALWAYS seconds (audit P0-3: total minutes
 // = totalSeconds / 60, never / 1000).
 // Playlist (plaza/search): {platform, id, name, cover, creator, playCount,
 // trackCount, desc, time?}. Artist: {platform, id, name, cover, musicSize,
-// albumSize, alias}. No "会员歌" string anywhere (fix 10): vipOnly is kept
-// as a flag for gating logic only and is never rendered as text.
+// albumSize, alias}. No "会员歌" string anywhere (fix 10).
 
 import 'dart:convert';
 
@@ -87,6 +86,17 @@ String toHttps(String? url) {
 }
 
 /// Cover hi-res upgrade — directCoverHi (app.js:468).
+///
+/// 2026-11-17 fix (v1.0.6 phone bug: "很多歌曲都没封面" + 搜歌/播放慢):
+/// NetEase picUrls from search carry NO size param, i.e. the ORIGINAL
+/// full-resolution image — measured 8.0 MB / 4.7 s for one cover
+/// (p1.music.126.net, same pic). A search page with 20 wy results
+/// fired up to ~160 MB of cover downloads on the shared Dio, starving
+/// the search/resolve requests and blowing the 8 s image timeout, so
+/// covers stayed on the placeholder. NEVER serve full-res: cap
+/// music.126.net at param=800y800 (measured 1.45 MB, 2.5 s worst case
+/// through the VM proxy; typically 200–600 KB). List thumbs should use
+/// [coverThumb] (200y200, measured 115 KB) instead.
 String coverHi(String? url) {
   var s = toHttps(url);
   if (s.isEmpty) return s;
@@ -97,14 +107,40 @@ String coverHi(String? url) {
     );
   }
   if (s.contains('music.126.net')) {
-    final m = RegExp(r'([?&])param=(\d+)y(\d+)(?=&|$)').firstMatch(s);
-    if (m != null) {
-      final w = int.tryParse(m.group(2) ?? '') ?? 0;
-      final h = int.tryParse(m.group(3) ?? '') ?? 0;
-      if (w <= 300 && h <= 300) {
-        s = s.replaceAll(RegExp(r'([?&])param=\d+y\d+&'), r'$1');
-        s = s.replaceAll(RegExp(r'([?&])param=\d+y\d+$'), '');
-      }
+    // Normalise to a bounded size: replace any existing param, or
+    // append one when the URL has none (the search-API shape).
+    final hasParam = RegExp(r'([?&])param=\d+y\d+').hasMatch(s);
+    if (hasParam) {
+      // NOTE: replaceAll does NOT interpolate $1 — the replacement is
+      // literal (a sibling agent's replaceAll + r'$1...' left a literal
+      // "$1" in the URL). Use replaceAllMapped for the group.
+      s = s.replaceAllMapped(
+        RegExp(r'([?&])param=\d+y\d+'),
+        (m) => '${m[1]}param=800y800',
+      );
+    } else {
+      s = s.contains('?') ? '$s&param=800y800' : '$s?param=800y800';
+    }
+  }
+  return s;
+}
+
+/// Small list-thumb variant of a cover URL: 200y200 for music.126.net
+/// (measured 115 KB vs 8.0 MB full-res), everything else unchanged
+/// (gtimg 300px and kuwo covers are already small). Use in dense
+/// lists (song rows); the player cover keeps [coverHi].
+String coverThumb(String? url) {
+  var s = toHttps(url);
+  if (s.isEmpty) return s;
+  if (s.contains('music.126.net')) {
+    final hasParam = RegExp(r'([?&])param=\d+y\d+').hasMatch(s);
+    if (hasParam) {
+      s = s.replaceAllMapped(
+        RegExp(r'([?&])param=\d+y\d+'),
+        (m) => '${m[1]}param=200y200',
+      );
+    } else {
+      s = s.contains('?') ? '$s&param=200y200' : '$s?param=200y200';
     }
   }
   return s;
@@ -149,7 +185,6 @@ class Song {
     this.cover = '',
     this.platform = MusicPlatform.wy,
     this.dur = 0,
-    this.vipOnly = false,
     this.albumYear = 0,
     this.reasonKey = '',
     this.reasonArg = '',
@@ -164,7 +199,6 @@ class Song {
       cover: j['cover']?.toString() ?? '',
       platform: MusicPlatformX.fromCode(j['platform']?.toString()),
       dur: (j['dur'] as num?)?.toInt() ?? 0,
-      vipOnly: j['vipOnly'] == 1 || j['vipOnly'] == true,
       albumYear: (j['albumYear'] as num?)?.toInt() ?? 0,
       reasonKey: j['reasonKey']?.toString() ?? '',
       reasonArg: j['reasonArg']?.toString() ?? '',
@@ -179,7 +213,6 @@ class Song {
         'cover': cover,
         'platform': platform.code,
         'dur': dur,
-        'vipOnly': vipOnly ? 1 : 0,
         'albumYear': albumYear,
         'reasonKey': reasonKey,
         'reasonArg': reasonArg,
@@ -199,23 +232,21 @@ class Song {
   final MusicPlatform platform;
   final int dur;
 
-  /// VIP-only flag — kept for gating logic, NEVER rendered as text.
-  final bool vipOnly;
   final int albumYear;
 
   /// Daily-picks reason (becauseListen / becauseArtist / hotPick).
   final String reasonKey;
   final String reasonArg;
 
-  Song copyWith({String? reasonKey, String? reasonArg}) => Song(
+  Song copyWith({String? reasonKey, String? reasonArg, String? cover}) =>
+      Song(
         songId: songId,
         title: title,
         artist: artist,
         album: album,
-        cover: cover,
+        cover: cover ?? this.cover,
         platform: platform,
         dur: dur,
-        vipOnly: vipOnly,
         albumYear: albumYear,
         reasonKey: reasonKey ?? this.reasonKey,
         reasonArg: reasonArg ?? this.reasonArg,

@@ -51,7 +51,7 @@ class PlayQueuePanel extends StatelessWidget {
                   color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
+                    color: theme.textPrimary.withValues(alpha: 0.22),
                     width: 1,
                   ),
                 ),
@@ -66,8 +66,8 @@ class PlayQueuePanel extends StatelessWidget {
                               '播放列表',
                               style: TextStyle(
                                 color: theme.textPrimary,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
@@ -163,7 +163,7 @@ class PlayQueuePanel extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 4),
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(8),
                                       child: song.cover.isEmpty
                                           ? Container(
                                               width: 40,

@@ -93,9 +93,32 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
       ),
       body: history.isEmpty
           ? Center(
-              child: Text(
-                '还没有观看记录',
-                style: TextStyle(color: theme.textMuted),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.history,
+                    size: 48,
+                    color: theme.textMuted,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '还没有观看记录',
+                    style: TextStyle(
+                      color: theme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '看过的影片会出现在这里',
+                    style: TextStyle(
+                      color: theme.textMuted,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             )
           : ListView.separated(
@@ -147,8 +170,12 @@ class _HistoryRow extends StatelessWidget {
                 aspectRatio: 16 / 9,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C1C1E),
-                    borderRadius: BorderRadius.circular(10),
+                    // Theme glass, not a hardcoded dark tile (black
+                    // hole in light modes). The progress scrim below
+                    // stays black — it sits ON the artwork.
+                    color: theme.surfaceStrong,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.hairline),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Stack(
@@ -158,14 +185,14 @@ class _HistoryRow extends StatelessWidget {
                         RefererImage(
                           url: entry.pic,
                           fit: BoxFit.cover,
-                          fallback: const ColoredBox(
-                            color: Color(0xFF1C1C1E),
+                          fallback: ColoredBox(
+                            color: theme.surfaceStrong,
                           ),
                         )
                       else
-                        const Icon(
+                        Icon(
                           Icons.movie,
-                          color: Color(0xFF8E8E93),
+                          color: theme.textMuted,
                           size: 28,
                         ),
                       Positioned(
@@ -202,7 +229,8 @@ class _HistoryRow extends StatelessWidget {
                     style: TextStyle(
                       color: theme.textPrimary,
                       fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
                     ),
                   ),
                   if (metaParts.isNotEmpty) ...[
@@ -214,6 +242,7 @@ class _HistoryRow extends StatelessWidget {
                       style: TextStyle(
                         color: theme.textMuted,
                         fontSize: 13,
+                        height: 1.25,
                       ),
                     ),
                   ],

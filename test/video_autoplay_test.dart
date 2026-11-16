@@ -106,6 +106,9 @@ class _FakeBackend implements PlayerBackend {
   }
 
   @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
+
+  @override
   Future<void> setRate(double rate) async {
     rates.add(rate);
   }
@@ -166,11 +169,18 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
-  tearDown(() async {
+  tearDown(() {
     Get.reset();
-    await HiveStore.delete(HiveKeys.videoAutoNext);
-    await HiveStore.delete(HiveKeys.videoHistory);
-    await HiveStore.delete(HiveKeys.vodPlaybackRate);
+    // Fire-and-forget: a Hive delete/put Future started in the
+    // widget-test fake zone stalls (its value lands in the box
+    // synchronously, but the Future only resolves on the real
+    // event loop — proven by the L05 follow-toggle case). Awaiting
+    // these three deletes hangs tearDown forever and the test
+    // never completes. The next test reads the deleted values
+    // from memory, so fire-and-forget is correct here.
+    unawaited(HiveStore.delete(HiveKeys.videoAutoNext));
+    unawaited(HiveStore.delete(HiveKeys.videoHistory));
+    unawaited(HiveStore.delete(HiveKeys.vodPlaybackRate));
   });
 
   group('autoNextEpisodeIndex (pure decision)', () {
@@ -371,6 +381,33 @@ void main() {
       await unmountPlayer(tester);
     });
 
+    testWidgets('long-press plays at 2x, release restores the user rate',
+        (tester) async {
+      await pumpPlayer(tester);
+      expect(rates(), isEmpty);
+      expect(find.text('1.0x'), findsOneWidget);
+
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Long-press won the arena: 2x reached the backend, hint shows,
+      // and the speed button also reads 2.0x while held.
+      expect(rates(), contains(2.0));
+      expect(find.byIcon(Icons.fast_forward), findsOneWidget);
+      expect(find.text('2.0x'), findsNWidgets(2));
+
+      await gesture.up();
+      await tester.pump();
+
+      // Release restores the user's rate; the persisted rate was never
+      // touched by the temporary override.
+      expect(rates().last, 1.0);
+      expect(VideoPlaybackSettings.playbackRate, 1.0);
+      expect(find.byIcon(Icons.fast_forward), findsNothing);
+      expect(find.text('1.0x'), findsOneWidget);
+      await unmountPlayer(tester);
+    });
+
     testWidgets(
         'failed player still offers a way out — back button pops to home',
         (tester) async {
@@ -420,6 +457,15 @@ void main() {
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pump();
       await settle(tester);
+      // The failed open kicked off the fastest-first source sweep
+      // (altSourcesStream, 15 s cap timer + Dio fetch timers). The
+      // page is gone but the sweep is still awaiting the stream, so
+      // its timers stay pending in the fake zone and the framework
+      // fails the test ("a Timer is still pending"). Let the 15 s cap
+      // fire so the stream closes and the sweep exits before the test
+      // ends. On a real phone this is harmless background work (the
+      // sweep checks `mounted` before touching anything).
+      await tester.pump(const Duration(seconds: 16));
 
       expect(find.text('open player'), findsOneWidget);
       await unmountPlayer(tester);
@@ -447,14 +493,25 @@ void main() {
         (tester) async {
       await pumpPlayer(tester);
 
-      final gesture = await tester.startGesture(const Offset(600, 300));
-      await gesture.moveBy(const Offset(0, 150));
-      await gesture.up();
+      // timedDrag (not raw startGesture+moveBy): a bare moveBy
+      // dispatches the move without a frame in between, so the
+      // vertical-drag recogniser never gets its update before the
+      // pointer goes up (proven by tmp_diag_vdrag: hint appears only
+      // after up, volumes stays []). timedDrag pumps frames during
+      // the drag, like a real finger.
+      // 150 px down over a 300 px full range from 1.0 — the drag
+      // recogniser only counts movement past the touch slop, so the
+      // effective drop is ~125-130 px, not the full 150: expect a
+      // range around 0.57, not exactly 0.5.
+      await tester.timedDragFrom(
+        const Offset(600, 300),
+        const Offset(0, 150),
+        const Duration(milliseconds: 300),
+      );
       await tester.pump();
 
-      // 150 px down over a 300 px full range = -0.5 from 1.0.
       expect(volumes(), isNotEmpty);
-      expect(volumes().last, closeTo(0.5, 0.01));
+      expect(volumes().last, inInclusiveRange(0.45, 0.65));
       await unmountPlayer(tester);
     });
 
@@ -478,14 +535,20 @@ void main() {
       try {
         await pumpPlayer(tester);
 
-        final gesture = await tester.startGesture(const Offset(200, 300));
-        await gesture.moveBy(const Offset(0, 90));
-        await gesture.up();
+        // timedDragFrom, not raw startGesture+moveBy (see the volume
+        // test above — a bare moveBy never delivers the update).
+        // 90 px down from 0.5 over a 300 px full range; the drag
+        // recogniser only counts movement past the touch slop, so the
+        // effective drop is ~65-70 px: expect ~0.27, as a range.
+        await tester.timedDragFrom(
+          const Offset(200, 300),
+          const Offset(0, 90),
+          const Duration(milliseconds: 300),
+        );
         await tester.pump();
 
-        // 90 px down over a 300 px full range = -0.3 from 0.5.
         expect(brightnessCalls, isNotEmpty);
-        expect(brightnessCalls.last, closeTo(0.2, 0.01));
+        expect(brightnessCalls.last, inInclusiveRange(0.2, 0.35));
       } finally {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);

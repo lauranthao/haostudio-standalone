@@ -41,7 +41,7 @@ Future<void> showRoomDetailSheet({
     showDragHandle: true,
     backgroundColor: HaoTheme.of(context).surfaceStrong,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (context) => _RoomDetailSheet(room: room),
   );
@@ -66,9 +66,31 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
   }
 
   Future<void> _toggleFollow() async {
-    final nowFollowed = await LiveFollowStore.toggle(widget.room);
-    if (!mounted) return;
+    // Optimistic: flip the label immediately. The Hive write lands in
+    // the box synchronously; the awaited Future only confirms the
+    // disk flush, so the UI must not wait on it (in a widget test the
+    // flush Future can stall behind earlier fire-and-forget writes,
+    // and on a slow disk the label would lag the tap).
+    final nowFollowed = !LiveFollowStore.isFollowedRoom(widget.room);
     setState(() => _followed = nowFollowed);
+    try {
+      if (nowFollowed) {
+        await LiveFollowStore.add(widget.room);
+      } else {
+        await LiveFollowStore.remove(
+          widget.room.platform,
+          widget.room.roomId,
+        );
+      }
+    } catch (_) {
+      // Persistence failed: revert the label.
+      if (!mounted) return;
+      setState(() => _followed = !nowFollowed);
+      return;
+    }
+    // Re-sync in case the box changed under us.
+    if (!mounted) return;
+    setState(() => _followed = LiveFollowStore.isFollowedRoom(widget.room));
   }
 
   Future<void> _copyRoomId() async {
@@ -132,14 +154,28 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
             // Anchor + platform + follow.
             Row(
               children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundImage: room.avatar.isEmpty
-                      ? null
-                      : NetworkImage(room.avatar),
-                  child: room.avatar.isEmpty
-                      ? Text(room.nick.isEmpty ? '?' : room.nick[0])
-                      : null,
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: theme.hairline),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundImage: room.avatar.isEmpty
+                        ? null
+                        : NetworkImage(room.avatar),
+                    child: room.avatar.isEmpty
+                        ? Text(room.nick.isEmpty ? '?' : room.nick[0])
+                        : null,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -150,8 +186,8 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                         room.nick.isEmpty ? '主播' : room.nick,
                         style: TextStyle(
                           color: theme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -171,11 +207,23 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     backgroundColor: _followed
                         ? theme.surface
                         : theme.accent,
+                    // onPrimary (not white): white text on the bright
+                    // gold/ice accents is unreadable in dark mode.
                     foregroundColor: _followed
                         ? theme.textPrimary
-                        : Colors.white,
+                        : Theme.of(context).colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
-                  child: Text(_followed ? '已关注' : '关注'),
+                  child: Text(
+                    _followed ? '已关注' : '关注',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
@@ -192,7 +240,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     decoration: BoxDecoration(
                       // Red ONLY for the LIVE badge (standing rule).
                       color: theme.liveRed,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
                       'LIVE',
@@ -200,6 +248,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                         color: Colors.white,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   )
@@ -211,7 +260,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     ),
                     decoration: BoxDecoration(
                       color: theme.surface,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       '已下播',
@@ -224,6 +273,12 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   ),
                 if (room.watching > 0) ...[
                   const SizedBox(width: 10),
+                  Icon(
+                    Icons.visibility_outlined,
+                    size: 14,
+                    color: theme.textMuted,
+                  ),
+                  const SizedBox(width: 4),
                   Text(
                     '${room.watching} 人在看',
                     style: TextStyle(
@@ -240,8 +295,9 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
               room.title.isEmpty ? '（无标题）' : room.title,
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                height: 1.45,
               ),
             ),
             const SizedBox(height: 16),
@@ -280,6 +336,14 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
                       side: BorderSide(color: theme.hairline),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),
@@ -292,6 +356,14 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
                       side: BorderSide(color: theme.hairline),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
                 ),

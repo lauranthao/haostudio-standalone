@@ -36,7 +36,7 @@ class CollapsibleSection extends StatelessWidget {
         InkWell(
           onTap: onToggle,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
                 AnimatedRotation(
@@ -55,8 +55,8 @@ class CollapsibleSection extends StatelessWidget {
                     style: titleStyle ??
                         TextStyle(
                           color: theme.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
                         ),
                   ),
                 ),

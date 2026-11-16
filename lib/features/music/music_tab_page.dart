@@ -103,6 +103,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         );
       },
     );
+    nameController.dispose();
     if (name == null || name.isEmpty) return;
     final lists = MusicStore.getLists();
     if (lists.length >= 10) {
@@ -143,10 +144,10 @@ class _MusicTabPageState extends State<MusicTabPage> {
         name: r.name.isEmpty ? '我的歌单' : r.name,
       );
       if (!lists.contains(list)) lists.add(list);
-      final seen = list.tracks.map((t) => t.songId).toSet();
+      final seen = list.tracks.map((t) => t.identityKey).toSet();
       var added = 0;
       for (final t in r.tracks) {
-        if (seen.contains(t.songId)) continue;
+        if (seen.contains(t.identityKey)) continue;
         if (list.tracks.length >= 200) break;
         list.tracks.add(t);
         added++;
@@ -227,14 +228,14 @@ class _MusicTabPageState extends State<MusicTabPage> {
             greetingFor(now),
             style: TextStyle(
               color: theme.textPrimary,
-              fontSize: 24,
+              fontSize: 26,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             homeDateText(now),
-            style: TextStyle(color: theme.textSecondary, fontSize: 14),
+            style: TextStyle(color: theme.textSecondary, fontSize: 13),
           ),
         ],
       ),
@@ -262,18 +263,25 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: InkWell(
                   onTap: onTap,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     decoration: BoxDecoration(
                       color: theme.surface,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: theme.hairline),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.textPrimary.withValues(alpha: 0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(icon, color: theme.accent, size: 26),
+                        Icon(icon, color: theme.accent, size: 28),
                         const SizedBox(height: 6),
                         Text(
                           label,
@@ -330,7 +338,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 onPressed: _importing ? null : _importLink,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.accent,
-                  foregroundColor: Colors.white,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 child: Text(_importing ? '导入中…' : '一键导入'),
               ),
@@ -374,9 +382,9 @@ class _MusicTabPageState extends State<MusicTabPage> {
       margin: EdgeInsets.zero,
       child: InkWell(
         onTap: () => _push(const FavouritesPage()),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
@@ -384,7 +392,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 height: 52,
                 decoration: BoxDecoration(
                   color: theme.accentSoft,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.favorite, color: theme.accent),
               ),
@@ -429,9 +437,9 @@ class _MusicTabPageState extends State<MusicTabPage> {
       margin: EdgeInsets.zero,
       child: InkWell(
         onTap: () => _push(const DownloadsPage()),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
@@ -439,7 +447,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 height: 52,
                 decoration: BoxDecoration(
                   color: theme.accentSoft,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.download, color: theme.accent),
               ),
@@ -483,13 +491,13 @@ class _MusicTabPageState extends State<MusicTabPage> {
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: () => _push(PlaylistDetailPage(playlistId: list.id)),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
                 child: list.cover.isEmpty
                     ? Container(
                         width: 52,
@@ -597,12 +605,19 @@ class _MusicTabPageState extends State<MusicTabPage> {
           decoration: BoxDecoration(
             color: theme.surfaceStrong,
             border: Border(top: BorderSide(color: theme.hairline)),
+            boxShadow: [
+              BoxShadow(
+                color: theme.textPrimary.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
+              ),
+            ],
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 child: song.cover.isEmpty
                     ? Container(
                         width: 40,

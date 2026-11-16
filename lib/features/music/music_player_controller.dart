@@ -1,4 +1,5 @@
-// Music player controller — queue + native audio (media_kit).
+// Music player controller — queue + native audio (AVPlayer via just_audio,
+// like 歌一刀; was media_kit/MPV before chen 2026-11-17).
 //
 // - Playback ALWAYS starts at the user's chosen quality (default hires);
 //   a song that only resolves lower drops down for that song only, and the
@@ -7,8 +8,8 @@
 // - Candidate fallback on play error: next candidate URL, then next song;
 //   one alt-platform attempt (findAltPlatform) before giving up.
 // - Song crossfade (Apple Music-style): on AUTO-advance the next track
-//   starts on a second Player at volume 0 while the current fades out
-//   (~2.5 s overlap). Manual next/prev switch immediately, no fade.
+//   starts on a second AvMusicPlayer at volume 0 while the current fades
+//   out (~2.5 s overlap). Manual next/prev switch immediately, no fade.
 // - Progress is saved ONLY when the app is killed from the background
 //   (AppLifecycleState.detached — the pagehide equivalent), never while
 //   merely backgrounded. A saved position only resumes when > 5 s in and
@@ -20,7 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
-import 'package:media_kit/media_kit.dart';
+import 'av_music_player.dart';
 
 import '../../core/native/now_playing.dart';
 import '../../services/music/music_api.dart';
@@ -74,6 +75,12 @@ class MusicPlayerController extends GetxController
   final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
   final RxBool lyricsFailed = false.obs;
+  /// Lyrics visible (chen 2026-11-17): tap the lyrics area to hide,
+  /// tap again to show. Default shown.
+  final RxBool showLyrics = true.obs;
+
+  /// Toggle lyrics visibility (lyrics-area tap).
+  void toggleLyrics() => showLyrics.value = !showLyrics.value;
   final RxBool showQueuePanel = false.obs;
   final RxString queueLabel = ''.obs;
 
@@ -93,11 +100,13 @@ class MusicPlayerController extends GetxController
     return queue[i];
   }
 
-  // Two media_kit Players: active + standby (crossfade partner).
-  late final Player _playerA;
-  late final Player _playerB;
-  late Player _active;
-  Player get _standby => identical(_active, _playerA) ? _playerB : _playerA;
+  // Two AVPlayer players (just_audio): active + standby (crossfade
+  // partner). Volume is 0.0..1.0 here, not media_kit's 0..100.
+  late final AvMusicPlayer _playerA;
+  late final AvMusicPlayer _playerB;
+  late AvMusicPlayer _active;
+  AvMusicPlayer get _standby =>
+      identical(_active, _playerA) ? _playerB : _playerA;
 
   /// True once the players exist (end of onInit). Rate application is
   /// a no-op before that, so unit tests can construct the controller
@@ -118,6 +127,24 @@ class MusicPlayerController extends GetxController
   List<String> _candidates = [];
   var _candidateIdx = 0;
   var _altTried = false;
+
+  // Real listen-time accounting (chen 2026-11-17: total time in the
+  // report was not real). One session per track; seconds accumulate
+  // only while the player reports playing. See ListenSessionTracker.
+  final ListenSessionTracker _listenTracker = ListenSessionTracker();
+
+  /// Close the current listen session and persist it when at least 5 s
+  /// were actually heard. Best-effort: a closed Hive box (app kill)
+  /// must never throw into the caller.
+  Future<void> _finalizeListenSession() async {
+    final event = _listenTracker.finish(DateTime.now());
+    if (event == null) return;
+    try {
+      await MusicStore.recordListenEvent(event);
+    } catch (_) {
+      // Hive closed (app kill) — the session is lost, not fatal.
+    }
+  }
   var _failStreak = 0;
 
   // Prefetch cache for the next track.
@@ -139,22 +166,25 @@ class MusicPlayerController extends GetxController
       queue.assignAll(savedQueue.songs);
       currentIndex.value = savedQueue.index;
     }
-    // Two crossfade players (A/B). Player() throws if the native
-    // media_kit library was never initialised (MediaKit.ensureInitialized
-    // missing) — catch it so a player failure only disables playback
+    // Two crossfade players (A/B, AVPlayer via just_audio). Only on
+    // platforms with native audio — on Linux tests there is none, and
+    // a just_audio method call there would throw MissingPluginException
+    // into the test zone. A player failure only disables playback
     // (_playersReady stays false, rate/play calls no-op) instead of
     // crashing the whole music tab during build.
-    try {
-      _playerA = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
-      _playerB = Player(configuration: const PlayerConfiguration(title: 'HAo Studio'));
-      _active = _playerA;
-      _playersReady = true;
-    } catch (e) {
-      debugPrint('[HAo] music players failed to initialise: $e');
-      _playersReady = false;
+    if (AvMusicPlayer.isSupported) {
+      try {
+        _playerA = AvMusicPlayer();
+        _playerB = AvMusicPlayer();
+        _active = _playerA;
+        _playersReady = true;
+      } catch (e) {
+        debugPrint('[HAo] music players failed to initialise: $e');
+        _playersReady = false;
+      }
     }
     if (_playersReady) {
-      unawaited(_active.setVolume(volume.value * 100));
+      unawaited(_active.setVolume(volume.value));
       unawaited(_active.setRate(speed.value));
       unawaited(_standby.setVolume(0));
       unawaited(_standby.setRate(speed.value));
@@ -185,6 +215,7 @@ class MusicPlayerController extends GetxController
     _sleepTimer.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
+    unawaited(_finalizeListenSession());
     unawaited(_nowPlaying.clear());
     _nowPlaying.dispose();
     unawaited(_posSub?.cancel());
@@ -207,6 +238,15 @@ class MusicPlayerController extends GetxController
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
       _saveResumeOnKill();
+      // Flush the current listen session so a kill does not lose
+      // the song's real listened seconds.
+      unawaited(_finalizeListenSession());
+    } else if (state == AppLifecycleState.resumed) {
+      // Fresh Now Playing push on foreground: the native side
+      // re-publishes from cache, but the cached elapsed time may be
+      // stale; push the live position so the card is current and
+      // tappable immediately (v1.0.6 follow-up).
+      _publishNowPlaying();
     }
   }
 
@@ -286,7 +326,7 @@ class MusicPlayerController extends GetxController
 
   // -- player plumbing ---------------------------------------------------------
 
-  void _attach(Player player) {
+  void _attach(AvMusicPlayer player) {
     unawaited(_posSub?.cancel());
     unawaited(_durSub?.cancel());
     unawaited(_playingSub?.cancel());
@@ -299,7 +339,10 @@ class MusicPlayerController extends GetxController
       if (identical(player, _active)) duration.value = d;
     });
     _playingSub = player.stream.playing.listen((playing) {
-      if (identical(player, _active)) isPlaying.value = playing;
+      if (identical(player, _active)) {
+        isPlaying.value = playing;
+        _listenTracker.setPlaying(playing, DateTime.now());
+      }
     });
     _errorSub = player.stream.error.listen((e) {
       if (e.isNotEmpty && identical(player, _active)) {
@@ -311,9 +354,9 @@ class MusicPlayerController extends GetxController
     });
   }
 
-  Future<void> _openOn(Player player, String url, {double? vol}) async {
-    await player.open(Media(url), play: true);
-    if (vol != null) await player.setVolume(vol * 100);
+  Future<void> _openOn(AvMusicPlayer player, String url, {double? vol}) async {
+    await player.open(url, play: true);
+    if (vol != null) await player.setVolume(vol);
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
@@ -401,6 +444,11 @@ class MusicPlayerController extends GetxController
     final gen = ++_playGen;
     final song = currentSong;
     if (song == null) return;
+    // Close the previous track's listen session (real seconds only)
+    // and start one for this song. The old code recorded the song's
+    // FULL duration here, before a second had played.
+    unawaited(_finalizeListenSession());
+    _listenTracker.begin(song, DateTime.now());
     _candidates = [];
     _candidateIdx = 0;
     _altTried = false;
@@ -460,7 +508,6 @@ class MusicPlayerController extends GetxController
     actualQuality.value = quality;
     _failStreak = 0;
     await MusicStore.addRecent(song);
-    await MusicStore.recordListen(song);
     if (auto) {
       await _crossfadeTo(url);
     } else {
@@ -488,7 +535,7 @@ class MusicPlayerController extends GetxController
     final outgoing = _active;
     final incoming = _standby;
     _fadeTimer?.cancel();
-    await incoming.open(Media(url), play: false);
+    await incoming.open(url, play: false);
     await incoming.setVolume(0);
     await incoming.setRate(speed.value);
     await incoming.play();
@@ -506,11 +553,11 @@ class MusicPlayerController extends GetxController
         timer.cancel();
         await outgoing.pause();
         await outgoing.setVolume(0);
-        await incoming.setVolume(targetVol * 100);
+        await incoming.setVolume(targetVol);
         return;
       }
-      await incoming.setVolume(targetVol * t * 100);
-      await outgoing.setVolume(targetVol * (1 - t) * 100);
+      await incoming.setVolume(targetVol * t);
+      await outgoing.setVolume(targetVol * (1 - t));
     });
   }
 
@@ -584,7 +631,12 @@ class MusicPlayerController extends GetxController
   }
 
   Future<void> _replayCurrent() async {
-    if (currentSong == null) return;
+    final song = currentSong;
+    if (song == null) return;
+    // Single loop replays from the start: the finished play-through
+    // counts as its own session, the replay starts a new one.
+    unawaited(_finalizeListenSession());
+    _listenTracker.begin(song, DateTime.now());
     await _active.seek(Duration.zero);
     await _active.play();
   }
@@ -649,6 +701,11 @@ class MusicPlayerController extends GetxController
     // Restart the current track when more than 3 s in (established
     // in-app behaviour), else go to the previous track.
     if (position.value > const Duration(seconds: 3)) {
+      final song = currentSong;
+      if (song != null) {
+        unawaited(_finalizeListenSession());
+        _listenTracker.begin(song, DateTime.now());
+      }
       await _active.seek(Duration.zero);
       return;
     }
@@ -668,9 +725,10 @@ class MusicPlayerController extends GetxController
   }
 
   /// Pause playback if currently playing; no-op when already paused.
-  /// Used by the VOD player page to silence music the moment a film
-  /// starts playing (never on browsing the video tab / detail page).
-  /// No auto-resume: the user resumes music manually.
+  /// Used by the VOD player page and the live room to silence music
+  /// the moment a film / live stream starts playing (never on
+  /// browsing the video tab / live list / detail page). No
+  /// auto-resume: the user resumes music manually.
   Future<void> pause() async {
     if (!isPlaying.value) return;
     await _active.pause();
@@ -680,7 +738,7 @@ class MusicPlayerController extends GetxController
 
   Future<void> setVolume(double v) async {
     volume.value = v.clamp(0.0, 1.0);
-    await _active.setVolume(volume.value * 100);
+    await _active.setVolume(volume.value);
     await MusicStore.setVolume(volume.value);
   }
 

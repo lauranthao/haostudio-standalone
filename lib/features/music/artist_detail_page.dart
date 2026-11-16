@@ -120,6 +120,9 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Favourites read once per build, not per song row: getFavIds()
+    // parses the whole favourites JSON on every call.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       body: _loading
@@ -172,6 +175,8 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                                     '${_detail!.musicSize} 首歌曲 · ${_detail!.albumSize} 张专辑',
                                     style: TextStyle(
                                       color: theme.textSecondary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
@@ -180,7 +185,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                             FloatingActionButton(
                               onPressed: _playAll,
                               backgroundColor: theme.accent,
-                              foregroundColor: Colors.white,
+                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
                               child: const Icon(Icons.play_arrow, size: 32),
                             ),
                           ],
@@ -199,7 +204,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                             : Column(
                                 children: [
                                   for (var i = 0; i < _topSongs.length; i++)
-                                    _songRow(_topSongs[i], _topSongs, i),
+                                    _songRow(_topSongs[i], _topSongs, i, favIds),
                                 ],
                               ),
                       ),
@@ -258,7 +263,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('歌手详情加载失败', style: TextStyle(color: theme.textPrimary)),
+            Text('歌手详情加载失败', style: TextStyle(color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () {
@@ -267,7 +272,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.accent,
-                foregroundColor: Colors.white,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
               ),
               child: const Text('重试'),
             ),
@@ -277,8 +282,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
     );
   }
 
-  Widget _songRow(Song song, List<Song> queue, int index) {
-    final favIds = MusicStore.getFavIds();
+  Widget _songRow(Song song, List<Song> queue, int index, Set<String> favIds) {
     return SongRow(
       song: song,
       isFav: favIds.contains(song.identityKey),
@@ -298,6 +302,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         '${index + 1}',
         style: TextStyle(
           color: HaoTheme.of(context).textMuted,
+          fontSize: 15,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -333,13 +338,17 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         album.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: theme.textPrimary),
+        style: TextStyle(
+          color: theme.textPrimary,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       subtitle: Text(
         album.year > 0
             ? '${album.year}年 · ${album.songCount} 首'
             : '${album.songCount} 首',
-        style: TextStyle(color: theme.textSecondary),
+        style: TextStyle(color: theme.textSecondary, fontSize: 13),
       ),
       trailing: Icon(Icons.chevron_right, color: theme.textMuted),
       onTap: () => Navigator.of(context).push(

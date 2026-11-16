@@ -322,7 +322,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   Widget _cover(Song song) {
     final size = math.min(MediaQuery.of(context).size.width * 0.68, 300.0);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: song.cover.isEmpty
           ? Container(
               width: size,
@@ -637,10 +637,39 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     );
   }
 
+  /// Toggle lyrics visibility; when showing again, re-scroll to the
+  /// current line after the rebuild (the ListView has no clients
+  /// while hidden, so the scroll must wait a frame).
+  void _toggleLyrics() {
+    final wasShown = _c.showLyrics.value;
+    _c.toggleLyrics();
+    if (wasShown) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _lastLyricIdx = -1;
+      _scrollToLyric(_c.lyricIndexFor(_c.position.value));
+    });
+  }
+
   Widget _lyricsArea(int lyricIdx) {
     return SizedBox(
+      key: const ValueKey('lyricsArea'),
       height: 150,
       child: Obx(() {
+        if (!_c.showLyrics.value) {
+          // Hidden state keeps the same box (layout never jumps) and
+          // stays tappable, so one more tap brings lyrics back.
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleLyrics,
+            child: const Center(
+              child: Text(
+                '歌词已隐藏 · 轻点显示',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+            ),
+          );
+        }
         final lines = _c.lyrics;
         if (lines.isEmpty) {
           return Center(
@@ -650,25 +679,38 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             ),
           );
         }
-        return ListView.builder(
-          controller: _lyricScroll,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
-          itemCount: lines.length,
-          itemBuilder: (ctx, i) {
-            final current = i == lyricIdx;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(
-                lines[i].text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: current ? Colors.white : Colors.white54,
-                  fontSize: current ? 16 : 14,
-                  fontWeight: current ? FontWeight.w700 : FontWeight.w400,
+        // Tap a line = seek to that line's timestamp; tap empty space
+        // = hide lyrics. The inner (line) tap wins the gesture arena
+        // over the outer (area) tap, so a line tap never also hides.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleLyrics,
+          child: ListView.builder(
+            controller: _lyricScroll,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+            itemCount: lines.length,
+            itemBuilder: (ctx, i) {
+              final current = i == lyricIdx;
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _c.seek(
+                  Duration(milliseconds: (lines[i].t * 1000).round()),
                 ),
-              ),
-            );
-          },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                    lines[i].text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: current ? Colors.white : Colors.white54,
+                      fontSize: current ? 16 : 14,
+                      fontWeight: current ? FontWeight.w700 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         );
       }),
     );

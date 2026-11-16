@@ -49,7 +49,7 @@ Future<void> showRoomSwitchPanel({
     showDragHandle: true,
     backgroundColor: HaoTheme.of(context).surfaceStrong,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (context) => _RoomSwitchPanel(
       currentRoom: currentRoom,
@@ -160,8 +160,8 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
                   '切换直播间',
                   style: TextStyle(
                     color: theme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const Spacer(),
@@ -194,11 +194,21 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
                 hintText: '筛选：标题 / 主播 / 房间号',
                 hintStyle: TextStyle(color: theme.textMuted),
                 prefixIcon: Icon(Icons.search, color: theme.textMuted),
+                filled: true,
+                fillColor: theme.surface,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide(color: theme.hairline),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: theme.hairline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: theme.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
               style: TextStyle(color: theme.textPrimary),
               onChanged: (v) => setState(() => _query = v),
@@ -274,13 +284,27 @@ class _GroupTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 16, bottom: 6),
-      child: Text(
-        title,
-        style: TextStyle(
-          color: theme.textMuted,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 13,
+            decoration: BoxDecoration(
+              color: theme.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: TextStyle(
+              color: theme.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -350,11 +374,23 @@ class _RoomRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    final onAccent = Theme.of(context).colorScheme.onPrimary;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: isCurrent ? theme.accentSoft : theme.surface,
-        borderRadius: BorderRadius.circular(12),
+        // NOTE: do NOT pass borderRadius here — Material asserts
+        // !(shape != null && borderRadius != null), and the border
+        // side lives in `shape` (its RoundedRectangleBorder already
+        // carries the same 14 radius).
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isCurrent
+                ? theme.accent.withValues(alpha: 0.45)
+                : theme.hairline,
+          ),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -367,19 +403,19 @@ class _RoomRow extends StatelessWidget {
                 ),
               ),
             ),
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
             child: Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                   child: room.cover.isEmpty
                       ? Container(
                           width: 96,
                           height: 54,
-                          color: const Color(0xFF1C1C1E),
-                          child: const Icon(
+                          color: theme.surfaceSolid,
+                          child: Icon(
                             Icons.live_tv_outlined,
-                            color: Color(0xFF8E8E93),
+                            color: theme.textMuted,
                           ),
                         )
                       : Image.network(
@@ -390,10 +426,10 @@ class _RoomRow extends StatelessWidget {
                           errorBuilder: (_, _, _) => Container(
                             width: 96,
                             height: 54,
-                            color: const Color(0xFF1C1C1E),
-                            child: const Icon(
+                            color: theme.surfaceSolid,
+                            child: Icon(
                               Icons.live_tv_outlined,
-                              color: Color(0xFF8E8E93),
+                              color: theme.textMuted,
                             ),
                           ),
                         ),
@@ -412,6 +448,7 @@ class _RoomRow extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: theme.textPrimary,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -420,19 +457,22 @@ class _RoomRow extends StatelessWidget {
                             Container(
                               margin: const EdgeInsets.only(left: 6),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
+                                horizontal: 7,
+                                vertical: 3,
                               ),
                               decoration: BoxDecoration(
                                 color: theme.accent,
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Text(
+                              child: Text(
                                 '当前',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  // onPrimary: white on bright gold/ice
+                                  // accents is unreadable in dark mode.
+                                  color: onAccent,
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                             ),

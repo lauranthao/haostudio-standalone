@@ -58,9 +58,30 @@ PlayerBackend _defaultBackendFactory(PlayerEngine engine) {
 
 class PlaybackSession {
   PlaybackSession({
-    this._preferred = PlayerEngine.mediaKit,
+    PlayerEngine? preferred,
     BackendFactory? backendFactory,
-  }) : _backendFactory = backendFactory ?? _defaultBackendFactory;
+  })  : _preferred = preferred ?? _storedPreferredEngine,
+        _backendFactory = backendFactory ?? _defaultBackendFactory;
+
+  /// The engine the user picked in Settings (`videoPlayerKey`).
+  ///
+  /// Was: the constructor always defaulted to MPV and nothing ever
+  /// read `videoPlayerKey` on open — the settings engine picker wrote
+  /// a key no session honoured, so picking IJK / AVPlayer changed
+  /// nothing on the next open (orphan control; the settings comment
+  /// claiming "picks it up on next open" was false). Now the stored
+  /// choice is the default; an explicit [preferred] still wins
+  /// (tests, callers). Uninitialised or corrupt storage falls back
+  /// to MPV instead of throwing.
+  static PlayerEngine get _storedPreferredEngine {
+    try {
+      return PlayerEngineX.fromKey(
+        HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv'),
+      );
+    } catch (_) {
+      return PlayerEngine.mediaKit;
+    }
+  }
 
   PlayerEngine _preferred;
   final BackendFactory _backendFactory;
@@ -81,6 +102,13 @@ class PlaybackSession {
   DateTime _lastPositionAt = DateTime.now();
   bool _stallNoticed = false;
   bool _disposed = false;
+
+  /// Audio-only mode (live background playback): the video track is
+  /// off while the app is backgrounded. Remembered so a ladder
+  /// backend swap re-applies it to the new backend, like [_rate].
+  bool _audioOnly = false;
+
+  bool get isAudioOnly => _audioOnly;
 
   final _statusController = StreamController<PlaybackStatus>.broadcast();
   final _errorController = StreamController<String>.broadcast();
@@ -225,14 +253,12 @@ class PlaybackSession {
           // never returns must not stall the ladder. TimeoutException
           // is caught below and the candidate is disposed.
           //
-          // Live is 10 s, VOD 18 s: a live line that cannot connect in
-          // 10 s is unwatchable, and failing fast lets the ladder move
-          // on instead of the room sitting on "一直加载中" — a hung
-          // line burned 18 s per engine before. VOD URLs do not
-          // expire and deserve the longer patience.
-          final openTimeout = isLive
-              ? const Duration(seconds: 10)
-              : const Duration(seconds: 18);
+          // 10 s for both live and VOD (2026-11-17: VOD was 18 s —
+          // a dead m3u8 burned 18 s per engine before the ladder
+          // moved on, so "播放影片太慢". A healthy stream opens in
+          // seconds; 10 s is still 5x headroom). The first-frame
+          // wait stays 18 s per Pure Live's sourceReadyTimeout.
+          const openTimeout = Duration(seconds: 10);
           await candidate
               .open(
                 url: url,
@@ -322,6 +348,16 @@ class PlaybackSession {
     }
     final old = _backend;
     _backend = next;
+    // A ladder swap must not reset a background audio-only mode:
+    // the new backend would re-enable its video track and the
+    // suspended vo could pause the stream again. Applied before the
+    // attach so the backend is audio-only from the moment it is
+    // installed (best-effort, like the rate re-apply below).
+    if (_audioOnly) {
+      try {
+        await next.setAudioOnly(true);
+      } catch (_) {}
+    }
     _attachBackend(next);
     // A ladder swap must not reset a user-chosen speed (episode
     // auto-advance opens a fresh backend per episode).
@@ -425,6 +461,20 @@ class PlaybackSession {
 
   double get rate => _rate;
 
+  /// Audio-only mode for live background playback (Pure Live
+  /// `setAudioOnly`): the video track is disabled so a suspended
+  /// video output cannot pause the stream in background; the audio
+  /// keeps playing. The flag is remembered and re-applied after a
+  /// ladder backend swap. A backend that does not implement it
+  /// (IJK / AVPlayer) no-ops — the room's foreground handler still
+  /// resumes playback if it paused natively anyway.
+  Future<void> setAudioOnly(bool audioOnly) async {
+    _audioOnly = audioOnly;
+    try {
+      await _backend?.setAudioOnly(audioOnly);
+    } catch (_) {}
+  }
+
   /// Playback speed (VOD only). Stored so a ladder backend swap
   /// re-applies it; live never sets it.
   Future<void> setRate(double rate) async {
@@ -435,14 +485,22 @@ class PlaybackSession {
   }
 
   /// Idempotent dispose (fix 1): cancel callbacks first, then release.
+  ///
+  /// The backend-subscription cancels are fire-and-forget, NOT
+  /// awaited: a broadcast StreamSubscription.cancel() future can
+  /// stall — under fake async (widget tests) it never completes at
+  /// all, so awaiting it wedged dispose() before the backend was
+  /// released and the film kept its backend alive after exit. The
+  /// backend release must never wait on stream teardown; the
+  /// cancels still run, they just don't gate the release.
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
     _stallTimer?.cancel();
-    await _positionSub?.cancel();
-    await _durationSub?.cancel();
-    await _errorSub?.cancel();
-    await _completedSub?.cancel();
+    unawaited(_positionSub?.cancel());
+    unawaited(_durationSub?.cancel());
+    unawaited(_errorSub?.cancel());
+    unawaited(_completedSub?.cancel());
     await _backend?.dispose();
     _backend = null;
     await _statusController.close();

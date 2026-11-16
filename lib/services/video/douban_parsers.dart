@@ -151,6 +151,42 @@ Map<String, String> parseDoubanDesktopCast(String? html) {
   return out;
 }
 
+/// Baidu Baike lemma card (`BaikeLemmaCardApi`, free, no key) → actor
+/// photo URL, or null.
+///
+/// The Douban desktop subject page — the v1.0.5 cast-photo source — is
+/// login-walled for anonymous requests (302 to sec.douban.com, then
+/// `error code: 008, please Login`), so its parser always returns an
+/// empty map in production. Baike is the fallback that actually works
+/// (verified 2026-11-17: 张若昀/李沁/陈道明/吴刚 all return a real
+/// bkimg.cdn.bcebos.com JPEG, 200 with a browser UA and no Referer).
+///
+/// Guards against wrong-person matches: `title` must equal [name]
+/// exactly, and a non-empty `desc` must describe an entertainer
+/// (演员/歌手/艺人/明星/导演/主持/偶像/童星/舞者) — e.g. 吴刚 the actor
+/// (desc 中国内地男演员) passes, 张三 (desc 人物泛称) is rejected.
+String? parseBaikeCardPhoto(Map<String, dynamic>? json, String name) {
+  if (json == null || name.isEmpty) return null;
+  final title = (json['title'] as String?)?.trim() ?? '';
+  if (title != name) return null;
+  final desc = (json['desc'] as String?) ?? '';
+  const entertainer = [
+    '演员',
+    '歌手',
+    '艺人',
+    '明星',
+    '导演',
+    '主持',
+    '偶像',
+    '童星',
+    '舞者',
+  ];
+  if (desc.isNotEmpty && !entertainer.any(desc.contains)) return null;
+  final image = (json['image'] as String?)?.trim() ?? '';
+  if (image.isEmpty) return null;
+  return image;
+}
+
 /// Desktop search fallback: `www.douban.com/search?cat=1002&q=<title>` —
 /// HTML regex `sid:\s*(\d+)` else `movie.douban.com/subject/(\d+)`.
 String? parseDoubanSearchPageId(String? html) {
@@ -206,10 +242,24 @@ void mergeDoubanIntoMeta(VideoMeta meta, DoubanDetail? dd) {
     }
     meta.pic = dd.poster;
   }
+  // Cast photos are Douban-ordered (dd.castPhotos aligns with
+  // dd.castNames), but the displayed names come from meta.actor, which
+  // may be the CMS list in a different order. Zipping by index can
+  // attach a photo to the wrong person — align by name instead: a
+  // displayed actor only gets a photo when Douban has the same name.
+  // (meta.actor was filled from Douban above when it was empty, so
+  // that case still aligns exactly.)
+  final doubanPhotos = <String, String>{};
+  for (var i = 0; i < dd.castNames.length; i++) {
+    doubanPhotos[dd.castNames[i]] =
+        i < dd.castPhotos.length ? dd.castPhotos[i] : '';
+  }
+  final alignedPhotos =
+      meta.castNames.map((n) => doubanPhotos[n] ?? '').toList();
   meta.douban = DoubanMark(
     id: dd.id,
     score: dd.score,
     poster: dd.poster,
-    castPhotos: dd.castPhotos,
+    castPhotos: alignedPhotos,
   );
 }

@@ -3,8 +3,7 @@
 //
 // - Exactly two action buttons: heart (favourite — the heart IS the
 //   add-to-collection action) and play. NO `+` button anywhere.
-// - NO "会员歌" text anywhere (the vipOnly flag is kept for gating logic
-//   only and is never rendered).
+// - NO "会员歌" text anywhere (fix 10).
 // - Title truncates cleanly with an ellipsis and NEVER runs under the
 //   action buttons: the title/meta column flexes, the action area has a
 //   fixed width reserved on the right.
@@ -55,7 +54,7 @@ class SongRow extends StatelessWidget {
       onTap: onPlay,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
           children: [
             if (leading != null) ...[
@@ -63,7 +62,7 @@ class SongRow extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: song.cover.isEmpty
                   ? Container(
                       width: 48,
@@ -75,7 +74,9 @@ class SongRow extends StatelessWidget {
                       ),
                     )
                   : Image(
-                      image: MusicImageProvider(song.cover),
+                      // 200px thumb (coverThumb): the full coverHi URL
+                      // is up to 1.4 MB; a 48px row never needs it.
+                      image: MusicImageProvider(coverThumb(song.cover)),
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
@@ -108,7 +109,7 @@ class SongRow extends StatelessWidget {
                           style: TextStyle(
                             color: theme.textPrimary,
                             fontSize: 15,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -116,12 +117,12 @@ class SongRow extends StatelessWidget {
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
+                            horizontal: 6,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: theme.accentSoft,
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             song.platform.badgeName,

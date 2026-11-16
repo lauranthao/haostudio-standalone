@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/settings_ui.dart';
 import '../../services/music/music_downloads.dart';
 import 'cache_service.dart';
 
@@ -80,10 +81,7 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
     final freed = await MusicDownloadService().clearAll();
     if (!mounted) return;
     await _refreshDownloads();
-    Get.snackbar(
-      '已清除',
-      '音乐下载已清除，释放 ${CacheService.formatBytes(freed)}',
-    );
+    Get.snackbar('已清除', '音乐下载已清除，释放 ${CacheService.formatBytes(freed)}');
   }
 
   Future<void> _clearAll() async {
@@ -123,73 +121,89 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
           if (_loading)
             const Center(child: CircularProgressIndicator())
           else ...[
-            ListTile(
-              title: Text('缓存总计', style: TextStyle(color: theme.textPrimary)),
-              subtitle: Text(
-                '历史记录、收藏与歌单不受影响',
-                style: TextStyle(color: theme.textSecondary),
-              ),
-              trailing: Text(
-                CacheService.formatBytes(_total),
-                style: TextStyle(
-                  color: theme.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            ...CacheSection.values.map((section) {
-              return ListTile(
-                title: Text(
-                  section.title,
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  section.subtitle,
-                  style: TextStyle(color: theme.textSecondary),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      CacheService.formatBytes(_sizes[section] ?? 0),
-                      style: TextStyle(color: theme.textSecondary),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: () => _clear(section),
-                      child: const Text('清除'),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 16),
-            // Music downloads (M-P0-5) are user files, not cache: they
-            // are never touched by 清除全部缓存, only by their own clear.
-            ListTile(
-              title: Text(
-                '音乐下载',
-                style: TextStyle(color: theme.textPrimary),
-              ),
-              subtitle: Text(
-                '已下载的歌曲文件，可离线播放',
-                style: TextStyle(color: theme.textSecondary),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    CacheService.formatBytes(_downloadBytes),
+            SettingsGroup(
+              children: [
+                ListTile(
+                  title: Text(
+                    '缓存总计',
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  subtitle: Text(
+                    '历史记录、收藏与歌单不受影响',
                     style: TextStyle(color: theme.textSecondary),
                   ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: _clearDownloads,
-                    child: const Text('清除'),
+                  trailing: Text(
+                    CacheService.formatBytes(_total),
+                    style: TextStyle(
+                      color: theme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SettingsGroup(
+              children: [
+                ...CacheSection.values.map((section) {
+                  return ListTile(
+                    title: Text(
+                      section.title,
+                      style: TextStyle(color: theme.textPrimary),
+                    ),
+                    subtitle: Text(
+                      section.subtitle,
+                      style: TextStyle(color: theme.textSecondary),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          CacheService.formatBytes(_sizes[section] ?? 0),
+                          style: TextStyle(color: theme.textSecondary),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () => _clear(section),
+                          child: const Text('清除'),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Music downloads (M-P0-5) are user files, not cache: they
+            // are never touched by 清除全部缓存, only by their own clear.
+            SettingsGroup(
+              children: [
+                ListTile(
+                  title: Text(
+                    '音乐下载',
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  subtitle: Text(
+                    '已下载的歌曲文件，可离线播放',
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        CacheService.formatBytes(_downloadBytes),
+                        style: TextStyle(color: theme.textSecondary),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _clearDownloads,
+                        child: const Text('清除'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             FilledButton(onPressed: _clearAll, child: const Text('清除全部缓存')),

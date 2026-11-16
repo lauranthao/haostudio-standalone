@@ -190,13 +190,48 @@ class MemoryDoubanCache implements DoubanCache {
   }
 }
 
+/// One actor's photo URL by name (Baidu Baike lemma card).
+/// Returns '' when unavailable. Injectable for tests.
+typedef CastPhotoFetcher = Future<String> Function(String name);
+
+/// Default cast-photo fetch: Baidu Baike open API (free, no key).
+/// Validated by [parseBaikeCardPhoto] — wrong-person cards rejected.
+Future<String> defaultCastPhotoFetcher(String name) async {
+  try {
+    final res = await sharedDio().get<Map<String, dynamic>>(
+      'https://baike.baidu.com/api/openapi/BaikeLemmaCardApi',
+      queryParameters: {
+        'scope': '103',
+        'format': 'json',
+        'appid': '379020',
+        'bk_key': name,
+        'bk_length': '600',
+      },
+      options: Options(
+        responseType: ResponseType.json,
+        receiveTimeout: const Duration(seconds: 5),
+        sendTimeout: const Duration(seconds: 5),
+      ),
+    );
+    if (res.statusCode != 200 || res.data == null) return '';
+    return parseBaikeCardPhoto(res.data, name) ?? '';
+  } catch (_) {
+    return '';
+  }
+}
+
 class DoubanService {
-  DoubanService({DoubanFetcher? fetcher, DoubanCache? cache})
-      : _fetcher = fetcher ?? defaultDoubanFetcher,
-        _cache = cache ?? HiveDoubanCache();
+  DoubanService({
+    DoubanFetcher? fetcher,
+    DoubanCache? cache,
+    CastPhotoFetcher? castPhotoFetcher,
+  })  : _fetcher = fetcher ?? defaultDoubanFetcher,
+        _cache = cache ?? HiveDoubanCache(),
+        _castPhotoFetcher = castPhotoFetcher ?? defaultCastPhotoFetcher;
 
   final DoubanFetcher _fetcher;
   final DoubanCache _cache;
+  final CastPhotoFetcher _castPhotoFetcher;
 
   Future<void> _chain = Future.value();
   DateTime _lastCall = DateTime.fromMillisecondsSinceEpoch(0);
@@ -332,7 +367,15 @@ class DoubanService {
       final id = await resolveId(base);
       if (id == null || id.isEmpty) return null;
       final cached = _cache.detail(id);
-      if (cached != null) return cached;
+      // A cached detail whose cast has names but NO photos is stale:
+      // it was saved when the photo fetch failed (see below), and the
+      // cache is permanent — without this, photos never appear again
+      // on an installed phone. Re-fetch instead of returning it.
+      final photosMissing = cached != null &&
+          cached.castNames.isNotEmpty &&
+          (cached.castPhotos.length < cached.castNames.length ||
+              cached.castPhotos.every((p) => p.isEmpty));
+      if (cached != null && !photosMissing) return cached;
       DoubanDetail? ab;
       try {
         ab = parseDoubanAbstract(
@@ -353,19 +396,35 @@ class DoubanService {
         mp = parseDoubanMPage(html);
       } catch (_) {}
       // Desktop page: cast avatar photos (best effort — a slow or
-      // failed fetch must never kill the detail).
-      var castPhotos = const <String>[];
+      // failed fetch must never kill the detail). NOTE: in production
+      // this almost always yields nothing — the desktop subject page
+      // is login-walled for anonymous requests (302 to sec.douban.com,
+      // then `error code: 008, please Login`), so the parser finds no
+      // celebrity blocks. The Baike fallback below fills those gaps.
+      var byName = <String, String>{};
       try {
         final desktopHtml = await _text(
           'https://movie.douban.com/subject/$id/',
           kDoubanHeaders,
           timeout: const Duration(seconds: 6),
         ).timeout(const Duration(seconds: 6));
-        final byName = parseDoubanDesktopCast(desktopHtml);
-        if (byName.isNotEmpty) {
-          castPhotos = ab.castNames.map((n) => byName[n] ?? '').toList();
-        }
+        byName = parseDoubanDesktopCast(desktopHtml);
       } catch (_) {}
+      // Baike fallback (parallel, 5 s each — NOT through the serialised
+      // Douban chain, different host, no shared rate limit): one lookup
+      // per name the desktop page didn't cover. Douban photos win when
+      // present; Baike fills the rest.
+      final missing = ab.castNames
+          .where((n) => (byName[n] ?? '').isEmpty)
+          .toList();
+      if (missing.isNotEmpty) {
+        final got = await Future.wait(missing.map(_castPhotoFetcher));
+        for (var i = 0; i < missing.length; i++) {
+          if (got[i].isNotEmpty) byName[missing[i]] = got[i];
+        }
+      }
+      final castPhotos =
+          ab.castNames.map((n) => byName[n] ?? '').toList();
       final d = DoubanDetail(
         id: id,
         media: ab.media,

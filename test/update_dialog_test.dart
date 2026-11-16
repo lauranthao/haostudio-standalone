@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:standalone/app/consts.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/settings/update_dialog.dart';
@@ -45,6 +46,16 @@ Dio _stubDio(Map<String, dynamic> manifest) {
     ),
   );
   return dio;
+}
+
+/// A version newer than the app's own, computed from kAppVersion so
+/// these tests keep working after every version bump. The old
+/// hard-coded '1.0.5' stubs went stale the moment the app passed
+/// 1.0.5 (1.0.5 < 1.0.7 reads as upToDate, not newerAvailable).
+String _newerVersion([int steps = 1]) {
+  final parts = kAppVersion.split('.').map(int.parse).toList();
+  parts[parts.length - 1] += steps;
+  return parts.join('.');
 }
 
 Dio _failingDio() {
@@ -95,19 +106,20 @@ void main() {
 
   group('UpdateService.checkManual classification', () {
     test('newer remote version -> newerAvailable with info', () async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final newer = _newerVersion();
+      final service = UpdateService(dio: _stubDio(_manifest(newer)));
       final (result, info) = await service.checkManual();
       expect(result, UpdateCheckResult.newerAvailable);
-      expect(info?.version, '1.0.5');
-      expect(info?.ipaUrl, 'https://example.com/hao-1.0.5.ipa');
+      expect(info?.version, newer);
+      expect(info?.ipaUrl, 'https://example.com/hao-$newer.ipa');
       expect(info?.changelog, '新功能：测试更新日志');
     });
 
     test('same version -> upToDate', () async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.4')));
+      final service = UpdateService(dio: _stubDio(_manifest(kAppVersion)));
       final (result, info) = await service.checkManual();
       expect(result, UpdateCheckResult.upToDate);
-      expect(info?.version, '1.0.4');
+      expect(info?.version, kAppVersion);
     });
 
     test('older remote version -> upToDate', () async {
@@ -133,12 +145,13 @@ void main() {
   group('Skip logic', () {
     test('skipped version -> skipped; other version -> newerAvailable',
         () async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
-      await service.skipVersion('1.0.5');
+      final newer = _newerVersion();
+      final service = UpdateService(dio: _stubDio(_manifest(newer)));
+      await service.skipVersion(newer);
       final (skipped, _) = await service.checkManual();
       expect(skipped, UpdateCheckResult.skipped);
 
-      final other = UpdateService(dio: _stubDio(_manifest('1.0.6')));
+      final other = UpdateService(dio: _stubDio(_manifest(_newerVersion(2))));
       final (result, _) = await other.checkManual();
       expect(result, UpdateCheckResult.newerAvailable);
     });

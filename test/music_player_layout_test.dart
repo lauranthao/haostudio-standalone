@@ -15,17 +15,20 @@
 
 import 'dart:ui' as ui;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:standalone/core/native/now_playing.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
+import 'package:standalone/features/music/comments_page.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_player_sheet.dart';
 import 'package:standalone/features/music/widgets/music_image.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/play_mode.dart';
 
@@ -36,6 +39,14 @@ import 'package:standalone/services/music/play_mode.dart';
 /// (cover-only) is what the swipe group verifies; audio loading is the
 /// controller's business, covered by music_test.dart.
 class _NoLoadController extends MusicPlayerController {
+  /// Recorded seek targets (lyric tap-to-seek tests).
+  final List<Duration> seeks = [];
+
+  @override
+  Future<void> seek(Duration pos) async {
+    seeks.add(pos);
+  }
+
   @override
   Future<void> next({bool auto = false}) async {
     if (queue.length <= 1) return;
@@ -308,6 +319,170 @@ void main() {
       await tester.drag(lyricsText, const Offset(-200, 0));
       await tester.pump();
       expect(find.text('Song One'), findsOneWidget);
+    });
+  });
+
+  group('lyrics tap-to-seek + hide/show (chen 2026-11-17)', () {
+    Future<_NoLoadController> pumpLyrics(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1260, 2736);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put<MusicPlayerController>(_NoLoadController())
+          as _NoLoadController;
+      c.queue.assignAll([
+        Song(
+          songId: 's1',
+          title: 'Lyric Song',
+          artist: 'A',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+      c.lyrics.assignAll([
+        LyricLine(t: 10, text: '第一句'),
+        LyricLine(t: 25.5, text: '第二句'),
+        LyricLine(t: 40, text: '第三句'),
+      ]);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('第二句'), findsOneWidget);
+      return c;
+    }
+
+    testWidgets('tap a lyric line seeks to its timestamp, does not hide',
+        (tester) async {
+      final c = await pumpLyrics(tester);
+      await tester.tap(find.text('第二句'));
+      await tester.pump();
+      expect(c.seeks, [const Duration(milliseconds: 25500)]);
+      // Inner (line) tap wins over the outer (area) tap: still shown.
+      expect(c.showLyrics.value, isTrue);
+      expect(find.text('第二句'), findsOneWidget);
+    });
+
+    testWidgets('tap empty lyrics padding hides; tap hint shows again',
+        (tester) async {
+      final c = await pumpLyrics(tester);
+      // Top 8 px of the lyrics box is ListView padding (empty space).
+      final topLeft =
+          tester.getTopLeft(find.byKey(const ValueKey('lyricsArea')));
+      await tester.tapAt(topLeft + const Offset(100, 4));
+      await tester.pump();
+      expect(c.showLyrics.value, isFalse);
+      expect(find.text('歌词已隐藏 · 轻点显示'), findsOneWidget);
+      expect(find.text('第二句'), findsNothing);
+
+      await tester.tap(find.text('歌词已隐藏 · 轻点显示'));
+      await tester.pump();
+      expect(c.showLyrics.value, isTrue);
+      expect(find.text('第二句'), findsOneWidget);
+    });
+  });
+
+  group('song comments page (chen 2026-11-17)', () {
+    /// Stub Dio: the NetEase comments URL returns 2 hot + 35 latest;
+    /// every other URL (alt-platform search) returns an empty map.
+    Dio stubCommentsDio() {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            if (options.path.contains('resource/comments')) {
+              final hot = [
+                {
+                  'user': {'nickname': '热评甲', 'avatarUrl': ''},
+                  'content': '这首歌绝了',
+                  'likedCount': 500,
+                  'time': 1700000000000,
+                },
+                {
+                  'user': {'nickname': '热评乙', 'avatarUrl': ''},
+                  'content': '单曲循环中',
+                  'likedCount': 300,
+                  'time': 1700000001000,
+                },
+              ];
+              final list = List.generate(
+                35,
+                (i) => {
+                  'user': {'nickname': 'u$i', 'avatarUrl': ''},
+                  'content': '评论 $i',
+                  'likedCount': 0,
+                  'time': (i + 1) * 1000,
+                },
+              );
+              return handler.resolve(
+                Response<dynamic>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {'hotComments': hot, 'comments': list},
+                ),
+              );
+            }
+            return handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 200,
+                data: <String, dynamic>{},
+              ),
+            );
+          },
+        ),
+      );
+      return dio;
+    }
+
+    testWidgets('hot on top, latest below, load more appends the tail',
+        (tester) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: SongCommentsPage(
+            song: Song(
+              songId: '66285',
+              title: '葡萄成熟时',
+              artist: '陈奕迅',
+              platform: MusicPlatform.wy,
+            ),
+            api: MusicApi(dio: stubCommentsDio()),
+          ),
+        ),
+      );
+      // The aggregator also searches the other platforms for the same
+      // song (alt-platform comments); the stubbed Kuwo search returns
+      // empty and retries after an 800 ms delay, so the page needs
+      // ~1 s of fake time before the list appears.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1000));
+
+      expect(find.text('评论'), findsOneWidget);
+      expect(find.text('精彩评论'), findsOneWidget);
+      expect(find.text('热评甲'), findsOneWidget);
+      expect(find.text('最新评论'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('加载更多'), 300);
+      await tester.tap(find.text('加载更多'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1000));
+      await tester.scrollUntilVisible(find.text('没有更多了'), 300);
+      expect(find.text('没有更多了'), findsOneWidget);
+      expect(find.text('u0'), findsOneWidget);
     });
   });
 }

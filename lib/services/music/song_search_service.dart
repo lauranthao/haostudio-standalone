@@ -53,6 +53,32 @@ List<Song> mergeSearchResults(List<List<Song>> perPlatform) {
   return out;
 }
 
+/// Cover backfill (v1.0.6 phone bug: "很多歌曲都没封面"): Kugou search
+/// returns NO cover field at all, so ~1 in 4 merged rows was coverless
+/// by construction. Fill an empty cover from another result with the
+/// same normalised title+artist in the same search (the same song is
+/// usually on wy/tx/kw too, with a real cover). Pure, unit-tested;
+/// client-side only, no new network.
+List<Song> backfillCovers(List<Song> songs) {
+  final byKey = <String, String>{};
+  for (final s in songs) {
+    if (s.cover.isEmpty) continue;
+    final k = '${normalizeName(s.title)}|${normalizeName(s.artist)}';
+    byKey.putIfAbsent(k, () => s.cover);
+  }
+  if (byKey.isEmpty) return songs;
+  var changed = false;
+  final out = songs.map((s) {
+    if (s.cover.isNotEmpty) return s;
+    final k = '${normalizeName(s.title)}|${normalizeName(s.artist)}';
+    final cover = byKey[k];
+    if (cover == null || cover.isEmpty) return s;
+    changed = true;
+    return s.copyWith(cover: cover);
+  }).toList();
+  return changed ? out : songs;
+}
+
 class SongSearchService {
   SongSearchService({MusicApi? api, LxScriptEngine? scriptEngine})
       : _api = api ?? MusicApi(),
@@ -93,8 +119,15 @@ class SongSearchService {
                 keyword: query,
                 limit: 20,
               )
+              // LX-style single deadline (2026-11-17, 歌一刀/LX 借鉴):
+              // LX awaits all sources in one Promise.all. Before, the
+              // script legs got a 2 s grace AFTER the platform legs,
+              // so a search could burn 5 s (platform cap) + 2 s even
+              // when the platform results were ready. Script legs
+              // share the 5 s leg cap and are awaited together with
+              // the platform legs — total search is bounded by 5 s.
               .timeout(
-                const Duration(seconds: 8),
+                const Duration(seconds: 5),
                 onTimeout: () => const <Map<String, dynamic>>[],
               )
               .catchError((_) => const <Map<String, dynamic>>[]),
@@ -104,6 +137,14 @@ class SongSearchService {
       platforms.map(
         (pf) => _api
             .searchOne(pf, query)
+            // 2026-11-17: per-leg 5 s cap. searchOne's own timeouts
+            // are 10 s and kg/kw retry — a dead leg used to hold the
+            // whole aggregated search 10–21 s. A leg that cannot
+            // answer in 5 s contributes nothing.
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () => <Song>[],
+            )
             .then((r) => (pf, r))
             .catchError((_) => (pf, <Song>[])),
       ),
@@ -117,6 +158,10 @@ class SongSearchService {
       return List.of(hit.$2);
     }).toList();
     if (scriptLegs.isNotEmpty) {
+      // Script legs started concurrently with the platform legs and
+      // share their 5 s cap, so this wait only collects what is
+      // already done (or finishes within the same deadline) — no
+      // extra grace.
       final scriptResults = await Future.wait(scriptFutures);
       if (gen != _generation) return [];
       for (var i = 0; i < scriptLegs.length; i++) {
@@ -141,9 +186,6 @@ class SongSearchService {
       }
     }
     if (!perPf.any((l) => l.isNotEmpty)) return [];
-    return mergeSearchResults(perPf);
+    return backfillCovers(mergeSearchResults(perPf));
   }
-
-  /// Cancel any in-flight search (called when a new query starts).
-  void cancel() => _generation++;
 }

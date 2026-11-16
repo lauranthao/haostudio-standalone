@@ -164,10 +164,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       (l) => l.id == list.id,
       orElse: () => list,
     );
-    final seen = target.tracks.map((t) => t.songId).toSet();
+    final seen = target.tracks.map((t) => t.identityKey).toSet();
     var added = 0;
     for (final s in _songs) {
-      if (seen.contains(s.songId)) continue;
+      if (seen.contains(s.identityKey)) continue;
       if (target.tracks.length >= 200) break;
       target.tracks.add(s);
       added++;
@@ -183,6 +183,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Favourites read once per build, not per track row: getFavIds()
+    // parses the whole favourites JSON on every call.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
@@ -217,7 +220,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.accent,
-                          foregroundColor: Colors.white,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
                         ),
                         child: const Text('重试'),
                       ),
@@ -248,6 +251,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       style: TextStyle(
                         color: theme.textSecondary,
                         fontSize: 16,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -262,7 +266,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                     Divider(color: theme.hairline, height: 1),
                     const SizedBox(height: 8),
                     for (var i = 0; i < _songs.length; i++)
-                      _trackRow(theme, _songs[i], i),
+                      _trackRow(theme, _songs[i], i, favIds),
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -287,7 +291,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final size = MediaQuery.of(context).size.width * 0.62;
     return Center(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: cover.isEmpty
             ? Container(
                 width: size,
@@ -312,7 +316,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   }
 
   Widget _actions(HaoTheme theme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -331,8 +334,8 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isDark ? Colors.white : const Color(0xFF1C1C1E),
-            foregroundColor: isDark ? Colors.black : Colors.white,
+            backgroundColor: theme.textPrimary,
+            foregroundColor: theme.scaffoldBackground,
             padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
             shape: const StadiumBorder(),
           ),
@@ -365,8 +368,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     );
   }
 
-  Widget _trackRow(HaoTheme theme, Song song, int index) {
-    final favIds = MusicStore.getFavIds();
+  Widget _trackRow(HaoTheme theme, Song song, int index, Set<String> favIds) {
     return SongRow(
       song: song,
       isFav: favIds.contains(song.identityKey),
@@ -386,6 +388,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         '${index + 1}',
         style: TextStyle(
           color: theme.textMuted,
+          fontSize: 15,
           fontWeight: FontWeight.w700,
         ),
       ),

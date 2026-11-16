@@ -6,12 +6,18 @@
 //   prefetch and the detail render share one request instead of
 //   fetching twice.
 // - Prefetch: at most 3 inflight.
-// - Fast open: race the first detail fetch against a 3.5 s timer. If
-//   it has not returned in 3.5 s, fetch the same title from alternate
-//   sources in parallel; the first usable detail (has lines with
-//   episodes) wins, for another 3.5 s. Never stare at a skeleton for
-//   12 s. The error card shows as soon as the race resolves empty
-//   (≤ ~4 s after open), never later.
+// - Fast open (2026-11-17, chen: 每次解析都用最快的，换源直到能播):
+//   the tapped source AND the fastest-first alt sweep start IN
+//   PARALLEL the moment the page opens — before, the alt race only
+//   started after a 3.5 s first window, so a slow tapped source
+//   delayed the fast sources (金鹰/非凡） by 3.5 s for nothing. The
+//   first usable detail wins: the tapped source when it is fast
+//   (exact title/vodId by construction), otherwise the fastest alt
+//   carrying the same title. The sweep keeps switching sources until
+//   one yields a usable detail (up to 5 alts) or nothing is left to
+//   try; the race ends at the 7 s deadline at the latest, and
+//   immediately when every candidate has failed. The error card shows
+//   as soon as the race resolves empty, never later.
 // - Direct detail fetch: one retry on fast (non-timeout) failures
 //   only — a timeout means the CMS host is slow; a blind second
 //   attempt just doubles the wait.
@@ -54,7 +60,10 @@ typedef DetailFetcher = Future<VideoDetail> Function(
   String vodId,
 );
 
-typedef AltSourcesFetcher = Future<List<AltVideoSource>> Function(
+/// Alt sources carrying the same title, streamed fastest-first: each
+/// match is yielded the moment its source answers, instead of waiting
+/// for the whole scan (see [CmsClient.altSourcesStream]).
+typedef AltSourcesStreamer = Stream<AltVideoSource> Function(
   String title,
   String year,
   dynamic excludeSourceId,
@@ -71,16 +80,26 @@ class _CachedDetail {
 class VideoDetailService {
   VideoDetailService({
     DetailFetcher? fetchDetail,
-    AltSourcesFetcher? findAlts,
+    AltSourcesStreamer? findAlts,
     CmsClient? cms,
   })  : _fetchDetail = fetchDetail ??
             ((sourceId, vodId) => (cms ?? CmsClient()).detail(sourceId, vodId)),
         _findAlts = findAlts ??
             ((title, year, exclude) =>
-                (cms ?? CmsClient()).altSources(title, year, exclude));
+                (cms ?? CmsClient()).altSourcesStream(title, year, exclude));
 
   final DetailFetcher _fetchDetail;
-  final AltSourcesFetcher _findAlts;
+  final AltSourcesStreamer _findAlts;
+
+  /// Alt sources for [title]/[year] excluding [excludeSourceId],
+  /// fastest first (shared by the detail race and the player's
+  /// play-time source switch).
+  Stream<AltVideoSource> findAlts(
+    String title,
+    String year,
+    dynamic excludeSourceId,
+  ) =>
+      _findAlts(title, year, excludeSourceId);
 
   final Map<String, _CachedDetail> _cache = {};
 
@@ -163,95 +182,109 @@ class VideoDetailService {
     unawaited(get(sourceId, vodId).then((_) {}, onError: (_) {}));
   }
 
-  /// Fast-open race (fix 4). Returns null when nothing usable arrives
-  /// within the race windows — the caller shows the error card with
-  /// retry (retry re-runs the whole race).
+  /// Fast-open race (fix 4, reworked 2026-11-17). Returns null when
+  /// nothing usable arrives within the race windows — the caller shows
+  /// the error card with retry (retry re-runs the whole race).
+  ///
+  /// The tapped source and the fastest-first alt sweep start IN
+  /// PARALLEL at t=0; the first usable detail wins. The sweep keeps
+  /// switching sources until one yields a usable detail, or every
+  /// candidate has failed (then null returns immediately — no staring
+  /// at the skeleton for the full 7 s), or the 7 s deadline fires.
   ///
   /// [preload] is the list item the user tapped (cover + title on
-  /// screen instantly; its title/year drive the alt-source race).
+  /// screen instantly; its title/year drive the alt-source sweep).
   Future<DetailRaceResult?> loadWithRace(
     dynamic sourceId,
     String vodId, {
     VideoItem? preload,
   }) async {
-    final first = get(sourceId, vodId);
-    VideoDetail? r;
-    try {
-      r = await first.timeout(firstRace);
-    } on TimeoutException {
-      r = null;
-    } catch (_) {
-      r = null;
+    final completer = Completer<DetailRaceResult?>();
+    var settled = false;
+    StreamSubscription<AltVideoSource>? altSub;
+    Timer? deadline;
+
+    void settle(DetailRaceResult? r) {
+      if (settled) return;
+      settled = true;
+      deadline?.cancel();
+      unawaited(altSub?.cancel());
+      completer.complete(r);
     }
-    if (r != null) {
-      return DetailRaceResult(
-        detail: r,
+
+    // Overall budget: firstRace + altRace (7 s), same as before.
+    deadline = Timer(firstRace + altRace, () => settle(null));
+
+    // Early exit when nothing is left to try: the tapped fetch has
+    // failed AND the sweep is done AND no alt detail is in flight.
+    var firstFailed = false;
+    var altsDone = false;
+    var altInflight = 0;
+    void maybeSettleNull() {
+      if (firstFailed && altsDone && altInflight == 0) settle(null);
+    }
+
+    // 1. Tapped source — exact title/vodId. Raced, not awaited first:
+    // when it is fast it wins (correct by construction); when slow,
+    // the fastest alt below wins instead of making the user wait.
+    unawaited(get(sourceId, vodId).then((d) {
+      settle(DetailRaceResult(
+        detail: d,
         sourceId: sourceId,
         vodId: vodId,
         switchedSource: false,
-      );
-    }
+      ));
+    }, onError: (_) {
+      firstFailed = true;
+      maybeSettleNull();
+    }));
 
-    // First source is slow — try another source carrying the same
-    // title while the first fetch keeps running; first usable wins.
     final title = preload?.name ?? '';
     final year = preload?.year ?? '';
     if (title.isNotEmpty) {
-      Future<DetailRaceResult?> altFuture() async {
-        try {
-          final alts = await _findAlts(title, year, sourceId);
-          for (final a in alts) {
-            try {
-              final d = await _fetchDetail(a.source, a.vodId);
-              if (d.usable) {
-                cacheResult(a.source, a.vodId, d);
-                return DetailRaceResult(
-                  detail: d,
-                  sourceId: a.source,
-                  vodId: a.vodId,
-                  switchedSource: true,
-                );
-              }
-            } catch (_) {}
+      // 2. Fastest-first sweep, starting NOW (not after the 3.5 s
+      // first window): sources are scanned in priority order, each
+      // match's detail is fetched the moment it is found (3 s each),
+      // and the first usable detail wins.
+      altSub = _findAlts(title, year, sourceId).listen((alt) {
+        if (settled) return;
+        altInflight++;
+        unawaited(_fetchDetail(alt.source, alt.vodId)
+            .timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => throw TimeoutException('alt detail timeout'),
+            )
+            .then((d) {
+          altInflight--;
+          if (d.usable && !settled) {
+            cacheResult(alt.source, alt.vodId, d);
+            settle(DetailRaceResult(
+              detail: d,
+              sourceId: alt.source,
+              vodId: alt.vodId,
+              switchedSource: true,
+            ));
+          } else {
+            maybeSettleNull();
           }
-        } catch (_) {}
-        return null;
-      }
-
-      final firstAsResult = first.then<DetailRaceResult?>(
-        (d) => DetailRaceResult(
-          detail: d,
-          sourceId: sourceId,
-          vodId: vodId,
-          switchedSource: false,
-        ),
-        onError: (_) => null,
-      );
-      final alt = await Future.any([
-        firstAsResult,
-        altFuture(),
-        Future<DetailRaceResult?>.delayed(altRace, () => null),
-      ]);
-      if (alt != null) return alt;
+        }, onError: (_) {
+          altInflight--;
+          maybeSettleNull();
+        }));
+      }, onDone: () {
+        altsDone = true;
+        maybeSettleNull();
+      }, onError: (_) {
+        altsDone = true;
+        maybeSettleNull();
+      });
     } else {
-      // No title to race alts with — give the first fetch the second
-      // window too.
-      try {
-        r = await first.timeout(altRace);
-      } on TimeoutException {
-        r = null;
-      } catch (_) {
-        r = null;
-      }
-      if (r != null) {
-        return DetailRaceResult(
-          detail: r,
-          sourceId: sourceId,
-          vodId: vodId,
-          switchedSource: false,
-        );
-      }
+      // No title to sweep with — the tapped fetch gets the whole
+      // window (the deadline is the backstop if it hangs); a fast
+      // failure settles null at once via maybeSettleNull.
+      altsDone = true;
     }
-    return null;
+
+    return completer.future;
   }
 }

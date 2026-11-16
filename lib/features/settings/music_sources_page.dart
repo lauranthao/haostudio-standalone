@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/settings_ui.dart';
 import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
 import '../../services/music/music_models.dart';
@@ -80,11 +81,13 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       Get.snackbar('至少保留一个音源', '歌曲搜索至少需要一个开启的平台');
       return;
     }
+    if (!mounted) return;
     setState(() => _enabled = MusicSourcesStore.enabled());
   }
 
   Future<void> _toggleScript(String scriptId, bool value) async {
     await LxScriptSourcesStore.setEnabled(scriptId, value);
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -97,6 +100,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     setState(() => _adding = true);
     try {
       final info = await LxScriptEngine.instance.addCustomScript(url);
+      if (!mounted) return;
       _urlController.clear();
       setState(() {
         _scriptInfos = LxScriptEngine.instance.scripts;
@@ -192,30 +196,29 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            '歌曲搜索仅查询已开启的平台；关闭后该平台的歌曲不再出现在搜索结果中。',
-            style: TextStyle(color: theme.textSecondary, fontSize: 13),
-          ),
+          const HaoHint('歌曲搜索仅查询已开启的平台；关闭后该平台的歌曲不再出现在搜索结果中。'),
           const SizedBox(height: 16),
-          ...kSearchPlatforms.map((pf) {
-            final on = _enabled.contains(pf);
-            return SwitchListTile(
-              title: Text(
-                pf.displayName,
-                style: TextStyle(color: theme.textPrimary),
-              ),
-              subtitle: Text(
-                '搜索该平台的歌曲',
-                style: TextStyle(color: theme.textSecondary),
-              ),
-              value: on,
-              activeThumbColor: theme.accent,
-              onChanged: (v) => _toggle(pf, v),
-            );
-          }),
-          const SizedBox(height: 8),
-          const Divider(),
-          const SizedBox(height: 8),
+          SettingsGroup(
+            children: [
+              ...kSearchPlatforms.map((pf) {
+                final on = _enabled.contains(pf);
+                return SwitchListTile(
+                  title: Text(
+                    pf.displayName,
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  subtitle: Text(
+                    '搜索该平台的歌曲',
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
+                  value: on,
+                  activeThumbColor: theme.accent,
+                  onChanged: (v) => _toggle(pf, v),
+                );
+              }),
+            ],
+          ),
+          const SizedBox(height: 20),
           Text(
             '脚本音源 (LX 歌一刀)',
             style: TextStyle(
@@ -240,25 +243,31 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             ),
           // Bundled tiles are driven by the loaded scripts, not the
           // static bundled list — a deleted script is gone from here.
-          ..._scriptInfos.where((s) => !s.isCustom).map(
-                (info) => _scriptTile(
-                  id: info.id,
-                  title: info.name,
+          SettingsGroup(
+            children: [
+              ..._scriptInfos
+                  .where((s) => !s.isCustom)
+                  .map(
+                    (info) => _scriptTile(
+                      id: info.id,
+                      title: info.name,
+                      subtitle:
+                          '${_bundledBlurb(info.id)}\n${_statusLineFor(info)}',
+                      onDelete: () => _removeScript(info.id, info.name),
+                    ),
+                  ),
+              ..._custom.map(
+                (s) => _scriptTile(
+                  id: s.id,
+                  title: s.name,
                   subtitle:
-                      '${_bundledBlurb(info.id)}\n${_statusLineFor(info)}',
-                  onDelete: () => _removeScript(info.id, info.name),
+                      '自定义脚本 · ${s.url}\n${_infoFor(s.id)?.loaded == true ? '已加载 · ${_infoFor(s.id)!.sources.map((e) => e.platform).join(' / ')}' : '未加载'}',
+                  onDelete: () => _removeScript(s.id, s.name),
                 ),
               ),
-          ..._custom.map(
-            (s) => _scriptTile(
-              id: s.id,
-              title: s.name,
-              subtitle:
-                  '自定义脚本 · ${s.url}\n${_infoFor(s.id)?.loaded == true ? '已加载 · ${_infoFor(s.id)!.sources.map((e) => e.platform).join(' / ')}' : '未加载'}',
-              onDelete: () => _removeScript(s.id, s.name),
-            ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Text(
             '添加自定义脚本',
             style: TextStyle(
@@ -281,9 +290,6 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             decoration: InputDecoration(
               hintText: 'https://…/xxx.js',
               hintStyle: TextStyle(color: theme.textSecondary),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,

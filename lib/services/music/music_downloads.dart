@@ -115,7 +115,14 @@ class MusicDownloadService {
     MusicResolvers? resolvers,
     Directory? directory,
     this.quality = AudioQuality.hires,
-  })  : _dio = dio ?? Dio(),
+    this.stallTimeout = const Duration(seconds: 30),
+    this.stallCheckInterval = const Duration(seconds: 5),
+  })  : _dio = dio ??
+            Dio(
+              BaseOptions(
+                connectTimeout: const Duration(seconds: 15),
+              ),
+            ),
         _resolvers = resolvers ?? MusicResolvers(),
         _directoryOverride = directory;
 
@@ -123,6 +130,22 @@ class MusicDownloadService {
   final MusicResolvers _resolvers;
   final Directory? _directoryOverride;
   final AudioQuality quality;
+
+  /// A download whose server stops sending bytes for [stallTimeout]
+  /// is cancelled instead of hanging forever. Dio 5's receiveTimeout
+  /// only guards the response HEADERS (request.close()); the body
+  /// stream in Dio's download() has no timeout at all, so without
+  /// this watchdog a mid-body stall left the UI on "下载中…" with no
+  /// retry path. Tests pass short values to keep the suite fast.
+  final Duration stallTimeout;
+  final Duration stallCheckInterval;
+
+  /// In-flight downloads by song key. Two taps on 下载 for the same
+  /// song used to start two Dio downloads writing the SAME tmp file
+  /// (`.$safeKey.tmp`) — the bytes interleaved and the result was a
+  /// corrupt file. The second caller now shares the first download's
+  /// future instead of starting a second one.
+  final Map<String, Future<bool>> _inFlight = {};
 
   /// Live per-song status + progress (0..1) for in-flight downloads.
   final RxMap<String, DownloadStatus> status =
@@ -153,26 +176,42 @@ class MusicDownloadService {
 
   // ---- index (Hive) ------------------------------------------------------
 
+  /// Parsed index, cached in memory. [_readIndex] is called on the
+  /// playback hot path ([localPathFor]) and per row ([statusFor]) and
+  /// from [downloadedCount] on every music-home build; a full JSON
+  /// decode of the whole index per call is pure waste — the index
+  /// only ever changes through [_writeIndex] below, which refreshes
+  /// this cache. Callers get a copy, so nobody can mutate the cache.
+  List<DownloadedSong>? _indexCache;
+
   List<DownloadedSong> _readIndex() {
+    final cached = _indexCache;
+    if (cached != null) return List.of(cached);
     final raw = HiveStore.box.get(HiveKeys.musicDownloads) as String?;
     if (raw == null || raw.isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded
+        final parsed = decoded
             .whereType<Map<String, dynamic>>()
             .map(DownloadedSong.fromJson)
             .toList();
+        _indexCache = parsed;
+        return List.of(parsed);
       }
     } catch (_) {}
     return [];
   }
 
-  Future<void> _writeIndex(List<DownloadedSong> entries) =>
-      HiveStore.put(
-        HiveKeys.musicDownloads,
-        jsonEncode(entries.map((e) => e.toJson()).toList()),
-      );
+  Future<void> _writeIndex(List<DownloadedSong> entries) async {
+    await HiveStore.put(
+      HiveKeys.musicDownloads,
+      jsonEncode(entries.map((e) => e.toJson()).toList()),
+    );
+    // Only cache after the write succeeded — a failed put must not
+    // leave the cache claiming entries Hive does not have.
+    _indexCache = List.of(entries);
+  }
 
   /// Number of downloaded songs (index only, no disk check — used for
   /// the music-home card count).
@@ -224,28 +263,49 @@ class MusicDownloadService {
 
   /// Resolve the play URL at the user's quality and download the song.
   /// Returns true on success. Already-downloaded songs return true
-  /// immediately without re-downloading.
+  /// immediately without re-downloading. Never throws: a resolver
+  /// failure (or any other error) is a failed download, not a crash
+  /// in the tap handler — both call sites (track sheet, downloads
+  /// page retry) await this with no try/catch of their own.
   Future<bool> download(Song song) async {
     if (localPathFor(song) != null) {
       status[song.identityKey] = DownloadStatus.downloaded;
       return true;
     }
-    final r = await _resolvers.resolvePlayUrl(
-      song.songId,
-      song.platform,
-      quality,
-      song.title,
-    );
-    if (r == null || r.url.isEmpty) {
+    try {
+      final r = await _resolvers.resolvePlayUrl(
+        song.songId,
+        song.platform,
+        quality,
+        song.title,
+      );
+      if (r == null || r.url.isEmpty) {
+        status[song.identityKey] = DownloadStatus.failed;
+        return false;
+      }
+      // await (not bare return) so a failure inside the download is
+      // caught by the catch below instead of escaping to the caller.
+      return await downloadFromUrl(song, r.url);
+    } catch (_) {
       status[song.identityKey] = DownloadStatus.failed;
       return false;
     }
-    return downloadFromUrl(song, r.url);
   }
 
   /// Download [song] from an already-resolved [url]. Testable without
-  /// the resolver: point [url] at a local server.
-  Future<bool> downloadFromUrl(Song song, String url) async {
+  /// the resolver: point [url] at a local server. A second call for
+  /// the same song while one is in flight shares the first download
+  /// instead of writing the same tmp file twice (see [_inFlight]).
+  Future<bool> downloadFromUrl(Song song, String url) {
+    final key = song.identityKey;
+    final existing = _inFlight[key];
+    if (existing != null) return existing;
+    final fut = _downloadFromUrlInner(song, url);
+    _inFlight[key] = fut;
+    return fut.whenComplete(() => _inFlight.remove(key));
+  }
+
+  Future<bool> _downloadFromUrlInner(Song song, String url) async {
     final key = song.identityKey;
     if (localPathFor(song) != null) {
       status[key] = DownloadStatus.downloaded;
@@ -257,11 +317,23 @@ class MusicDownloadService {
     activeSongs[key] = song;
     final safeKey = key.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     final tmpFile = File('${dir.path}/.$safeKey.tmp');
+    // Stall watchdog: cancel the download when no bytes arrive for
+    // [stallTimeout] (Dio's receiveTimeout does not cover the body).
+    var lastProgress = DateTime.now();
+    final cancelToken = CancelToken();
+    final watchdog = Timer.periodic(stallCheckInterval, (_) {
+      if (DateTime.now().difference(lastProgress) > stallTimeout) {
+        cancelToken.cancel('download stalled');
+      }
+    });
     try {
       final response = await _dio.download(
         url,
         tmpFile.path,
+        cancelToken: cancelToken,
+        options: Options(connectTimeout: const Duration(seconds: 15)),
         onReceiveProgress: (received, total) {
+          lastProgress = DateTime.now();
           if (total > 0) progress[key] = received / total;
         },
       );
@@ -297,6 +369,8 @@ class MusicDownloadService {
         if (await tmpFile.exists()) await tmpFile.delete();
       } catch (_) {}
       return false;
+    } finally {
+      watchdog.cancel();
     }
   }
 

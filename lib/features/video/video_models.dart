@@ -191,8 +191,12 @@ class PlayLine {
 
   factory PlayLine.fromJson(Map<String, dynamic> json) => PlayLine(
         name: (json['name'] as String?) ?? '',
+        // One malformed episode must not kill the whole line: a
+        // persisted cache entry (or an older build's shape) can
+        // carry a non-map element, and the old `as` cast threw.
         episodes: (json['episodes'] as List<dynamic>? ?? const [])
-            .map((e) => PlayEpisode.fromJson(e as Map<String, dynamic>))
+            .whereType<Map<String, dynamic>>()
+            .map(PlayEpisode.fromJson)
             .toList(),
       );
 
@@ -238,9 +242,9 @@ class VideoMeta {
         content: (json['content'] as String?) ?? '',
         runtime: (json['runtime'] as num?)?.toInt(),
         releaseDate: (json['releaseDate'] as String?) ?? '',
-        douban: json['douban'] == null
-            ? null
-            : DoubanMark.fromJson(json['douban'] as Map<String, dynamic>),
+        douban: json['douban'] is Map<String, dynamic>
+            ? DoubanMark.fromJson(json['douban'] as Map<String, dynamic>)
+            : null,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -346,9 +350,14 @@ class VideoDetail {
   factory VideoDetail.fromJson(Map<String, dynamic> json) => VideoDetail(
         source: json['source'],
         vodId: (json['vodId'] as String?) ?? '',
-        meta: VideoMeta.fromJson(json['meta'] as Map<String, dynamic>),
+        // Missing/non-map meta used to throw (`as` on null); a detail
+        // without meta is an empty meta, not a crash.
+        meta: json['meta'] is Map<String, dynamic>
+            ? VideoMeta.fromJson(json['meta'] as Map<String, dynamic>)
+            : VideoMeta(name: ''),
         lines: (json['lines'] as List<dynamic>? ?? const [])
-            .map((e) => PlayLine.fromJson(e as Map<String, dynamic>))
+            .whereType<Map<String, dynamic>>()
+            .map(PlayLine.fromJson)
             .toList(),
       );
 
@@ -383,8 +392,11 @@ class VideoHomeRow {
   factory VideoHomeRow.fromJson(Map<String, dynamic> json) => VideoHomeRow(
         name: (json['name'] as String?) ?? '',
         count: (json['count'] as num?)?.toInt() ?? 0,
+        // Skip malformed items instead of throwing: one bad item in
+        // the persisted home cache used to discard the whole cache.
         items: (json['items'] as List<dynamic>? ?? const [])
-            .map((e) => VideoItem.fromJson(e as Map<String, dynamic>))
+            .whereType<Map<String, dynamic>>()
+            .map(VideoItem.fromJson)
             .toList(),
       );
 
@@ -405,7 +417,8 @@ class VideoHomeData {
 
   factory VideoHomeData.fromJson(Map<String, dynamic> json) => VideoHomeData(
         rows: (json['rows'] as List<dynamic>? ?? const [])
-            .map((e) => VideoHomeRow.fromJson(e as Map<String, dynamic>))
+            .whereType<Map<String, dynamic>>()
+            .map(VideoHomeRow.fromJson)
             .toList(),
         fetchedAt: DateTime.fromMillisecondsSinceEpoch(
           (json['fetchedAt'] as num?)?.toInt() ?? 0,

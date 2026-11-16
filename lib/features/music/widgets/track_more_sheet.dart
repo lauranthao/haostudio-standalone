@@ -1,13 +1,15 @@
 // Song `···` action sheet (fix 15).
 //
-// Buttons, in order: 歌曲信息 (song info), 播放列表 (play list / queue),
+// Buttons, in order: 歌曲信息 (song info), 评论 (comments — opens the
+// NetEase-style comments page: 精彩评论 on top, 最新评论 below, load
+// more; chen 2026-11-17), 播放列表 (play list / queue),
 // 播放模式 (cycles the five play modes — 顺序播放 / 列表循环 / 单曲循环 /
 // 随机播放 / 单曲播放, M-P0-1), 睡眠定时 (M-P0-3), 下一首播放 (insert
 // right after the current track, M-P0-4), 下载 (save to the device for
 // offline playback, M-P0-5), 倍速 slider 0.6–2.0× (M-P0-2), 取消.
-// There is NO 分享 (share) button and NO 评论 (comments) button in this
-// sheet. Tapping 播放列表 closes the sheet and opens the floating queue
-// panel above the player (Apple Music "Up Next" style).
+// There is NO 分享 (share) button in this sheet. Tapping 播放列表 closes
+// the sheet and opens the floating queue panel above the player (Apple
+// Music "Up Next" style).
 //
 // The sheet is opened from the player `···` AND from a long-press on a
 // song row in the lists — see [openTrackMoreSheet], which shows the
@@ -24,6 +26,7 @@ import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
 import '../../../services/music/play_mode.dart';
 import '../../../services/music/sleep_timer.dart';
+import '../comments_page.dart';
 import '../music_player_controller.dart';
 import '../music_player_sheet.dart';
 import 'sleep_timer_sheet.dart';
@@ -31,6 +34,7 @@ import 'music_image.dart';
 
 enum TrackMoreAction {
   info,
+  comments,
   queue,
   playMode,
   sleepTimer,
@@ -70,6 +74,16 @@ Future<void> handleTrackMoreAction(
   switch (action) {
     case TrackMoreAction.info:
       await showSongInfoDialog(context, song);
+    case TrackMoreAction.comments:
+      if (context.mounted) {
+        unawaited(
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SongCommentsPage(song: song),
+            ),
+          ),
+        );
+      }
     case TrackMoreAction.queue:
       if (controller.queue.isEmpty) {
         if (context.mounted) {
@@ -163,14 +177,21 @@ Future<TrackMoreAction?> showTrackMoreSheet(
   final controller = MusicPlayerController.ensure();
   return showModalBottomSheet<TrackMoreAction>(
     context: context,
+    // isScrollControlled: without it the sheet is capped at ~half the
+    // screen height and tall content is clipped — the 取消 row was cut
+    // off at the bottom edge on chen's phone (v1.0.6). With it the sheet
+    // sizes to its content, and the SingleChildScrollView below is the
+    // safety net: on a short screen the list scrolls instead of clipping.
+    isScrollControlled: true,
     backgroundColor: theme.surfaceSolid,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
             child: Row(
@@ -215,8 +236,8 @@ Future<TrackMoreAction?> showTrackMoreSheet(
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: theme.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       Text(
@@ -239,6 +260,11 @@ Future<TrackMoreAction?> showTrackMoreSheet(
             leading: Icon(Icons.info_outline, color: theme.textPrimary),
             title: Text('歌曲信息', style: TextStyle(color: theme.textPrimary)),
             onTap: () => Navigator.of(ctx).pop(TrackMoreAction.info),
+          ),
+          ListTile(
+            leading: Icon(Icons.comment_outlined, color: theme.textPrimary),
+            title: Text('评论', style: TextStyle(color: theme.textPrimary)),
+            onTap: () => Navigator.of(ctx).pop(TrackMoreAction.comments),
           ),
           ListTile(
             leading: Icon(Icons.queue_music, color: theme.textPrimary),
@@ -267,7 +293,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(
                   : option == SleepTimerOption.queueEnd
                       ? '到歌单结束'
                       : remaining != null
-                          ? '剩余 ${_remainingText(remaining)}'
+                          ? '剩余 ${SleepTimer.formatRemaining(remaining)}'
                           : option.label;
               return ListTile(
                 leading: Icon(Icons.timer, color: theme.textPrimary),
@@ -390,17 +416,11 @@ Future<TrackMoreAction?> showTrackMoreSheet(
             onTap: () => Navigator.of(ctx).pop(TrackMoreAction.cancel),
           ),
           const SizedBox(height: 8),
-        ],
+          ],
+        ),
       ),
     ),
   );
-}
-
-String _remainingText(Duration remaining) {
-  final total = remaining.inSeconds;
-  final m = total ~/ 60;
-  final s = total % 60;
-  return '$m:${s.toString().padLeft(2, '0')}';
 }
 
 /// Song info dialog (歌曲信息): title/artist/album/duration/source/quality.

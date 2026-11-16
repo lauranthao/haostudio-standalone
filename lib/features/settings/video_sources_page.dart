@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/settings_ui.dart';
 import '../video/video_history_store.dart';
 import '../video/video_models.dart';
 
@@ -34,6 +35,9 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
 
   Future<void> _save() async {
     await VideoSourcesStore.save(_sources);
+    // _toggle/_reorder/_delete all await this after user input; the
+    // page may have been popped mid-save — setState after dispose throws.
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -199,49 +203,51 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              '长按拖动排序，搜索按顺序尝试；「仅搜索」的源只参与搜索，不提供播放地址。',
-              style: TextStyle(color: theme.textSecondary, fontSize: 13),
-            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 16, 12, 12),
+            child: HaoHint('长按拖动排序，搜索按顺序尝试；「仅搜索」的源只参与搜索，不提供播放地址。'),
           ),
           Expanded(
-            child: ReorderableListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              itemCount: _sources.length,
-              onReorderItem: _reorder,
-              itemBuilder: (context, i) {
-                final source = _sources[i];
-                return ListTile(
-                  key: ValueKey(source.idKey),
-                  title: Text(
-                    source.name,
-                    style: TextStyle(color: theme.textPrimary),
-                  ),
-                  subtitle: Text(
-                    source.isPlay ? source.apiUrl : '仅搜索 · ${source.apiUrl}',
-                    style: TextStyle(color: theme.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: '删除',
-                        onPressed: () => _delete(source),
-                      ),
-                      Switch(
-                        value: source.enabled,
-                        activeThumbColor: theme.accent,
-                        onChanged: (v) => _toggle(source, v),
-                      ),
-                    ],
-                  ),
-                );
-              },
+            child: HaoGlassCard(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: _sources.length,
+                onReorderItem: _reorder,
+                itemBuilder: (context, i) {
+                  final source = _sources[i];
+                  return ListTile(
+                    key: ValueKey(source.idKey),
+                    title: Text(
+                      source.name,
+                      style: TextStyle(color: theme.textPrimary),
+                    ),
+                    subtitle: Text(
+                      source.isPlay ? source.apiUrl : '仅搜索 · ${source.apiUrl}',
+                      style: TextStyle(color: theme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          color: theme.textSecondary,
+                          tooltip: '删除',
+                          onPressed: () => _delete(source),
+                        ),
+                        Switch(
+                          value: source.enabled,
+                          activeThumbColor: theme.accent,
+                          onChanged: (v) => _toggle(source, v),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],

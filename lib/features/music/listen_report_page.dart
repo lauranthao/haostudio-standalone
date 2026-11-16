@@ -35,6 +35,9 @@ class _ListenReportPageState extends State<ListenReportPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     final report = _report;
+    // Favourites read once per build, not per top-song row:
+    // getFavIds() parses the whole favourites JSON on every call.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('听歌报告')),
@@ -54,10 +57,14 @@ class _ListenReportPageState extends State<ListenReportPage> {
                     label: Text(label),
                     selected: _range == value,
                     selectedColor: theme.accentSoft,
+                    side: BorderSide(color: theme.hairline),
                     labelStyle: TextStyle(
                       color: _range == value
                           ? theme.accent
                           : theme.textSecondary,
+                      fontWeight: _range == value
+                          ? FontWeight.w700
+                          : FontWeight.w400,
                     ),
                     onSelected: (_) => setState(() => _range = value),
                   ),
@@ -89,7 +96,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
             const SizedBox(height: 24),
             _sectionTitle(theme, '常听歌曲'),
             for (var i = 0; i < report.topSongs.length; i++)
-              _topSongRow(theme, report.topSongs[i], i),
+              _topSongRow(theme, report.topSongs, i, favIds),
             const SizedBox(height: 24),
             if (report.topArtists.isNotEmpty) ...[
               _sectionTitle(theme, '常听歌手'),
@@ -116,10 +123,10 @@ class _ListenReportPageState extends State<ListenReportPage> {
   Widget _stat(HaoTheme theme, String value, String label) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
           color: theme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: theme.hairline),
         ),
         child: Column(
@@ -128,11 +135,11 @@ class _ListenReportPageState extends State<ListenReportPage> {
               value,
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 22,
+                fontSize: 26,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            Text(label, style: TextStyle(color: theme.textSecondary)),
+            Text(label, style: TextStyle(color: theme.textSecondary, fontSize: 13)),
           ],
         ),
       ),
@@ -146,8 +153,8 @@ class _ListenReportPageState extends State<ListenReportPage> {
         title,
         style: TextStyle(
           color: theme.textPrimary,
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -176,8 +183,8 @@ class _ListenReportPageState extends State<ListenReportPage> {
                               .clamp(6.0, 96.0)
                           : 2,
                       decoration: BoxDecoration(
-                        color: theme.accent,
-                        borderRadius: BorderRadius.circular(3),
+                        color: d.plays > 0 ? theme.accent : theme.accentSoft,
+                        borderRadius: BorderRadius.circular(4),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -197,16 +204,22 @@ class _ListenReportPageState extends State<ListenReportPage> {
     );
   }
 
-  Widget _topSongRow(HaoTheme theme, TopSong top, int index) {
-    final favIds = MusicStore.getFavIds();
+  Widget _topSongRow(
+    HaoTheme theme,
+    List<TopSong> topSongs,
+    int index,
+    Set<String> favIds,
+  ) {
+    final top = topSongs[index];
     return Row(
       children: [
         SizedBox(
-          width: 24,
+          width: 28,
           child: Text(
             '${index + 1}',
             style: TextStyle(
               color: theme.textMuted,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -216,7 +229,10 @@ class _ListenReportPageState extends State<ListenReportPage> {
             song: top.song,
             isFav: favIds.contains(top.song.identityKey),
             onPlay: () {
-              final songs = _report.topSongs.map((t) => t.song).toList();
+              // Use the already-computed list: calling _report here
+              // re-ran the whole listen-log parse + aggregation on
+              // every tap just to rebuild the same queue.
+              final songs = topSongs.map((t) => t.song).toList();
               unawaited(_player.playQueue(songs, index));
               unawaited(
                 Navigator.of(context).push(
@@ -246,11 +262,12 @@ class _ListenReportPageState extends State<ListenReportPage> {
       child: Row(
         children: [
           SizedBox(
-            width: 24,
+            width: 28,
             child: Text(
               '${index + 1}',
               style: TextStyle(
                 color: theme.textMuted,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -260,7 +277,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: theme.textPrimary),
+              style: TextStyle(color: theme.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
             ),
           ),
           Text(sub, style: TextStyle(color: theme.textSecondary)),
@@ -286,7 +303,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
             width: 64,
             child: Text(
               MusicPlatformX.fromCode(p.platform).displayName,
-              style: TextStyle(color: theme.textPrimary),
+              style: TextStyle(color: theme.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
             ),
           ),
           Expanded(

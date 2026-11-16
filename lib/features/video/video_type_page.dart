@@ -140,10 +140,16 @@ class _VideoTypePageState extends State<VideoTypePage> {
   }
 
   void _setFilter({String? area, String? year, String? by}) {
+    final nextArea = area ?? _area;
+    final nextYear = year ?? _year;
+    final nextBy = by ?? _by;
+    // Tapping the already-selected chip used to re-run _load (full
+    // spinner + a network request for identical data). No-op instead.
+    if (nextArea == _area && nextYear == _year && nextBy == _by) return;
     setState(() {
-      if (area != null) _area = area;
-      if (year != null) _year = year;
-      if (by != null) _by = by;
+      _area = nextArea;
+      _year = nextYear;
+      _by = nextBy;
       _page = 1;
     });
     unawaited(_load());
@@ -192,10 +198,19 @@ class _VideoTypePageState extends State<VideoTypePage> {
                       label: Text(_areaLabels[a]!),
                       selected: _area == a,
                       selectedColor: theme.accentSoft,
+                      backgroundColor: theme.surface,
+                      side: BorderSide(
+                        color: _area == a
+                            ? theme.accent
+                            : theme.hairline,
+                      ),
                       labelStyle: TextStyle(
                         color: _area == a
                             ? theme.accent
                             : theme.textSecondary,
+                        fontWeight: _area == a
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                       onSelected: (_) => _setFilter(area: a),
                     ),
@@ -215,10 +230,19 @@ class _VideoTypePageState extends State<VideoTypePage> {
                       label: Text(_yearLabels[y]!),
                       selected: _year == y,
                       selectedColor: theme.accentSoft,
+                      backgroundColor: theme.surface,
+                      side: BorderSide(
+                        color: _year == y
+                            ? theme.accent
+                            : theme.hairline,
+                      ),
                       labelStyle: TextStyle(
                         color: _year == y
                             ? theme.accent
                             : theme.textSecondary,
+                        fontWeight: _year == y
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                       onSelected: (_) => _setFilter(year: y),
                     ),
@@ -230,10 +254,18 @@ class _VideoTypePageState extends State<VideoTypePage> {
                       label: Text(_byLabels[b]!),
                       selected: _by == b,
                       selectedColor: theme.accentSoft,
+                      backgroundColor: theme.surface,
+                      side: BorderSide(
+                        color:
+                            _by == b ? theme.accent : theme.hairline,
+                      ),
                       labelStyle: TextStyle(
                         color: _by == b
                             ? theme.accent
                             : theme.textSecondary,
+                        fontWeight: _by == b
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                       onSelected: (_) => _setFilter(by: b),
                     ),
@@ -241,6 +273,9 @@ class _VideoTypePageState extends State<VideoTypePage> {
               ],
             ),
           ),
+          // Hairline under the filters: separates controls from
+          // results in every theme/mode (theme hairline, not grey).
+          Divider(height: 1, color: theme.hairline),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -260,7 +295,10 @@ class _VideoTypePageState extends State<VideoTypePage> {
                               onPressed: _load,
                               style: FilledButton.styleFrom(
                                 backgroundColor: theme.accent,
-                                foregroundColor: Colors.white,
+                                // Theme-defined onPrimary per mode.
+                                foregroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimary,
                               ),
                               child: const Text('重试'),
                             ),
@@ -308,6 +346,11 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                         onPressed: _page <= 1
                                             ? null
                                             : () => _setPage(-1),
+                                        style: OutlinedButton.styleFrom(
+                                          side: BorderSide(
+                                            color: theme.hairline,
+                                          ),
+                                        ),
                                         child: const Text('上一页'),
                                       ),
                                       Padding(
@@ -318,6 +361,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                           '$_page/$_pagecount',
                                           style: TextStyle(
                                             color: theme.textMuted,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                       ),
@@ -325,6 +369,11 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                         onPressed: _page >= _pagecount
                                             ? null
                                             : () => _setPage(1),
+                                        style: OutlinedButton.styleFrom(
+                                          side: BorderSide(
+                                            color: theme.hairline,
+                                          ),
+                                        ),
                                         child: const Text('下一页'),
                                       ),
                                     ],

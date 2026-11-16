@@ -88,6 +88,9 @@ class _GatedFakeBackend implements PlayerBackend {
   Future<void> setVolume(double volume) async {}
 
   @override
+  Future<void> setAudioOnly(bool audioOnly) async {}
+
+  @override
   Future<void> setRate(double rate) async {}
 
   @override

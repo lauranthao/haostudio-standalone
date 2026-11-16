@@ -92,6 +92,9 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
         title: const Text('清空直播历史？'),
         content: const Text('将删除全部直播观看记录，此操作无法恢复。'),
         actions: [
@@ -126,6 +129,9 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
           final wouldDelete = LiveHistoryStore.wouldDeleteCount(selected);
           final theme = HaoTheme.of(context);
           return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
             title: const Text('历史记录上限'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -140,10 +146,21 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                         label: Text('$p 条'),
                         selected: selected == p,
                         selectedColor: theme.accentSoft,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        side: BorderSide(
+                          color: selected == p
+                              ? theme.accent
+                              : theme.hairline,
+                        ),
                         labelStyle: TextStyle(
                           color: selected == p
                               ? theme.accent
                               : theme.textSecondary,
+                          fontWeight: selected == p
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                         ),
                         onSelected: (_) {
                           setDialogState(() => selected = p);
@@ -153,10 +170,21 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                       label: const Text('不限'),
                       selected: selected == 0,
                       selectedColor: theme.accentSoft,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      side: BorderSide(
+                        color: selected == 0
+                            ? theme.accent
+                            : theme.hairline,
+                      ),
                       labelStyle: TextStyle(
                         color: selected == 0
                             ? theme.accent
                             : theme.textSecondary,
+                        fontWeight: selected == 0
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                       onSelected: (_) {
                         setDialogState(() => selected = 0);
@@ -183,7 +211,11 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   const SizedBox(height: 12),
                   Text(
                     '缩小上限将删除最旧的 $wouldDelete 条记录。',
-                    style: TextStyle(color: theme.accent, fontSize: 13),
+                    style: TextStyle(
+                      color: theme.accent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ],
@@ -248,12 +280,26 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
             child: TextField(
               decoration: InputDecoration(
                 hintText: '搜索标题 / 主播 / 房间号 / 平台',
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: TextStyle(color: theme.textMuted),
+                prefixIcon: Icon(Icons.search, color: theme.textMuted),
+                filled: true,
+                fillColor: theme.surface,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: theme.hairline),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: theme.hairline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: theme.accent),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 12),
               ),
+              style: TextStyle(color: theme.textPrimary),
               onChanged: (value) => setState(() => _query = value),
             ),
           ),
@@ -305,16 +351,52 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
           Expanded(
             child: all.isEmpty
                 ? Center(
-                    child: Text(
-                      '还没有直播观看记录',
-                      style: TextStyle(color: theme.textMuted),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: theme.accentSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.live_tv_outlined,
+                            size: 40,
+                            color: theme.accent,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '还没有直播观看记录',
+                          style: TextStyle(
+                            color: theme.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 : entries.isEmpty
                     ? Center(
-                        child: Text(
-                          '没有匹配的记录',
-                          style: TextStyle(color: theme.textMuted),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.search_off_outlined,
+                              size: 40,
+                              color: theme.textMuted,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '没有匹配的记录',
+                              style: TextStyle(
+                                color: theme.textSecondary,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     : ListView.builder(
@@ -363,14 +445,27 @@ class _SectionHeader extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 16, 2, 8),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: theme.textSecondary,
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 14,
+            decoration: BoxDecoration(
+              color: theme.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -410,26 +505,27 @@ class _HistoryCardState extends State<_HistoryCard> {
     return Card(
       color: theme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: theme.hairline),
       ),
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: widget.onTap,
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 112,
+                width: 120,
                 child: AspectRatio(
                   aspectRatio: 16 / 9,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1E),
-                      borderRadius: BorderRadius.circular(8),
+                      // Theme surface (was hard-coded 0xFF1C1C1E).
+                      color: theme.surfaceSolid,
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Stack(
@@ -439,14 +535,14 @@ class _HistoryCardState extends State<_HistoryCard> {
                           Image.network(
                             entry.cover,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const ColoredBox(
-                              color: Color(0xFF1C1C1E),
+                            errorBuilder: (_, _, _) => ColoredBox(
+                              color: theme.surfaceSolid,
                             ),
                           )
                         else
-                          const Icon(
+                          Icon(
                             Icons.live_tv_outlined,
-                            color: Color(0xFF8E8E93),
+                            color: theme.textMuted,
                             size: 28,
                           ),
                         if (widget.status != null)
@@ -462,7 +558,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,8 +569,9 @@ class _HistoryCardState extends State<_HistoryCard> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: theme.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
                       ),
                     ),
                     const SizedBox(height: 4),

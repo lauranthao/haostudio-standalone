@@ -23,6 +23,7 @@ import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
+import 'video_title_helpers.dart';
 
 class VideoSearchPage extends StatefulWidget {
   const VideoSearchPage({super.key});
@@ -125,7 +126,10 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
       _searching = false;
       _results = pageItems;
       for (final item in pageItems) {
-        _seenKeys.add('${item.name}|${item.year}');
+        // Same normalised key as CmsClient.dedupeAndRankSearch —
+        // a raw name|year key lets the same title reappear on a later
+        // page with a different suffix / spacing (e.g. "庆余年(高清)").
+        _seenKeys.add('${videoNormTitle(item.name)}|${item.year}');
       }
       if (pageItems.isEmpty) _exhausted = true;
     });
@@ -148,7 +152,11 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     }
     if (seq != _searchSeq || !mounted) return;
     final fresh = pageItems
-        .where((item) => _seenKeys.add('${item.name}|${item.year}'))
+        .where(
+          (item) => _seenKeys.add(
+            '${videoNormTitle(item.name)}|${item.year}',
+          ),
+        )
         .toList();
     setState(() {
       _loadingMore = false;
@@ -199,11 +207,12 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
               onSubmitted: _search,
               decoration: InputDecoration(
                 hintText: '搜索影片、剧集…',
-                prefixIcon: const Icon(Icons.search),
+                hintStyle: TextStyle(color: theme.textMuted),
+                prefixIcon: Icon(Icons.search, color: theme.textMuted),
                 suffixIcon: _controller.text.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: Icon(Icons.clear, color: theme.textMuted),
                         onPressed: () {
                           _controller.clear();
                           setState(() {});
@@ -211,11 +220,25 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
                       ),
                 filled: true,
                 fillColor: theme.surface,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(999),
                   borderSide: BorderSide(color: theme.hairline),
                 ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide(color: theme.hairline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  borderSide: BorderSide(
+                    color: theme.accent,
+                    width: 1.5,
+                  ),
+                ),
               ),
+              style: TextStyle(color: theme.textPrimary, fontSize: 16),
+              cursorColor: theme.accent,
             ),
           ),
           if (!_searched) ...[
@@ -322,11 +345,12 @@ class _ChipSection extends StatelessWidget {
             title,
             style: TextStyle(
               color: theme.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.01,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -335,6 +359,13 @@ class _ChipSection extends StatelessWidget {
                 .map(
                   (c) => ActionChip(
                     label: Text(c),
+                    labelStyle: TextStyle(
+                      color: theme.textSecondary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    backgroundColor: theme.surface,
+                    side: BorderSide(color: theme.hairline),
                     onPressed: () => onTap(c),
                   ),
                 )
@@ -378,7 +409,10 @@ class _SearchError extends StatelessWidget {
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
-                foregroundColor: Colors.white,
+                // Theme-defined onPrimary per mode, not hardcoded
+                // white (unreadable on the dark-mode light accents).
+                foregroundColor:
+                    Theme.of(context).colorScheme.onPrimary,
               ),
             ),
           ],
@@ -415,7 +449,12 @@ class _EmptyResults extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               '· 换个关键词试试\n· 检查片名有没有错字\n· 换个源可能有更多结果',
-              style: TextStyle(color: theme.textMuted),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 14,
+                height: 1.7,
+              ),
             ),
           ],
         ),

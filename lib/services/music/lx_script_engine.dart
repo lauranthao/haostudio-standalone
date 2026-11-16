@@ -24,9 +24,14 @@
 // - Console output is captured per script (last 100 lines, `logs`),
 //   never printed to stdout.
 //
-// Scripts as files: the 6 files in assets/lx_scripts/ are copies of
+// Scripts as files: the 20 files in assets/lx_scripts/ are copies of
 // research/kmusic/*.js (ikun/新澜/溯音/落雪) plus the pdone
 // lx-music-source fish (v1.9.0) and 杰翔聚合音源 (v2.3.0) scripts,
+// plus 14 scripts from chen's V261115 pack (2026-11-17, each verified
+// live via the Node LX harness: real prelude + real HTTP, wy 320k
+// returning a curl-verified MP3; 回避聚合 + stellarwave-v0.0.14 had
+// embedded shared keys/tokens, sanitised to '' before packaging and
+// re-verified still working),
 // and are ONLY the first-install seed. On first launch each is copied
 // ([LxScriptFileStore]) and the engine loads from there — never from
 // assets directly — so a deleted bundled script stays deleted (the
@@ -297,6 +302,90 @@ const List<LxBundledScript> kBundledLxScripts = [
     name: 'fish音源',
     assetPath: 'assets/lx_scripts/fish.js',
     blurb: 'fish音源 · QQ / 网易 / 酷我 / 酷狗 / 咪咕 · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'hyw',
+    name: 'HYWmusic音源',
+    assetPath: 'assets/lx_scripts/hyw.js',
+    blurb: 'HYWmusic 公益版 · 网易 / QQ / 酷我 / 酷狗 / 咪咕 / 千千 / 哔哩 / 油管 / 虾米 · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'helloworld',
+    name: 'HelloWorld音源',
+    assetPath: 'assets/lx_scripts/helloworld.js',
+    blurb: 'HelloWorld音源 · 全平台 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'aya',
+    name: 'aya音源',
+    assetPath: 'assets/lx_scripts/aya.js',
+    blurb: 'aya音源 · 网易 / 酷我 / 酷狗 / 咪咕 · 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'gdstudio',
+    name: 'gdstudio音乐源',
+    assetPath: 'assets/lx_scripts/gdstudio.js',
+    blurb: 'gdstudio音乐源 · 全平台 320k / 无损 · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'yuningxi',
+    name: '玉宁熙音源',
+    assetPath: 'assets/lx_scripts/yuningxi.js',
+    blurb: '玉宁熙音源 · 全平台 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'stellarwave',
+    name: 'stellarwave音源',
+    assetPath: 'assets/lx_scripts/stellarwave.js',
+    blurb: 'stellarwave v4.0.2 · 全平台 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'stellarwave014',
+    name: 'stellarwave v0.0.14',
+    assetPath: 'assets/lx_scripts/stellarwave014.js',
+    blurb: 'stellarwave v0.0.14 · 全平台 320k / 无损 · 仅播放链接（内置密钥已清空）',
+  ),
+  LxBundledScript(
+    id: 'xinghai',
+    name: '星海音源',
+    assetPath: 'assets/lx_scripts/xinghai.js',
+    blurb: '星海音源 v2.3.19 · 全平台 320k / 无损 / Master · 播放链接 + 歌词 / 封面',
+  ),
+  LxBundledScript(
+    id: 'huibi',
+    name: '回避聚合音源',
+    assetPath: 'assets/lx_scripts/huibi.js',
+    blurb: '回避聚合音源 · 全平台 320k / 无损 / Master · 仅播放链接（内置密钥已清空）',
+  ),
+  LxBundledScript(
+    id: 'molan',
+    name: '墨澜音乐源',
+    assetPath: 'assets/lx_scripts/molan.js',
+    blurb: '墨澜音乐源 v2.3.8 · 全平台 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'yuxi',
+    name: '屿溪音源',
+    assetPath: 'assets/lx_scripts/yuxi.js',
+    blurb: '屿溪音源 · 网易 / QQ / 酷狗 / 酷我 · 320k / 无损 / Master · 仅播放链接',
+  ),
+  LxBundledScript(
+    id: 'kuliao',
+    name: '裤佬SVIP音源',
+    assetPath: 'assets/lx_scripts/kuliao.js',
+    blurb: '裤佬SVIP音源 · 全平台 320k / 无损 / Master · 播放链接 + 搜索',
+  ),
+  LxBundledScript(
+    id: 'feichangdao',
+    name: '非常刀音源',
+    assetPath: 'assets/lx_scripts/feichangdao.js',
+    blurb: '非常刀 v5 · 全平台 320k / 无损 · 播放链接 + 搜索',
+  ),
+  LxBundledScript(
+    id: 'tongyi',
+    name: '统一音乐源',
+    assetPath: 'assets/lx_scripts/tongyi.js',
+    blurb: '统一音乐源 · 酷我 / 网易 · 仅播放链接',
   ),
 ];
 
@@ -892,14 +981,20 @@ class LxScriptEngine {
     if (src == null || !src.supportsMusicUrl) return null;
     final qStr = lxQualityForScript(quality, src.qualities);
     if (qStr == null) return null;
-    final mi = musicInfo ??
-        {
-          'songmid': song.songId,
-          'id': song.songId,
-          'name': song.title,
-          'singer': song.artist,
-          'albumName': song.album,
-        };
+    final mi = <String, dynamic>{
+      ...(musicInfo ??
+          {
+            'songmid': song.songId,
+            'id': song.songId,
+            'name': song.title,
+            'singer': song.artist,
+            'albumName': song.album,
+          }),
+      // LX musicInfo carries the platform; some scripts (统一音乐源)
+      // read musicInfo.source instead of the dispatch top-level
+      // source. Additive only — scripts that ignore it are unaffected.
+      'source': platform,
+    };
     try {
       final v = await requestAction(
         scriptId: scriptId,

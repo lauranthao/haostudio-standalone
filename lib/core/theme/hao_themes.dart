@@ -137,8 +137,11 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       liveRed: Color.lerp(liveRed, other.liveRed, t)!,
       glassBlurSigma:
           glassBlurSigma + (other.glassBlurSigma - glassBlurSigma) * t,
-      scaffoldBackground:
-          Color.lerp(scaffoldBackground, other.scaffoldBackground, t)!,
+      scaffoldBackground: Color.lerp(
+        scaffoldBackground,
+        other.scaffoldBackground,
+        t,
+      )!,
     );
   }
 }
@@ -190,22 +193,192 @@ ThemeData _buildThemeData({
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: true,
+      titleTextStyle: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+      ),
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: surface,
       selectedItemColor: accent,
       unselectedItemColor: textMuted,
       elevation: 0,
+      selectedLabelStyle: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+      ),
+      selectedIconTheme: const IconThemeData(size: 24),
+      unselectedIconTheme: const IconThemeData(size: 22),
     ),
     cardTheme: CardThemeData(
       color: surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: hairline),
       ),
     ),
     dividerColor: hairline,
+    dividerTheme: DividerThemeData(color: hairline, thickness: 1, space: 1),
+    // Generic list-row typography (settings rows and every other tab's
+    // rows share it): title 16/w600 primary, subtitle 13 secondary.
+    // Per-row styles that only set a colour inherit size/weight/height
+    // from here, so the hierarchy holds in all 8 combinations.
+    listTileTheme: ListTileThemeData(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      titleTextStyle: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        height: 1.35,
+      ),
+      subtitleTextStyle: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        color: textSecondary,
+        height: 1.45,
+      ),
+      iconColor: textSecondary,
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? colorScheme.onPrimary
+            : Colors.white,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? accent
+            : textMuted.withValues(alpha: 0.35),
+      ),
+      trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: accent,
+      inactiveTrackColor: textMuted.withValues(alpha: 0.30),
+      thumbColor: accent,
+      overlayColor: accent.withValues(alpha: 0.14),
+      valueIndicatorColor: accent,
+      valueIndicatorTextStyle: TextStyle(
+        color: colorScheme.onPrimary,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+      trackHeight: 4,
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? accent.withValues(alpha: 0.14)
+              : Colors.transparent,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) =>
+              states.contains(WidgetState.selected) ? accent : textSecondary,
+        ),
+        side: WidgetStateProperty.all(BorderSide(color: hairline)),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        padding: WidgetStateProperty.all(
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        textStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      backgroundColor: surface,
+      selectedColor: accent.withValues(alpha: 0.14),
+      checkmarkColor: accent,
+      labelStyle: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: textSecondary,
+      ),
+      side: BorderSide(color: hairline),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      elevation: 0,
+      pressElevation: 0,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: surfaceSolid,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titleTextStyle: TextStyle(
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+      ),
+      contentTextStyle: TextStyle(
+        fontSize: 14,
+        color: textSecondary,
+        height: 1.55,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? textMuted.withValues(alpha: 0.25)
+              : accent,
+        ),
+        foregroundColor: WidgetStateProperty.all(colorScheme.onPrimary),
+        padding: WidgetStateProperty.all(
+          const EdgeInsets.symmetric(vertical: 13, horizontal: 20),
+        ),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        textStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.all(accent),
+        textStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        padding: WidgetStateProperty.all(
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: hairline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: hairline),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: accent, width: 1.5),
+      ),
+      hintStyle: TextStyle(color: textMuted, fontSize: 14),
+      labelStyle: TextStyle(color: textSecondary, fontSize: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected) ? accent : textMuted,
+      ),
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: accent),
     textTheme: TextTheme(
       bodyLarge: TextStyle(color: textPrimary),
       bodyMedium: TextStyle(color: textPrimary),

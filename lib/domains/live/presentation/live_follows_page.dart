@@ -287,13 +287,22 @@ class _TabButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : theme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? theme.accent : theme.hairline,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: theme.accent.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           '$label ($count)',
@@ -328,8 +337,17 @@ class _PlatformChip extends StatelessWidget {
         label: Text(label),
         selected: selected,
         selectedColor: theme.accentSoft,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        side: BorderSide(
+          color: selected ? theme.accent : theme.hairline,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         labelStyle: TextStyle(
           color: selected ? theme.accent : theme.textSecondary,
+          fontSize: 13,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
         ),
         onSelected: (_) => onTap(),
       ),
@@ -357,31 +375,51 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.favorite_border,
-              size: 48,
-              color: theme.textMuted,
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: theme.accentSoft,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.favorite_border,
+                size: 40,
+                color: theme.accent,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               title,
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+              style: TextStyle(
+                color: theme.textSecondary,
+                fontSize: 14,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 20),
             FilledButton(
               onPressed: onBrowse,
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
+                foregroundColor:
+                    Theme.of(context).colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
               child: const Text('去逛逛'),
             ),
@@ -417,12 +455,21 @@ class _FollowCard extends StatelessWidget {
       children: [
         InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.circular(16),
+              // Theme surface so the tile adapts to all 8 combos
+              // (was hard-coded 0xFF1C1C1E).
+              color: theme.surfaceSolid,
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: theme.hairline),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
@@ -432,18 +479,20 @@ class _FollowCard extends StatelessWidget {
                   Image.network(
                     follow.cover,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const ColoredBox(
-                      color: Color(0xFF1C1C1E),
+                    errorBuilder: (_, _, _) => ColoredBox(
+                      color: theme.surfaceSolid,
                     ),
                   )
                 else
-                  const Center(
+                  Center(
                     child: Icon(
                       Icons.live_tv_outlined,
-                      color: Color(0xFF8E8E93),
+                      color: theme.textMuted,
                       size: 32,
                     ),
                   ),
+                // Over-cover scrim: black-alpha is deliberate so the
+                // title stays readable over any cover in all 8 combos.
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -452,9 +501,10 @@ class _FollowCard extends StatelessWidget {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.55),
+                          Colors.black.withValues(alpha: 0.18),
+                          Colors.black.withValues(alpha: 0.62),
                         ],
-                        stops: const [0.55, 1.0],
+                        stops: const [0.45, 0.78, 1.0],
                       ),
                     ),
                   ),
@@ -465,9 +515,9 @@ class _FollowCard extends StatelessWidget {
                   child: LiveStatusBadge(status: status),
                 ),
                 Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 8,
+                  left: 12,
+                  right: 12,
+                  bottom: 10,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -478,8 +528,8 @@ class _FollowCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -489,7 +539,7 @@ class _FollowCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 11,
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -500,18 +550,31 @@ class _FollowCard extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: 4,
-          right: 4,
-          child: Material(
-            color: Colors.transparent,
-            child: IconButton(
-              icon: const Icon(
-                Icons.favorite,
-                color: Colors.white,
-                size: 20,
+          top: 6,
+          right: 6,
+          // Frosted dark dot behind the heart so it stays legible
+          // over bright covers in every theme/mode.
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.30),
+              shape: BoxShape.circle,
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: IconButton(
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(
+                  minWidth: 32,
+                  minHeight: 32,
+                ),
+                icon: const Icon(
+                  Icons.favorite,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                tooltip: '取消关注',
+                onPressed: onUnfollow,
               ),
-              tooltip: '取消关注',
-              onPressed: onUnfollow,
             ),
           ),
         ),

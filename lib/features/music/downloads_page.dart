@@ -108,11 +108,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       onSelected: (_) =>
                           setState(() => _filter = f),
                       selectedColor: theme.accentSoft,
+                      side: BorderSide(color: theme.hairline),
                       labelStyle: TextStyle(
                         color: _filter == f
                             ? theme.accent
                             : theme.textSecondary,
                         fontSize: 13,
+                        fontWeight: _filter == f
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                       ),
                     ),
                   ),
@@ -208,7 +212,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: song.cover.isEmpty
                   ? Container(
                       width: 48,
@@ -264,11 +268,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   if (row.status == DownloadStatus.downloading)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: LinearProgressIndicator(
-                        value: row.progress,
-                        backgroundColor: theme.accentSoft,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          theme.accent,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: row.progress,
+                          backgroundColor: theme.accentSoft,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.accent,
+                          ),
                         ),
                       ),
                     ),

@@ -97,10 +97,7 @@ class DailyService {
       }
     }
     if (list.length < 20) {
-      var hot = await _hotFill(20 - list.length, heard, list);
-      if (hot.isEmpty && ranked.isEmpty) {
-        hot = await _hotFill(20 - list.length, heard, list);
-      }
+      final hot = await _hotFill(20 - list.length, heard, list);
       if (ranked.isEmpty && hot.isNotEmpty) cold = true;
       list = [...list, ...hot];
     }
@@ -176,10 +173,19 @@ class DailyService {
     List<Song> list,
   ) async {
     final have = list.map((x) => x.identityKey).toSet();
-    final settled = await Future.wait(
-      [MusicPlatform.wy, MusicPlatform.tx, MusicPlatform.kw]
-          .map((pf) => _api.plaza(pf).catchError((_) => <PlaylistSummary>[])),
-    );
+    Future<List<List<PlaylistSummary>>> fetchPlaza() => Future.wait(
+          [MusicPlatform.wy, MusicPlatform.tx, MusicPlatform.kw]
+              .map((pf) => _api.plaza(pf).catchError((_) => <PlaylistSummary>[])),
+        );
+    var settled = await fetchPlaza();
+    // All three plaza fetches failed: almost certainly a transient
+    // network blip, not "no playlists" — retry the plaza fetch once.
+    // (The old code retried the WHOLE _hotFill with identical args,
+    // re-issuing 3 plaza fetches + imports even when the platforms
+    // had answered and the songs were just already heard.)
+    if (settled.every((l) => l.isEmpty)) {
+      settled = await fetchPlaza();
+    }
     final cands = <({MusicPlatform pf, List<PlaylistSummary> items})>[];
     final pfs = [MusicPlatform.wy, MusicPlatform.tx, MusicPlatform.kw];
     for (var i = 0; i < settled.length; i++) {

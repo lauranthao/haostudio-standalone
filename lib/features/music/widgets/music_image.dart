@@ -28,6 +28,18 @@ import '../../../core/network/http_client.dart';
 
 final Map<String, Uint8List> _musicImageBytesCache = <String, Uint8List>{};
 
+/// In-memory cover cache cap (2026-11-17): the cache had NO eviction —
+/// with full-res covers it could hold hundreds of MB. Evict oldest
+/// first (Dart maps keep insertion order) once past 80 entries.
+const int _kMusicImageCacheMax = 80;
+
+void _cacheMusicImageBytes(String url, Uint8List bytes) {
+  while (_musicImageBytesCache.length >= _kMusicImageCacheMax) {
+    _musicImageBytesCache.remove(_musicImageBytesCache.keys.first);
+  }
+  _musicImageBytesCache[url] = bytes;
+}
+
 String musicImageReferer(String url) {
   if (url.contains('music.126.net')) return 'https://music.163.com/';
   if (url.contains('y.gtimg.cn')) return 'https://y.qq.com/';
@@ -47,6 +59,10 @@ Future<Uint8List> fetchMusicImageBytes(String url) async {
         url,
         options: Options(
           responseType: ResponseType.bytes,
+          // Explicit: sharedDio defaults to 8 s, but a cover fetch
+          // must never hang past it (a stalled cover used to hold the
+          // row on the placeholder indefinitely).
+          receiveTimeout: const Duration(seconds: 8),
           headers: <String, String>{
             'User-Agent': kBrowserUserAgent,
             'Accept': 'image/*,*/*',
@@ -58,7 +74,7 @@ Future<Uint8List> fetchMusicImageBytes(String url) async {
       final data = res.data;
       if (code >= 200 && code < 300 && data != null && data.isNotEmpty) {
         final bytes = Uint8List.fromList(data);
-        _musicImageBytesCache[url] = bytes;
+        _cacheMusicImageBytes(url, bytes);
         return bytes;
       }
       lastError = DioException(

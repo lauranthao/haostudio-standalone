@@ -105,7 +105,10 @@ class _RefererImageState extends State<RefererImage> {
           sendTimeout: const Duration(seconds: 10),
         ),
       );
-      if (!mounted) return;
+      // The card may have been recycled for another poster while the
+      // fetch was in flight (grid rebuild on scroll): never deliver
+      // stale bytes — or a stale failure — into the new URL.
+      if (!mounted || widget.url != url) return;
       final data = res.data;
       if (res.statusCode != 200 || data == null || data.isEmpty) {
         setState(() => _failed = true);
@@ -115,7 +118,7 @@ class _RefererImageState extends State<RefererImage> {
       _cacheVideoImageBytes(url, bytes);
       setState(() => _bytes = bytes);
     } catch (_) {
-      if (mounted) setState(() => _failed = true);
+      if (mounted && widget.url == url) setState(() => _failed = true);
     }
   }
 

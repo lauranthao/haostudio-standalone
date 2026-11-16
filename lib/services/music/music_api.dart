@@ -148,7 +148,6 @@ class MusicApi {
         cover: coverHi(al?['picUrl']?.toString() ?? ''),
         platform: MusicPlatform.wy,
         dur: (durMs / 1000).round(),
-        vipOnly: x['fee'] == 1,
       );
     }).toList();
   }
@@ -197,12 +196,16 @@ class MusicApi {
               ),
         platform: MusicPlatform.tx,
         dur: (x['interval'] as num?)?.toInt() ?? 0,
-        vipOnly: false,
       );
     }).toList();
   }
 
-  /// Kugou: GET songsearch.kugou.com. Retry once after 800 ms if empty.
+  /// Kugou: GET songsearch.kugou.com. Retry once after 800 ms if the
+  /// API answered 200 but with an empty list (its known flakiness —
+  /// measured 2026-11-17: same query returned 15 results, then 0,
+  /// then 0 within minutes). A null fetch (network/timeout) is NOT
+  /// retried: burning another 10 s timeout for a dead leg only holds
+  /// the whole aggregated search hostage.
   Future<List<Song>> searchKg(String q, int limit) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       final j = await _getJson(
@@ -215,7 +218,8 @@ class MusicApi {
           'format': 'json',
         },
       );
-      final out = _asList(j?['data']?['lists'])
+      if (j == null) return [];
+      final out = _asList(j['data']?['lists'])
           .map(
             (x) => Song(
               songId: x['FileHash']?.toString() ?? '',
@@ -224,7 +228,6 @@ class MusicApi {
               album: x['AlbumName']?.toString() ?? '',
               platform: MusicPlatform.kg,
               dur: (x['Duration'] as num?)?.toInt() ?? 0,
-              vipOnly: false,
             ),
           )
           .where((s) => s.songId.isNotEmpty)
@@ -249,7 +252,9 @@ class MusicApi {
         url,
         headers: {'User-Agent': kMusicUa},
       );
-      final out = _parseKwSongs(txt ?? '');
+      // Null = network/timeout: do not retry (see searchKg).
+      if (txt == null) return [];
+      final out = _parseKwSongs(txt);
       if (out.isNotEmpty || attempt == 1) return out;
       await Future<void>.delayed(const Duration(milliseconds: 800));
     }
@@ -309,7 +314,6 @@ class MusicApi {
         ),
         platform: MusicPlatform.kw,
         dur: _asInt(x['DURATION']),
-        vipOnly: false,
       );
     }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList();
   }
@@ -648,7 +652,6 @@ class MusicApi {
         cover: coverHi(album['picUrl']?.toString() ?? ''),
         platform: MusicPlatform.wy,
         dur: (durMs / 1000).round(),
-        vipOnly: s['fee'] == 1 || s['fee'] == 4,
         albumYear: pt > 0
             ? DateTime.fromMillisecondsSinceEpoch(pt).year
             : 0,
@@ -794,7 +797,6 @@ class MusicApi {
                   ),
             platform: MusicPlatform.tx,
             dur: (s['interval'] as num?)?.toInt() ?? 0,
-            vipOnly: false,
           ),
         );
       }
@@ -833,7 +835,6 @@ class MusicApi {
         platform: MusicPlatform.kw,
         dur: s.dur,
         cover: coverHi(s.cover),
-        vipOnly: s.vipOnly,
       );
     }).toList();
     var albums = <AlbumSummary>[];
@@ -938,7 +939,6 @@ class MusicApi {
           cover: coverHi(sal?['picUrl']?.toString() ?? ''),
           platform: MusicPlatform.wy,
           dur: (durMs / 1000).round(),
-          vipOnly: s['fee'] == 1 || s['fee'] == 4,
         );
       }).toList(),
     );
@@ -980,7 +980,6 @@ class MusicApi {
           cover: pic,
           platform: MusicPlatform.tx,
           dur: (s['interval'] as num?)?.toInt() ?? 0,
-          vipOnly: false,
         );
       }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
     );
@@ -1175,7 +1174,6 @@ class MusicApi {
             cover: coverHi(alb?['picUrl']?.toString() ?? ''),
             platform: MusicPlatform.wy,
             dur: (durMs / 1000).round(),
-            vipOnly: t['fee'] == 1,
           );
         }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
       );
@@ -1212,7 +1210,6 @@ class MusicApi {
               cover: coverHi(alb['picUrl']?.toString() ?? ''),
               platform: MusicPlatform.wy,
               dur: (durMs / 1000).round(),
-              vipOnly: t['fee'] == 1,
             ),
           );
         }
@@ -1268,7 +1265,6 @@ class MusicApi {
                 ),
           platform: MusicPlatform.tx,
           dur: (x['interval'] as num?)?.toInt() ?? 0,
-          vipOnly: false,
         );
       }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
     );
@@ -1308,7 +1304,6 @@ class MusicApi {
             ),
             platform: MusicPlatform.kw,
             dur: (x['duration'] as num?)?.toInt() ?? 0,
-            vipOnly: false,
           ),
         );
       }
@@ -1351,7 +1346,6 @@ class MusicApi {
                 : coverHi(uc.replaceAll('{size}', '400')),
             platform: MusicPlatform.kg,
             dur: (x['duration'] as num?)?.toInt() ?? 0,
-            vipOnly: false,
           ),
         );
       }

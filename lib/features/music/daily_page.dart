@@ -30,6 +30,7 @@ class _DailyPageState extends State<DailyPage> {
   List<Song>? _tracks;
   var _cold = false;
   var _loading = true;
+  var _failed = false;
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
 
@@ -40,13 +41,25 @@ class _DailyPageState extends State<DailyPage> {
   }
 
   Future<void> _load() async {
-    final r = await _service.buildDaily();
-    if (!mounted) return;
-    setState(() {
-      _tracks = r.tracks;
-      _cold = r.cold;
-      _loading = false;
-    });
+    // buildDaily has no internal catch-all: without this, any throw
+    // (e.g. a Hive write failing mid-save) left the spinner spinning
+    // forever with no retry — every sibling page has this guard.
+    try {
+      final r = await _service.buildDaily();
+      if (!mounted) return;
+      setState(() {
+        _tracks = r.tracks;
+        _cold = r.cold;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+      });
+    }
   }
 
   String _reasonText(Song s) {
@@ -77,12 +90,43 @@ class _DailyPageState extends State<DailyPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     final now = DateTime.now();
+    // Favourites read once per build, not per row: getFavIds() parses
+    // the whole favourites JSON on every call, and the row builder
+    // runs once per visible row per scroll frame.
+    final favIds = MusicStore.getFavIds();
     return Scaffold(
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('每日推荐')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _tracks == null || _tracks!.isEmpty
+          : _failed
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '每日推荐加载失败',
+                        style: TextStyle(color: theme.textPrimary),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _loading = true;
+                            _failed = false;
+                          });
+                          _load();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.accent,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                )
+              : _tracks == null || _tracks!.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -99,7 +143,7 @@ class _DailyPageState extends State<DailyPage> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.accent,
-                          foregroundColor: Colors.white,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
                         ),
                         child: const Text('重试'),
                       ),
@@ -134,7 +178,10 @@ class _DailyPageState extends State<DailyPage> {
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                       child: Text(
                         '一半是你常听的，一半是为你发现的',
-                        style: TextStyle(color: theme.textSecondary),
+                        style: TextStyle(
+                          color: theme.textSecondary,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                     Padding(
@@ -145,7 +192,11 @@ class _DailyPageState extends State<DailyPage> {
                         label: const Text('播放全部'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.accent,
-                          foregroundColor: Colors.white,
+                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -166,7 +217,6 @@ class _DailyPageState extends State<DailyPage> {
                         itemCount: _tracks!.length,
                         itemBuilder: (ctx, i) {
                           final song = _tracks![i];
-                          final favIds = MusicStore.getFavIds();
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [

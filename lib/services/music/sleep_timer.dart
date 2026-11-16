@@ -84,14 +84,20 @@ class SleepTimer {
   /// Remaining wall-clock time, or null when off / queue-end.
   Duration? get remaining => _remaining;
 
+  /// Shared "m:ss" formatter for a remaining duration. Single copy —
+  /// the two sheets used to each carry their own identical copy.
+  static String formatRemaining(Duration remaining) {
+    final total = remaining.inSeconds;
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
   /// "12:34" style remaining text, or '' when there is no clock.
   String get remainingText {
     final r = _remaining;
     if (r == null) return '';
-    final total = r.inSeconds;
-    final m = total ~/ 60;
-    final s = total % 60;
-    return '$m:${s.toString().padLeft(2, '0')}';
+    return formatRemaining(r);
   }
 
   void start(SleepTimerOption option) {

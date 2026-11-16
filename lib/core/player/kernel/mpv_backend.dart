@@ -34,11 +34,33 @@ class MpvBackend implements PlayerBackend {
   bool _disposed = false;
   bool _opened = false;
 
+  /// Set by open(): whether this backend is serving a live room.
+  /// buildVideoWidget() only ever runs after a successful open (the
+  /// session returns SizedBox.shrink until the ladder swaps a backend
+  /// in), so this is always accurate when the Video widget is built.
+  bool _isLive = false;
+
   @override
   PlayerEngine get engine => PlayerEngine.mediaKit;
 
   @override
-  Widget buildVideoWidget() => Video(controller: _videoController);
+  Widget buildVideoWidget() {
+    // The VOD page draws its own Pure Live-style control bar (seek
+    // Slider, speed, exit-fullscreen) — media_kit's Video defaults
+    // `controls` to AdaptiveVideoControls, which draws a SECOND seek
+    // bar + play/pause + fullscreen button on top of it (chen:
+    // "看电影为什么有两个进度条"). Suppress the built-in controls for
+    // VOD so exactly one progress bar remains. Live is deliberately
+    // untouched here: the same backend serves the live room, and its
+    // overlay behaviour stays exactly as it is today (a live-scoped
+    // task can revisit it — do NOT widen this branch to live without
+    // checking the live room's own controls first).
+    if (_isLive) return Video(controller: _videoController);
+    return Video(
+      controller: _videoController,
+      controls: (_) => const SizedBox.shrink(),
+    );
+  }
 
   @override
   Future<void> open({
@@ -47,6 +69,7 @@ class MpvBackend implements PlayerBackend {
     required bool isLive,
     String? declaredFormat,
   }) async {
+    _isLive = isLive;
     // Base tuning first, then per-source properties (per-source wins).
     // NOTE: public Player has no setProperty in media_kit 1.1.11 — the
     // properties go through the underlying NativePlayer (the same call
@@ -145,6 +168,20 @@ class MpvBackend implements PlayerBackend {
 
   @override
   Future<void> pause() => _player.pause();
+
+  @override
+  Future<void> setAudioOnly(bool audioOnly) async {
+    // Pure Live media_kit adapter `_applyAudioOnly`, verbatim:
+    // vid=no drops the video track (no decode, no vo) while the
+    // audio keeps flowing; vid=auto restores the picture on
+    // foreground return. Best-effort: a failed set must never break
+    // playback (e.g. a disposed player throws AssertionError).
+    try {
+      await _player.setVideoTrack(
+        audioOnly ? VideoTrack.no() : VideoTrack.auto(),
+      );
+    } catch (_) {}
+  }
 
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume * 100);

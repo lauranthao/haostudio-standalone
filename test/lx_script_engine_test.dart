@@ -13,7 +13,7 @@
 // and these tests run for real (chen's phone test is the final
 // confirmation).
 // - prelude: bare `lx` alias, EVENT_NAMES, utils.buffer round-trips.
-// - all 4 scripts load and send `inited` with exactly the capabilities
+// - all 20 scripts load and send `inited` with exactly the capabilities
 //   they declare (no more, no less).
 // - ikun musicUrl end to end (master tier) via fake ikun API.
 // - 溯音 search end to end (kw) via fake oiapi Kuwo.
@@ -180,8 +180,8 @@ void main() {
 
     tearDown(() => engine.dispose());
 
-    test('all six load with exactly their declared capabilities', () {
-      expect(engine.scripts.length, 6);
+    test('all twenty load with exactly their declared capabilities', () {
+      expect(engine.scripts.length, 20);
       for (final s in engine.scripts) {
         expect(s.loaded, isTrue, reason: '${s.id}: ${s.error}');
       }
@@ -267,6 +267,144 @@ void main() {
         jiexiang.sourceFor('kw')!.qualities,
         contains('flac24bit'),
       );
+
+      // 14 scripts from chen's V261115 pack (2026-11-17) — verified
+      // live via the Node LX harness (real prelude + real HTTP):
+      // wy 320k returned a curl-verified MP3 for each one. 回避聚合
+      // + stellarwave-v0.0.14 ship with their embedded keys sanitised
+      // to '' and were re-verified still working after sanitising.
+      final hyw = engine.script('hyw')!;
+      expect(
+        hyw.sources.map((s) => s.platform).toSet(),
+        {'kw', 'tx', 'wy', 'mg', 'qs', 'bili', 'ytb', 'xm', 'kg'},
+      );
+      expect(hyw.sourceFor('wy')!.actions, ['musicUrl']);
+      expect(
+        hyw.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac', 'flac24bit'],
+      );
+
+      final helloworld = engine.script('helloworld')!;
+      // 'local' is filtered out like luoxue's.
+      expect(
+        helloworld.sources.map((s) => s.platform).toSet(),
+        {'kw', 'kg', 'tx', 'wy', 'mg'},
+      );
+      expect(helloworld.sourceFor('wy')!.actions, ['musicUrl']);
+      expect(
+        helloworld.sourceFor('wy')!.qualities,
+        contains('master'),
+      );
+
+      final aya = engine.script('aya')!;
+      expect(
+        aya.sources.map((s) => s.platform).toSet(),
+        {'wy', 'kw', 'kg', 'mg'},
+      );
+      expect(aya.sourceFor('wy')!.qualities, contains('master'));
+
+      final gdstudio = engine.script('gdstudio')!;
+      expect(
+        gdstudio.sources.map((s) => s.platform).toSet(),
+        {'wy', 'kw', 'tx', 'kg', 'mg'},
+      );
+      expect(
+        gdstudio.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac', 'flac24bit'],
+      );
+
+      final yuningxi = engine.script('yuningxi')!;
+      expect(
+        yuningxi.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg'},
+      );
+      expect(yuningxi.sourceFor('wy')!.qualities, contains('master'));
+
+      final stellarwave = engine.script('stellarwave')!;
+      expect(
+        stellarwave.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg', 'qs'},
+      );
+      expect(
+        stellarwave.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac'],
+      );
+
+      final stellarwave014 = engine.script('stellarwave014')!;
+      expect(
+        stellarwave014.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg'},
+      );
+      expect(
+        stellarwave014.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac', 'flac24bit'],
+      );
+
+      final xinghai = engine.script('xinghai')!;
+      expect(
+        xinghai.sources.map((s) => s.platform).toSet(),
+        {'wy', 'tx', 'kg', 'kw', 'mg', 'qs'},
+      );
+      expect(xinghai.sourceFor('wy')!.qualities, contains('master'));
+      expect(
+        xinghai.sourceFor('wy')!.actions,
+        containsAll(['musicUrl', 'lyric', 'pic']),
+      );
+
+      final huibi = engine.script('huibi')!;
+      expect(
+        huibi.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg'},
+      );
+      expect(huibi.sourceFor('wy')!.qualities, contains('master'));
+
+      final molan = engine.script('molan')!;
+      expect(
+        molan.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg', 'qs', 'sd', 'joox'},
+      );
+      expect(
+        molan.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac'],
+      );
+
+      final yuxi = engine.script('yuxi')!;
+      expect(
+        yuxi.sources.map((s) => s.platform).toSet(),
+        {'wy', 'tx', 'kg', 'kw'},
+      );
+      expect(yuxi.sourceFor('wy')!.qualities, contains('master'));
+
+      final kuliao = engine.script('kuliao')!;
+      expect(
+        kuliao.sources.map((s) => s.platform).toSet(),
+        {'wy', 'tx', 'kw', 'kg', 'mg'},
+      );
+      expect(
+        kuliao.sourceFor('wy')!.actions,
+        containsAll(['search', 'musicUrl']),
+      );
+      expect(kuliao.sourceFor('wy')!.qualities, contains('hires'));
+
+      final feichangdao = engine.script('feichangdao')!;
+      expect(
+        feichangdao.sources.map((s) => s.platform).toSet(),
+        {'wy', 'tx', 'kw', 'kg', 'mg', 'qs'},
+      );
+      expect(
+        feichangdao.sourceFor('wy')!.actions,
+        containsAll(['search', 'musicUrl']),
+      );
+
+      final tongyi = engine.script('tongyi')!;
+      expect(
+        tongyi.sources.map((s) => s.platform).toSet(),
+        {'kw', 'wy'},
+      );
+      expect(
+        tongyi.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac'],
+      );
     });
 
     test('scriptJobsFor only offers qualities the script declares', () {
@@ -281,21 +419,52 @@ void main() {
         song,
       );
       // 溯音 wy declares only 128k/320k/flac — no master — so the
-      // engine correctly excludes it at the master tier (actual
-      // result {ikun, luoxue}); only scripts listing 'master' get a
-      // master job. Never substitute hires for master.
+      // engine correctly excludes it at the master tier; only scripts
+      // listing 'master' get a master job. Never substitute hires for
+      // master. (V261115 adds helloworld/aya/yuningxi/xinghai/yuxi/
+      // huibi to the master tier.)
       expect(
         masterJobs.map((j) => j.key).toSet(),
-        {'lx:ikun', 'lx:luoxue'},
+        {
+          'lx:ikun',
+          'lx:luoxue',
+          'lx:helloworld',
+          'lx:aya',
+          'lx:yuningxi',
+          'lx:xinghai',
+          'lx:yuxi',
+          'lx:huibi',
+        },
       );
       final hiresJobs = engine.scriptJobsFor(
         MusicPlatform.wy,
         AudioQuality.hires,
         song,
       );
+      // Every script except xinlan (128k/320k only) serves hires on wy.
       expect(
         hiresJobs.map((j) => j.key).toSet(),
-        {'lx:ikun', 'lx:suyin', 'lx:luoxue', 'lx:fish', 'lx:jiexiang'},
+        {
+          'lx:ikun',
+          'lx:suyin',
+          'lx:luoxue',
+          'lx:fish',
+          'lx:jiexiang',
+          'lx:hyw',
+          'lx:helloworld',
+          'lx:aya',
+          'lx:gdstudio',
+          'lx:yuningxi',
+          'lx:stellarwave',
+          'lx:stellarwave014',
+          'lx:xinghai',
+          'lx:huibi',
+          'lx:molan',
+          'lx:yuxi',
+          'lx:kuliao',
+          'lx:feichangdao',
+          'lx:tongyi',
+        },
       );
       final q320Jobs = engine.scriptJobsFor(
         MusicPlatform.wy,
@@ -311,14 +480,32 @@ void main() {
           'lx:luoxue',
           'lx:fish',
           'lx:jiexiang',
+          'lx:hyw',
+          'lx:helloworld',
+          'lx:aya',
+          'lx:gdstudio',
+          'lx:yuningxi',
+          'lx:stellarwave',
+          'lx:stellarwave014',
+          'lx:xinghai',
+          'lx:huibi',
+          'lx:molan',
+          'lx:yuxi',
+          'lx:kuliao',
+          'lx:feichangdao',
+          'lx:tongyi',
         },
       );
-      // 溯音 is the only script declaring search (kw/mg).
+      // 溯音 is no longer the only script declaring search: 裤佬SVIP
+      // and 非常刀 declare search too (kw + wy).
       expect(
         engine.searchLegsFor(MusicPlatform.kw).map((l) => l.scriptId),
-        ['suyin'],
+        ['suyin', 'kuliao', 'feichangdao'],
       );
-      expect(engine.searchLegsFor(MusicPlatform.wy), isEmpty);
+      expect(
+        engine.searchLegsFor(MusicPlatform.wy).map((l) => l.scriptId),
+        ['kuliao', 'feichangdao'],
+      );
     });
 
     test('ikun musicUrl end to end (master tier)', () async {

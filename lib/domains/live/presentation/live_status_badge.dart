@@ -19,10 +19,17 @@ class LiveStatusBadge extends StatelessWidget {
     switch (status) {
       case LiveStatus.live:
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
             color: theme.liveRed,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
           ),
           child: const Text(
             'LIVE',
@@ -30,6 +37,7 @@ class LiveStatusBadge extends StatelessWidget {
               color: Colors.white,
               fontSize: 11,
               fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
             ),
           ),
         );
@@ -48,11 +56,13 @@ class _MutedPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Muted pill sits ON cover artwork: black-alpha is deliberate —
+    // a theme surface would be white in light mode and unreadable.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xA6000000),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,

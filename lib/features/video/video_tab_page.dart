@@ -102,13 +102,14 @@ class _VideoTabPageState extends State<VideoTabPage> {
     });
   }
 
-  void _openDetail(VideoItem item) {
+  void _openDetail(VideoItem item, {bool autoResume = false}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => VideoDetailPage(
           sourceId: item.source,
           vodId: item.vodId,
           preload: item,
+          autoResume: autoResume,
         ),
       ),
     );
@@ -211,6 +212,14 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                             border: Border.all(
                                               color: theme.hairline,
                                             ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.06),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
                                           child: Row(
                                             children: [
@@ -225,6 +234,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                                 style: TextStyle(
                                                   color: theme.textMuted,
                                                   fontSize: 15,
+                                                  fontWeight: FontWeight.w500,
                                                 ),
                                               ),
                                             ],
@@ -288,13 +298,27 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                     decoration: BoxDecoration(
                                       color: theme.accentSoft,
                                       borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '内容可能不是最新',
-                                      style: TextStyle(
-                                        color: theme.textSecondary,
-                                        fontSize: 13,
+                                      border: Border.all(
+                                        color: theme.hairline,
                                       ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          color: theme.accent,
+                                          size: 16,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '内容可能不是最新',
+                                          style: TextStyle(
+                                            color: theme.textSecondary,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -335,8 +359,15 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                   title: '继续观看',
                                   onMore: _openHistory,
                                 ),
+                                // 2026-11-17 (v1.0.6 phone bug: 第21集被切掉一半):
+                                // card content is 16:9 poster 139.5 +
+                                // 6 gap + title ~19 + subtitle ~17 =
+                                // ~182 — the old 172 container clipped
+                                // the subtitle's bottom half. Same bug
+                                // class as the v1.0.5 _CollectionCard
+                                // fix (196 -> 212).
                                 SizedBox(
-                                  height: 172,
+                                  height: 186,
                                   child: ListView.builder(
                                     scrollDirection: Axis.horizontal,
                                     padding: const EdgeInsets.symmetric(
@@ -359,6 +390,11 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                               pic: h.pic,
                                               picAlt: h.picAlt,
                                             ),
+                                            // Same "continue watching"
+                                            // action as the history
+                                            // page: resume at the saved
+                                            // position, no extra tap.
+                                            autoResume: true,
                                           ),
                                         ),
                                       );
@@ -382,8 +418,11 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                     item.vodId,
                                   ),
                                 ),
-                              ] else if (_dailyFailed &&
-                                  _home == null) ...[
+                              ] else if (_dailyFailed) ...[
+                                _SectionHead(
+                                  title: '每日推荐',
+                                  onMore: null,
+                                ),
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
                                     16,
@@ -454,7 +493,8 @@ class _SectionHead extends StatelessWidget {
               color: theme.textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.01,
+              letterSpacing: -0.02,
+              height: 1.2,
             ),
           ),
           const Spacer(),
@@ -540,8 +580,13 @@ class _ContinueCard extends StatelessWidget {
               aspectRatio: 16 / 9,
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(10),
+                  // Missing-artwork tile: theme glass (the old
+                  // hardcoded 0xFF1C1C1E was a black hole in light
+                  // modes). The progress scrim below stays black —
+                  // it sits ON the artwork.
+                  color: theme.surfaceStrong,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.hairline),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
@@ -551,8 +596,8 @@ class _ContinueCard extends StatelessWidget {
                       RefererImage(
                         url: entry.pic,
                         fit: BoxFit.cover,
-                        fallback: const ColoredBox(
-                          color: Color(0xFF1C1C1E),
+                        fallback: ColoredBox(
+                          color: theme.surfaceStrong,
                         ),
                       ),
                     Positioned(
@@ -584,7 +629,8 @@ class _ContinueCard extends StatelessWidget {
               style: TextStyle(
                 color: theme.textPrimary,
                 fontSize: 15,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
               ),
             ),
             Text(
@@ -597,7 +643,11 @@ class _ContinueCard extends StatelessWidget {
               ].join(' · '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: theme.textMuted, fontSize: 13),
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 13,
+                height: 1.25,
+              ),
             ),
           ],
         ),
@@ -639,7 +689,9 @@ class _CollectionCard extends StatelessWidget {
                           width: 84,
                           height: 126,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
+                            // Theme glass, not a hardcoded dark tile
+                            // (black hole in light modes).
+                            color: theme.surfaceStrong,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: theme.hairline,
@@ -718,7 +770,11 @@ class _HomeError extends StatelessWidget {
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
-                foregroundColor: Colors.white,
+                // onPrimary (theme-defined per mode), NOT hardcoded
+                // white: white on the light-gold / light-teal /
+                // light-blue dark-mode accents is unreadable.
+                foregroundColor:
+                    Theme.of(context).colorScheme.onPrimary,
               ),
             ),
           ],
