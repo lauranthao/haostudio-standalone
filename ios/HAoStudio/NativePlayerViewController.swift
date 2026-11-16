@@ -1,18 +1,20 @@
 import UIKit
-import IJKMediaFramework
 import MediaPlayer
 import AVFoundation
 import AVKit
 
-// Fullscreen native player — ONE engine for everything (ijkplayer /
-// FFmpeg), like Pure Live. HLS (Bilibili / Douyin / Huya) and FLV
-// (Kuaishou / Douyu) live, plus VOD movies / episodes, all play here
-// in a single UI with the same bars, quality button and loading state.
-// ijkplayer replaces both earlier engines: VLC (Huya's CDN blocks
-// VLC's HTTP client with 403) and the system player (cannot decode
-// FLV).
+// Fullscreen native player — THREE switchable backends (PlayerKernel,
+// Pure Live 3.x PlayerKernelService pattern), like Pure Live. HLS
+// (Bilibili / Douyin / Huya) and FLV (Kuaishou / Douyu) live, plus VOD
+// movies / episodes, all play here in a single UI with the same bars,
+// quality button and loading state. The backends:
+//   MPV (default) — libmpv, the widest codec coverage;
+//   IJK — ijkplayer (FFmpeg), the v1.0.x engine;
+//   系统播放器 — AVPlayer, the iOS "exo" slot (ExoPlayer is Android-only).
+// VLC is gone (Huya's CDN blocks VLC's HTTP client with 403).
 // The `format` the web page posts ('hls' / 'flv') is accepted but no
-// longer picks an engine — ijkplayer plays both.
+// longer picks an engine — the selected backend plays both (except
+// AVPlayer, which cannot decode FLV; see startBackendPlayback).
 // - Live (kind "live"): quality switch via the 画质 button; room
 //   switches reuse this player and swap the stream in place
 //   (shutdown + recreate with the new URL, same view, same UI).
@@ -170,10 +172,18 @@ final class NativePlayerViewController: UIViewController {
     private let startPosition: Double
     private var danmakuConfig: DanmakuConfig?
 
-    // The single playback engine (ijkplayer / FFmpeg) for live HLS +
-    // FLV and VOD. Recreated (shutdown + new instance) on every
-    // stream switch; the UI never re-presents.
-    private var ijkPlayer: IJKFFMoviePlayerController?
+    // The playback backend (PlayerBackend): one of MPV / IJK / AVPlayer,
+    // chosen by the Settings "播放器内核" (PlayerKernel.current, default
+    // MPV). Recreated (shutdown + new instance) on every stream switch
+    // and every engine change; the UI never re-presents.
+    private var backend: PlayerBackend?
+    // Set when the current engine cannot play this URL at all
+    // (AVPlayer + FLV live): the retry button then switches the engine
+    // to MPV instead of retrying a combination that can never work.
+    private var engineUnsupported = false
+    // VOD resume position for an engine rebuild while this player is
+    // open (Settings switch): the new backend seeks here once prepared.
+    private var resumePosition: Double?
     // Accepted from the web page for compatibility; ijkplayer plays
     // both formats, so this never picks an engine.
     private var streamFormat: String
@@ -190,9 +200,9 @@ final class NativePlayerViewController: UIViewController {
     // the stream, which ijkplayer reports as a clean EOF — the room
     // is usually still live, so the first few EOFs must ask the web
     // page for the next CDN line / a fresh URL instead of showing
-    // "直播已结束" (see ijkPlaybackDidFinish). Cleared whenever the
+    // "直播已结束" (see handlePlaybackEnded). Cleared whenever the
     // clock advances, so a later expiry is a new episode. Deliberately
-    // NOT reset in startIJKPlayback/updateStream: each re-posted line
+    // NOT reset in startBackendPlayback/updateStream: each re-posted line
     // would reset it and the cap could never trip. Cap is 5: enough
     // for 3 CDN lines + a fresh URL + one more line; a truly offline
     // room ends on "直播已结束" (or the 30s never-started safety net)
@@ -240,11 +250,16 @@ final class NativePlayerViewController: UIViewController {
     private var hasStartedPlaying = false
     private var didReportClose = false
     var onClose: ((Double) -> Void)?
-    // Live only: called when ijkplayer finally gives up on a live
+    // Live only: called when the backend finally gives up on a live
     // stream (its one same-URL auto-retry already failed). The web
     // page fetches a FRESH play URL and re-posts it — retrying the
     // same expired URL can never work. VOD never calls this.
     var onLiveFailed: (() -> Void)?
+    // Called when the player itself switches the engine (AVPlayer +
+    // FLV live: the retry button moves to MPV). ViewController writes
+    // the new engine to the web page's localStorage so Settings shows
+    // the same engine.
+    var onPlayerEngineChanged: ((String) -> Void)?
     // Pure Live style: the top/bottom bars fade out on their own after
     // a few idle seconds (tap the video to bring them back).
     private var controlsHideTimer: Timer?
@@ -433,7 +448,7 @@ final class NativePlayerViewController: UIViewController {
         // no-ops if that already ran.
         teardownNowPlaying()
         endLyricsActivity()
-        ijkPlayer?.shutdown()
+        backend?.shutdown()
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
@@ -478,10 +493,10 @@ final class NativePlayerViewController: UIViewController {
 
     private var isVod: Bool { kind == "vod" }
 
-    // Whether the ijkplayer engine is currently playing (ViewController
+    // Whether the playback backend is currently playing (ViewController
     // reads this for the keep-screen idle timer: the screen only stays
     // on while a player is on screen AND playing).
-    var isPlaying: Bool { ijkPlayer?.isPlaying() ?? false }
+    var isPlaying: Bool { backend?.isPlaying ?? false }
 
     // MARK: - Per-room volume memory (live only)
     // Each live room remembers its own volume: entering a room applies
@@ -542,7 +557,7 @@ final class NativePlayerViewController: UIViewController {
             }
         }
         guard let videoView = videoView else { return }
-        ijkPlayer?.view.frame = videoView.bounds
+        backend?.view.frame = videoView.bounds
     }
 
     // MARK: - Visual landscape (device-adaptive, lock-proof)
@@ -1197,116 +1212,200 @@ final class NativePlayerViewController: UIViewController {
         self.volumeView = volumeView
     }
 
-    // MARK: - ijkplayer engine (the single engine for live + VOD)
-
-    private func makeIJKOptions() -> IJKFFOptions {
-        let options = IJKFFOptions.byDefault() ?? IJKFFOptions()
-        // Hardware decoding (VideoToolbox) — smooth 1080p on iPhone.
-        options.setPlayerOptionIntValue(1, forKey: "videotoolbox")
-        // Live streams: let FFmpeg reconnect instead of failing when
-        // a flaky overseas CDN drops the HTTP connection.
-        options.setFormatOptionIntValue(1, forKey: "reconnect")
-        options.setFormatOptionIntValue(1, forKey: "reconnect_streamed")
-        options.setFormatOptionIntValue(5, forKey: "reconnect_delay_max")
-        // Fast open + fast failure on a dead line (Pure Live's probe /
-        // buffer policy: 1 MiB probe, 1 s analyze, 15 s network
-        // timeout; its cache is 6 s memory-only, smooth-first, so no
-        // nobuffer / low-latency flag — smoothness beats latency here).
-        options.setFormatOptionIntValue(1048576, forKey: "probesize")
-        options.setFormatOptionIntValue(1000000, forKey: "analyzeduration")
-        options.setFormatOptionIntValue(15000000, forKey: "timeout")
-        // Huya's CDN rejects FFmpeg's default UA (HTTP 403) but accepts
-        // a browser UA (verified with ffprobe: default 403, browser UA
-        // returns a valid HLS playlist). Send a browser UA + Referer so
-        // picky CDNs treat ijkplayer like a browser. This is what makes
-        // Huya play in the native player.
-        options.setFormatOptionValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1", forKey: "user_agent")
-        let referer: String
-        switch platform {
-        case "huya": referer = "https://www.huya.com/"
-        case "bili": referer = "https://live.bilibili.com/"
-        case "douyin": referer = "https://live.douyin.com/"
-        case "douyu": referer = "https://www.douyu.com/"
-        case "ks": referer = "https://live.kuaishou.com/"
-        default: referer = "https://example.invalid/"
-        }
-        options.setFormatOptionValue("Referer: \(referer)\r\n", forKey: "headers")
-        // Huya HLS segments carry a query string (xxx.ts?EXTINF=2.7).
-        // FFmpeg 4's HLS demuxer blocks segments whose "extension" is
-        // not whitelisted — it reads the extension as "ts?EXTINF=2.7",
-        // not "ts", so EVERY Huya segment is refused ("not a common
-        // multimedia extension") and playback never starts (30s
-        // timeout -> 播放失败). Douyu FLV has no segments, so it is
-        // unaffected. Verified with ffprobe 4.4 on a local Huya-style
-        // playlist: all 3 segments blocked; the clean playlist (same
-        // .ts files, no query) probes fine. Allow all extensions —
-        // segment URLs come from the platform's own playlist (trusted).
-        options.setFormatOptionValue("ALL", forKey: "allowed_extensions")
-        return options
-    }
+    // MARK: - Playback engine (PlayerBackend)
 
     private func startPlayback() {
-        startIJKPlayback()
+        startBackendPlayback()
         startPlaybackTimer()
     }
 
-    private func startIJKPlayback() {
+    private func startBackendPlayback() {
         playbackStartedAt = Date()
         lastPlaybackTime = 0
         lastAdvanceDate = Date()
         liveAutoRetried = false
         stallLineSwitched = false
-        guard let p = IJKFFMoviePlayerController(contentURL: streamURL, with: makeIJKOptions()) else {
+        // AVPlayer cannot decode FLV (Huya / Douyu live): show a clear
+        // message instead of a generic failure. The retry button
+        // switches the engine to MPV and retries (see retryCurrentStream).
+        // Do NOT call onLiveFailed here — retrying the same FLV URL on
+        // another line cannot help.
+        guard PlayerKernel.supports(url: streamURL) else {
+            engineUnsupported = true
+            playFailed = true
+            spinner.stopAnimating()
+            statusLabel.text = "系统播放器不支持 FLV 直播，点 ▶ 切到 MPV 播放"
+            statusLabel.isHidden = false
+            updateStatusActions()
+            return
+        }
+        engineUnsupported = false
+        let backend = PlayerKernel.makeBackend()
+        backend.playbackRate = playbackSpeed
+        backend.onEvent = { [weak self] event in self?.handleBackendEvent(event) }
+        backend.view.frame = videoView.bounds
+        backend.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        videoView.addSubview(backend.view)
+        self.backend = backend
+        showLoadingUI()
+        guard backend.open(url: streamURL, headers: PlayerKernel.httpHeaders(platform: platform)) else {
             playFailed = true
             spinner.stopAnimating()
             statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
             statusLabel.isHidden = false
             updateStatusActions()
-            // Player could not even be created (bad URL object): same
+            // Backend could not even be created (bad URL object): same
             // fresh-URL path as a playback error.
             if !isVod { onLiveFailed?() }
             return
         }
-        p.scalingMode = IJKMPMovieScalingMode.aspectFit
-        p.shouldAutoplay = true
-        p.shouldShowHudView = false
-        p.setPauseInBackground(false)
-        // Playback speed chosen on the web page (or the default 1x).
-        // ijkplayer applies it live; there is no pitch correction in
-        // IJKFFMoviePlayerController, so 2x/3x sound higher-pitched —
-        // that is the engine's behaviour, not a bug in this player.
-        p.playbackRate = Float(playbackSpeed)
-        p.view.frame = videoView.bounds
-        p.view.autoresizingMask = [UIView.AutoresizingMask.flexibleWidth, UIView.AutoresizingMask.flexibleHeight]
-        videoView.addSubview(p.view)
-        self.ijkPlayer = p
-        registerIJKNotifications(for: p)
-        showLoadingUI()
-        p.prepareToPlay()
-        p.play()
         // Lock screen / Control Center + lyrics Live Activity.
         setupNowPlaying()
         fetchNowPlayingArtworkIfNeeded()
         startLyricsActivityIfNeeded()
     }
 
-    private func teardownIJKPlayer() {
-        NotificationCenter.default.removeObserver(self)
-        if let p = ijkPlayer {
-            p.view.removeFromSuperview()
-            p.shutdown()
+    private func teardownBackend() {
+        if let b = backend {
+            b.view.removeFromSuperview()
+            b.shutdown()
         }
-        ijkPlayer = nil
+        backend = nil
         playFailed = false
         didEnd = false
         userPaused = false
+    }
+
+    // Rebuild the backend with the engine currently selected in Settings
+    // (called when the user switches engine while this player is open).
+    // VOD resumes at its position; live just reopens the same URL.
+    func rebuildWithCurrentEngine() {
+        if isVod, let p = backend {
+            resumePosition = p.currentTime
+            didSeekToStart = false
+        }
+        hasStartedPlaying = false
+        showLoadingUI()
+        teardownBackend()
+        startBackendPlayback()
+    }
+
+    // One handler for every backend event (the old ijkplayer
+    // notifications, translated by each backend). The bodies are the
+    // old handler bodies, unchanged — only the source changed.
+    private func handleBackendEvent(_ event: PlayerBackendEvent) {
+        switch event {
+        case .prepared:
+            seekToStartPositionIfNeeded()
+            if let p = backend, !p.isPlaying { p.play() }
+        case .firstFrame:
+            hasStartedPlaying = true
+            hideLoadingUI()
+        case .playing:
+            switchingStream = false
+            hasStartedPlaying = true
+            hideLoadingUI()
+            playPauseButton.setImage(playPauseImage(named: "pause.fill"), for: .normal)
+            if isVod { resumeDanmakuAnimations() }
+            scheduleControlsHide()
+        case .paused:
+            hideLoadingUI()
+            playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
+            if isVod { pauseDanmakuAnimations() }
+            showControls()
+        case .stalled:
+            // Loading UI is driven by actual time advance (see
+            // tickPlayback), not by load state: engines report
+            // .stalled while re-fetching on slow overseas sources even
+            // though the picture keeps playing from its buffer. Only
+            // show the spinner here while playback has not started yet.
+            if !hasStartedPlaying {
+                showLoadingUI()
+            }
+        case .finished(let reason):
+            if switchingStream { return }
+            switch reason {
+            case .ended:
+                handlePlaybackEnded()
+            case .error:
+                handlePlaybackError()
+            }
+        }
+    }
+
+    // Clean EOF (was ijkPlaybackDidFinish .playbackEnded).
+    private func handlePlaybackEnded() {
+        if isVod {
+            // VOD: genuine end of file — unchanged.
+            didEnd = true
+            spinner.stopAnimating()
+            statusLabel.text = "已播完"
+            statusLabel.isHidden = false
+            updateStatusActions()
+            playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
+            pauseDanmakuAnimations()
+            return
+        }
+        // Live: a clean EOF is usually NOT the room going offline.
+        // Huya's FLV anti-code expires after ~5 min (wsTime+300s) and
+        // the CDN cuts the stream, which the engine reports as a clean
+        // EOF — the old code showed "直播已结束" and stopped, even
+        // though the streamer was still live. Treat it like a failure
+        // instead: show the loading state and ask the web page for the
+        // next CDN line / a fresh URL (same path as .playbackError;
+        // the web throttles fresh fetches to once per 60s). NOTE: all
+        // lines share one anti-code, so they all expire together — the
+        // line switch alone cannot fix an expiry, only the fresh URL
+        // can. The cap bounds consecutive EOFs with no playback in
+        // between: once it trips, the room really is offline and the
+        // genuine end state shows.
+        if liveEndedRetries < 5 {
+            liveEndedRetries += 1
+            showLoadingUI()
+            onLiveFailed?()
+        } else {
+            didEnd = true
+            spinner.stopAnimating()
+            statusLabel.text = "直播已结束"
+            statusLabel.isHidden = false
+            updateStatusActions()
+            playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
+        }
+    }
+
+    // Engine gave up on this URL (was ijkPlaybackDidFinish .playbackError).
+    private func handlePlaybackError() {
+        // Live streams often drop once on a flaky network; retry
+        // automatically once instead of leaving "playback failed"
+        // on screen. VOD failures are usually a dead source, so
+        // they still show the manual retry immediately.
+        if !isVod, !liveAutoRetried {
+            retryCurrentStream()
+            // startBackendPlayback() (called inside retry) resets
+            // liveAutoRetried, so re-arm it AFTER the retry:
+            // the retried stream gets no further same-URL
+            // auto-retry — its failure goes to onLiveFailed
+            // (fresh URL) instead of looping forever.
+            liveAutoRetried = true
+            return
+        }
+        playFailed = true
+        spinner.stopAnimating()
+        statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
+        statusLabel.isHidden = false
+        updateStatusActions()
+        playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
+        // Final live failure: ask the web page for a fresh URL
+        // instead of leaving the user on a dead stream. The
+        // web side throttles this to once per 60s.
+        if !isVod { onLiveFailed?() }
     }
 
     // MARK: - Lock screen / Control Center (Now Playing)
 
     // Registers the remote commands this player actually supports and
     // publishes the first Now Playing info. Idempotent: live stream
-    // switches recreate the ijkplayer (startIJKPlayback) without
+    // switches recreate the backend (startBackendPlayback) without
     // tearing the commands down, so a second setup must not add the
     // same target twice (the handler would fire twice per press).
     private func setupNowPlaying() {
@@ -1346,18 +1445,18 @@ final class NativePlayerViewController: UIViewController {
     // Title / artist / artwork / duration / elapsed / rate. Live has
     // no duration (an endless stream), so only VOD sets one.
     private func updateNowPlayingInfo() {
-        guard nowPlayingActive, let p = ijkPlayer else { return }
+        guard nowPlayingActive, let p = backend else { return }
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = streamTitle.isEmpty ? platformName : streamTitle
         info[MPMediaItemPropertyArtist] = platformName
         info[MPMediaItemPropertyAlbumTitle] = isVod ? "HAo Studio · 影视" : "HAo Studio · 直播"
-        let t = p.currentPlaybackTime
+        let t = p.currentTime
         if isVod {
             let dur = p.duration
             if dur.isFinite, dur > 0 { info[MPMediaItemPropertyPlaybackDuration] = dur }
             if t.isFinite, t >= 0 { info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = t }
         }
-        info[MPNowPlayingInfoPropertyPlaybackRate] = p.isPlaying() ? 1.0 : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = p.isPlaying ? 1.0 : 0.0
         if let art = nowPlayingArtwork { info[MPMediaItemPropertyArtwork] = art }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         lastNowPlayingUpdate = Date()
@@ -1378,7 +1477,7 @@ final class NativePlayerViewController: UIViewController {
     }
 
     @objc private func remotePlay(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard let p = ijkPlayer, !p.isPlaying() else { return .commandFailed }
+        guard let p = backend, !p.isPlaying else { return .commandFailed }
         userPaused = false
         lastAdvanceDate = Date()
         p.play()
@@ -1391,7 +1490,7 @@ final class NativePlayerViewController: UIViewController {
     }
 
     @objc private func remotePause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard let p = ijkPlayer, p.isPlaying() else { return .commandFailed }
+        guard let p = backend, p.isPlaying else { return .commandFailed }
         userPaused = true
         p.pause()
         playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
@@ -1403,17 +1502,17 @@ final class NativePlayerViewController: UIViewController {
     }
 
     @objc private func remoteTogglePlayPause(_ event: MPRemoteCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard let p = ijkPlayer else { return .commandFailed }
-        if p.isPlaying() { return remotePause(event) }
+        guard let p = backend else { return .commandFailed }
+        if p.isPlaying { return remotePause(event) }
         return remotePlay(event)
     }
 
     @objc private func remoteSeek(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard isVod, let p = ijkPlayer else { return .commandFailed }
+        guard isVod, let p = backend else { return .commandFailed }
         let target = event.positionTime
         let dur = p.duration
         guard target.isFinite, target >= 0, (!dur.isFinite || dur <= 0 || target <= dur) else { return .commandFailed }
-        p.currentPlaybackTime = target
+        p.seek(to: target)
         lastDanmakuTime = target
         danmakuCursor = danmakuItems.firstIndex(where: { $0.time > target - 0.5 }) ?? danmakuItems.count
         lastPlaybackTime = target
@@ -1432,12 +1531,12 @@ final class NativePlayerViewController: UIViewController {
     }
 
     private func remoteSkip(by seconds: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        guard isVod, let p = ijkPlayer else { return .commandFailed }
+        guard isVod, let p = backend else { return .commandFailed }
         let dur = p.duration
-        var target = p.currentPlaybackTime + seconds
+        var target = p.currentTime + seconds
         if target < 0 { target = 0 }
         if dur.isFinite, dur > 0, target > dur { target = dur }
-        p.currentPlaybackTime = target
+        p.seek(to: target)
         lastDanmakuTime = target
         danmakuCursor = danmakuItems.firstIndex(where: { $0.time > target - 0.5 }) ?? danmakuItems.count
         lastPlaybackTime = target
@@ -1467,9 +1566,9 @@ final class NativePlayerViewController: UIViewController {
     // manager only updates the activity when the lyric line actually
     // changed, so calling this every tick is cheap.
     private func syncLyricsActivity() {
-        guard lyricsActivityStarted, let p = ijkPlayer else { return }
+        guard lyricsActivityStarted, let p = backend else { return }
         if #available(iOS 16.2, *) {
-            LyricsLiveActivity.shared.sync(position: p.currentPlaybackTime, playing: p.isPlaying())
+            LyricsLiveActivity.shared.sync(position: p.currentTime, playing: p.isPlaying)
         }
     }
 
@@ -1479,24 +1578,6 @@ final class NativePlayerViewController: UIViewController {
         if #available(iOS 16.2, *) {
             LyricsLiveActivity.shared.end(owner: "npc")
         }
-    }
-
-    private func registerIJKNotifications(for p: IJKFFMoviePlayerController) {
-        // NOTE: ijkplayer's notification names are `NSString *const`
-        // globals. In this toolchain (Xcode 26 / Swift 6) they import
-        // as `NSNotification.Name` values that CANNOT be referenced
-        // by name — neither as a bare identifier, nor as a
-        // `NSNotification.Name.<Name>` member (builds #13/#14/#15
-        // each proved one of those forms fails). So build the names
-        // from their raw strings instead. Verified against the
-        // framework binary: each constant's runtime string value
-        // equals its name, so these match the posted notifications.
-        let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(ijkLoadStateChanged), name: NSNotification.Name(rawValue: "IJKMPMoviePlayerLoadStateDidChangeNotification"), object: p)
-        nc.addObserver(self, selector: #selector(ijkPlaybackStateChanged), name: NSNotification.Name(rawValue: "IJKMPMoviePlayerPlaybackStateDidChangeNotification"), object: p)
-        nc.addObserver(self, selector: #selector(ijkPlaybackDidFinish), name: NSNotification.Name(rawValue: "IJKMPMoviePlayerPlaybackDidFinishNotification"), object: p)
-        nc.addObserver(self, selector: #selector(ijkPreparedToPlayChanged), name: NSNotification.Name(rawValue: "IJKMPMediaPlaybackIsPreparedToPlayDidChangeNotification"), object: p)
-        nc.addObserver(self, selector: #selector(ijkFirstFrameRendered), name: NSNotification.Name(rawValue: "IJKMPMoviePlayerFirstVideoFrameRenderedNotification"), object: p)
     }
 
     private func hideLoadingUI() {
@@ -1513,160 +1594,22 @@ final class NativePlayerViewController: UIViewController {
     }
 
     private func seekToStartPositionIfNeeded() {
-        guard isVod, !didSeekToStart, startPosition > 5, let p = ijkPlayer, p.isPreparedToPlay else { return }
+        guard isVod, !didSeekToStart, let p = backend, p.isPrepared else { return }
+        // Engine rebuild (Settings switch) resumes at the position the
+        // old backend was at; a fresh open resumes at startPosition.
+        let target = resumePosition ?? startPosition
+        resumePosition = nil
+        guard target > 5 else { return }
         didSeekToStart = true
-        p.currentPlaybackTime = startPosition
-        lastDanmakuTime = startPosition
-        danmakuCursor = danmakuItems.firstIndex(where: { $0.time > startPosition - 0.5 }) ?? danmakuItems.count
-    }
-
-    // MARK: - ijkplayer notifications
-
-    @objc private func ijkLoadStateChanged(_ note: Notification) {
-        // Loading UI is driven by actual time advance (see
-        // tickPlayback), not by load state: ijkplayer reports
-        // .stalled while re-fetching on slow overseas sources even
-        // though the picture keeps playing from its buffer. Only
-        // show the spinner here while playback has not started yet.
-        guard let obj = note.object as? IJKFFMoviePlayerController else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let p = self.ijkPlayer, obj === p else { return }
-            if !self.hasStartedPlaying, p.loadState.contains(.stalled) {
-                self.showLoadingUI()
-            }
-        }
-    }
-
-    @objc private func ijkPlaybackStateChanged(_ note: Notification) {
-        guard let obj = note.object as? IJKFFMoviePlayerController else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let p = self.ijkPlayer, obj === p else { return }
-            switch p.playbackState {
-            case .playing:
-                self.switchingStream = false
-                self.hasStartedPlaying = true
-                self.hideLoadingUI()
-                self.playPauseButton.setImage(self.playPauseImage(named: "pause.fill"), for: .normal)
-                if self.isVod { self.resumeDanmakuAnimations() }
-                self.scheduleControlsHide()
-            case .paused:
-                self.hideLoadingUI()
-                self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
-                if self.isVod { self.pauseDanmakuAnimations() }
-                self.showControls()
-            case .interrupted:
-                self.hideLoadingUI()
-                self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
-            case .stopped, .seekingForward, .seekingBackward:
-                break
-            @unknown default:
-                break
-            }
-        }
-    }
-
-    @objc private func ijkPlaybackDidFinish(_ note: Notification) {
-        guard let obj = note.object as? IJKFFMoviePlayerController else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let p = self.ijkPlayer, obj === p else { return }
-            if self.switchingStream { return }
-            let reasonValue = (note.userInfo?[IJKMPMoviePlayerPlaybackDidFinishReasonUserInfoKey] as? NSNumber)?.intValue
-            let reason = reasonValue.flatMap { IJKMPMovieFinishReason(rawValue: $0) }
-            switch reason {
-            case .playbackEnded:
-                if self.isVod {
-                    // VOD: genuine end of file — unchanged.
-                    self.didEnd = true
-                    self.spinner.stopAnimating()
-                    self.statusLabel.text = "已播完"
-                    self.statusLabel.isHidden = false
-                    self.updateStatusActions()
-                    self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
-                    self.pauseDanmakuAnimations()
-                    break
-                }
-                // Live: a clean EOF is usually NOT the room going
-                // offline. Huya's FLV anti-code expires after ~5 min
-                // (wsTime+300s) and the CDN cuts the stream, which
-                // ijkplayer reports as .playbackEnded — the old code
-                // showed "直播已结束" and stopped, even though the
-                // streamer was still live. Treat it like a failure
-                // instead: show the loading state and ask the web page
-                // for the next CDN line / a fresh URL (same path as
-                // .playbackError; the web throttles fresh fetches to
-                // once per 60s). NOTE: all lines share one anti-code,
-                // so they all expire together — the line switch alone
-                // cannot fix an expiry, only the fresh URL can. The
-                // cap bounds consecutive EOFs with no playback in
-                // between: once it trips, the room really is offline
-                // and the genuine end state shows.
-                if self.liveEndedRetries < 5 {
-                    self.liveEndedRetries += 1
-                    self.showLoadingUI()
-                    self.onLiveFailed?()
-                } else {
-                    self.didEnd = true
-                    self.spinner.stopAnimating()
-                    self.statusLabel.text = "直播已结束"
-                    self.statusLabel.isHidden = false
-                    self.updateStatusActions()
-                    self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
-                }
-            case .playbackError:
-                // Live streams often drop once on a flaky network; retry
-                // automatically once instead of leaving "playback failed"
-                // on screen. VOD failures are usually a dead source, so
-                // they still show the manual retry immediately.
-                if !self.isVod, !self.liveAutoRetried {
-                    self.retryCurrentStream()
-                    // startIJKPlayback() (called inside retry) resets
-                    // liveAutoRetried, so re-arm it AFTER the retry:
-                    // the retried stream gets no further same-URL
-                    // auto-retry — its failure goes to onLiveFailed
-                    // (fresh URL) instead of looping forever.
-                    self.liveAutoRetried = true
-                    break
-                }
-                self.playFailed = true
-                self.spinner.stopAnimating()
-                self.statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
-                self.statusLabel.isHidden = false
-                self.updateStatusActions()
-                self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
-                // Final live failure: ask the web page for a fresh URL
-                // instead of leaving the user on a dead stream. The
-                // web side throttles this to once per 60s.
-                if !self.isVod { self.onLiveFailed?() }
-            case .userExited, .none:
-                break
-            @unknown default:
-                break
-            }
-        }
-    }
-
-    @objc private func ijkPreparedToPlayChanged(_ note: Notification) {
-        guard let obj = note.object as? IJKFFMoviePlayerController else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, let p = self.ijkPlayer, obj === p, p.isPreparedToPlay else { return }
-            self.seekToStartPositionIfNeeded()
-            if !p.isPlaying() { p.play() }
-        }
-    }
-
-    @objc private func ijkFirstFrameRendered(_ note: Notification) {
-        guard let obj = note.object as? IJKFFMoviePlayerController else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, self.ijkPlayer === obj else { return }
-            self.hasStartedPlaying = true
-            self.hideLoadingUI()
-        }
+        p.seek(to: target)
+        lastDanmakuTime = target
+        danmakuCursor = danmakuItems.firstIndex(where: { $0.time > target - 0.5 }) ?? danmakuItems.count
     }
 
     // Polls the player clock 4x/second. This is the only place the
     // loading spinner is hidden once playback has started: time
     // actually advancing proves the picture is playing, even if
-    // ijkplayer still reports .stalled while re-fetching on a slow
+    // the engine still reports .stalled while re-fetching on a slow
     // overseas source. A genuine stall (no advance for > 2s) brings
     // the spinner back. Also drives the VOD seek bar, time labels
     // and danmaku spawning.
@@ -1678,8 +1621,8 @@ final class NativePlayerViewController: UIViewController {
     }
 
     private func tickPlayback() {
-        guard let p = ijkPlayer else { return }
-        let t = p.currentPlaybackTime
+        guard let p = backend else { return }
+        let t = p.currentTime
         let now = Date()
         if t.isFinite, t > lastPlaybackTime + 0.05 {
             lastPlaybackTime = t
@@ -1770,7 +1713,7 @@ final class NativePlayerViewController: UIViewController {
     }
 
     private func updateVODProgress(time t: Double) {
-        guard let p = ijkPlayer else { return }
+        guard let p = backend else { return }
         let dur = p.duration
         curTimeLabel?.text = formatTime(max(0, t))
         if dur.isFinite, dur > 0 {
@@ -1784,9 +1727,8 @@ final class NativePlayerViewController: UIViewController {
     // Switch the live stream in place (quality change, or the web page
     // posted a new room URL while this player is already presented).
     // Safe to call while playing; does not dismiss or re-present.
-    // If the new stream needs the other engine (HLS <-> FLV), the
-    // current engine is torn down and the right one started in place,
-    // so the UI never flashes back to the web page.
+    // The backend is torn down and recreated with the new URL in the
+    // same view and UI, so the screen never flashes back to the web page.
     // Room / quality switch reusing this player in place. The title /
     // platform / roomId parameters are optional: a quality switch
     // (same room) omits them and the identity stays; a room switch
@@ -1800,9 +1742,10 @@ final class NativePlayerViewController: UIViewController {
         danmakuView.subviews.forEach { $0.removeFromSuperview() }
         laneBusyUntil.removeAll()
         // `format` is accepted for compatibility with the web
-        // postMessage contract; ijkplayer plays both HLS and FLV,
-        // so there is no engine to switch — the player is simply
-        // recreated with the new URL in the same view and UI.
+        // postMessage contract; the selected backend plays both HLS
+        // and FLV (except AVPlayer, which cannot play FLV — see
+        // startBackendPlayback), so the player is simply recreated
+        // with the new URL in the same view and UI.
         streamURL = url
         if let t = title { streamTitle = t; titleLabel?.text = t.isEmpty ? platformName + "直播" : t }
         if let p = platform { self.platform = p }
@@ -1817,8 +1760,8 @@ final class NativePlayerViewController: UIViewController {
         switchingStream = true
         showLoadingUI()
         playPauseButton.setImage(playPauseImage(named: "pause.fill"), for: .normal)
-        teardownIJKPlayer()
-        startIJKPlayback()
+        teardownBackend()
+        startBackendPlayback()
         switchingStream = false
         // New room (or same room, same key): apply its remembered volume.
         applyRememberedLiveVolume()
@@ -1895,13 +1838,13 @@ final class NativePlayerViewController: UIViewController {
         liveDanmakuTimer = nil
         teardownNowPlaying()
         endLyricsActivity()
-        teardownIJKPlayer()
+        teardownBackend()
     }
 
     private func reportClose() {
         guard !didReportClose else { return }
         didReportClose = true
-        let pos = ijkPlayer?.currentPlaybackTime ?? 0
+        let pos = backend?.currentTime ?? 0
         onClose?(pos)
     }
 
@@ -1991,7 +1934,7 @@ final class NativePlayerViewController: UIViewController {
         guard controlsVisible, !isLocked else { return }
         // Pause keeps the bars visible: never auto-hide while the
         // picture is up but not playing (the user paused it).
-        if let p = ijkPlayer, !p.isPlaying(), hasStartedPlaying { return }
+        if let p = backend, !p.isPlaying, hasStartedPlaying { return }
         controlsVisible = false
         UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState], animations: {
             self.topBar.alpha = 0
@@ -2052,12 +1995,12 @@ final class NativePlayerViewController: UIViewController {
     }
 
     @objc private func playPauseTapped() {
-        guard let p = ijkPlayer else { return }
+        guard let p = backend else { return }
         if didEnd {
             if isVod {
                 // Replay from the start.
                 didEnd = false
-                p.currentPlaybackTime = 0
+                p.seek(to: 0)
                 lastPlaybackTime = 0
                 lastAdvanceDate = Date()
                 // Restart danmaku from the top too, or the replay shows none.
@@ -2076,7 +2019,7 @@ final class NativePlayerViewController: UIViewController {
             retryCurrentStream()
             return
         }
-        if p.isPlaying() {
+        if p.isPlaying {
             userPaused = true
             p.pause()
             playPauseButton.setImage(playPauseImage(named: "play.fill"), for: .normal)
@@ -2093,14 +2036,23 @@ final class NativePlayerViewController: UIViewController {
     }
 
     // Retry a failed stream by recreating the player with the same
-    // URL (ijkplayer has no "re-attach media" on a live player).
+    // URL (no backend has "re-attach media" on a live player).
     private func retryCurrentStream() {
+        // FLV + system player: the retry switches the engine to MPV
+        // (the only way this URL can play) instead of retrying a
+        // combination that can never work. The web setting follows via
+        // onPlayerEngineChanged so Settings shows the same engine.
+        if engineUnsupported {
+            engineUnsupported = false
+            PlayerKernel.current = .mpv
+            onPlayerEngineChanged?("mpv")
+        }
         playFailed = false
         didEnd = false
         hasStartedPlaying = false
         showLoadingUI()
-        teardownIJKPlayer()
-        startIJKPlayback()
+        teardownBackend()
+        startBackendPlayback()
     }
 
     @objc private func seekTouchDown() {
@@ -2110,7 +2062,7 @@ final class NativePlayerViewController: UIViewController {
     @objc private func seekTouchUp() {
         guard let slider = seekSlider else { isScrubbing = false; return }
         isScrubbing = false
-        guard let p = ijkPlayer else { return }
+        guard let p = backend else { return }
         let duration = p.duration
         guard duration.isFinite, duration > 0 else { return }
         seekToPosition(Double(slider.value) * duration)
@@ -2119,11 +2071,11 @@ final class NativePlayerViewController: UIViewController {
     // Seek + resync the VOD danmaku cursor (shared by the seek bar
     // and the horizontal-swipe gesture).
     private func seekToPosition(_ target: Double) {
-        guard let p = ijkPlayer else { return }
+        guard let p = backend else { return }
         let duration = p.duration
         guard duration.isFinite, duration > 0 else { return }
         let t = max(0, min(duration, target))
-        p.currentPlaybackTime = t
+        p.seek(to: t)
         lastDanmakuTime = t
         danmakuCursor = danmakuItems.firstIndex(where: { $0.time > t - 0.5 }) ?? danmakuItems.count
         lastPlaybackTime = t
@@ -2345,7 +2297,7 @@ final class NativePlayerViewController: UIViewController {
     private func setPlaybackSpeed(_ rate: Double, notify: Bool = true) {
         guard Self.playbackSpeeds.contains(rate) else { return }
         playbackSpeed = rate
-        ijkPlayer?.playbackRate = Float(rate)
+        backend?.playbackRate = rate
         playbackSpeedSegment?.selectedSegmentIndex = Self.playbackSpeeds.firstIndex(of: rate) ?? 2
         if notify { onSpeedChanged?(rate) }
     }
@@ -2363,12 +2315,12 @@ final class NativePlayerViewController: UIViewController {
             guard !longPressSpeedActive else { return }
             longPressSpeedActive = true
             speedBeforeLongPress = playbackSpeed
-            ijkPlayer?.playbackRate = 2
+            backend?.playbackRate = 2
             speed2xLabel?.isHidden = false
         case .ended, .cancelled, .failed:
             guard longPressSpeedActive else { return }
             longPressSpeedActive = false
-            ijkPlayer?.playbackRate = Float(speedBeforeLongPress)
+            backend?.playbackRate = speedBeforeLongPress
             speed2xLabel?.isHidden = true
             suppressTapUntil = Date().addingTimeInterval(0.35)
         default:
@@ -2418,8 +2370,8 @@ final class NativePlayerViewController: UIViewController {
 
     private func spawnDanmakuIfDue() {
         guard isVod, danmakuEnabled, !danmakuItems.isEmpty,
-              let p = ijkPlayer, p.isPlaying() else { return }
-        let now = p.currentPlaybackTime
+              let p = backend, p.isPlaying else { return }
+        let now = p.currentTime
         if now < lastDanmakuTime - 1.0 {
             // Seeked backwards: rewind the cursor.
             danmakuCursor = danmakuItems.firstIndex(where: { $0.time > now - 0.5 }) ?? danmakuItems.count
@@ -2734,8 +2686,8 @@ final class NativePlayerViewController: UIViewController {
             panStartPoint = gesture.location(in: videoView)
             panStartBrightness = UIScreen.main.brightness
             panStartVolume = AVAudioSession.sharedInstance().outputVolume
-            if isVod, let p = ijkPlayer {
-                panStartPosition = p.currentPlaybackTime
+            if isVod, let p = backend {
+                panStartPosition = p.currentTime
             }
             panDecided = false
             panKind = .none
@@ -2780,7 +2732,7 @@ final class NativePlayerViewController: UIViewController {
                 // Remember it for this room (live only).
                 saveCurrentLiveVolume(level)
             case .seek:
-                guard let p = ijkPlayer else { return }
+                guard let p = backend else { return }
                 let dur = p.duration
                 guard dur.isFinite, dur > 0 else { return }
                 let target = max(0, min(dur, panStartPosition + Double(t.x / size.width) * dur))

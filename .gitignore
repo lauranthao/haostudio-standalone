@@ -20,3 +20,5 @@ ios/build/
 Pods/
 *.xcuserdata/
 .DS_Store
+# libmpv xcframeworks (downloaded at build time, see codemagic.yaml)
+ios/Vendor/

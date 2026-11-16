@@ -574,6 +574,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             let js = "dmPos='\(pos)';localStorage.setItem('dmPos','\(pos)');dmOpacity=\(op);localStorage.setItem('dmOpacity','\(op)');dmSpeed=\(sp);localStorage.setItem('dmSpeed','\(sp)');"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        playerVC.onPlayerEngineChanged = { [weak self] engine in
+            self?.syncPlayerEngineToWeb(engine)
+        }
         // Live danmaku bridge: the web page runs Bilibili WS / Kuaishou
         // polling and buffers fresh items; pull them into the native
         // player's danmaku layer (Pure Live shows danmaku on the video).
@@ -746,6 +749,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             let js = "dmPos='\(pos)';localStorage.setItem('dmPos','\(pos)');dmOpacity=\(op);localStorage.setItem('dmOpacity','\(op)');dmSpeed=\(sp);localStorage.setItem('dmSpeed','\(sp)');"
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
+        playerVC.onPlayerEngineChanged = { [weak self] engine in
+            self?.syncPlayerEngineToWeb(engine)
+        }
         // Playback speed changed in the player (settings panel or
         // long-press release): sync back to the web page so the web
         // player's speed button + localStorage stay in step.
@@ -755,6 +761,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         }
         present(playerVC, animated: true)
         applyIdleTimer()
+    }
+
+    // The player itself switched the engine (AVPlayer + FLV live: the
+    // retry button moves to MPV). Write the new engine to the web
+    // page's localStorage so Settings shows the same engine.
+    func syncPlayerEngineToWeb(_ engine: String) {
+        guard let webView = webView else { return }
+        webView.evaluateJavaScript("localStorage.setItem('hao_player_engine','\(engine)');if(window.haoRefreshSettings){window.haoRefreshSettings();}", completionHandler: nil)
     }
 
     // VOD danmaku fed from the web page (Bilibili direct): the player
@@ -1045,6 +1059,18 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
         // something is actually playing (see applyIdleTimer).
         if (body["kind"] as? String) == "keepScreen" {
             viewController?.setKeepScreenOn(Self.dmBool(body["enabled"], default: true))
+            return
+        }
+        // Player engine (Settings "播放器内核"): the web page posts
+        // {kind:'playerEngine', engine:'mpv'|'ijk'|'exo'} on every
+        // change (haoSetPlayerEngine). Persist it; if a player is
+        // open, rebuild it with the new engine in place (VOD resumes
+        // at its position, live just reopens).
+        if (body["kind"] as? String) == "playerEngine" {
+            PlayerKernel.current = PlayerEngineKey.from(Self.dmString(body["engine"], default: "mpv"))
+            if let player = viewController?.presentedViewController as? NativePlayerViewController {
+                player.rebuildWithCurrentEngine()
+            }
             return
         }
         // VOD danmaku (Bilibili direct): the web page posts

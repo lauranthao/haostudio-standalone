@@ -2,7 +2,7 @@
 """Standalone (e) preflight checks for ios/ (run, do not ship-depend)."""
 import re, pathlib, json, plistlib
 
-ios = pathlib.Path.home() / "workspace/deploy/standalone-app/ios"
+ios = pathlib.Path(__file__).resolve().parent
 pbx = (ios / "HAoStudio.xcodeproj/project.pbxproj").read_text()
 
 # 1. file refs exist
@@ -10,7 +10,7 @@ missing = []
 for m in re.finditer(r"(\w+) /\* ([^*]+) \*/ = \{isa = PBXFileReference;.*?path = ([^;]+); sourceTree = \"<group>\";", pbx):
     oid, name, path = m.groups()
     path = path.strip()
-    cands = [ios / path, ios / "HAoStudio" / path, ios / "HAoStudioLyrics" / path]
+    cands = [ios / path, ios / "HAoStudio" / path, ios / "HAoStudioLyrics" / path, ios / "Vendor/libmpv" / path]
     if not any(c.exists() for c in cands):
         missing.append((name.strip(), path))
 print("1. missing file refs:", missing or "NONE")
@@ -58,7 +58,7 @@ print("6. Podfile IJK 0.1.5:", "pod 'IJKMediaFramework', '0.1.5'" in (ios / "Pod
 # 7. codemagic.yaml
 try:
     import yaml
-    y = yaml.safe_load(open(pathlib.Path.home() / "workspace/deploy/standalone-app/codemagic.yaml"))
+    y = yaml.safe_load(open(ios.parent / "codemagic.yaml"))
     print("7. codemagic.yaml parses, workflows:", list(y["workflows"].keys()),
           "| artifacts:", y["workflows"]["ios-unsigned"]["artifacts"])
 except ImportError:
@@ -70,3 +70,11 @@ print("8. SWIFT_VERSION:", sorted(set(re.findall(r"SWIFT_VERSION = ([\d.]+)", pb
       "| bundle ids:", sorted(set(re.findall(r"com\.haostudio\.[a-z.]+", pbx))),
       "| device family:", sorted(set(re.findall(r"TARGETED_DEVICE_FAMILY = \"([^\"]+)\"", pbx))))
 print("   ARCHS/VALID_ARCHS set:", "ARCHS" in pbx, "| armv7 anywhere:", "armv7" in pbx)
+
+# 9. libmpv (MPV player backend): 18 xcframeworks vendored + download step + search paths
+xc = sorted((ios / "Vendor/libmpv").glob("*.xcframework")) if (ios / "Vendor/libmpv").exists() else []
+cm = (ios.parent / "codemagic.yaml").read_text()
+print("9. libmpv xcframeworks:", len(xc), "| codemagic download step:", "libmpv-darwin-build" in cm and "d428641cc6c100de8234eae04e229966e46949eb73fcabd526a008a02e9bf968" in cm,
+      "| FRAMEWORK_SEARCH_PATHS:", pbx.count("FRAMEWORK_SEARCH_PATHS"), "| LD_RUNPATH:", pbx.count("LD_RUNPATH_SEARCH_PATHS"),
+      "| Embed Frameworks phase:", "Embed Frameworks" in pbx,
+      "| backend Swift files:", all((ios / "HAoStudio" / f).exists() for f in ["PlayerKernel.swift", "IJKPlayerBackend.swift", "AVPlayerBackend.swift", "MpvPlayerBackend.swift"]))
