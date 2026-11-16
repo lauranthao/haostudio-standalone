@@ -4,7 +4,7 @@
 // salt, is_special, descriptor validity windows).
 // - multirates parsing: server order kept, rate is an OPAQUE id (never
 // numerically sorted), dedupe, single-rate fallback.
-// - CDN codes: rtmp_cdn merged, scdn* first.
+// - CDN codes: rtmp_cdn merged, scdn* last (Pure Live order).
 // - Play-URL extraction: absolute rtmp_live wins, base+path combining,
 // no bare CDN directory ever handed to the player.
 // - Lease math: expire=300 -> invalidAt issued+300, refreshAt issued+255.
@@ -820,7 +820,8 @@ void main() {
   });
 
   group('DouyuSite end-to-end with stubbed Dio', () {
-    test('room detail -> qualities (scdn first) -> grouped URLs', () async {
+    test('room detail -> qualities (scdn last, Pure Live) -> grouped URLs',
+        () async {
       final site = DouyuSite(dio: stubDouyuDio());
       final room = await site.getRoomDetail(
         const LiveRoom(roomId: '226037', platform: 'douyu'),
@@ -832,11 +833,11 @@ void main() {
       final qualities = await site.getPlayQualities(liveRoom: room);
       expect(qualities.map((q) => q.quality), ['原画', '超清', '高清', '流畅']);
       expect(qualities.map((q) => q.id), ['0', '3', '2', '1']);
-      // scdn* first, server order otherwise.
+      // Pure Live order: scdn* last, server order otherwise.
       expect((qualities.first.data as DouyuPlayData).cdns, [
-        'scdn-tct',
         'ws',
         'tct',
+        'scdn-tct',
       ]);
 
       // Request rate 3: tct downgrades to 0, so its URL must NOT be in

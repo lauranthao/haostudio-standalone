@@ -951,7 +951,13 @@ class _DetailSkeleton extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     if (preload != null && preload!.pic.isNotEmpty)
-                      Image.network(preload!.pic, fit: BoxFit.cover)
+                      RefererImage(
+                        url: preload!.pic,
+                        fit: BoxFit.cover,
+                        fallback: const ColoredBox(
+                          color: Color(0xFF1C1C1E),
+                        ),
+                      )
                     else
                       const ColoredBox(
                         color: Color(0xFF1C1C1E),

@@ -1,47 +1,123 @@
-// mpv tuning table for media_kit (fixes spec fix 18 §6 + study §1.4).
+// mpv tuning table — Pure Live 3.x
+// `lib/core/player/kernel/media_kit_live_properties.dart`
+// (`MediaKitLiveProperties.build()` + `sourceProperties()`), copied
+// verbatim. Only the class wrapper changed (top-level functions instead
+// of statics) and the proxy/private-input inputs are fixed: our live
+// URLs are always remote http(s) and playback is direct (no proxy).
+// The Settings/preset/super-resolution methods of that class are NOT
+// copied — they belong to Pure Live's settings system, not to this table.
 //
-// FIRST-FRAME priority uses the 5.6.5 numbers — do NOT mix in the 3.x
-// numbers (cache 30 s / 96 MB). Per-source live-only properties are the
-// critical fix: mpv's default `cache-pause=yes` makes a live stream play
-// ~2 s then pause to buffer; Pure Live 3.x sets `cache-pause=no` for live.
-// iOS has no special tuning: video output libmpv, hardware decode
-// videotoolbox, audio output default.
+// Why this table and not the 5.6.5 "first-frame" numbers: the 5.6.5
+// numbers (cache 6 s / 32 MB / readahead 2 s, probe 1 MB / 1 s) starve
+// the demuxer on jittery Douyu/Huya FLV lines — the buffer drains,
+// playback stalls, and the small probe can fail to identify a
+// high-bitrate FLV at all ("一直加载中"). Pure Live 3.x chose 30 s /
+// 96 MB / 8 s deliberately ("Network cache-secs takes precedence over
+// the smaller base readahead").
 
-/// Base mpv properties applied to every media_kit player (5.6.5 numbers).
-const Map<String, String> kMpvBaseProperties = {
-  // First-frame priority: probe 1 MiB / 1 s (Bilibili first frame
-  // 1802 ms -> 708 ms in Pure Live's cold-start test).
-  'demuxer-lavf-probesize': '1048576',
-  'demuxer-lavf-analyzeduration': '1',
-  // Small live-friendly cache: 6 s / 32 MB / 4 MB back / 2 s readahead.
-  'cache-secs': '6',
-  'demuxer-max-bytes': '33554432',
-  'demuxer-max-back-bytes': '4194304',
-  'demuxer-readahead-secs': '2',
-  'network-timeout': '15',
-  'hwdec-software-fallback': '1',
-  'framedrop': 'decoder+vo',
-  'cache': 'yes',
-  'cache-on-disk': 'no',
-};
+import 'dart:io';
+
+/// Base mpv properties applied to every media_kit player.
+/// Pure Live `MediaKitLiveProperties.build()`, verbatim.
+Map<String, String> mpvBaseProperties() {
+  final properties = <String, String>{
+    'protocol_whitelist':
+        'httpproxy,udp,rtp,tcp,tls,data,file,http,https,crypto,rtmp,rtmps,rtsp,srt',
+    'demuxer-lavf-probesize': '2097152',
+    'demuxer-lavf-analyzeduration': '2',
+    'network-timeout': '15',
+    // Drop a failing hw decoder after one bad frame.
+    'hwdec-software-fallback': '1',
+    // Network cache-secs takes precedence over the smaller base readahead.
+    'cache': 'yes',
+    'cache-on-disk': 'no',
+    'cache-secs': _cacheSeconds.toString(),
+    'demuxer-max-bytes':
+        (_lowEnd ? _lowEndForwardBytes : _forwardBytes).toString(),
+    'demuxer-max-back-bytes':
+        (_lowEnd ? _lowEndBackBytes : _backBytes).toString(),
+    // Past media must not borrow the unused forward reserve.
+    'demuxer-donate-buffer': 'no',
+    'demuxer-readahead-secs': _readaheadSeconds.toString(),
+    // Refill-then-resume: wait for a healthy buffer after a stall. Whether it
+    // is enabled at all is a per-source decision (see [mpvLiveSourceProperties]).
+    'cache-pause-wait': _cachePauseWaitSeconds.toString(),
+    'demuxer-thread': 'yes',
+    // Drop late frames instead of stacking lag.
+    'framedrop': 'decoder+vo',
+  };
+
+  if (_lowEnd) {
+    properties['audio-buffer'] = '0.4';
+    properties['stream-lavf-o'] =
+        'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2';
+  }
+
+  if (Platform.isAndroid) {
+    properties['mediacodec-surface-iostream'] = 'yes';
+    properties['mediacodec-embed-surface-landscape'] = 'yes';
+  }
+
+  if (Platform.isMacOS) {
+    // The bundled libmpv's VideoToolbox path is unstable with the Flutter
+    // texture surface on this app's macOS builds.
+    properties['hwdec'] = 'no';
+  }
+
+  // Decode-cost policy: a software decoder's thread pool is what actually
+  // costs CPU on a weak box, so cap it there and let lowres absorb the rest.
+  if (_lowEnd) {
+    properties['vd-lavc-threads'] = '2';
+    properties['vd-lavc-o'] = 'lowres=1';
+    properties['vd-lavc-skiploopfilter'] = 'nonref';
+  } else {
+    properties['vd-lavc-o'] = 'lowres=0';
+    properties['vd-lavc-skiploopfilter'] = 'default';
+  }
+
+  return properties;
+}
+
+const int _forwardBytes = 96 * 1024 * 1024;
+const int _backBytes = 8 * 1024 * 1024;
+const int _lowEndForwardBytes = 40 * 1024 * 1024;
+const int _lowEndBackBytes = 5 * 1024 * 1024;
+const int _readaheadSeconds = 8;
+const int _cacheSeconds = 30;
+const int _cachePauseWaitSeconds = 4;
+
+bool get _lowEnd => _cpuCores <= 4;
+
+int get _cpuCores {
+  try {
+    return Platform.numberOfProcessors;
+  } catch (_) {
+    return 4;
+  }
+}
 
 /// Per-source properties for LIVE streams only.
+/// Pure Live `MediaKitLiveProperties.sourceProperties()`, with
+/// `privateInput` fixed to false (our live URLs are always remote
+/// http(s)) and `proxy` fixed to `''` (direct playback, no proxy):
+/// playlist = isHls, liveProgressive = !isHls, so force-seekable and
+/// cache-pause are always 'no' for live.
 ///
-/// `force-seekable=no` + `cache-pause=no` — live/HLS and live-progressive
-/// streams (FLV treated as live). VOD keeps `force-seekable=yes` and the
-/// default cache-pause.
+/// 远端渐进式流（FLV 等）一律按直播对待：直播数据没有“缓存目标凑齐”的
+/// 那一刻，cache-pause 只会播两秒后停进缓冲再续播——观察到的
+/// “先播后暂停再加载”就是它。(Pure Live comment, kept.)
 Map<String, String> mpvLiveSourceProperties({required bool isHls}) {
-  final props = <String, String>{
+  return <String, String>{
+    'http-proxy': '',
+    'demuxer-lavf-format': isHls ? 'hls' : '',
     'force-seekable': 'no',
     'cache-pause': 'no',
   };
-  if (isHls) {
-    props['demuxer-lavf-format'] = 'hls';
-  }
-  return props;
 }
 
-/// Per-source properties for VOD.
+/// Per-source properties for VOD (unchanged — VOD is out of the live
+/// audit's scope; Pure Live's live table above is never applied to VOD
+/// in Pure Live either).
 const Map<String, String> kMpvVodSourceProperties = {
   'force-seekable': 'yes',
 };

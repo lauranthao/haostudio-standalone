@@ -31,6 +31,7 @@ import 'song_search_page.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/music_image.dart';
 
 class MusicTabPage extends StatefulWidget {
   const MusicTabPage({super.key});
@@ -499,8 +500,8 @@ class _MusicTabPageState extends State<MusicTabPage> {
                           color: theme.textMuted,
                         ),
                       )
-                    : Image.network(
-                        list.cover,
+                    : Image(
+                        image: MusicImageProvider(list.cover),
                         width: 52,
                         height: 52,
                         fit: BoxFit.cover,
@@ -609,8 +610,8 @@ class _MusicTabPageState extends State<MusicTabPage> {
                         color: theme.accentSoft,
                         child: Icon(Icons.music_note, color: theme.textMuted),
                       )
-                    : Image.network(
-                        song.cover,
+                    : Image(
+                        image: MusicImageProvider(song.cover),
                         width: 40,
                         height: 40,
                         fit: BoxFit.cover,

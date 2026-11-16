@@ -667,6 +667,15 @@ class MusicPlayerController extends GetxController
     }
   }
 
+  /// Pause playback if currently playing; no-op when already paused.
+  /// Used by the VOD player page to silence music the moment a film
+  /// starts playing (never on browsing the video tab / detail page).
+  /// No auto-resume: the user resumes music manually.
+  Future<void> pause() async {
+    if (!isPlaying.value) return;
+    await _active.pause();
+  }
+
   Future<void> seek(Duration pos) => _active.seek(pos);
 
   Future<void> setVolume(double v) async {

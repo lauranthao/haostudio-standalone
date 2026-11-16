@@ -17,6 +17,7 @@ import '../../../core/theme/hao_themes.dart';
 import '../../../services/music/play_mode.dart';
 import '../music_player_controller.dart';
 import 'track_more_sheet.dart';
+import 'music_image.dart';
 
 class PlayQueuePanel extends StatelessWidget {
   const PlayQueuePanel({super.key, required this.onClose});
@@ -174,8 +175,8 @@ class PlayQueuePanel extends StatelessWidget {
                                                 size: 20,
                                               ),
                                             )
-                                          : Image.network(
-                                              song.cover,
+                                          : Image(
+                                              image: MusicImageProvider(song.cover),
                                               width: 40,
                                               height: 40,
                                               fit: BoxFit.cover,

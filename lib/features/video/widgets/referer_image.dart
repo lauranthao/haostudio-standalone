@@ -1,21 +1,41 @@
-// Image loader for Douban-hosted images.
+// Image loader for video posters (home / history / detail).
 //
-// Douban's image CDN (img*.doubanio.com) answers 418 to requests
-// without a Douban Referer, so plain Image.network shows nothing.
-// This widget fetches the bytes with Dio (Referer:
-// https://movie.douban.com/ for doubanio hosts) and renders a
-// MemoryImage, falling back to [fallback] while loading and on any
-// failure.
+// Why plain Image.network is NOT used here (v1.0.5 phone bug): posters
+// loaded via Image.network show as black tiles on chen's phone — the
+// same failure mode as the v1.0.5 music covers — even though the URLs
+// are valid and the CDNs serve the bytes to curl with any UA
+// (verified: image.jinyingimage.com + fffgood.com return 200 with the
+// Dart UA too). The Dio stack (browser UA via sharedDio) loads them
+// fine on the phone, so all video posters go through here.
+// Douban's image CDN (img*.doubanio.com) additionally answers 418 to
+// requests without a Douban Referer, so that header is added for
+// doubanio hosts. History pics can BE Douban posters: Douban
+// enrichment replaces meta.pic with the Douban poster, and the player
+// records that pic into history.
 //
 // Non-Douban URLs are fetched without a Referer (the header would be
 // meaningless — and possibly harmful — for other hosts).
 
+import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/http_client.dart';
+
+/// In-memory bytes cache: home/history lists rebuild + dispose cards on
+/// scroll, so without this every scroll-back re-fetches every poster.
+/// Bounded (100 entries, oldest evicted) so it can't grow without limit.
+final LinkedHashMap<String, Uint8List> _videoImageBytesCache =
+    LinkedHashMap<String, Uint8List>();
+
+void _cacheVideoImageBytes(String url, Uint8List bytes) {
+  _videoImageBytesCache[url] = bytes;
+  while (_videoImageBytesCache.length > 100) {
+    _videoImageBytesCache.remove(_videoImageBytesCache.keys.first);
+  }
+}
 
 class RefererImage extends StatefulWidget {
   const RefererImage({
@@ -65,6 +85,11 @@ class _RefererImageState extends State<RefererImage> {
       if (mounted) setState(() => _failed = true);
       return;
     }
+    final cached = _videoImageBytesCache[url];
+    if (cached != null) {
+      if (mounted) setState(() => _bytes = cached);
+      return;
+    }
     try {
       final isDouban =
           Uri.tryParse(url)?.host.contains('doubanio.com') ?? false;
@@ -86,7 +111,9 @@ class _RefererImageState extends State<RefererImage> {
         setState(() => _failed = true);
         return;
       }
-      setState(() => _bytes = Uint8List.fromList(data));
+      final bytes = Uint8List.fromList(data);
+      _cacheVideoImageBytes(url, bytes);
+      setState(() => _bytes = bytes);
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }

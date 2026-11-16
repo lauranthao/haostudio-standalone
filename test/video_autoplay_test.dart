@@ -62,12 +62,17 @@ class _FakeBackend implements PlayerBackend {
 
   final List<String> openedUrls = [];
   final List<Duration> seeks = [];
+  final List<double> rates = [];
+  final List<double> volumes = [];
+  bool failFirstFrame = false;
   bool _disposed = false;
 
   @override
   PlayerEngine get engine => PlayerEngine.mediaKit;
 
   void emitCompleted() => _completed.add(null);
+
+  void emitDuration(Duration duration) => _duration.add(duration);
 
   @override
   Widget buildVideoWidget() =>
@@ -87,7 +92,7 @@ class _FakeBackend implements PlayerBackend {
   Future<bool> waitForFirstFrame({
     Duration timeout = const Duration(seconds: 15),
   }) async =>
-      true;
+      !failFirstFrame;
 
   @override
   Future<void> play() async => _playing.add(true);
@@ -96,7 +101,14 @@ class _FakeBackend implements PlayerBackend {
   Future<void> pause() async => _playing.add(false);
 
   @override
-  Future<void> setVolume(double volume) async {}
+  Future<void> setVolume(double volume) async {
+    volumes.add(volume);
+  }
+
+  @override
+  Future<void> setRate(double rate) async {
+    rates.add(rate);
+  }
 
   @override
   Stream<Duration> get positionStream => _position.stream;
@@ -158,6 +170,7 @@ void main() {
     Get.reset();
     await HiveStore.delete(HiveKeys.videoAutoNext);
     await HiveStore.delete(HiveKeys.videoHistory);
+    await HiveStore.delete(HiveKeys.vodPlaybackRate);
   });
 
   group('autoNextEpisodeIndex (pure decision)', () {
@@ -220,6 +233,8 @@ void main() {
     List<String> openedUrls() =>
         backends.expand((b) => b.openedUrls).toList();
     List<Duration> seeks() => backends.expand((b) => b.seeks).toList();
+    List<double> rates() => backends.expand((b) => b.rates).toList();
+    List<double> volumes() => backends.expand((b) => b.volumes).toList();
 
     /// Real-zone settle (repo pattern: danmaku/live tests). The
     /// page's open chain awaits Hive I/O (history record,
@@ -236,11 +251,12 @@ void main() {
       WidgetTester tester, {
       int initialEpisodeIndex = 0,
       double initialPosition = 0,
+      bool failFirstFrame = false,
     }) async {
       backends.clear();
       session = PlaybackSession(
         backendFactory: (_) {
-          final b = _FakeBackend();
+          final b = _FakeBackend()..failFirstFrame = failFirstFrame;
           backends.add(b);
           return b;
         },
@@ -338,6 +354,142 @@ void main() {
       await tester.tap(find.byTooltip('自动连播'));
       await settle(tester);
       expect(VideoPlaybackSettings.autoNext, isTrue);
+      await unmountPlayer(tester);
+    });
+
+    testWidgets('speed button cycles 1.0x -> 1.25x and reaches the backend',
+        (tester) async {
+      await pumpPlayer(tester);
+      expect(find.text('1.0x'), findsOneWidget);
+      expect(rates(), isEmpty);
+
+      await tester.tap(find.text('1.0x'));
+      await tester.pump();
+
+      expect(find.text('1.25x'), findsOneWidget);
+      expect(rates(), contains(1.25));
+      await unmountPlayer(tester);
+    });
+
+    testWidgets(
+        'failed player still offers a way out — back button pops to home',
+        (tester) async {
+      // A home page underneath, so the pop has somewhere to go.
+      backends.clear();
+      session = PlaybackSession(
+        backendFactory: (_) {
+          final b = _FakeBackend()..failFirstFrame = true;
+          backends.add(b);
+          return b;
+        },
+      );
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => NativeVideoPlayerPage(
+                          detail: _threeEpisodeDetail(),
+                          session: session,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('open player'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open player'));
+      await tester.pump();
+      await settle(tester);
+      await settle(tester);
+
+      // Playback failed on every engine, but the way out is visible:
+      // the v1.0.5 trap hid the back button exactly when failed.
+      expect(find.text('播放失败，请检查网络后重试'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pump();
+      await settle(tester);
+
+      expect(find.text('open player'), findsOneWidget);
+      await unmountPlayer(tester);
+    });
+
+    testWidgets('horizontal drag seeks once on release', (tester) async {
+      await pumpPlayer(tester);
+      currentBackend().emitDuration(const Duration(minutes: 45));
+      await settle(tester);
+
+      // 800 px wide = 300 s span; 200 px right -> ~75 s from 0.
+      await tester.timedDrag(
+        find.byKey(const ValueKey('fake-video')),
+        const Offset(200, 0),
+        const Duration(milliseconds: 300),
+      );
+      await settle(tester);
+
+      expect(seeks(), isNotEmpty);
+      expect(seeks().last.inSeconds, inInclusiveRange(60, 90));
+      await unmountPlayer(tester);
+    });
+
+    testWidgets('vertical drag on the right half adjusts volume',
+        (tester) async {
+      await pumpPlayer(tester);
+
+      final gesture = await tester.startGesture(const Offset(600, 300));
+      await gesture.moveBy(const Offset(0, 150));
+      await gesture.up();
+      await tester.pump();
+
+      // 150 px down over a 300 px full range = -0.5 from 1.0.
+      expect(volumes(), isNotEmpty);
+      expect(volumes().last, closeTo(0.5, 0.01));
+      await unmountPlayer(tester);
+    });
+
+    testWidgets('vertical drag on the left half adjusts brightness',
+        (tester) async {
+      const channel =
+          MethodChannel('github.com/aaassseee/screen_brightness');
+      final brightnessCalls = <double>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getApplicationScreenBrightness') {
+          return 0.5;
+        }
+        if (call.method == 'setApplicationScreenBrightness') {
+          brightnessCalls.add(
+            (call.arguments as Map)['brightness'] as double,
+          );
+        }
+        return null;
+      });
+      try {
+        await pumpPlayer(tester);
+
+        final gesture = await tester.startGesture(const Offset(200, 300));
+        await gesture.moveBy(const Offset(0, 90));
+        await gesture.up();
+        await tester.pump();
+
+        // 90 px down over a 300 px full range = -0.3 from 0.5.
+        expect(brightnessCalls, isNotEmpty);
+        expect(brightnessCalls.last, closeTo(0.2, 0.01));
+      } finally {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      }
       await unmountPlayer(tester);
     });
   });

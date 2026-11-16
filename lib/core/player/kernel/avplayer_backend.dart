@@ -124,6 +124,9 @@ class AvPlayerBackend implements PlayerBackend {
       _controller?.setVolume(volume);
 
   @override
+  Future<void> setRate(double rate) async => _controller?.setSpeed(rate);
+
+  @override
   Stream<Duration> get positionStream => _positionController.stream;
 
   @override

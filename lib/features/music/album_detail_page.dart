@@ -24,6 +24,7 @@ import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/music_image.dart';
 
 class AlbumDetailPage extends StatefulWidget {
   const AlbumDetailPage({
@@ -294,8 +295,8 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 color: theme.accentSoft,
                 child: Icon(Icons.album, color: theme.textMuted, size: 72),
               )
-            : Image.network(
-                cover,
+            : Image(
+                image: MusicImageProvider(cover),
                 width: size,
                 height: size,
                 fit: BoxFit.cover,

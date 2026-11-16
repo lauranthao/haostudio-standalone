@@ -70,6 +70,7 @@ class PlaybackSession {
   bool _isLive = false;
   String? _declaredFormat;
   Map<String, String>? _headers;
+  double _rate = 1.0;
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
@@ -207,6 +208,11 @@ class PlaybackSession {
         }
       },
       attempt: ({required PlayerEngine engine, required String url}) async {
+        // A disposed session must not start new work: the page is
+        // gone, so any backend opened here would play with no owner
+        // (background audio after exit — the v1.0.5 bug: the film
+        // kept playing after the player page was popped).
+        if (_disposed) return false;
         // A backend whose CONSTRUCTION throws (missing native library,
         // unregistered plugin) must fail just this attempt, not abort
         // the whole ladder — the next engine may still play. The catch
@@ -215,9 +221,18 @@ class PlaybackSession {
         PlayerBackend? candidate;
         try {
           candidate = _buildBackend(engine);
-          // sourceOpen 18 s (study §1.3): a backend whose open() never
-          // returns must not stall the ladder. TimeoutException is
-          // caught below and the candidate is disposed.
+          // sourceOpen timeout (study §1.3): a backend whose open()
+          // never returns must not stall the ladder. TimeoutException
+          // is caught below and the candidate is disposed.
+          //
+          // Live is 10 s, VOD 18 s: a live line that cannot connect in
+          // 10 s is unwatchable, and failing fast lets the ladder move
+          // on instead of the room sitting on "一直加载中" — a hung
+          // line burned 18 s per engine before. VOD URLs do not
+          // expire and deserve the longer patience.
+          final openTimeout = isLive
+              ? const Duration(seconds: 10)
+              : const Duration(seconds: 18);
           await candidate
               .open(
                 url: url,
@@ -225,19 +240,32 @@ class PlaybackSession {
                 isLive: isLive,
                 declaredFormat: declaredFormat,
               )
-              .timeout(const Duration(seconds: 18));
-          // First-frame wait is 8 s per engine (was 15 s): with the 18 s
-          // open() timeout, 3 engines serially cost at most ~78 s and
-          // typically fail fast; 15 s made the worst case ~99 s of
-          // silent spinner on a dead URL.
+              .timeout(openTimeout);
+          if (_disposed) {
+            // Exit landed while this attempt was still opening: drop
+            // the candidate before it can start playing with no owner.
+            await candidate.dispose();
+            return false;
+          }
+          // First-frame wait is 18 s per engine (Pure Live
+          // sourceReadyTimeout): a tighter window condemns healthy
+          // players still probing (multi-variant HLS masters, slow
+          // Douyu/Huya opens) — the "一直加载中" the 8 s wait caused.
           final ok = await candidate.waitForFirstFrame(
-            timeout: const Duration(seconds: 8),
+            timeout: const Duration(seconds: 18),
           );
           if (!ok) {
             await candidate.dispose();
             // Tell the page the ladder is moving to the next kernel
             // instead of leaving it on a bare spinner.
             _emitStatus(PlaybackStatus.buffering);
+            return false;
+          }
+          if (_disposed) {
+            // Exit landed during the first-frame wait: the candidate
+            // may already be playing audio — dispose it instead of
+            // swapping it into a dead session.
+            await candidate.dispose();
             return false;
           }
           // Staged swap: only now does the new backend replace the old.
@@ -255,6 +283,7 @@ class PlaybackSession {
     );
 
     final won = await ladder.run();
+    if (_disposed) return false;
     if (won != null) {
       // Settings follows the engine actually playing.
       _preferred = won.engine;
@@ -285,9 +314,20 @@ class PlaybackSession {
   }
 
   Future<void> _swapBackend(PlayerBackend next) async {
+    if (_disposed) {
+      // Never install a backend into a disposed session — it would
+      // play with no owner and nothing left to stop it.
+      await next.dispose();
+      return;
+    }
     final old = _backend;
     _backend = next;
     _attachBackend(next);
+    // A ladder swap must not reset a user-chosen speed (episode
+    // auto-advance opens a fresh backend per episode).
+    if (_rate != 1.0) {
+      unawaited(next.setRate(_rate).catchError((_) {}));
+    }
     // Dispose the old backend only after the new one is attached and
     // verified (fix 1: never release while a callback may still hold it).
     await old?.dispose();
@@ -333,7 +373,12 @@ class PlaybackSession {
     _emitError(message);
   }
 
-  /// Position-movement health watch: 4 s stall -> notice, 12 s -> failure.
+  /// Position-movement health watch: 4 s stall -> notice, 15 s -> failure.
+  /// Pure Live `LiveWatchdogs`: bufferingStallTimeout is 12 s but that
+  /// detector watches the BUFFERING state, not the position; the
+  /// position-stall detector of last resort is 15 s. Failing on 12 s of
+  /// frozen position killed jittery-but-recoverable Douyu/Huya lines 3 s
+  /// early. The 4 s notice is UI only ("重新连接…"), not a failure.
   void _startHealthWatch() {
     _stallTimer?.cancel();
     _lastPosition = Duration.zero;
@@ -349,7 +394,7 @@ class PlaybackSession {
           _stallNoticeController.add(null);
         }
       }
-      if (stalled >= const Duration(seconds: 12)) {
+      if (stalled >= const Duration(seconds: 15)) {
         _onBackendFailure('buffering_stall');
       }
     });
@@ -377,6 +422,17 @@ class PlaybackSession {
   }
 
   Future<void> setVolume(double volume) => _backend?.setVolume(volume) ?? Future.value();
+
+  double get rate => _rate;
+
+  /// Playback speed (VOD only). Stored so a ladder backend swap
+  /// re-applies it; live never sets it.
+  Future<void> setRate(double rate) async {
+    _rate = rate;
+    try {
+      await _backend?.setRate(rate);
+    } catch (_) {}
+  }
 
   /// Idempotent dispose (fix 1): cancel callbacks first, then release.
   Future<void> dispose() async {

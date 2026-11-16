@@ -31,6 +31,7 @@
 
 import 'dart:async';
 
+import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -45,6 +46,7 @@ import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
+import '../../../../features/player/screen_brightness.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
 import '../../live_history_store.dart';
@@ -104,6 +106,38 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   // Ladder progress text ("正在尝试 MPV…") shown under the spinner
   // while the session is trying engines; null when no attempt ran yet.
   String? _ladderHint;
+
+  // Pure Live player overlay state (video_controller_panel +
+  // PlayerGestureLayer, copied behaviour):
+  // - single tap shows/hides the bars (a tap on a paused surface also
+  //   resumes playback); double-tap toggles fullscreen; a vertical
+  //   drag on the left half changes brightness, on the right half the
+  //   volume; the bars auto-hide 5 s after being shown.
+  // - the lock hides every bar and gesture except the unlock button.
+  final GlobalKey _videoSurfaceKey = GlobalKey();
+  bool _controlsVisible = true;
+  bool _controlsLocked = false;
+  Timer? _hideControlsTimer;
+  bool _playing = false;
+  bool _paused = false;
+  // Danmaku display toggle (Pure Live PlayerDanmakuButton): display
+  // only — the transport keeps running; hides the portrait list and
+  // the fullscreen barrage alike.
+  bool _danmakuVisible = true;
+  double _volume = 1.0;
+  // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
+  // the surface maps to a quarter of the level range per half-height
+  // (see _applyDrag); the card hides 1 s after the last drag.
+  bool _dragHudVisible = false;
+  bool _dragIsBrightness = true;
+  double _dragValue = 1.0;
+  Timer? _dragHudTimer;
+  bool _dragInSystemZone = false;
+  // Fullscreen barrage pool (Pure Live PlayerDanmakuSurface +
+  // LivePlayerFacade.floatingDanmaku): rendered over the video in
+  // fullscreen only; the portrait list below stays the danmaku
+  // surface in portrait.
+  final BarrageController _barrageController = BarrageController();
   // Automatic-recovery budget: consecutive session-error retries in
   // this episode. advanceLine() wraps around and never returns null
   // for >= 2 lines, so without a bound a failing room retries lines
@@ -111,6 +145,14 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   // (spinner stuck, taps ignored, failure card never reachable).
   // Reset on healthy playback and on every user-initiated (re)open.
   int _consecutiveAutoFailures = 0;
+  // Auto quality-downgrade budget: when a mid-playback stall has
+  // exhausted every line at the current quality, the room drops one
+  // quality level instead of giving up (fix: Douyu/Huya lag — the
+  // network cannot sustain this bitrate and line switching cannot
+  // help: Douyu's lines all resolve to the same wsa edge, Huya opens
+  // at 50 Mbps). Capped at 2 per episode; an auto-downgrade never
+  // persists the lower quality. Reset wherever the failure budget is.
+  int _autoDowngrades = 0;
   Timer? _prefetchTimer;
 
   final List<LiveMessage> _danmaku = [];
@@ -167,15 +209,21 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       }
     });
     _session.onStatus.listen((status) {
-      if (status == PlaybackStatus.playing && mounted) {
-        setState(() {
+      if (!mounted) return;
+      final playing = status == PlaybackStatus.playing;
+      setState(() {
+        _playing = playing;
+        _paused = status == PlaybackStatus.paused;
+        if (playing) {
           _loading = false;
           _showingStallNotice = false;
           _ladderHint = null;
           // Healthy playback resets the auto-recovery budget.
           _consecutiveAutoFailures = 0;
-        });
-      }
+          _autoDowngrades = 0;
+        }
+      });
+      if (playing && _controlsVisible) _armControlsHide();
     });
     // Entry is portrait, always — even if startLandscape was (wrongly)
     // passed true, live entry stays portrait (fix 2).
@@ -216,7 +264,16 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       final preferredIndex = qualities.indexWhere(
         (q) => q.quality == preferred,
       );
-      _currentQuality = preferredIndex >= 0 ? preferredIndex : 0;
+      // No exact match: do NOT blindly take index 0. Huya's first
+      // quality is 蓝光50M (50 Mbps, selectionId '0'); mpv's 32 MB
+      // cache holds only ~5 s of it, so any throughput dip freezes
+      // the picture — while Bilibili (server downgrades to ~2.5 Mbps,
+      // 100+ s of cache) plays fine. _fallbackQualityIndex prefers
+      // 8 Mbps, then 超清, then index 0.
+      _currentQuality =
+          preferredIndex >= 0
+              ? preferredIndex
+              : _fallbackQualityIndex(qualities);
       await _resolveAndPlay();
     } catch (_) {
       if (mounted) {
@@ -361,6 +418,21 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
         _danmaku.removeRange(0, _danmaku.length - 200);
       }
     });
+    // Fullscreen barrage (Pure Live PlayerDanmakuSurface): the same
+    // message also flies over the video while fullscreen. The pool is
+    // bounded by the engine (maxPendingCount 120 / maxPendingAge 5 s),
+    // and nothing is sent in portrait — the list below is the danmaku
+    // surface there.
+    if (_fullscreen.isFullscreen.value &&
+        _danmakuEnabled &&
+        _danmakuVisible) {
+      _barrageController.send(BarrageItem(
+        content: _showUsernames && message.userName.isNotEmpty
+            ? '${message.userName}: ${message.message}'
+            : message.message,
+        userName: message.userName,
+      ));
+    }
     if (stick) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_danmakuScroll.hasClients) {
@@ -373,6 +445,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   Future<void> _resolveAndPlay() async {
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // new episode, fresh retry budget
+    _autoDowngrades = 0;
     final quality = _qualities.isEmpty ? null : _qualities[_currentQuality];
     final resolution = await _site.resolvePlayUrls(
       liveRoom: _room,
@@ -460,6 +533,22 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     // The initial open already tried one line, so lines.length - 1
     // further advances cover every line exactly once.
     if (_consecutiveAutoFailures >= _recovery.lines.length - 1) {
+      // Lines exhausted at this quality. A mid-playback stall
+      // (buffering_stall) means the network cannot sustain this
+      // bitrate — and line switching cannot fix it: Douyu's lines all
+      // resolve to the same wsa edge, and Huya's top quality is
+      // 50 Mbps. Drop one quality level instead of giving up; capped
+      // at 2 auto-downgrades per episode and never persisted (the
+      // user's saved preference is untouched).
+      if (message == 'buffering_stall' &&
+          _autoDowngrades < 2 &&
+          _currentQuality + 1 < _qualities.length) {
+        _autoDowngrades++;
+        unawaited(
+          _switchQuality(_currentQuality + 1, persist: false, auto: true),
+        );
+        return;
+      }
       setState(() {
         _failed = true;
         _errorMessage = message;
@@ -467,21 +556,52 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       return;
     }
     _consecutiveAutoFailures++;
+    // Pure Live _runRecoverTask: refresh sources FIRST (fresh
+    // signatures), then sweep from the current line. The old order
+    // (next line first) re-opened the stalled line's possibly-expired
+    // signature and burned the recovery budget on dead URLs.
+    unawaited(_recoverWithFreshUrls(message));
+  }
+
+  /// Recovery with fresh URLs first. `fetchFresh` is throttled to once
+  /// per 60 s inside LiveRecovery: when the session's own
+  /// ladder-exhaust path already refreshed, this returns null and we
+  /// fall through to the next line — whose list `fetchFresh` already
+  /// replaced with fresh URLs, so it is still a fresh line, never the
+  /// dead one.
+  Future<void> _recoverWithFreshUrls(String message) async {
+    final fresh = await _recovery.fetchFresh();
+    if (!mounted) return;
+    if (fresh != null && fresh.urls.isNotEmpty) {
+      // fetchFresh already matched the line by URL identity and
+      // updated currentLineIndex + facts — open the matched line,
+      // not urls.first (the refresh may re-order lines).
+      final index = _recovery.currentLineIndex % fresh.urls.length;
+      await _session.open(
+        url: fresh.urls[index],
+        isLive: true,
+        declaredFormat: _recovery.factsFor(index).format,
+        refreshUrls: _refreshUrls,
+      );
+      return;
+    }
     final next = _recovery.advanceLine();
     if (next != null) {
-      unawaited(_session.open(
+      await _session.open(
         url: next,
         isLive: true,
         declaredFormat:
             _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
-      ));
+      );
       return;
     }
-    setState(() {
-      _failed = true;
-      _errorMessage = message;
-    });
+    if (mounted) {
+      setState(() {
+        _failed = true;
+        _errorMessage = message;
+      });
+    }
   }
 
   /// Switch line: open playUrls[newIndex] directly, NO network request.
@@ -490,6 +610,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     if (index < 0 || index >= _recovery.lines.length) return;
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
+    _autoDowngrades = 0;
     _recovery.currentLineIndex = index;
     setState(() => _loading = true);
     final ok = await _session.open(
@@ -507,10 +628,24 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
 
   /// Switch quality: re-parse. Identical URLs after the switch -> toast
   /// "清晰度流未变化" and abort.
-  Future<void> _switchQuality(int index) async {
+  ///
+  /// [persist] false skips saving the preference (auto-downgrade:
+  /// session-only, the user's saved quality is untouched). [auto] true
+  /// is a stall-driven downgrade: failures show the failure card
+  /// instead of a toast (the room already exhausted its lines), and a
+  /// successful downgrade toasts so the user knows why the picture
+  /// changed.
+  Future<void> _switchQuality(
+    int index, {
+    bool persist = true,
+    bool auto = false,
+  }) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
+    // An auto-downgrade must NOT reset its own cap — only a manual
+    // quality pick starts a new episode.
+    if (!auto) _autoDowngrades = 0;
     final before = List<String>.of(_recovery.lines);
     final quality = _qualities[index];
     final resolution = await _site.resolvePlayUrlsForRecovery(
@@ -519,25 +654,42 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     );
     if (epoch != _selectionEpoch || !mounted) return; // stale response
     if (resolution.urls.isEmpty) {
-      Get.snackbar('提示', '该清晰度暂无可用线路');
+      if (auto) {
+        setState(() {
+          _failed = true;
+          _errorMessage = '该清晰度暂无可用线路';
+        });
+      } else {
+        Get.snackbar('提示', '该清晰度暂无可用线路');
+      }
       return;
     }
     if (_sameUrlList(before, resolution.urls)) {
-      Get.snackbar('提示', '清晰度流未变化');
+      if (auto) {
+        setState(() {
+          _failed = true;
+          _errorMessage = '网络不稳定，无法切换到更低清晰度';
+        });
+      } else {
+        Get.snackbar('提示', '清晰度流未变化');
+      }
       return;
     }
     setState(() {
       _currentQuality = index;
       _loading = true;
     });
-    // Fire-and-forget persistence: the quality switch must not wait on
-    // storage I/O (and must keep working when storage is unavailable).
-    unawaited(
-      HiveStore.put(
-        HiveKeys.preferResolution,
-        quality.quality,
-      ).catchError((_) {}),
-    );
+    if (persist) {
+      // Fire-and-forget persistence: the quality switch must not wait
+      // on storage I/O (and must keep working when storage is
+      // unavailable).
+      unawaited(
+        HiveStore.put(
+          HiveKeys.preferResolution,
+          quality.quality,
+        ).catchError((_) {}),
+      );
+    }
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
@@ -551,10 +703,32 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       refreshUrls: _refreshUrls,
     );
     if (epoch != _selectionEpoch || !mounted) return;
+    if (auto && ok) {
+      Get.snackbar('提示', '网络不稳定，已自动切换到${quality.quality}');
+    }
     setState(() {
       _loading = !ok;
       _failed = !ok;
+      if (!ok && auto) _errorMessage = '播放失败，请检查网络后重试';
     });
+  }
+
+  /// Default quality when the saved preference has no exact match.
+  ///
+  /// Huya's source quality is 50 Mbps (selectionId '0', 蓝光50M) and
+  /// it is the first quality in the list, so a plain index-0 fallback
+  /// opens every Huya room at 50 Mbps. Prefer 8 Mbps (selectionId
+  /// '8000', 蓝光8M — 32 MB cache holds ~32 s of it), then 2 Mbps
+  /// (selectionId '2000', 超清), then index 0. Only platforms whose
+  /// selectionIds are kbps bitrates (Huya) are affected: Douyu and
+  /// Bilibili use opaque rate/qn ids, so they fall through to index 0
+  /// unchanged (Douyu's server downgrades anonymous 原画 to 4M anyway).
+  static int _fallbackQualityIndex(List<LivePlayQuality> qualities) {
+    for (final id in const ['8000', '2000']) {
+      final i = qualities.indexWhere((q) => q.selectionId == id);
+      if (i >= 0) return i;
+    }
+    return 0;
   }
 
   bool _sameUrlList(List<String> a, List<String> b) {
@@ -565,8 +739,9 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     return true;
   }
 
-  /// Manual retry: same order as automatic recovery — next line, then
-  /// FRESH re-parse, never the dead URL.
+  /// Manual retry: same order as automatic recovery (Pure Live
+  /// _runRecoverTask) — FRESH re-parse first, then the next line,
+  /// never the dead URL.
   Future<void> _manualRetry() async {
     setState(() {
       _failed = false;
@@ -574,18 +749,8 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
       _errorMessage = null;
       _ladderHint = null;
       _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
+      _autoDowngrades = 0;
     });
-    final next = _recovery.advanceLine();
-    if (next != null) {
-      await _session.open(
-        url: next,
-        isLive: true,
-        declaredFormat:
-            _recovery.factsFor(_recovery.currentLineIndex).format,
-        refreshUrls: _refreshUrls,
-      );
-      return;
-    }
     final fresh = await _recovery.fetchFresh();
     if (fresh != null && fresh.urls.isNotEmpty && mounted) {
       // fetchFresh already matched the line by URL identity — open the
@@ -595,6 +760,17 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
         url: fresh.urls[index],
         isLive: true,
         declaredFormat: _recovery.factsFor(index).format,
+        refreshUrls: _refreshUrls,
+      );
+      return;
+    }
+    final next = _recovery.advanceLine();
+    if (next != null) {
+      await _session.open(
+        url: next,
+        isLive: true,
+        declaredFormat:
+            _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
       );
     } else if (mounted) {
@@ -730,9 +906,207 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
     Get.snackbar('已屏蔽', '已屏蔽该弹幕');
   }
 
+  // ---- Pure Live player overlay: bars, lock, gestures ----
+  // (video_controller_panel.dart + player_ui_controller.dart,
+  // PlayerGestureLayer — behaviour copied, wired to this room's
+  // session/recovery instead of Pure Live's global player service.)
+
+  /// Show the bars and arm the 5 s auto-hide (Pure Live
+  /// VideoController._controllerHideDelay).
+  void _showControls() {
+    if (!mounted) return;
+    setState(() => _controlsVisible = true);
+    _armControlsHide();
+  }
+
+  void _hideControls() {
+    _hideControlsTimer?.cancel();
+    if (mounted) setState(() => _controlsVisible = false);
+  }
+
+  void _armControlsHide() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted && !_controlsLocked) {
+        setState(() => _controlsVisible = false);
+      }
+    });
+  }
+
+  /// Single tap on the video surface (Pure Live panel onTap):
+  /// visible bars + playing (mobile) -> hide the bars; otherwise show
+  /// the bars, and a tap on a PAUSED surface also resumes playback.
+  /// A buffering/opening surface only reveals the bars — play() there
+  /// would falsely mark it playing.
+  void _onVideoTap() {
+    if (_controlsLocked) return;
+    if (_controlsVisible && _playing) {
+      _hideControls();
+      return;
+    }
+    _showControls();
+    if (_paused) unawaited(_session.play());
+  }
+
+  /// Double-tap toggles fullscreen (Pure Live panel onDoubleTap),
+  /// unless the controls are locked.
+  void _onVideoDoubleTap() {
+    if (_controlsLocked) return;
+    unawaited(_fullscreen.toggleFullscreen());
+  }
+
+  /// Whether a drag start lies inside the launcher home-gesture strip
+  /// (Pure Live `startsInSystemHomeGestureZone`, zone height 48).
+  bool _startsInSystemHomeGestureZone(Offset localPosition, Size size) {
+    if (size.height <= 0) return false;
+    const zoneHeight = 48.0;
+    final zone = zoneHeight.clamp(0.0, size.height / 3);
+    return localPosition.dy >= size.height - zone;
+  }
+
+  void _onVerticalDragStart(DragStartDetails details) {
+    final size = _videoSurfaceKey.currentContext?.size;
+    _dragInSystemZone = size != null &&
+        _startsInSystemHomeGestureZone(details.localPosition, size);
+  }
+
+  /// Vertical drag: left half brightness, right half volume (Pure Live
+  /// PlayerGestureLayer._apply, verbatim formula). Volume is the
+  /// PLAYER volume (`session.setVolume`) — Pure Live also drives the
+  /// system volume via VolumeController, which this app does not
+  /// depend on; the player volume is the part that changes loudness.
+  Future<void> _onVerticalDragUpdate(DragUpdateDetails details) async {
+    if (_dragInSystemZone || _controlsLocked) return;
+    final size = _videoSurfaceKey.currentContext?.size;
+    if (size == null || size.height <= 0) return;
+    final delta = details.delta;
+    if (delta.distance < 0.5) return;
+    final isBrightness = details.localPosition.dx <= size.width / 2;
+    if (_dragIsBrightness != isBrightness || !_dragHudVisible) {
+      _dragIsBrightness = isBrightness;
+      final observed =
+          isBrightness ? await ScreenBrightness.getBrightness() : _volume;
+      if (!mounted) return;
+      setState(() => _dragValue = observed.clamp(0.0, 1.0));
+    }
+    if (!mounted) return;
+    _keepDragHudVisible();
+    // Full travel of the surface maps to a quarter of the level range
+    // per half-height: target = value - dy / (height / 2) * 0.25.
+    final target =
+        (_dragValue - delta.dy / (size.height / 2) * 0.25).clamp(0.0, 1.0);
+    if ((target - _dragValue).abs() <= 0.001) return;
+    setState(() => _dragValue = target);
+    if (isBrightness) {
+      unawaited(ScreenBrightness.setBrightness(target));
+    } else {
+      _volume = target;
+      unawaited(_session.setVolume(target));
+    }
+  }
+
+  void _onVerticalDragEnd(DragEndDetails details) {
+    _dragInSystemZone = false;
+  }
+
+  void _keepDragHudVisible() {
+    _dragHudTimer?.cancel();
+    _dragHudTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _dragHudVisible = false);
+    });
+    if (!_dragHudVisible) setState(() => _dragHudVisible = true);
+  }
+
+  /// Drag HUD icon (Pure Live PlayerGestureLayerState._icon).
+  IconData get _dragHudIcon {
+    if (_dragIsBrightness) {
+      if (_dragValue <= 0) return Icons.brightness_low;
+      return _dragValue < 0.5
+          ? Icons.brightness_medium
+          : Icons.brightness_high;
+    }
+    if (_dragValue <= 0) return Icons.volume_mute;
+    return _dragValue < 0.5 ? Icons.volume_down : Icons.volume_up;
+  }
+
+  void _lockControls() {
+    _hideControlsTimer?.cancel();
+    setState(() {
+      _controlsLocked = true;
+      _controlsVisible = false;
+    });
+  }
+
+  void _unlockControls() {
+    setState(() => _controlsLocked = false);
+    _showControls();
+  }
+
+  /// Quality selector (Pure Live FullscreenStreamSelectorButton).
+  void _openQualitySheet() {
+    if (_qualities.isEmpty) return;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < _qualities.length; i++)
+                ListTile(
+                  title: Text(_qualities[i].quality),
+                  trailing:
+                      i == _currentQuality ? const Icon(Icons.check) : null,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(_switchQuality(i));
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Line selector (Pure Live FullscreenStreamSelectorButton).
+  void _openLineSheet() {
+    if (_recovery.lines.length < 2) return;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < _recovery.lines.length; i++)
+                ListTile(
+                  title: Text('线路 ${i + 1}'),
+                  trailing: i == _recovery.currentLineIndex
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    unawaited(_switchLine(i));
+                  },
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _prefetchTimer?.cancel();
+    _hideControlsTimer?.cancel();
+    _dragHudTimer?.cancel();
+    _barrageController.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
     unawaited(_danmakuTransport?.stop());
@@ -745,100 +1119,374 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) unawaited(_fullscreen.exitFullscreen());
-      },
-      child: Scaffold(
-        backgroundColor: theme.scaffoldBackground,
-        appBar: AppBar(
-          title: Text(_room.title.isEmpty ? '直播间' : _room.title),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.swap_horiz),
-              tooltip: '切换',
-              // L04: switch-room panel (follows / current list /
-              // history / replay follows).
-              onPressed: _openSwitchPanel,
+    // The video surface is shared by both layouts: 16:9 in-page in
+    // portrait, filling the screen in landscape fullscreen (a 16:9 box
+    // would overflow the short side in landscape). Pure Live's
+    // landscape video is `expandToParent` (SizedBox.expand) with NO
+    // AppBar above it — the old fullscreen kept the AppBar, so the
+    // video never filled the screen ("横屏显示不好").
+    // Fullscreen-dependent children read the Rx flag through Obx so
+    // the Video widget itself is never rebuilt on a fullscreen
+    // toggle (same controller, same player, no restart).
+    final videoSurface = Container(
+      key: _videoSurfaceKey,
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _session.buildVideoWidget(),
+          // Fullscreen barrage over the video (Pure Live
+          // PlayerDanmakuSurface). Pointer events off so the gesture
+          // layer below keeps working.
+          Obx(() {
+            final fs = _fullscreen.isFullscreen.value;
+            if (!fs || !_danmakuEnabled || !_danmakuVisible) {
+              return const SizedBox.shrink();
+            }
+            return Positioned.fill(
+              child: IgnorePointer(
+                child: FlameBarrageWidget(
+                  controller: _barrageController,
+                  enablePointerEvents: false,
+                  config: BarrageConfig(
+                    // Pure Live PlayerDanmakuSurface values.
+                    emitInterval: 0.05,
+                    fontSize: _danmakuFontSize,
+                    opacity: _danmakuOpacity,
+                    rasterizeItems: true,
+                    maxPendingCount: 120,
+                    maxPendingAge: const Duration(seconds: 5),
+                    pictureCacheMaxSize: 96,
+                    barragePoolMaxSize: 72,
+                    textCacheMaxSize: 320,
+                    trackHeight: (_danmakuFontSize * 1.55)
+                        .clamp(24.0, 64.0)
+                        .toDouble(),
+                    emojiSize: (_danmakuFontSize * 1.3)
+                        .clamp(16.0, 48.0)
+                        .toDouble(),
+                  ),
+                  emojiAtlas: EmojiAtlas.instance,
+                ),
+              ),
+            );
+          }),
+          // Gesture layer (Pure Live panel GestureDetector +
+          // PlayerGestureLayer): opaque on purpose — this detector is
+          // what reveals and hides the bars. It sits BELOW the bars,
+          // the lock button, the failure card and the spinner, so those
+          // keep their taps (the old translucent detector as the last
+          // Stack child won the gesture arena over the retry button).
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onVideoTap,
+              onDoubleTap: _onVideoDoubleTap,
+              onVerticalDragStart: _onVerticalDragStart,
+              onVerticalDragUpdate: _onVerticalDragUpdate,
+              onVerticalDragEnd: _onVerticalDragEnd,
+              onVerticalDragCancel: () => _dragInSystemZone = false,
             ),
-            IconButton(
-              icon: const Icon(Icons.fullscreen),
-              tooltip: '全屏',
-              // The [ ] button is the ONLY path to landscape (fix 2).
-              onPressed: () => _fullscreen.toggleFullscreen(),
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            // 16:9 native video surface on top — in-page, portrait.
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(
-                color: Colors.black,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _session.buildVideoWidget(),
-                    // Play/pause tap on the video surface. It MUST sit
-                    // below the failure card (and spinner / stall notice):
-                    // as the last Stack child it was hit-tested first and
-                    // its translucent tap recognizer won the gesture arena
-                    // over the failure card's ▶ 重试 button, so a retry
-                    // tap toggled play/pause instead of retrying.
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: () => _session.togglePlayPause(),
-                      ),
-                    ),
-                    if (_loading)
-                      Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const CircularProgressIndicator(
-                              color: Colors.white,
-                            ),
-                            if (_ladderHint != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                _ladderHint!,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
+          ),
+          // Drag HUD (Pure Live PlayerGestureLayer card).
+          if (_dragHudVisible)
+            Center(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _dragHudVisible ? 0.8 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Card(
+                    color: Colors.black,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(_dragHudIcon, color: Colors.white),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 8),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 100,
+                                height: 20,
+                                child: LinearProgressIndicator(
+                                  value: _dragValue,
+                                  backgroundColor: Colors.white38,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation(
+                                          Colors.white),
                                 ),
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    if (_failed)
-                      _FailureCard(
-                        message: _errorMessage ?? '播放失败，请检查网络后点 ▶ 重试',
-                        onRetry: _manualRetry,
-                      ),
-                    if (_showingStallNotice && !_failed)
-                      const Positioned(
-                        top: 8,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Text(
-                            '重新连接…',
-                            style: TextStyle(color: Colors.white70),
+                            ),
                           ),
-                        ),
+                          Text(
+                            '${(_dragValue * 100).round()}%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
+          // Top bar — fullscreen only (portrait already has the AppBar;
+          // Pure Live fullscreen has no AppBar, its TopActionBar is the
+          // overlay). Back exits fullscreen; title is the room title.
+          Obx(() {
+            final fs = _fullscreen.isFullscreen.value;
+            if (!fs || !_controlsVisible || _controlsLocked) {
+              return const SizedBox.shrink();
+            }
+            return Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black54, Colors.transparent],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back,
+                            color: Colors.white),
+                        tooltip: '退出全屏',
+                        onPressed: () => _fullscreen.toggleFullscreen(),
+                      ),
+                      Expanded(
+                        child: Text(
+                          _room.title.isEmpty ? '直播间' : _room.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+          // Bottom bar (Pure Live BottomActionBar: left play/pause,
+          // refresh, danmaku; fullscreen adds the quality + line
+          // selectors; right lock + fullscreen toggle).
+          if (_controlsVisible && !_controlsLocked)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                top: false,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black54, Colors.transparent],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _playing ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                        tooltip: _playing ? '暂停' : '播放',
+                        onPressed: () => _session.togglePlayPause(),
+                      ),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.refresh, color: Colors.white),
+                        tooltip: '刷新',
+                        onPressed: _manualRetry,
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          _danmakuVisible
+                              ? Icons.chat_bubble_outline
+                              : Icons.chat_bubble,
+                          color: Colors.white,
+                        ),
+                        tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
+                        onPressed: () => setState(
+                            () => _danmakuVisible = !_danmakuVisible),
+                      ),
+                      Obx(() {
+                        final fs = _fullscreen.isFullscreen.value;
+                        if (!fs) return const SizedBox.shrink();
+                        return TextButton(
+                          onPressed: _qualities.isEmpty
+                              ? null
+                              : _openQualitySheet,
+                          child: Text(
+                            _qualities.isEmpty
+                                ? '清晰度'
+                                : _qualities[_currentQuality].quality,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        );
+                      }),
+                      Obx(() {
+                        final fs = _fullscreen.isFullscreen.value;
+                        if (!fs) return const SizedBox.shrink();
+                        return TextButton(
+                          onPressed: _recovery.lines.length < 2
+                              ? null
+                              : _openLineSheet,
+                          child: Text(
+                            '线路 ${_recovery.currentLineIndex + 1}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        );
+                      }),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.lock_open,
+                            color: Colors.white),
+                        tooltip: '锁定控制条',
+                        onPressed: _lockControls,
+                      ),
+                      IconButton(
+                        icon: Obx(() => Icon(
+                              _fullscreen.isFullscreen.value
+                                  ? Icons.fullscreen_exit
+                                  : Icons.fullscreen,
+                              color: Colors.white,
+                            )),
+                        tooltip: '全屏',
+                        onPressed: () => _fullscreen.toggleFullscreen(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          // Locked: only the unlock button (Pure Live LockButton).
+          if (_controlsLocked)
+            Positioned(
+              right: 12,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  icon: const Icon(Icons.lock, color: Colors.white),
+                  tooltip: '解锁控制条',
+                  onPressed: _unlockControls,
+                ),
+              ),
+            ),
+          if (_loading)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: Colors.white,
+                  ),
+                  if (_ladderHint != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _ladderHint!,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          if (_failed)
+            _FailureCard(
+              message: _errorMessage ?? '播放失败，请检查网络后点 ▶ 重试',
+              onRetry: _manualRetry,
+            ),
+          if (_showingStallNotice && !_failed)
+            const Positioned(
+              top: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  '重新连接…',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    return Obx(() {
+      final fullscreen = _fullscreen.isFullscreen.value;
+      return PopScope(
+        // In fullscreen the back gesture exits fullscreen instead of
+        // leaving the room; a second back leaves the room.
+        canPop: !fullscreen,
+        onPopInvokedWithResult: (didPop, _) {
+          // Blocked pop (fullscreen) or real pop: either way restore
+          // portrait; a blocked pop only exits fullscreen.
+          unawaited(_fullscreen.exitFullscreen());
+        },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackground,
+        // Pure Live fullscreen has NO AppBar: the overlay top bar is
+        // the exit path and the video fills the whole screen. Keeping
+        // the AppBar in fullscreen was the "横屏显示不好" — the video
+        // never filled the screen.
+        appBar: fullscreen
+            ? null
+            : AppBar(
+                title: Text(_room.title.isEmpty ? '直播间' : _room.title),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz),
+                    tooltip: '切换',
+                    // L04: switch-room panel (follows / current list /
+                    // history / replay follows).
+                    onPressed: _openSwitchPanel,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.fullscreen),
+                    tooltip: '全屏',
+                    // The [ ] button is the ONLY path to landscape (fix 2).
+                    onPressed: () => _fullscreen.toggleFullscreen(),
+                  ),
+                ],
+              ),
+        body: Column(
+          children: [
+            // 16:9 native video surface on top — in-page, portrait;
+            // fills the screen in landscape fullscreen.
+            if (fullscreen)
+              Expanded(child: videoSurface)
+            else
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: videoSurface,
+              ),
             // Room info + quality / line controls below the video.
             // L05: the whole info bar is tappable — it opens the room
             // detail sheet (never covering the video).
-            InkWell(
+            if (!fullscreen) InkWell(
               onTap: _openRoomDetail,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -914,7 +1562,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
               ),
             ),
             // Quality selector.
-            if (_qualities.isNotEmpty)
+            if (!fullscreen && _qualities.isNotEmpty)
               SizedBox(
                 height: 44,
                 child: ListView.builder(
@@ -942,7 +1590,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
                 ),
               ),
             // Line selector: buttons show only "线路 N", never CDN names.
-            if (_recovery.lines.length > 1)
+            if (!fullscreen && _recovery.lines.length > 1)
               SizedBox(
                 height: 44,
                 child: ListView.builder(
@@ -980,7 +1628,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
             // block menu. The gestures live on the list items only —
             // the video surface keeps its own tap-to-play/pause, and
             // the list still scrolls (a drag is a scroll, not a tap).
-            Expanded(
+            if (!fullscreen) Expanded(
               child: !_danmakuEnabled
                   ? Center(
                       child: Column(
@@ -1113,6 +1761,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
         ),
       ),
     );
+    });
   }
 }
 

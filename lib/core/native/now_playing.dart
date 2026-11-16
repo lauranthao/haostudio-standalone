@@ -22,6 +22,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// MethodChannel name shared with ios/Runner/NowPlayingPlugin.swift.
@@ -58,6 +59,11 @@ class NowPlayingService {
   /// Publish the current track to the system Now Playing. Call on track
   /// change, play/pause, seek, and (throttled to ~1 s) while playing so
   /// the Lock Screen elapsed time stays fresh.
+  ///
+  /// Failures are logged in debug instead of vanishing into `unawaited`:
+  /// a MissingPluginException here means the native plugin never
+  /// registered and Now Playing is silently dead (that is how the
+  /// v1.0.5 tap-to-open bug hid — no trace anywhere).
   Future<void> updateTrack({
     required String title,
     String artist = '',
@@ -67,20 +73,28 @@ class NowPlayingService {
     Duration position = Duration.zero,
     required bool playing,
   }) async {
-    await _channel.invokeMethod<void>('updateNowPlaying', <String, Object>{
-      'title': title,
-      'artist': artist,
-      'album': album,
-      'coverUrl': coverUrl,
-      'duration': duration.inMilliseconds / 1000.0,
-      'position': position.inMilliseconds / 1000.0,
-      'playing': playing,
-    });
+    try {
+      await _channel.invokeMethod<void>('updateNowPlaying', <String, Object>{
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'coverUrl': coverUrl,
+        'duration': duration.inMilliseconds / 1000.0,
+        'position': position.inMilliseconds / 1000.0,
+        'playing': playing,
+      });
+    } catch (e) {
+      debugPrint('[HAo] now_playing updateTrack failed: $e');
+    }
   }
 
   /// Clear the system Now Playing (no track loaded / player stopped).
   Future<void> clear() async {
-    await _channel.invokeMethod<void>('clearNowPlaying');
+    try {
+      await _channel.invokeMethod<void>('clearNowPlaying');
+    } catch (e) {
+      debugPrint('[HAo] now_playing clear failed: $e');
+    }
   }
 
   Future<dynamic> _onMethodCall(MethodCall call) async {

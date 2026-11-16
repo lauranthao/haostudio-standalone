@@ -1,15 +1,22 @@
 // Music player page (fix 16 + design reference).
 //
-// Look (chen 2026-11-16 ~08:24 reference screenshot): deep blue
-// cover-tinted gradient background, large square cover centred with
-// rounded corners, title (bold white) + artist (lighter) left-aligned
-// below the cover with star + `···` on the right, thin progress bar with
-// elapsed time left + remaining time right, three big white triangle
-// controls (prev/play/next, no background circles), volume slider with
-// speaker icons, bottom row of 3 pure icons only (lyrics, AirPlay,
-// queue), no text labels. The Hi-Res badge sits BELOW the cover,
+// Look (chen 2026-11-16 ~08:24 reference screenshot + Apple Music rule
+// 2026-11-16 ~23:53): the BACKGROUND follows the cover, Apple Music
+// style — the cover is scaled up + heavily blurred to fill the page, with
+// a dominant-color gradient wash on top (tint up top, near-black at the
+// bottom so text stays readable); the whole page changes color with the
+// cover. No cover yet / cover failed => the theme-accent gradient below
+// (never a grey block). On top of the background: large square cover
+// centred with rounded corners, title (bold white) + artist (lighter)
+// left-aligned below the cover with star + `···` on the right, thin
+// progress bar with elapsed time left + remaining time right, three big
+// white triangle controls (prev/play/next, no background circles), volume
+// slider with speaker icons, bottom row of 3 pure icons only (lyrics,
+// AirPlay, queue), no text labels. The Hi-Res badge sits BELOW the cover,
 // centred. The whole player fits one screen — no page scroll; lyrics
-// sit below in their own scrollable area.
+// sit below in their own scrollable area. Swipe-to-switch-songs (chen
+// 2026-11-17): ONLY on the cover — left/right on the cover switches
+// songs; title / progress / lyrics / blank areas do not.
 //
 // Behaviour (fix 16): swipe LEFT on the Now Playing area = next song,
 // swipe RIGHT = previous song. Threshold: horizontal distance ≥ 60 px
@@ -21,7 +28,9 @@
 // follows all 4 themes × light/dark; the reference deep-blue look is
 // what appleGlass/polarIce produce.
 
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -30,6 +39,7 @@ import '../../../core/theme/hao_themes.dart';
 import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
 import 'music_player_controller.dart';
+import 'widgets/music_image.dart';
 import 'widgets/play_queue_panel.dart';
 import 'widgets/quality_sheet.dart';
 import 'widgets/track_more_sheet.dart';
@@ -49,10 +59,60 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
 
   MusicPlayerController get _c => MusicPlayerController.ensure();
 
+  // Apple Music-style cover background: blurred cover + dominant-color
+  // gradient. Updated when the song changes (currentIndex listener);
+  // _bgSongId guards duplicate work, _bgCoverUrl/_coverTint drive the
+  // background. Null tint / empty url => theme-accent gradient fallback.
+  StreamSubscription<int>? _songSub;
+  String _bgSongId = '';
+  String _bgCoverUrl = '';
+  Color? _coverTint;
+
+  @override
+  void initState() {
+    super.initState();
+    _songSub = _c.currentIndex.listen((_) {
+      final song = _c.currentSong;
+      if (song != null) unawaited(_updateCoverBackground(song));
+    });
+    final song = _c.currentSong;
+    if (song != null) unawaited(_updateCoverBackground(song));
+  }
+
   @override
   void dispose() {
+    _songSub?.cancel();
     _lyricScroll.dispose();
     super.dispose();
+  }
+
+  /// Fetch the cover (shared cache with the cover widget, so no second
+  /// download), extract its dominant color, and switch the background to
+  /// the blurred-cover + tint gradient. Any failure leaves the theme
+  /// gradient in place — never a grey block.
+  Future<void> _updateCoverBackground(Song song) async {
+    if (song.songId == _bgSongId) return;
+    _bgSongId = song.songId;
+    if (song.cover.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _bgCoverUrl = '';
+        _coverTint = null;
+      });
+      return;
+    }
+    Color? tint;
+    try {
+      final bytes = await fetchMusicImageBytes(song.cover);
+      tint = await dominantCoverColor(bytes);
+    } catch (_) {
+      tint = null;
+    }
+    if (!mounted || _bgSongId != song.songId) return;
+    setState(() {
+      _bgCoverUrl = song.cover;
+      _coverTint = tint;
+    });
   }
 
   void _onPanStart(DragStartDetails _) {
@@ -102,12 +162,18 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     return [top, mid, bottom];
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
-    final grad = _gradient(theme);
-    return Scaffold(
-      body: Container(
+  /// Apple Music-style background: the current cover, scaled up + heavily
+  /// blurred to fill the page, with a dominant-color gradient wash on top
+  /// (tint up top, fading to near-black at the bottom so lyrics and
+  /// controls stay readable). The whole page follows the cover. When the
+  /// cover has not loaded (or failed), the theme-accent gradient above is
+  /// the fallback — never a grey block.
+  Widget _background(HaoTheme theme) {
+    final tint = _coverTint;
+    final coverUrl = _bgCoverUrl;
+    if (tint == null || coverUrl.isEmpty) {
+      final grad = _gradient(theme);
+      return Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -115,8 +181,51 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             colors: grad,
           ),
         ),
-        child: SafeArea(
-          child: Stack(
+      );
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Blurred cover, scaled up so the blur has no visible edge.
+        Transform.scale(
+          scale: 1.25,
+          child: ImageFiltered(
+            imageFilter: ui.ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+            child: Image(
+              image: MusicImageProvider(coverUrl),
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        // Dominant-color wash: tint on top, near-black at the bottom.
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                tint.withValues(alpha: 0.45),
+                tint.withValues(alpha: 0.18),
+                Colors.black.withValues(alpha: 0.62),
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _background(theme),
+          SafeArea(
+            child: Stack(
             children: [
               Obx(() {
                 final song = _c.currentSong;
@@ -134,30 +243,34 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                   children: [
                     _topBar(),
                     Expanded(
-                      child: GestureDetector(
-                        onPanStart: _onPanStart,
-                        onPanUpdate: _onPanUpdate,
-                        onPanEnd: _onPanEnd,
-                        behavior: HitTestBehavior.opaque,
-                        child: SingleChildScrollView(
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: Column(
-                            children: [
-                              _cover(song),
-                              const SizedBox(height: 14),
-                              _qualityBadge(),
-                              const SizedBox(height: 18),
-                              _titleRow(song),
-                              const SizedBox(height: 16),
-                              _progressBar(),
-                              const SizedBox(height: 20),
-                              _transportRow(),
-                              const SizedBox(height: 10),
-                              _volumeRow(),
-                              const SizedBox(height: 8),
-                              _bottomIconRow(),
-                            ],
-                          ),
+                      child: SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Column(
+                          children: [
+                            // Swipe-to-switch-songs lives ONLY on the cover
+                            // (chen 2026-11-17): left/right on the cover
+                            // switches songs; title / progress / lyrics /
+                            // blank areas do not.
+                            GestureDetector(
+                              onPanStart: _onPanStart,
+                              onPanUpdate: _onPanUpdate,
+                              onPanEnd: _onPanEnd,
+                              behavior: HitTestBehavior.opaque,
+                              child: _cover(song),
+                            ),
+                            const SizedBox(height: 14),
+                            _qualityBadge(),
+                            const SizedBox(height: 18),
+                            _titleRow(song),
+                            const SizedBox(height: 16),
+                            _progressBar(),
+                            const SizedBox(height: 20),
+                            _transportRow(),
+                            const SizedBox(height: 10),
+                            _volumeRow(),
+                            const SizedBox(height: 8),
+                            _bottomIconRow(),
+                          ],
                         ),
                       ),
                     ),
@@ -175,9 +288,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 
   Widget _topBar() {
     return Padding(
@@ -216,8 +330,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
               color: Colors.white.withValues(alpha: 0.15),
               child: const Icon(Icons.music_note, color: Colors.white54, size: 72),
             )
-          : Image.network(
-              song.cover,
+          : Image(
+              image: MusicImageProvider(song.cover),
               width: size,
               height: size,
               fit: BoxFit.cover,
@@ -302,18 +416,22 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
               ],
             ),
           ),
-          Obx(
-            () => IconButton(
-              icon: Icon(
-                _c.isFav(song) ? Icons.star : Icons.star_border,
-                color: Colors.white,
-                size: 26,
-              ),
-              onPressed: () async {
-                await _c.toggleFav(song);
-                setState(() {});
-              },
+          // NOTE: no Obx here — isFav() reads Hive (not an Rx observable),
+          // so an Obx around this button threw "improper use of GetX" on
+          // every build and corrupted the title-row layout (the row blew
+          // up to 100000pt tall, pushing all controls off-screen and
+          // leaving a grey box on the phone). The star refreshes via the
+          // setState() in onPressed below.
+          IconButton(
+            icon: Icon(
+              _c.isFav(song) ? Icons.star : Icons.star_border,
+              color: Colors.white,
+              size: 26,
             ),
+            onPressed: () async {
+              await _c.toggleFav(song);
+              setState(() {});
+            },
           ),
           IconButton(
             icon: const Icon(Icons.more_horiz, color: Colors.white, size: 26),

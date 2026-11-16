@@ -7,15 +7,19 @@
 // effect on the next song search (SongSearchService reads
 // [MusicSourcesStore]); at least one platform must stay enabled.
 //
-// Script sources: the 4 bundled LX 歌一刀 scripts (ikun / 新澜 / 溯音 /
+// Script sources: the bundled LX 歌一刀 scripts (ikun / 新澜 / 溯音 /
 // 落雪) plus user-added custom scripts. Each script runs in its own JS
 // runtime and is registered with ONLY the capabilities it declares
 // (see LxScriptEngine). A toggle takes effect on the next play-URL
 // resolve / search; scripts are additive, so turning them all off is
-// harmless. Custom scripts are added by URL — the add flow downloads
-// AND validates the script (it must evaluate and send `inited`) and
-// only saves it on success; a failed add shows the reason and saves
-// nothing. There are no dead buttons on this page.
+// harmless. Bundled scripts are NOT hardcoded: they live as files in
+// the app documents directory (seeded from assets on first launch)
+// and any script — bundled or custom — can be deleted here; a deleted
+// bundled script is never re-seeded or loaded again. Custom scripts
+// are added by URL — the add flow downloads AND validates the script
+// (it must evaluate and send `inited`) and only saves it on success;
+// a failed add shows the reason and saves nothing. There are no dead
+// buttons on this page.
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -108,13 +112,14 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     }
   }
 
-  Future<void> _removeCustom(LxCustomScript s) async {
-    await LxScriptEngine.instance.removeCustomScript(s.id);
+  Future<void> _removeScript(String id, String name) async {
+    await LxScriptEngine.instance.removeScript(id);
+    if (!mounted) return;
     setState(() {
       _scriptInfos = LxScriptEngine.instance.scripts;
       _custom = LxScriptSourcesStore.customScripts();
     });
-    Get.snackbar('已删除', s.name);
+    Get.snackbar('已删除', name);
   }
 
   LxScriptInfo? _infoFor(String id) {
@@ -124,9 +129,14 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     return null;
   }
 
-  String _statusLine(LxBundledScript spec) {
-    final info = _infoFor(spec.id);
-    if (info == null) return _scriptsLoading ? '加载中…' : '未加载';
+  String _bundledBlurb(String id) {
+    for (final spec in kBundledLxScripts) {
+      if (spec.id == id) return spec.blurb;
+    }
+    return '';
+  }
+
+  String _statusLineFor(LxScriptInfo info) {
     if (!info.loaded) {
       final err = (info.error ?? '加载失败').replaceAll('\n', ' ');
       return '加载失败：${err.length > 60 ? '${err.substring(0, 60)}…' : err}';
@@ -216,7 +226,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            '内置 4 个 LX 音乐源脚本，在播放解析与搜索时作为附加音源；关闭后该脚本不再参与解析。每个脚本只提供它自己声明的能力。',
+            '内置 LX 音乐源脚本，在播放解析与搜索时作为附加音源；关闭后该脚本不再参与解析。每个脚本只提供它自己声明的能力。点删除可移除脚本，删除后不再加载（可通过下方的链接重新添加）。',
             style: TextStyle(color: theme.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 8),
@@ -228,20 +238,24 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
                 style: TextStyle(color: theme.textSecondary, fontSize: 13),
               ),
             ),
-          ...kBundledLxScripts.map(
-            (spec) => _scriptTile(
-              id: spec.id,
-              title: spec.name,
-              subtitle: '${spec.blurb}\n${_statusLine(spec)}',
-            ),
-          ),
+          // Bundled tiles are driven by the loaded scripts, not the
+          // static bundled list — a deleted script is gone from here.
+          ..._scriptInfos.where((s) => !s.isCustom).map(
+                (info) => _scriptTile(
+                  id: info.id,
+                  title: info.name,
+                  subtitle:
+                      '${_bundledBlurb(info.id)}\n${_statusLineFor(info)}',
+                  onDelete: () => _removeScript(info.id, info.name),
+                ),
+              ),
           ..._custom.map(
             (s) => _scriptTile(
               id: s.id,
               title: s.name,
               subtitle:
                   '自定义脚本 · ${s.url}\n${_infoFor(s.id)?.loaded == true ? '已加载 · ${_infoFor(s.id)!.sources.map((e) => e.platform).join(' / ')}' : '未加载'}',
-              onDelete: () => _removeCustom(s),
+              onDelete: () => _removeScript(s.id, s.name),
             ),
           ),
           const SizedBox(height: 16),

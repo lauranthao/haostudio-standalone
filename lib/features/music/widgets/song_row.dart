@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/hao_themes.dart';
 import '../../../services/music/music_models.dart';
+import 'music_image.dart';
 
 class SongRow extends StatelessWidget {
   const SongRow({
@@ -73,8 +74,8 @@ class SongRow extends StatelessWidget {
                         color: theme.textMuted,
                       ),
                     )
-                  : Image.network(
-                      song.cover,
+                  : Image(
+                      image: MusicImageProvider(song.cover),
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,

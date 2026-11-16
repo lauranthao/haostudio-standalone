@@ -22,6 +22,7 @@ import 'music_player_sheet.dart';
 import 'plaza_page.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/music_image.dart';
 
 enum _SearchType { song, playlist, artist }
 
@@ -270,8 +271,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                         color: theme.accentSoft,
                         child: Icon(Icons.music_note, color: theme.textMuted),
                       )
-                    : Image.network(
-                        p.cover,
+                    : Image(
+                        image: MusicImageProvider(p.cover),
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
@@ -311,7 +312,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             return ListTile(
               leading: CircleAvatar(
                 backgroundImage:
-                    a.cover.isEmpty ? null : NetworkImage(a.cover),
+                    a.cover.isEmpty ? null : MusicImageProvider(a.cover),
                 backgroundColor: theme.accentSoft,
                 child: a.cover.isEmpty
                     ? Icon(Icons.person, color: theme.textMuted)

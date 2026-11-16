@@ -27,6 +27,21 @@ import UIKit
 //    web Media Session bridge in the Flutter app, so one press fires
 //    exactly once. The Dart side additionally dedupes rapid
 //    next/previous commands (see NowPlayingService).
+//  - Root cause of "tap does nothing" (chen 2026-11-16, v1.0.5):
+//    (a) `beginReceivingRemoteControlEvents()` was never called —
+//    the documented prerequisite for the system to route Lock Screen
+//    / Control Center / headphone commands to the app (the path
+//    just_audio_background and audio_service both use); without it
+//    the command targets can sit registered and never fire, and
+//    Control Center prev/next does nothing. (b) The audio session
+//    was activated only once: media_kit's mpv re-inits its audio
+//    output on every track open / crossfade player swap, and mpv's
+//    ao_avfoundation deactivates the shared session on teardown —
+//    the app then silently loses Now Playing attribution, the Lock
+//    Screen / Dynamic Island keep showing a stale card, and tapping
+//    it does nothing. Fix: set up commands eagerly at registration,
+//    call beginReceivingRemoteControlEvents, and re-assert the
+//    session active on every publish (a no-op when already active).
 // MUST inherit from NSObject: MPRemoteCommand.addTarget messages the
 // target through the Objective-C runtime, and a pure Swift class as
 // the target crashes the app the moment a remote command fires (same
@@ -50,6 +65,12 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
             binaryMessenger: registrar.messenger())
         let instance = NowPlayingPlugin(channel: channel)
         registrar.addMethodCallDelegate(instance, channel: channel)
+        // Eager command setup: the app is remote-control-ready from
+        // launch, so a first publish skipped by the empty-title guard
+        // (or any early failure) can never leave the command center
+        // unregistered. Session activation still happens on publish
+        // (updateNowPlaying), when there is real audio to attribute.
+        instance.setupCommandsIfNeeded()
     }
 
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -81,7 +102,7 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
         let position = (args["position"] as? NSNumber)?.doubleValue ?? 0
         let playing = args["playing"] as? Bool ?? false
 
-        configureAudioSessionIfNeeded()
+        configureAudioSession()
         setupCommandsIfNeeded()
 
         var info: [String: Any] = [:]
@@ -116,20 +137,30 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
     // / Dynamic Island / Lock Screen opens the app. media_kit (mpv)
     // also configures the session for playback; setting the category
     // here is compatible and guarantees the attribution even if the
-    // player has not started its session yet. The session is left
-    // alone on clear — deactivating it could pause media_kit's
-    // playback.
-    private func configureAudioSessionIfNeeded() {
-        guard !sessionConfigured else { return }
-        sessionConfigured = true
+    // player has not started its session yet.
+    //
+    // The category is set once, but the session is re-activated on
+    // EVERY publish: mpv re-inits its audio output on each track open
+    // / crossfade player swap and its ao_avfoundation deactivates the
+    // shared session on teardown. Without this re-assert the app
+    // silently loses Now Playing attribution after a track change —
+    // the Lock Screen / Dynamic Island keep a stale card and tapping
+    // it does nothing. setActive(true) on an already-active session
+    // is a no-op. The session is left alone on clear — deactivating
+    // it could pause media_kit's playback.
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            if !sessionConfigured {
+                try session.setCategory(.playback, mode: .default, options: [])
+                sessionConfigured = true
+            }
             try session.setActive(true)
         } catch {
             // Non-fatal: the player still works; the card may just
             // not be app-attributed until mpv activates the session.
-            sessionConfigured = false
+            // sessionConfigured stays true once the category itself
+            // succeeded, so the next publish only retries activation.
         }
     }
 
@@ -138,6 +169,12 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
     private func setupCommandsIfNeeded() {
         guard !commandsActive else { return }
         commandsActive = true
+        // Documented prerequisite for the system to route remote
+        // control events to the app (the path just_audio_background
+        // and audio_service both use): without it, Lock Screen /
+        // Control Center / headphone commands may never reach the
+        // registered MPRemoteCommandCenter targets at all.
+        UIApplication.shared.beginReceivingRemoteControlEvents()
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget(self, action: #selector(remotePlay))
         center.pauseCommand.addTarget(self, action: #selector(remotePause))
@@ -151,6 +188,7 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
     private func teardownCommands() {
         guard commandsActive else { return }
         commandsActive = false
+        UIApplication.shared.endReceivingRemoteControlEvents()
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(self)
         center.pauseCommand.removeTarget(self)

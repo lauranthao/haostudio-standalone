@@ -180,8 +180,8 @@ void main() {
 
     tearDown(() => engine.dispose());
 
-    test('all four load with exactly their declared capabilities', () {
-      expect(engine.scripts.length, 4);
+    test('all six load with exactly their declared capabilities', () {
+      expect(engine.scripts.length, 6);
       for (final s in engine.scripts) {
         expect(s.loaded, isTrue, reason: '${s.id}: ${s.error}');
       }
@@ -228,6 +228,45 @@ void main() {
       );
       expect(luoxue.sourceFor('wy')!.actions, ['musicUrl']);
       expect(luoxue.sourceFor('wy')!.qualities, contains('master'));
+
+      // Verified live 2026-11-17 via the Node LX harness (real prelude
+      // + real HTTP): both declare the same 5 platforms, musicUrl only.
+      final fish = engine.script('fish')!;
+      expect(fish.version, '1.9.0');
+      expect(
+        fish.sources.map((s) => s.platform).toSet(),
+        {'kw', 'wy', 'kg', 'tx', 'mg'},
+      );
+      for (final s in fish.sources) {
+        expect(s.actions, ['musicUrl']);
+      }
+      expect(fish.sourceFor('wy')!.qualities, ['128k', '320k', 'flac']);
+      expect(
+        fish.sourceFor('kw')!.qualities,
+        contains('flac24bit'),
+      );
+
+      final jiexiang = engine.script('jiexiang')!;
+      expect(jiexiang.version, '2.3.0');
+      expect(
+        jiexiang.sources.map((s) => s.platform).toSet(),
+        {'tx', 'wy', 'kw', 'kg', 'mg'},
+      );
+      for (final s in jiexiang.sources) {
+        expect(s.actions, ['musicUrl']);
+      }
+      expect(
+        jiexiang.sourceFor('wy')!.qualities,
+        ['128k', '320k', 'flac'],
+      );
+      expect(
+        jiexiang.sourceFor('kg')!.qualities,
+        containsAll(['128k', '320k', 'flac', 'hires', 'master']),
+      );
+      expect(
+        jiexiang.sourceFor('kw')!.qualities,
+        contains('flac24bit'),
+      );
     });
 
     test('scriptJobsFor only offers qualities the script declares', () {
@@ -256,7 +295,7 @@ void main() {
       );
       expect(
         hiresJobs.map((j) => j.key).toSet(),
-        {'lx:ikun', 'lx:suyin', 'lx:luoxue'},
+        {'lx:ikun', 'lx:suyin', 'lx:luoxue', 'lx:fish', 'lx:jiexiang'},
       );
       final q320Jobs = engine.scriptJobsFor(
         MusicPlatform.wy,
@@ -265,7 +304,14 @@ void main() {
       );
       expect(
         q320Jobs.map((j) => j.key).toSet(),
-        {'lx:ikun', 'lx:xinlan', 'lx:suyin', 'lx:luoxue'},
+        {
+          'lx:ikun',
+          'lx:xinlan',
+          'lx:suyin',
+          'lx:luoxue',
+          'lx:fish',
+          'lx:jiexiang',
+        },
       );
       // 溯音 is the only script declaring search (kw/mg).
       expect(

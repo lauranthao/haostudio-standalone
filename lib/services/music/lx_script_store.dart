@@ -134,6 +134,53 @@ class LxScriptSourcesStore {
       jsonEncode(next.map((s) => s.toJson()).toList()),
     );
   }
+
+  /// Bundled scripts the user deleted. A deleted bundled id is never
+  /// re-seeded from assets and never loaded again — including after an
+  /// app restart. Re-adding is possible via its URL (addCustomScript).
+  static List<String> deletedBundledIds({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    if (b == null) return const [];
+    final raw = b.get(HiveKeys.lxDeletedBundledScripts);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  static bool isBundledDeleted(String id, {Box<dynamic>? box}) =>
+      deletedBundledIds(box: box).contains(id);
+
+  static Future<void> markBundledDeleted(
+    String id, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    final next = deletedBundledIds(box: b).toSet()..add(id);
+    await b.put(
+      HiveKeys.lxDeletedBundledScripts,
+      jsonEncode(next.toList()),
+    );
+  }
+
+  static Future<void> unmarkBundledDeleted(
+    String id, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    final next = deletedBundledIds(box: b).toSet()..remove(id);
+    await b.put(
+      HiveKeys.lxDeletedBundledScripts,
+      jsonEncode(next.toList()),
+    );
+  }
 }
 
 /// The caller's box, or HiveStore.box when Hive is initialised.

@@ -45,6 +45,11 @@ abstract class PlayerBackend {
   Future<void> pause();
   Future<void> setVolume(double volume);
 
+  /// Playback speed (VOD only; live never sets it). Default is a
+  /// no-op so fakes keep compiling; the three real backends override
+  /// it (MPV setRate / IJK setSpeed / AVPlayer setSpeed).
+  Future<void> setRate(double rate) async {}
+
   /// Position stream — health is judged by POSITION movement, not by
   /// player flags (`playing` only means "not paused").
   Stream<Duration> get positionStream;

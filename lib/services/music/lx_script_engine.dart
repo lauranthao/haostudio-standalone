@@ -1,5 +1,5 @@
 // LX Music script engine (M-P0-6) — runs 歌一刀 / LX Music-format
-// custom-source scripts (the 4 bundled in assets/lx_scripts/ + user-added
+// custom-source scripts (the 6 bundled in assets/lx_scripts/ + user-added
 // URLs) and exposes them as music resolver sources.
 //
 // How it works:
@@ -24,11 +24,17 @@
 // - Console output is captured per script (last 100 lines, `logs`),
 //   never printed to stdout.
 //
-// Scripts as assets: the 4 files in assets/lx_scripts/ are copies of
-// research/kmusic/*.js. The 溯音 script's embedded shared oiapi key was
-// sanitised to '' before packaging — no key/secret ships in the app.
-// The fifth script from the notes (非常刀) is NOT in research/kmusic/
-// (only 4 .js files exist there), so it is not bundled.
+// Scripts as files: the 6 files in assets/lx_scripts/ are copies of
+// research/kmusic/*.js (ikun/新澜/溯音/落雪) plus the pdone
+// lx-music-source fish (v1.9.0) and 杰翔聚合音源 (v2.3.0) scripts,
+// and are ONLY the first-install seed. On first launch each is copied
+// ([LxScriptFileStore]) and the engine loads from there — never from
+// assets directly — so a deleted bundled script stays deleted (the
+// file is removed and the id is recorded in the Hive deleted set; the
+// seed never re-creates it). The 溯音 script's embedded shared oiapi
+// key was sanitised to '' before packaging — no key/secret ships in
+// the app. The fifth script from the notes (非常刀) is NOT in
+// research/kmusic/ (only 4 .js files exist there), so it is not bundled.
 // Script update checks (checkUpdate) are allowed to run — they are
 // fire-and-forget, never block loading, and a failed check is silent.
 //
@@ -51,6 +57,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_js/flutter_js.dart';
 
 import '../../core/network/http_client.dart';
+import 'lx_script_files.dart';
 import 'lx_script_store.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
@@ -279,6 +286,18 @@ const List<LxBundledScript> kBundledLxScripts = [
     assetPath: 'assets/lx_scripts/luoxue.js',
     blurb: '落雪 · QQ / 网易 · 仅播放链接',
   ),
+  LxBundledScript(
+    id: 'jiexiang',
+    name: '杰翔聚合音源',
+    assetPath: 'assets/lx_scripts/jiexiang.js',
+    blurb: '杰翔聚合音源 · QQ / 网易 / 酷我 / 酷狗 / 咪咕 · 仅播放链接，酷狗支持 Master',
+  ),
+  LxBundledScript(
+    id: 'fish',
+    name: 'fish音源',
+    assetPath: 'assets/lx_scripts/fish.js',
+    blurb: 'fish音源 · QQ / 网易 / 酷我 / 酷狗 / 咪咕 · 仅播放链接',
+  ),
 ];
 
 /// One platform entry declared by one script's `inited` event.
@@ -466,17 +485,24 @@ class LxScriptEngine {
     Dio? dio,
     LxRuntimeFactory? runtimeFactory,
     LxAssetLoader? assetLoader,
+    this._fileStore,
   })  : _dio = dio ?? sharedDio(),
         _runtimeFactory =
             runtimeFactory ?? (() => getJavascriptRuntime(xhr: false)),
         _assetLoader =
             assetLoader ?? ((path) => rootBundle.loadString(path));
 
-  static final LxScriptEngine instance = LxScriptEngine();
+  static final LxScriptEngine instance =
+      LxScriptEngine(fileStore: LxScriptFileStore());
 
   final Dio _dio;
   final LxRuntimeFactory _runtimeFactory;
   final LxAssetLoader _assetLoader;
+
+  /// File-backed bundled scripts (production). Null in tests that
+  /// construct the engine without one — those load bundled scripts
+  /// from assets exactly as before.
+  final LxScriptFileStore? _fileStore;
 
   Future<void>? _initFuture;
   final Map<String, _ScriptRuntime> _runtimes = {};
@@ -501,8 +527,25 @@ class LxScriptEngine {
 
   Future<void> _init() async {
     for (final spec in kBundledLxScripts) {
+      // Deleted bundled scripts are gone: never re-seeded, never
+      // loaded — including after an app restart.
+      if (LxScriptSourcesStore.isBundledDeleted(spec.id)) continue;
+      String? code;
+      final fs = _fileStore;
+      if (fs != null) {
+        try {
+          await fs.seedIfMissing(
+            id: spec.id,
+            assetPath: spec.assetPath,
+            assetLoader: _assetLoader,
+          );
+          code = await fs.read(spec.id);
+        } catch (_) {
+          code = null;
+        }
+      }
       try {
-        final code = await _assetLoader(spec.assetPath);
+        code ??= await _assetLoader(spec.assetPath);
         await _loadScript(
           id: spec.id,
           name: spec.name,
@@ -569,7 +612,9 @@ class LxScriptEngine {
     } catch (e) {
       throw LxScriptException('下载失败: $e');
     }
-    if (!code.contains('globalThis.lx')) {
+    if (!code.contains('globalThis.lx') &&
+        !code.contains("globalThis['lx']") &&
+        !code.contains('globalThis["lx"]')) {
       throw LxScriptException('不是 LX 音乐源脚本 (缺少 globalThis.lx)');
     }
     final name = _parseMeta(code, 'name') ?? uri.host;
@@ -594,13 +639,32 @@ class LxScriptEngine {
     return info;
   }
 
-  /// Remove a custom script (runtime + persisted record). Bundled
-  /// scripts cannot be removed — use the enable toggle instead.
-  Future<void> removeCustomScript(String id) async {
+  /// Remove any script (bundled or custom) by id: dispose its runtime,
+  /// drop it from the registry, and persist the removal so it never
+  /// comes back. Bundled: deletes the file copy and records the id in
+  /// the deleted set, so it is never re-seeded or loaded again —
+  /// including after an app restart. Custom: removes the Hive record
+  /// (as before). A deleted bundled script can be added back via its
+  /// URL ([addCustomScript]).
+  Future<void> removeScript(String id) async {
+    final wasCustom = _scripts[id]?.isCustom ?? id.startsWith('custom:');
     _runtimes.remove(id)?.dispose();
     _scripts.remove(id);
-    await LxScriptSourcesStore.removeCustomScript(id);
+    if (wasCustom) {
+      await LxScriptSourcesStore.removeCustomScript(id);
+    } else {
+      try {
+        await _fileStore?.delete(id);
+      } catch (_) {}
+      await LxScriptSourcesStore.markBundledDeleted(id);
+      // Drop any stale enable/disable entry for the removed script.
+      await LxScriptSourcesStore.setEnabled(id, true);
+    }
   }
+
+  /// Remove a custom script (runtime + persisted record). Kept for
+  /// existing callers; delegates to [removeScript].
+  Future<void> removeCustomScript(String id) => removeScript(id);
 
   /// Load + evaluate one script in a fresh runtime. Returns the
   /// registered info; throws [LxScriptException] when the script does

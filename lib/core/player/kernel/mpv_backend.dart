@@ -51,7 +51,7 @@ class MpvBackend implements PlayerBackend {
     // NOTE: public Player has no setProperty in media_kit 1.1.11 — the
     // properties go through the underlying NativePlayer (the same call
     // Pure Live's media_kit adapter makes via NativePlayer.setProperty).
-    for (final entry in kMpvBaseProperties.entries) {
+    for (final entry in mpvBaseProperties().entries) {
       await _setProperty(entry.key, entry.value);
     }
     final format = formatOf(url: url, declaredFormat: declaredFormat);
@@ -77,49 +77,67 @@ class MpvBackend implements PlayerBackend {
 
   @override
   Future<bool> waitForFirstFrame({
-    Duration timeout = const Duration(seconds: 15),
+    Duration timeout = const Duration(seconds: 18),
   }) async {
     if (!_opened) return false;
-    // R1: read the CURRENT state before subscribing. media_kit's
-    // width/position streams are plain broadcast StreamControllers
-    // with no replay: if mpv decoded the first frame during open()
-    // (before this method ran), the width event was already emitted
-    // and a fresh subscription would wait forever for the next one.
-    // A width > 0 means a video frame was decoded; a position > 0
-    // means the playback clock is moving — either proves playback.
-    final state = _player.state;
-    if ((state.width ?? 0) > 0) return true;
-    if (state.position > Duration.zero) return true;
-    final completer = Completer<bool>();
-    late final StreamSubscription<int?> widthSub;
-    late final StreamSubscription<Duration> posSub;
-    late final StreamSubscription<String> errSub;
-    late final StreamSubscription<bool> doneSub;
-    void finish(bool ok) {
-      if (completer.isCompleted) return;
-      completer.complete(ok);
-      unawaited(widthSub.cancel());
-      unawaited(posSub.cancel());
-      unawaited(errSub.cancel());
-      unawaited(doneSub.cancel());
-    }
-
-    widthSub = _player.stream.width.listen((w) {
-      if ((w ?? 0) > 0) finish(true);
+    // Pure Live media_core `live_playback_sweep.dart` _verifyPlayback,
+    // verbatim logic (the media_core package itself cannot be vendored
+    // — separate package with its own adapter tree — so the algorithm
+    // is ported, not the file):
+    //
+    // The success bar is *any* positive position progress, not a jump:
+    // some live sources (huya FLV, for one) start their demuxer clock
+    // near zero and only creep forward a few tens of milliseconds while
+    // the picture is in fact playing. Requiring a 400ms jump used to
+    // condemn exactly those healthy streams, and the sweep then tore
+    // down engine after engine that was already on screen. A stream
+    // that moves at all has passed verification; if it later stops
+    // moving, the position-stall watchdog is the detector for that,
+    // not this gate.
+    //
+    // The deadline is the 18 s sourceReadyTimeout — the tolerance the
+    // module declares for "opened but not playing", of which this is
+    // the first phase. It used to be a private, tighter constant, which
+    // meant one question with two deadlines and the stricter one
+    // winning: engines that were demonstrably still working (fetching
+    // the renditions of a multi-variant HLS master) were reported as
+    // frozen. Silence at this point is not evidence of death, because
+    // there is no signal that says "still probing" — no position and no
+    // buffering report exist until the demuxer has finished opening.
+    //
+    // Poll the position VALUE every 250 ms (no stream subscription, so
+    // no missed-event race). The error signal is discrete, so it is
+    // still observed from the error stream and fails fast, exactly as
+    // Pure Live's `_sweepAdapterError` does.
+    final until = DateTime.now().add(timeout);
+    var last = _player.state.position;
+    String? adapterError;
+    final errorSub = _player.stream.error.listen((e) {
+      if (e.isNotEmpty) adapterError ??= e;
     });
-    posSub = _player.stream.position.listen((p) {
-      if (p > Duration.zero) finish(true);
-    });
-    errSub = _player.stream.error.listen((e) {
-      if (e.isNotEmpty) finish(false);
-    });
-    doneSub = _player.stream.completed.listen((done) {
-      if (done) finish(false);
-    });
-    return completer.future.timeout(timeout, onTimeout: () {
-      finish(false);
+    try {
+      while (DateTime.now().isBefore(until)) {
+        if (_disposed) return false;
+        if (adapterError != null) return false;
+        if (_player.state.completed) return false;
+        final position = _player.state.position;
+        // A reopen restarts the demuxer clock: the mirror still holds
+        // the previous playback's position (18s of the old session,
+        // say), and the fresh stream starts near zero. Without
+        // re-baselining, every new sample is "smaller than last" and a
+        // perfectly healthy reopen is condemned as frozen at the stale
+        // value.
+        if (position < last) {
+          last = position;
+          continue;
+        }
+        if (position > last) return true;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
       return false;
-    });
+    } finally {
+      await errorSub.cancel();
+    }
   }
 
   @override
@@ -130,6 +148,9 @@ class MpvBackend implements PlayerBackend {
 
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume * 100);
+
+  @override
+  Future<void> setRate(double rate) => _player.setRate(rate);
 
   @override
   Stream<Duration> get positionStream => _player.stream.position;

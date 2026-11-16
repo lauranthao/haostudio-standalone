@@ -22,6 +22,7 @@ import 'music_player_sheet.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/music_image.dart';
 
 class ArtistDetailPage extends StatefulWidget {
   const ArtistDetailPage({
@@ -134,8 +135,8 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                       flexibleSpace: FlexibleSpaceBar(
                         background: _detail!.pic.isEmpty
                             ? Container(color: theme.accentSoft)
-                            : Image.network(
-                                _detail!.pic,
+                            : Image(
+                                image: MusicImageProvider(_detail!.pic),
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) =>
                                     Container(color: theme.accentSoft),
@@ -315,8 +316,8 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                 color: theme.accentSoft,
                 child: Icon(Icons.album, color: theme.textMuted),
               )
-            : Image.network(
-                album.cover,
+            : Image(
+                image: MusicImageProvider(album.cover),
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,

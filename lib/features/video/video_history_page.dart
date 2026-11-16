@@ -15,6 +15,7 @@ import '../../core/theme/hao_themes.dart';
 import 'video_detail_page.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
+import 'widgets/referer_image.dart';
 
 class VideoHistoryPage extends StatefulWidget {
   const VideoHistoryPage({super.key});
@@ -154,10 +155,10 @@ class _HistoryRow extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       if (entry.pic.isNotEmpty)
-                        Image.network(
-                          entry.pic,
+                        RefererImage(
+                          url: entry.pic,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const ColoredBox(
+                          fallback: const ColoredBox(
                             color: Color(0xFF1C1C1E),
                           ),
                         )

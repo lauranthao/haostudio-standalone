@@ -4,6 +4,7 @@
 // All Hive-backed (JSON strings in the `app_settings` box). History
 // reads are synchronous and must never delay a render (fix 13).
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -223,6 +224,26 @@ class VideoPlaybackSettings {
 
   static Future<void> setAutoNext(bool value) =>
       HiveStore.put(HiveKeys.videoAutoNext, value);
+
+  /// Playback speeds (Pure Live defaultRates, same order for cycling).
+  static const List<double> vodRates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+  /// Persisted VOD playback speed; unknown/stored garbage -> 1.0x.
+  static double get playbackRate {
+    try {
+      final v = HiveStore.getDouble(HiveKeys.vodPlaybackRate, 1.0);
+      return vodRates.contains(v) ? v : 1.0;
+    } catch (_) {
+      return 1.0;
+    }
+  }
+
+  /// Fire-and-forget safe: a storage failure must never break the player.
+  static Future<void> setPlaybackRate(double value) async {
+    try {
+      await HiveStore.put(HiveKeys.vodPlaybackRate, value);
+    } catch (_) {}
+  }
 }
 
 /// User-editable CMS source list (`hao_sa_video`).
@@ -247,13 +268,74 @@ class VideoSourcesStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List && decoded.isNotEmpty) {
-        return decoded
-            .whereType<Map<String, dynamic>>()
-            .map(VideoSource.fromJson)
-            .toList();
+        return _mergeDefaults(
+          decoded
+              .whereType<Map<String, dynamic>>()
+              .map(VideoSource.fromJson)
+              .toList(),
+        );
       }
     } catch (_) {}
     return List.of(kDefaultVideoSources);
+  }
+
+  /// Merge new defaults into a persisted list, once per
+  /// [kVideoSourcesRevision].
+  ///
+  /// - Defaults missing from the persisted list (matched by apiUrl)
+  ///   are appended, so a new fast source reaches existing installs
+  ///   without a "reset to defaults".
+  /// - Matched defaults get their `sort` refreshed from the current
+  ///   defaults, so a re-prioritisation (fast first, slow last)
+  ///   applies; the user's `enabled` toggle is never touched.
+  /// - The revision guard means a source the user deliberately
+  ///   deleted is never resurrected by a later load: the merge runs
+  ///   once per revision, then the stored revision is bumped.
+  static List<VideoSource> _mergeDefaults(List<VideoSource> stored) {
+    int seenRev = 0;
+    try {
+      final raw = HiveStore.box.get(HiveKeys.videoSourcesRevision);
+      if (raw is int) {
+        seenRev = raw;
+      } else if (raw is String) {
+        seenRev = int.tryParse(raw) ?? 0;
+      }
+    } catch (_) {}
+    if (seenRev >= kVideoSourcesRevision) return stored;
+    final byUrl = <String, VideoSource>{
+      for (final s in stored) s.apiUrl: s,
+    };
+    var changed = false;
+    final merged = stored.map((s) {
+      VideoSource? def;
+      for (final d in kDefaultVideoSources) {
+        if (d.apiUrl == s.apiUrl) {
+          def = d;
+          break;
+        }
+      }
+      if (def != null && def.sort != s.sort) {
+        changed = true;
+        return s.copyWith(sort: def.sort);
+      }
+      return s;
+    }).toList();
+    for (final def in kDefaultVideoSources) {
+      if (!byUrl.containsKey(def.apiUrl)) {
+        merged.add(def);
+        changed = true;
+      }
+    }
+    // Best-effort persist so the settings page shows the merged list;
+    // behaviour does not depend on it (the merge recomputes in memory).
+    if (changed) {
+      unawaited(save(merged).catchError((_) {}));
+    }
+    unawaited(
+      HiveStore.put(HiveKeys.videoSourcesRevision, kVideoSourcesRevision)
+          .catchError((_) {}),
+    );
+    return merged;
   }
 
   static List<VideoSource> getEnabled() {

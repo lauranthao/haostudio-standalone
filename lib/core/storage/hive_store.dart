@@ -92,6 +92,7 @@ class HiveKeys {
   /// episode (end state, no advance). Read by the native VOD player
   /// on completion and by the settings toggle.
   static const String videoAutoNext = 'hao_video_auto_next';
+  static const String vodPlaybackRate = 'hao_vod_playback_rate';
 
   /// Video home cache (fix 13): cached home rows JSON, rendered
   /// immediately while fresh data loads in the background.
@@ -121,6 +122,13 @@ class HiveKeys {
   /// VideoSource; defaults apply when absent. At least one video
   /// source must remain (delete guard).
   static const String videoSources = 'hao_sa_video';
+
+  /// Last applied CMS defaults revision (`hao_sa_video_rev`): when
+  /// defaults change (new source / re-prioritised sorts), the store
+  /// merges missing defaults into the persisted list once per
+  /// revision, so a source the user deliberately deleted is never
+  /// resurrected by a later load.
+  static const String videoSourcesRevision = 'hao_sa_video_rev';
 
   /// Music search sources (`hao_music_sources`): JSON list of enabled
   /// platform codes from kSearchPlatforms (wy/tx/kg/kw). Defaults
@@ -204,12 +212,15 @@ class HiveKeys {
   static const String danmakuDouyuBotFilter = 'hao_danmaku_douyu_bot';
 
   /// LX script sources (M-P0-6): disabled script ids (`hao_lx_disabled`,
-  /// JSON list; absent = all enabled) and user-added custom scripts
-  /// (`hao_lx_custom`, JSON list of {id, name, url, code, addedAt}).
+  /// JSON list; absent = all enabled), user-added custom scripts
+  /// (`hao_lx_custom`, JSON list of {id, name, url, code, addedAt}) and
+  /// deleted bundled script ids (`hao_lx_deleted_bundled`, JSON list).
+  /// A deleted bundled script is never re-seeded or loaded again.
   /// Scripts are additive to the built-in resolvers — no "at least one"
   /// guard, unlike the platform source groups.
   static const String lxScriptDisabled = 'hao_lx_disabled';
   static const String lxCustomScripts = 'hao_lx_custom';
+  static const String lxDeletedBundledScripts = 'hao_lx_deleted_bundled';
 
   /// Danmaku list text opacity (double, 0.3..1.0, default 1.0).
   static const String danmakuOpacity = 'hao_danmaku_opacity';

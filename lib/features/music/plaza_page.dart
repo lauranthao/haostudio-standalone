@@ -24,6 +24,7 @@ import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/music_image.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
@@ -203,8 +204,8 @@ class _PlazaPageState extends State<PlazaPage> {
                                             color: theme.textMuted,
                                           ),
                                         )
-                                      : Image.network(
-                                          p.cover,
+                                      : Image(
+                                          image: MusicImageProvider(p.cover),
                                           width: 52,
                                           height: 52,
                                           fit: BoxFit.cover,
@@ -414,8 +415,8 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                       size: 40,
                                     ),
                                   )
-                                : Image.network(
-                                    p.cover,
+                                : Image(
+                                    image: MusicImageProvider(p.cover),
                                     width: 96,
                                     height: 96,
                                     fit: BoxFit.cover,

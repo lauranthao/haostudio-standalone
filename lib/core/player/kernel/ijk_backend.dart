@@ -102,6 +102,9 @@ class IjkBackend implements PlayerBackend {
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   @override
+  Future<void> setRate(double rate) => _player.setSpeed(rate);
+
+  @override
   Stream<Duration> get positionStream => _player.onCurrentPosUpdate;
 
   @override

@@ -468,7 +468,7 @@ void main() {
 
     // Plain test() runs under FakeAsync, so the 4 s / 12 s health watch
     // is exercised on the REAL clock via tester.runAsync.
-    testWidgets('4 s stall -> hint; 12 s stall -> failure (real clock)',
+    testWidgets('4 s stall -> hint; 15 s stall -> failure (real clock)',
         (tester) async {
       configs[PlayerEngine.mediaKit]!.emitPositions = false;
       final s = session();
@@ -482,7 +482,12 @@ void main() {
         await Future<void>.delayed(const Duration(seconds: 5));
         expect(notices, 1);
         expect(s.status, PlaybackStatus.playing);
+        // Pure Live positionStallTimeout is 15 s (12 s is the buffering
+        // STATE detector, not the position detector): still playing
+        // at 13 s, failed at 16 s.
         await Future<void>.delayed(const Duration(seconds: 8));
+        expect(s.status, PlaybackStatus.playing);
+        await Future<void>.delayed(const Duration(seconds: 3));
         expect(s.status, PlaybackStatus.error);
         await s.dispose();
       });
@@ -617,7 +622,9 @@ void main() {
       await pumpRoom(tester, site, log, freshConfigs());
       final ratio = tester.widget<AspectRatio>(find.byType(AspectRatio));
       expect(ratio.aspectRatio, 16 / 9);
-      expect(find.byTooltip('全屏'), findsOneWidget);
+      // Two fullscreen entries (Pure Live: the header button AND the
+      // overlay bottom bar's expand button).
+      expect(find.byTooltip('全屏'), findsNWidgets(2));
       expect(find.byKey(const ValueKey('fake-video')), findsOneWidget);
       expect(log.opens.length, 1);
       expect(
@@ -733,7 +740,7 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('mid-playback failure: next line first, no fresh fetch yet', (
+    testWidgets('mid-playback failure: fresh re-parse first (Pure Live)', (
       tester,
     ) async {
       final site = _FakeSite();
@@ -741,12 +748,15 @@ void main() {
       await pumpRoom(tester, site, log, freshConfigs());
       log.backends.last.emitError('boom');
       await settle(tester);
-      expect(site.recoveryCalls, 0);
+      // Pure Live _runRecoverTask: refresh sources FIRST (fresh
+      // signatures), then sweep from the current line — never the
+      // stalled line's possibly-expired URL.
+      expect(site.recoveryCalls, 1);
       expect(
         log.opens.last.url,
-        'https://al.huya.com/src/660000.m3u8?wsSecret=A1',
+        'https://tx.flv.huya.com/src/660000.flv?wsSecret=A2',
       );
-      expect(chip(tester, '线路 2').selected, isTrue);
+      expect(chip(tester, '线路 1').selected, isTrue);
       await disposeRoom(tester, log);
     });
 
@@ -776,6 +786,71 @@ void main() {
       expect(site.recoveryCalls, 1);
       await disposeRoom(tester, log);
     });
+
+    testWidgets('Huya default is 蓝光8M, not the 50 Mbps source quality', (
+      tester,
+    ) async {
+      final site = _FakeSite()
+        ..qualities = const [
+          LivePlayQuality(quality: '蓝光50M', id: '0'),
+          LivePlayQuality(quality: '蓝光20M', id: '20000'),
+          LivePlayQuality(quality: '蓝光8M', id: '8000'),
+          LivePlayQuality(quality: '蓝光4M', id: '4000'),
+          LivePlayQuality(quality: '超清', id: '2000'),
+          LivePlayQuality(quality: '流畅', id: '500'),
+        ]
+        ..urlsByQuality = const {
+          '0': ['https://tx.flv.huya.com/src/660000.flv?ratio=0'],
+          '20000': ['https://tx.flv.huya.com/src/660000.flv?ratio=20000'],
+          '8000': ['https://tx.flv.huya.com/src/660000.flv?ratio=8000'],
+          '4000': ['https://tx.flv.huya.com/src/660000.flv?ratio=4000'],
+          '2000': ['https://tx.flv.huya.com/src/660000.flv?ratio=2000'],
+          '500': ['https://tx.flv.huya.com/src/660000.flv?ratio=500'],
+        };
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      // Saved preference '原画' has no exact match in Huya's list:
+      // the fallback must not take index 0 (蓝光50M — mpv's 32 MB
+      // cache holds ~5 s of it, so any throughput dip freezes the
+      // picture) but the 8 Mbps quality instead.
+      expect(chip(tester, '蓝光8M').selected, isTrue);
+      expect(chip(tester, '蓝光50M').selected, isFalse);
+      expect(log.opens.last.url, contains('ratio=8000'));
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets(
+      'stall with lines exhausted auto-downgrades one quality, never persists',
+      (tester) async {
+        final site = _FakeSite()
+          ..urlsByQuality = const {
+            '10000': [
+              'https://tx.flv.huya.com/src/660000.flv?wsSecret=A1',
+            ],
+          };
+        final log = _BackendLog();
+        await pumpRoom(tester, site, log, freshConfigs());
+        expect(chip(tester, '原画').selected, isTrue);
+        log.backends.last.emitError('buffering_stall');
+        await settle(tester);
+        // Single line, already exhausted: instead of the failure card
+        // the room drops one quality level (recovery re-parse, B2 URLs).
+        expect(site.recoveryCalls, 1);
+        expect(chip(tester, '高清').selected, isTrue);
+        expect(
+          log.opens.last.url,
+          'https://tx.flv.huya.com/src/660000.flv?wsSecret=B2',
+        );
+        expect(find.text('▶ 重试'), findsNothing);
+        expect(find.textContaining('已自动切换到高清'), findsOneWidget);
+        // Auto-downgrade is session-only: the saved preference stays 原画.
+        expect(
+          HiveStore.getString(HiveKeys.preferResolution, ''),
+          '原画',
+        );
+        await disposeRoom(tester, log);
+      },
+    );
 
     testWidgets('prefetch: a fresh URL is fetched ~100 s after issue', (
       tester,
@@ -1058,6 +1133,9 @@ class _FakeBackend implements PlayerBackend {
 
   @override
   Future<void> setVolume(double volume) async {}
+
+  @override
+  Future<void> setRate(double rate) async {}
 
   @override
   Stream<Duration> get positionStream => _position.stream;

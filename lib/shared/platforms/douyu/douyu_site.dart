@@ -7,7 +7,8 @@
 // Quality+lines: POST.../lapi/live/getH5PlayV1/<roomId> with a signed
 // body (DouyuUtils.sign); multirates[] -> qualities — rate is an OPAQUE
 // integer id, NEVER sorted numerically (server order is kept);
-// cdnsWithName[] -> CDN codes, scdn* first; each CDN may confirm a
+// cdnsWithName[] -> CDN codes, scdn* LAST (Pure Live order — the
+// first line is the default played line); each CDN may confirm a
 // different rate — URLs are grouped by confirmed rate and only one
 // rate's group is returned; appliedQualityData = confirmed rate.
 // Danmaku: WS wss://danmuproxy.douyu.com:8506, type@= text protocol
@@ -20,8 +21,8 @@
 // douyu_utils.dart). The server may silently downgrade anonymous
 // requests; the confirmed rate is reported, never the requested one.
 // - CDN order: Pure Live 3.x sorts scdn* LAST (its comparator returns 1
-// for scdn vs non-scdn). This port puts scdn* FIRST, per the port
-// spec — scdn lines are Douyu's own CDN and the default line.
+// for scdn vs non-scdn) — copied verbatim. The first line is the
+// default played line, so this decides which CDN plays by default.
 // - Our LiveRoom has no area/introduction/notice/startedAt fields, so
 // betard fields for those are dropped; watching is an int.
 // - Our LiveArea is flat (no LiveCategory tree), so getCategories
@@ -195,12 +196,14 @@ class DouyuSite extends LiveSite {
     final roomId = liveRoom.roomId.trim();
     final playData = await _requestPlayData(roomId);
     final cdns = parseCdnCodes(playData);
-    // scdn* lines first (see header note on the Pure Live deviation).
+    // Pure Live 3.x comparator, verbatim: scdn* sorts LAST.
     cdns.sort((a, b) {
-      final aScdn = a.startsWith('scdn');
-      final bScdn = b.startsWith('scdn');
-      if (aScdn == bScdn) return 0;
-      return aScdn ? -1 : 1;
+      if (a.startsWith("scdn") && !b.startsWith("scdn")) {
+        return 1;
+      } else if (!a.startsWith("scdn") && b.startsWith("scdn")) {
+        return -1;
+      }
+      return 0;
     });
     return parsePlayQualities(playData, cdns);
   }

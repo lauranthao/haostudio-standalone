@@ -27,6 +27,14 @@ class FullscreenController extends GetxController {
   final RxBool isFullscreen = false.obs;
 
   /// Enter landscape fullscreen (the [ ] action, startLandscape = true).
+  ///
+  /// Pure Live `WindowService.landScape()` verbatim: on mobile it is ONLY
+  /// `SystemChrome.setPreferredOrientations` — no native force-rotation,
+  /// no MethodChannel. (A native `UIDevice.setValue` plugin was added
+  /// on a misread of chen's report and reverted: chen confirmed the []
+  /// button DOES rotate; the fault was the landscape DISPLAY, not the
+  /// rotation. Pure Live has no such plugin.) The immersive switch is
+  /// the mobile half of Pure Live's fullscreen presentation driver.
   Future<void> enterFullscreen() async {
     isFullscreen.value = true;
     await SystemChrome.setPreferredOrientations([
@@ -37,6 +45,11 @@ class FullscreenController extends GetxController {
   }
 
   /// Exit back to the same portrait room, same stream.
+  ///
+  /// Pure Live `WindowService.verticalScreen()` verbatim: an explicit
+  /// `[portraitUp]` mask — iOS does NOT rotate an already-landscape UI
+  /// back on "follow system" (empty array), so the portrait mask must
+  /// be set explicitly (Pure Live `doExitFullScreen` comment).
   Future<void> exitFullscreen() async {
     isFullscreen.value = false;
     await SystemChrome.setPreferredOrientations([

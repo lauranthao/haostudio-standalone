@@ -27,6 +27,7 @@ import '../../../services/music/sleep_timer.dart';
 import '../music_player_controller.dart';
 import '../music_player_sheet.dart';
 import 'sleep_timer_sheet.dart';
+import 'music_image.dart';
 
 enum TrackMoreAction {
   info,
@@ -186,8 +187,8 @@ Future<TrackMoreAction?> showTrackMoreSheet(
                             color: theme.textMuted,
                           ),
                         )
-                      : Image.network(
-                          song.cover,
+                      : Image(
+                          image: MusicImageProvider(song.cover),
                           width: 44,
                           height: 44,
                           fit: BoxFit.cover,
@@ -438,8 +439,8 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
                           color: theme.textMuted,
                         ),
                       )
-                    : Image.network(
-                        song.cover,
+                    : Image(
+                        image: MusicImageProvider(song.cover),
                         width: 64,
                         height: 64,
                         fit: BoxFit.cover,

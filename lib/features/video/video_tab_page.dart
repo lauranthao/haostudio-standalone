@@ -35,6 +35,7 @@ import 'video_models.dart';
 import 'video_poster_card.dart';
 import 'video_search_page.dart';
 import 'video_type_page.dart';
+import 'widgets/referer_image.dart';
 
 class VideoTabPage extends StatefulWidget {
   const VideoTabPage({super.key});
@@ -547,10 +548,10 @@ class _ContinueCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     if (entry.pic.isNotEmpty)
-                      Image.network(
-                        entry.pic,
+                      RefererImage(
+                        url: entry.pic,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const ColoredBox(
+                        fallback: const ColoredBox(
                           color: Color(0xFF1C1C1E),
                         ),
                       ),
@@ -646,11 +647,10 @@ class _CollectionCard extends StatelessWidget {
                           ),
                           clipBehavior: Clip.antiAlias,
                           child: pics[i].isNotEmpty
-                              ? Image.network(
-                                  pics[i],
+                              ? RefererImage(
+                                  url: pics[i],
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const SizedBox.shrink(),
+                                  fallback: const SizedBox.shrink(),
                                 )
                               : const SizedBox.shrink(),
                         ),

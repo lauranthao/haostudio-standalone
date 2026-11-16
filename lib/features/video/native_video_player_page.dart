@@ -26,8 +26,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../music/music_player_controller.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
+import '../player/screen_brightness.dart';
 import 'cms_sources.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
@@ -102,6 +104,21 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   bool _ended = false;
   bool _showControls = true;
   bool _playing = false;
+  double _rate = 1.0;
+  double _volume = 1.0;
+  double _brightness = 0.5;
+  bool _closing = false;
+  // Seek drag (horizontal swipe): preview the target, seek once on
+  // release — never a seek per update (Pure Live: rapid seeks complete
+  // with cancel errors when superseded).
+  double? _dragSeekTarget;
+  double _dragSeekStart = 0;
+  double _dragSeekDelta = 0;
+  // Brightness/volume drag (vertical swipe): left half brightness,
+  // right half volume (Pure Live PlayerGestureLayer).
+  _PlayerDragSide? _dragSide;
+  double _dragSystemValue = 0;
+  Timer? _dragHintTimer;
   Timer? _hideTimer;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
@@ -131,6 +148,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     _autoNext = VideoPlaybackSettings.autoNext;
     _session = widget.session ?? PlaybackSession();
     _fullscreen = Get.put(FullscreenController());
+    _rate = VideoPlaybackSettings.playbackRate;
+    unawaited(_session.setRate(_rate));
+    // System brightness for the left-half vertical drag (best-effort;
+    // 0.5 when the native channel is unavailable, e.g. unit tests).
+    unawaited(ScreenBrightness.getBrightness().then((v) {
+      _brightness = v;
+    }));
     _statusSub = _session.onStatus.listen((status) {
       if (!mounted) return;
       if (status == PlaybackStatus.completed) {
@@ -211,6 +235,14 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   }
 
   Future<void> _openCurrent() async {
+    // Pause any playing music the moment this film starts playing
+    // (chen: only when a specific film starts — browsing the video
+    // tab, categories or a detail page never pauses). Guarded by
+    // registration: if no music controller exists, no music can be
+    // playing. No auto-resume on exit; the user resumes manually.
+    if (Get.isRegistered<MusicPlayerController>()) {
+      unawaited(MusicPlayerController.ensure().pause());
+    }
     final epoch = ++_openEpoch;
     setState(() {
       _loading = true;
@@ -236,6 +268,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
       });
       return;
     }
+    // Re-apply the user's volume after a backend swap (episode
+    // change / ladder rebuild resets the backend to full volume).
+    // Speed is re-applied by the session's _swapBackend instead.
+    if (_volume != 1.0) {
+      unawaited(_session.setVolume(_volume));
+    }
     // Resume seek, once per episode: open() already verified the first
     // frame, so seeking now lands on a playing stream. Only for the
     // episode the detail page launched with a saved position (> 10 s
@@ -250,35 +288,42 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   }
 
   Future<void> _recordHistory() async {
-    final m = _detail.meta;
-    await VideoHistoryStore.record(
-      WatchHistoryEntry(
-        source: _detail.source,
-        vodId: _detail.vodId,
-        title: m.name,
-        pic: m.pic,
-        picAlt: m.picAlt,
+    // Never throws: history I/O must never break playback or exit.
+    try {
+      final m = _detail.meta;
+      await VideoHistoryStore.record(
+        WatchHistoryEntry(
+          source: _detail.source,
+          vodId: _detail.vodId,
+          title: m.name,
+          pic: m.pic,
+          picAlt: m.picAlt,
+          lineIdx: _lineIdx,
+          epIdx: _epIdx,
+          epName: _episode.name,
+          position: _position,
+          duration: _duration,
+          at: DateTime.now(),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _saveProgress() async {
+    // Never throws: a storage failure must never trap the user on
+    // this page (the exit path awaits this before popping).
+    try {
+      await VideoHistoryStore.saveResume(
+        _detail.source,
+        _detail.vodId,
         lineIdx: _lineIdx,
         epIdx: _epIdx,
         epName: _episode.name,
         position: _position,
         duration: _duration,
-        at: DateTime.now(),
-      ),
-    );
-  }
-
-  Future<void> _saveProgress() async {
-    await VideoHistoryStore.saveResume(
-      _detail.source,
-      _detail.vodId,
-      lineIdx: _lineIdx,
-      epIdx: _epIdx,
-      epName: _episode.name,
-      position: _position,
-      duration: _duration,
-    );
-    await _recordHistory();
+      );
+      await _recordHistory();
+    } catch (_) {}
   }
 
   /// Auto-play the next episode on end (same line only, V-P0-2).
@@ -353,6 +398,115 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   void _onSurfaceTap() {
     setState(() => _showControls = !_showControls);
     if (_showControls) _armHideTimer();
+  }
+
+  String get _rateLabel => '${_rate}x';
+
+  /// Full-width horizontal swipe covers up to 5 minutes (or the whole
+  /// video when shorter).
+  double get _seekSpan =>
+      _duration <= 0 ? 0 : (_duration < 300 ? _duration : 300);
+
+  /// Cycle the playback speed through Pure Live's defaultRates
+  /// (0.5x -> 2.0x); the choice persists and survives episode
+  /// switches (the session re-applies it on backend swap).
+  Future<void> _cycleRate() async {
+    final rates = VideoPlaybackSettings.vodRates;
+    final idx = rates.indexOf(_rate);
+    final next = rates[(idx + 1) % rates.length];
+    setState(() => _rate = next);
+    unawaited(VideoPlaybackSettings.setPlaybackRate(next));
+    try {
+      await _session.setRate(next);
+    } catch (_) {}
+    _armHideTimer();
+  }
+
+  // -- Horizontal drag: seek with a preview, one seek on release. --
+
+  void _onSeekDragStart(DragStartDetails details) {
+    if (_duration <= 0 || _failed || _ended) return;
+    _hideTimer?.cancel();
+    setState(() {
+      _dragSeekStart = _scrubbing ? _scrubValue : _position;
+      _dragSeekTarget = _dragSeekStart;
+      _dragSeekDelta = 0;
+    });
+  }
+
+  void _onSeekDragUpdate(DragUpdateDetails details) {
+    if (_dragSeekTarget == null) return;
+    final width = MediaQuery.of(context).size.width;
+    if (width <= 0 || _seekSpan <= 0) return;
+    setState(() {
+      _dragSeekDelta += details.delta.dx / width * _seekSpan;
+      _dragSeekTarget =
+          (_dragSeekStart + _dragSeekDelta).clamp(0.0, _duration);
+    });
+  }
+
+  Future<void> _onSeekDragEnd(DragEndDetails details) async {
+    final target = _dragSeekTarget;
+    if (target == null) return;
+    setState(() => _dragSeekTarget = null);
+    try {
+      await _session.seekTo(
+        Duration(milliseconds: (target * 1000).round()),
+      );
+    } catch (_) {}
+    _armHideTimer();
+  }
+
+  void _onSeekDragCancel() {
+    if (mounted) setState(() => _dragSeekTarget = null);
+    _armHideTimer();
+  }
+
+  // -- Vertical drag: left half brightness, right half volume. --
+
+  void _onSystemDragStart(DragStartDetails details) {
+    if (_failed || _ended) return;
+    _hideTimer?.cancel();
+    _dragHintTimer?.cancel();
+    final width = MediaQuery.of(context).size.width;
+    final isBrightness = details.globalPosition.dx < width / 2;
+    setState(() {
+      _dragSide =
+          isBrightness ? _PlayerDragSide.brightness : _PlayerDragSide.volume;
+      _dragSystemValue = isBrightness ? _brightness : _volume;
+    });
+  }
+
+  void _onSystemDragUpdate(DragUpdateDetails details) {
+    final side = _dragSide;
+    if (side == null) return;
+    setState(() {
+      _dragSystemValue =
+          (_dragSystemValue - details.delta.dy / 300).clamp(0.0, 1.0);
+    });
+    if (side == _PlayerDragSide.brightness) {
+      _brightness = _dragSystemValue;
+      unawaited(ScreenBrightness.setBrightness(_dragSystemValue));
+    } else {
+      _volume = _dragSystemValue;
+      unawaited(_session.setVolume(_dragSystemValue));
+    }
+  }
+
+  void _onSystemDragEnd(DragEndDetails details) {
+    if (_dragSide == null) return;
+    // Let the final value linger briefly, then hide the card.
+    _dragHintTimer?.cancel();
+    _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _dragSide = null);
+    });
+    _armHideTimer();
+  }
+
+  void _onSystemDragCancel() {
+    _dragHintTimer?.cancel();
+    if (mounted) setState(() => _dragSide = null);
+    _armHideTimer();
   }
 
   void _openEpisodeSheet() {
@@ -438,22 +592,52 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     );
   }
 
+  /// Exit the player. Never blocks on anything: playback is paused
+  /// FIRST (bounded, so the film goes quiet the moment the user taps
+  /// back instead of relying on dispose() racing the route pop —
+  /// the v1.0.5 bug where the film kept playing in the background
+  /// after exit), then fullscreen is exited (bounded, so a hung
+  /// native channel cannot trap the user), then progress is saved
+  /// best-effort, then the route pops. Every step is guarded — a
+  /// storage or callback failure must never leave the user stuck on
+  /// this page (the v1.0.5 "sometimes can't exit" bug: an unguarded
+  /// Hive write throwing before pop, and a failed player hiding its
+  /// only back button).
   Future<void> _close() async {
-    await _saveProgress();
-    widget.onClose?.call(_lineIdx, _epIdx, _position);
+    if (_closing) return;
+    _closing = true;
+    try {
+      await _session.pause().timeout(
+            const Duration(seconds: 1),
+          );
+    } catch (_) {}
+    try {
+      await _fullscreen.exitFullscreen().timeout(
+            const Duration(seconds: 2),
+          );
+    } catch (_) {}
+    try {
+      await _saveProgress();
+    } catch (_) {}
+    try {
+      widget.onClose?.call(_lineIdx, _epIdx, _position);
+    } catch (_) {}
     if (mounted) Navigator.of(context).pop();
   }
 
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _dragHintTimer?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _statusSub?.cancel();
     _errorSub?.cancel();
     unawaited(_saveProgress());
     unawaited(_session.dispose());
-    Get.delete<FullscreenController>();
+    try {
+      Get.delete<FullscreenController>();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -470,6 +654,14 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
         body: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onSurfaceTap,
+          onHorizontalDragStart: _onSeekDragStart,
+          onHorizontalDragUpdate: _onSeekDragUpdate,
+          onHorizontalDragEnd: _onSeekDragEnd,
+          onHorizontalDragCancel: _onSeekDragCancel,
+          onVerticalDragStart: _onSystemDragStart,
+          onVerticalDragUpdate: _onSystemDragUpdate,
+          onVerticalDragEnd: _onSystemDragEnd,
+          onVerticalDragCancel: _onSystemDragCancel,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -492,10 +684,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                   ),
                 ),
               if (_failed)
-                _FailureCard(onRetry: _retry),
+                _FailureCard(onRetry: _retry, onClose: _close),
               if (_ended && !_failed)
                 _EndedCard(onClose: _close),
-              if (_showControls && !_failed && !_ended) ...[
+              // Top bar: back + title + episode. Shown whenever the
+              // controls are up — including the failed state, so a
+              // failed player never traps the user without a way out.
+              if (_showControls) ...[
                 // Top bar: back + title + episode.
                 Positioned(
                   top: 0,
@@ -569,7 +764,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                     ),
                   ),
                 ),
-                // Bottom bar: play/pause, prev/next episode, elapsed.
+              ],
+              // Bottom bar: play/pause, prev/next episode, elapsed.
+              // Hidden when failed/ended (nothing to control there).
+              if (_showControls && !_failed && !_ended) ...[
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -712,6 +910,19 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                               ),
                             ],
                             const Spacer(),
+                            // Playback speed (Pure Live rates, tap to
+                            // cycle 0.5x -> 2.0x).
+                            TextButton(
+                              onPressed: _cycleRate,
+                              child: Text(
+                                _rateLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                             IconButton(
                               icon: const Icon(
                                 Icons.fullscreen_exit,
@@ -727,6 +938,21 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                   ),
                 ),
               ],
+              // Drag hints, above the control bars.
+              if (_dragSeekTarget != null)
+                Center(
+                  child: _SeekHint(
+                    target: _dragSeekTarget!,
+                    delta: _dragSeekDelta,
+                  ),
+                ),
+              if (_dragSide != null)
+                Center(
+                  child: _SystemHint(
+                    side: _dragSide!,
+                    value: _dragSystemValue,
+                  ),
+                ),
             ],
           ),
         ),
@@ -736,9 +962,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
 }
 
 class _FailureCard extends StatelessWidget {
-  const _FailureCard({required this.onRetry});
+  const _FailureCard({required this.onRetry, required this.onClose});
 
   final VoidCallback onRetry;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -755,12 +982,118 @@ class _FailureCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             FilledButton(onPressed: onRetry, child: const Text('▶ 重试')),
+            const SizedBox(height: 8),
+            // A failed player must always offer a way out (the v1.0.5
+            // trap: the top bar was hidden while failed, so the only
+            // back button vanished exactly when playback failed).
+            TextButton(
+              onPressed: onClose,
+              child: const Text(
+                '返回',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+/// Center overlay shown while the user drags horizontally to seek:
+/// target time + the delta from where the drag started.
+class _SeekHint extends StatelessWidget {
+  const _SeekHint({required this.target, required this.delta});
+
+  final double target;
+  final double delta;
+
+  @override
+  Widget build(BuildContext context) {
+    final forward = delta >= 0;
+    final deltaText = delta.abs() < 1
+        ? ''
+        : ' ${forward ? '+' : '-'}${delta.abs().round()}s';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            forward ? Icons.fast_forward : Icons.fast_rewind,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '${formatMmSs(target)}$deltaText',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Center card shown while the user drags vertically: brightness
+/// (left half) or volume (right half), Pure Live style.
+class _SystemHint extends StatelessWidget {
+  const _SystemHint({required this.side, required this.value});
+
+  final _PlayerDragSide side;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final isBrightness = side == _PlayerDragSide.brightness;
+    return Container(
+      width: 160,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isBrightness ? Icons.brightness_6 : Icons.volume_up,
+            color: Colors.white,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isBrightness ? '亮度' : '音量',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: value,
+            color: Colors.white,
+            backgroundColor: Colors.white30,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${(value * 100).round()}%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _PlayerDragSide { brightness, volume }
 
 class _EndedCard extends StatelessWidget {
   const _EndedCard({required this.onClose});

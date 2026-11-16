@@ -19,6 +19,7 @@ import '../../services/music/music_models.dart';
 import '../settings/cache_service.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/music_image.dart';
 
 enum _DownloadFilter { all, done, downloading }
 
@@ -218,8 +219,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         color: theme.textMuted,
                       ),
                     )
-                  : Image.network(
-                      song.cover,
+                  : Image(
+                      image: MusicImageProvider(song.cover),
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,

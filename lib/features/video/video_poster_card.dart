@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
 import 'video_models.dart';
+import 'widgets/referer_image.dart';
 
 class VideoPosterCard extends StatelessWidget {
   const VideoPosterCard({
@@ -61,11 +62,10 @@ class VideoPosterCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     if (item.pic.isNotEmpty)
-                      Image.network(
-                        item.pic,
+                      RefererImage(
+                        url: item.pic,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) =>
-                            const _MissingArtwork(),
+                        fallback: const _MissingArtwork(),
                       )
                     else
                       const _MissingArtwork(),
