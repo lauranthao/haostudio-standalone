@@ -81,8 +81,8 @@ class HiveKeys {
   // can list songs; legacy key-only entries ({key} only) still read.
   static const String musicRecent = 'hao_recent'; // [Song] max 100
   static const String musicListen = 'hao_listen'; // [ListenEvent] max 3000
+  static const String musicSearchHist = 'hao_music_search_hist'; // [String] max 20
   static const String musicPlazaPf = 'musicPlazaPf'; // 'wy' default
-  static const String musicVolume = 'musicVolume'; // double 0..1
   static const String musicSpeed = 'musicSpeed'; // double 0.6..2.0, default 1.0 (M-P0-2)
   static const String musicQueue = 'musicQueue'; // {songs: [Song], index: int} (M-P0-4)
   static const String musicDownloads = 'musicDownloads'; // [DownloadedSong] (M-P0-5)
@@ -159,6 +159,11 @@ class HiveKeys {
   /// the Flutter app before L03 — this is the first one (the web app's
   /// flat follow list was never ported).
   static const String liveFollows = 'hao_live_follows';
+
+  /// Live search history (`hao_live_search_hist`): JSON list of
+  /// keywords, most recent first, max 20. Mirrors the video/music
+  /// search-history pattern (VideoHistoryStore / MusicStore).
+  static const String liveSearchHist = 'hao_live_search_hist';
 
   /// Danmaku settings (settings page persists; the live room reads
   /// them once its danmaku wiring lands — see DanmakuSettings).

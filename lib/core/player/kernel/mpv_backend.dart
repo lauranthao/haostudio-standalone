@@ -193,7 +193,16 @@ class MpvBackend implements PlayerBackend {
   Stream<Duration> get positionStream => _player.stream.position;
 
   @override
-  Stream<Duration> get durationStream => _player.stream.duration;
+  // Seed the duration mpv already knows (state.duration is updated on
+  // every duration property event, independent of stream listeners):
+  // the one-shot duration event fires while open()/waitForFirstFrame
+  // are still running, before the session subscribes to this stream,
+  // and a plain broadcast stream drops it — without the seed the
+  // progress bar (gated on duration > 0) never appears at all (chen
+  // v1.0.8: "根本没有进度条"). Live reports Duration.zero, so the seed
+  // is a no-op there.
+  Stream<Duration> get durationStream =>
+      seedKnownDuration(_player.state.duration, _player.stream.duration);
 
   @override
   Future<void> seekTo(Duration position) => _player.seek(position);

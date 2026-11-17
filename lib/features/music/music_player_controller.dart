@@ -21,6 +21,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import 'package:just_audio/just_audio.dart' show ProcessingState;
 import 'av_music_player.dart';
 
 import '../../core/native/now_playing.dart';
@@ -42,10 +43,22 @@ class MusicPlayerController extends GetxController
     MusicResolvers? resolvers,
     NowPlayingService? nowPlaying,
     MusicDownloadService? downloads,
+    AvMusicPlayer? playerA,
+    AvMusicPlayer? playerB,
   })  : _api = api ?? MusicApi(),
         _resolvers = resolvers ?? MusicResolvers(),
         _nowPlayingOverride = nowPlaying,
-        downloads = downloads ?? MusicDownloadService();
+        downloads = downloads ?? MusicDownloadService() {
+    // Test seam (same pattern as api/resolvers above): injected
+    // players let tests drive the A/B crossfade without native
+    // audio. Production passes none, so behaviour is unchanged.
+    if (playerA != null && playerB != null) {
+      _playerA = playerA;
+      _playerB = playerB;
+      _active = _playerA;
+      _playersReady = true;
+    }
+  }
 
   final MusicApi _api;
   final MusicResolvers _resolvers;
@@ -70,7 +83,6 @@ class MusicPlayerController extends GetxController
   final Rx<Duration> duration = Duration.zero.obs;
   final Rx<AudioQuality> userQuality = AudioQuality.hires.obs;
   final Rx<AudioQuality> actualQuality = AudioQuality.hires.obs;
-  final RxDouble volume = 0.8.obs;
   final RxDouble speed = 1.0.obs; // M-P0-2: 0.6..2.0, persisted
   final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
@@ -131,6 +143,12 @@ class MusicPlayerController extends GetxController
   var _candidateIdx = 0;
   var _altTried = false;
 
+  /// Trial-clip guard: one check per track load. Set when the
+  /// player's real duration for the current track is first known
+  /// (see [onRealDuration]); reset in [_loadCurrent] and when an
+  /// alt-platform track is opened in [_tryAltOrNext].
+  var _trialChecked = false;
+
   // Real listen-time accounting (chen 2026-11-17: total time in the
   // report was not real). One session per track; seconds accumulate
   // only while the player reports playing. See ListenSessionTracker.
@@ -148,18 +166,40 @@ class MusicPlayerController extends GetxController
       // Hive closed (app kill) — the session is lost, not fatal.
     }
   }
+
+  /// Snapshot of the listen session in progress (not yet persisted),
+  /// or null when nothing has been heard for 5 s. The report page
+  /// merges it so the song playing right now is already counted.
+  ListenEvent? get liveListenEvent =>
+      _listenTracker.currentEvent(DateTime.now());
   var _failStreak = 0;
 
   // Prefetch cache for the next track.
   ({String key, String url, List<String> candidates, AudioQuality quality})?
       _nextCache;
 
+  /// True while the current track's URL is being resolved / opened
+  /// (network). The player page shows a spinner on the play button
+  /// while this is true and nothing is sounding yet — without it a
+  /// tap looks dead for the 1–6 s a resolve can take. Gen-guarded:
+  /// a superseded load must never clear a newer load's flag.
+  final RxBool isResolving = false.obs;
+  var _resolvingGen = -1;
+
+  void _setResolving(bool v, int gen) {
+    if (v) {
+      _resolvingGen = gen;
+      isResolving.value = true;
+    } else if (gen == _resolvingGen) {
+      isResolving.value = false;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
     userQuality.value = MusicStore.quality;
     actualQuality.value = userQuality.value;
-    volume.value = MusicStore.volume;
     speed.value = MusicStore.speed;
     playMode.value = MusicStore.playMode;
     // Restore the persisted queue (M-P0-4) — order + current index,
@@ -174,8 +214,9 @@ class MusicPlayerController extends GetxController
     // a just_audio method call there would throw MissingPluginException
     // into the test zone. A player failure only disables playback
     // (_playersReady stays false, rate/play calls no-op) instead of
-    // crashing the whole music tab during build.
-    if (AvMusicPlayer.isSupported) {
+    // crashing the whole music tab during build. Injected players
+    // (constructor seam) are never overwritten here.
+    if (!_playersReady && AvMusicPlayer.isSupported) {
       try {
         _playerA = AvMusicPlayer();
         _playerB = AvMusicPlayer();
@@ -187,7 +228,7 @@ class MusicPlayerController extends GetxController
       }
     }
     if (_playersReady) {
-      unawaited(_active.setVolume(volume.value));
+      unawaited(_active.setVolume(1.0));
       unawaited(_active.setRate(speed.value));
       unawaited(_standby.setVolume(0));
       unawaited(_standby.setRate(speed.value));
@@ -265,6 +306,19 @@ class MusicPlayerController extends GetxController
 
   // -- Now Playing (Fix 14) ----------------------------------------------------
 
+  /// Open the system AirPlay route picker (iOS AVRoutePickerView).
+  /// Returns true when the picker opened. The picker itself lists the
+  /// available routes — no device-availability message is invented
+  /// here. Never throws from a button tap: if the Now Playing service
+  /// is not ready yet, the tap reports failure instead of crashing.
+  Future<bool> showAirPlayPicker() async {
+    try {
+      return await _nowPlaying.showAirPlayPicker();
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Push the current track to the system Now Playing (Lock Screen /
   /// Control Center / Dynamic Island). Called on track change and on
   /// play/pause; elapsed time is refreshed via the throttled path.
@@ -339,7 +393,10 @@ class MusicPlayerController extends GetxController
       if (identical(player, _active)) position.value = p;
     });
     _durSub = player.stream.duration.listen((d) {
-      if (identical(player, _active)) duration.value = d;
+      if (identical(player, _active)) {
+        duration.value = d;
+        onRealDuration(d);
+      }
     });
     _playingSub = player.stream.playing.listen((playing) {
       if (identical(player, _active)) {
@@ -349,7 +406,7 @@ class MusicPlayerController extends GetxController
     });
     _errorSub = player.stream.error.listen((e) {
       if (e.isNotEmpty && identical(player, _active)) {
-        _onPlayError();
+        _onStreamError();
       }
     });
     _completedSub = player.stream.completed.listen((done) {
@@ -357,7 +414,11 @@ class MusicPlayerController extends GetxController
     });
   }
 
-  Future<void> _openOn(AvMusicPlayer player, String url, {double? vol}) async {
+  // Player volume is always full (1.0): the music player has no volume
+  // control of its own (chen 2026-11-17) — volume is the system volume
+  // (hardware buttons / Control Center). Every open re-asserts 1.0 so
+  // a crossfade partner that was faded to 0 never stays silent.
+  Future<void> _openOn(AvMusicPlayer player, String url) async {
     // open() returns false only when the URL was refused before any
     // native call, so no error will arrive on the error stream: fall
     // back to the next candidate here, the same path the error stream
@@ -366,7 +427,7 @@ class MusicPlayerController extends GetxController
       await _onPlayError();
       return;
     }
-    if (vol != null) await player.setVolume(vol);
+    await player.setVolume(1.0);
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
@@ -374,9 +435,45 @@ class MusicPlayerController extends GetxController
 
   // -- queue / track loading ---------------------------------------------------
 
+  /// The track already loaded in the player: the same song (same
+  /// identity) with playback in progress or paused mid-song. A tap
+  /// on it must not reload it from the beginning — tapping the song
+  /// that is already playing only opens the player. A failed or
+  /// never-loaded track (not playing, position zero) is NOT loaded:
+  /// tapping it retries the load. A finished track sits at its
+  /// duration (completion already advances the queue, but guard the
+  /// race anyway).
+  bool _isLoadedCurrent(Song song) {
+    if (currentSong?.identityKey != song.identityKey) return false;
+    if (isPlaying.value) return true;
+    if (position.value <= Duration.zero) return false;
+    final total = duration.value;
+    return total <= Duration.zero || position.value < total;
+  }
+
+  /// Resume a loaded track that is paused (no-op when playing, or
+  /// when the players do not exist yet — unit tests construct the
+  /// controller without onInit). Only used on the same-song path.
+  Future<void> _resumeLoaded() async {
+    if (!isPlaying.value && _playersReady) await _active.play();
+  }
+
   /// Replace the queue and play [index].
   Future<void> playQueue(List<Song> songs, int index, {String label = ''}) async {
     if (songs.isEmpty || index < 0 || index >= songs.length) return;
+    // Same song already loaded (checked BEFORE the queue is
+    // replaced — currentSong is derived from the old queue): do not
+    // restart it. The queue still switches to the tapped list so
+    // "play all" and up-next follow the list the user tapped, but
+    // playback continues untouched.
+    if (_isLoadedCurrent(songs[index])) {
+      queue.assignAll(songs);
+      queueLabel.value = label;
+      currentIndex.value = index;
+      _persistQueue();
+      await _resumeLoaded();
+      return;
+    }
     queue.assignAll(songs);
     queueLabel.value = label;
     await playIndex(index);
@@ -384,6 +481,14 @@ class MusicPlayerController extends GetxController
 
   Future<void> playIndex(int index, {bool auto = false}) async {
     if (index < 0 || index >= queue.length) return;
+    // Same song already loaded (manual tap only — auto-advance must
+    // still replay a duplicate entry): do not restart it.
+    if (!auto && _isLoadedCurrent(queue[index])) {
+      currentIndex.value = index;
+      _persistQueue();
+      await _resumeLoaded();
+      return;
+    }
     currentIndex.value = index;
     _persistQueue();
     await _loadCurrent(auto: auto);
@@ -462,6 +567,7 @@ class MusicPlayerController extends GetxController
     _candidates = [];
     _candidateIdx = 0;
     _altTried = false;
+    _trialChecked = false;
     lyrics.clear();
     lyricsFailed.value = false;
     position.value = Duration.zero;
@@ -488,6 +594,9 @@ class MusicPlayerController extends GetxController
       final cacheKey =
           '${song.songId}|${song.platform.code}|${userQuality.value.code}';
       PlayUrlResult? r;
+      // Resolving (or opening a prefetched URL) takes 1–6 s on the
+      // network: mark it so the player page can show a spinner.
+      _setResolving(true, gen);
       if (_nextCache != null && _nextCache!.key == cacheKey) {
         r = PlayUrlResult(
           url: _nextCache!.url,
@@ -497,16 +606,27 @@ class MusicPlayerController extends GetxController
         );
         _nextCache = null;
       } else {
-        r = await _resolvers.resolvePlayUrl(
-          song.songId,
-          song.platform,
-          userQuality.value,
-          song.title,
-        );
+        // A resolve throw is a resolve failure, not a crash: fall
+        // through to _tryAltOrNext like a null result.
+        try {
+          r = await _resolvers.resolvePlayUrl(
+            song.songId,
+            song.platform,
+            userQuality.value,
+            song.title,
+          );
+        } catch (_) {
+          r = null;
+        }
       }
-      if (gen != _playGen || _disposed) return;
+      if (gen != _playGen || _disposed) {
+        _setResolving(false, gen);
+        return;
+      }
       if (r == null || r.url.isEmpty) {
-        await _tryAltOrNext(song);
+        // _tryAltOrNext keeps the flag (same gen) while it looks for
+        // an alt platform, then clears it.
+        await _tryAltOrNext(song, gen);
         return;
       }
       url = r.url;
@@ -517,11 +637,20 @@ class MusicPlayerController extends GetxController
     _candidateIdx = 0;
     actualQuality.value = quality;
     _failStreak = 0;
-    await MusicStore.addRecent(song);
-    if (auto) {
-      await _crossfadeTo(url);
-    } else {
-      await _openOn(_active, url, vol: volume.value);
+    // Best-effort history write: a Hive failure must not break
+    // playback (and must not leave isResolving stuck).
+    try {
+      await MusicStore.addRecent(song);
+    } catch (_) {}
+    // try/finally: if the open throws, the spinner must still clear.
+    try {
+      if (auto) {
+        await _crossfadeTo(url);
+      } else {
+        await _openOn(_active, url);
+      }
+    } finally {
+      _setResolving(false, gen);
     }
     if (gen != _playGen || _disposed) return;
     if (resumeSec > 5) {
@@ -555,13 +684,34 @@ class MusicPlayerController extends GetxController
     await incoming.setVolume(0);
     await incoming.setRate(speed.value);
     await incoming.play();
+    // The incoming load/play may already have failed before _attach
+    // subscribes to its error stream: just_audio's errorStream is a
+    // PublishSubject (no replay — just_audio 0.10.6 line 142), and
+    // open() swallows the PlayerException and returns true, so a load
+    // failure is reported ONLY on that stream — an error emitted
+    // before _attach is gone for good, and the fade would run into
+    // silence (incoming has no source, outgoing gets paused). A
+    // failed load leaves the player idle, and the state
+    // (BehaviorSubject-backed, just_audio line 483) is readable
+    // synchronously with no subscription, so check it here — BEFORE
+    // swapping _active — and run the normal error path, exactly like
+    // the refused-URL return above: the candidate opens on the
+    // still-active (outgoing) player, no fade starts, nothing goes
+    // silent. An error that is still in flight here is caught after
+    // _attach by _onStreamError (it checks the same idle state), and
+    // a healthy load is never idle at this point (ready / buffering /
+    // playing), so the check cannot misfire on a good track.
+    if (incoming.processingState == ProcessingState.idle) {
+      await _onPlayError();
+      return;
+    }
     _active = incoming;
     _attach(incoming);
     position.value = Duration.zero;
     duration.value = Duration.zero;
     final start = DateTime.now();
     const step = Duration(milliseconds: 100);
-    final targetVol = volume.value;
+    const targetVol = 1.0;
     _fadeTimer = Timer.periodic(step, (timer) async {
       final t = DateTime.now().difference(start).inMilliseconds /
           _crossfadeDuration.inMilliseconds;
@@ -577,10 +727,64 @@ class MusicPlayerController extends GetxController
     });
   }
 
+  /// Called when the player's real duration for the current track is
+  /// first known (duration subscription in [_attach]; also the seam
+  /// tests use to drive the trial path without native audio).
+  ///
+  /// A track whose real duration is a short clip while the metadata
+  /// says it is a full song is a trial/preview URL (NetEase 15 s
+  /// preview for VIP songs — chen 2026-11-17): the resolver delivered
+  /// a preview, not the song. It plays without error and "completes"
+  /// after 15 s, so without this the user hears 15 s and the app
+  /// silently moves on. Treat it exactly like a play failure — drop
+  /// the cached URL and fall back to the alt platform, else the next
+  /// song — instead of letting the preview play out. See [isTrialClip]
+  /// for the false-positive guards (unknown metadata, genuinely
+  /// short songs, different-version files).
+  void onRealDuration(Duration actual) {
+    if (_trialChecked) return;
+    if (actual <= Duration.zero) return;
+    final song = currentSong;
+    if (song == null) return;
+    _trialChecked = true;
+    // A local file's duration is real by definition (and a short
+    // download is the user's own file) — never treat it as a trial.
+    if (downloads.localPathFor(song) != null) return;
+    if (!isTrialClip(metaDurSec: song.dur, actual: actual)) return;
+    unawaited(_handleTrial(song));
+  }
+
+  Future<void> _handleTrial(Song song) async {
+    // Drop the cached preview URL so a replay re-resolves instead of
+    // playing the same 15 s clip again.
+    _resolvers.evictPlayUrl(song.songId, song.platform, userQuality.value);
+    await _tryAltOrNext(song);
+  }
+
+  /// Error arriving on the active player's error stream (P1-3).
+  ///
+  /// A late error from a superseded URL must NOT skip the new song:
+  /// the error carries no URL, but the player's processing state
+  /// tells the two cases apart. just_audio derives the error from
+  /// the same playback events that update `processingState`
+  /// synchronously, while the error itself is delivered through an
+  /// async pipe — so by the time this runs, the state is already
+  /// current. A fresh failure leaves the player idle (the native
+  /// side sets psIdle when it reports the error); a stale error
+  /// arrives while the new source is loading / ready / playing, and
+  /// is ignored. Direct `_onPlayError` calls (open() refusing a URL
+  /// before any native call) bypass this — there the current track
+  /// genuinely cannot play.
+  void _onStreamError() {
+    if (!_playersReady) return;
+    if (_active.processingState != ProcessingState.idle) return;
+    unawaited(_onPlayError());
+  }
+
   Future<void> _onPlayError() async {
     if (_candidateIdx + 1 < _candidates.length) {
       _candidateIdx++;
-      await _openOn(_active, _candidates[_candidateIdx], vol: volume.value);
+      await _openOn(_active, _candidates[_candidateIdx]);
       return;
     }
     final song = currentSong;
@@ -594,35 +798,52 @@ class MusicPlayerController extends GetxController
     await next(auto: true);
   }
 
-  Future<void> _tryAltOrNext(Song song) async {
-    if (!_altTried) {
-      _altTried = true;
-      final alt = await _api.findAltPlatform(
-        song.title,
-        song.artist,
-        song.platform,
-        song.album,
-      );
-      if (alt != null) {
-        final r = await _resolvers.resolvePlayUrl(
-          alt.songId,
-          alt.platform,
-          userQuality.value,
-          alt.title,
+  Future<void> _tryAltOrNext(Song song, [int gen = -1]) async {
+    // gen defaults to the current load (trial / play-error paths call
+    // without one). The resolving flag stays up while the alt lookup
+    // runs (up to 5 s after the findAltPlatform cap). try/finally so
+    // a throw in the lookup / open still clears the flag; the gen
+    // guard makes the clear a no-op if a newer load owns it by then.
+    final g = gen < 0 ? _playGen : gen;
+    _setResolving(true, g);
+    try {
+      if (!_altTried) {
+        _altTried = true;
+        final alt = await _api.findAltPlatform(
+          song.title,
+          song.artist,
+          song.platform,
+          song.album,
         );
-        if (r != null && r.url.isNotEmpty) {
-          queue[currentIndex.value] = alt;
-          queue.refresh();
-          _persistQueue();
-          _candidates = r.candidates;
-          _candidateIdx = 0;
-          actualQuality.value = r.quality;
-          await _openOn(_active, r.url, vol: volume.value);
-          return;
+        if (alt != null) {
+          final r = await _resolvers.resolvePlayUrl(
+            alt.songId,
+            alt.platform,
+            userQuality.value,
+            alt.title,
+          );
+          if (r != null && r.url.isNotEmpty) {
+            // The track may have advanced while the alt lookup was in
+            // flight (trial path): never replace a different song.
+            if (currentSong?.identityKey != song.identityKey) return;
+            queue[currentIndex.value] = alt;
+            queue.refresh();
+            _persistQueue();
+            _candidates = r.candidates;
+            _candidateIdx = 0;
+            actualQuality.value = r.quality;
+            // The alt is a new URL for this slot: its real duration
+            // gets its own trial check.
+            _trialChecked = false;
+            await _openOn(_active, r.url);
+            return;
+          }
         }
       }
+      await next(auto: true);
+    } finally {
+      _setResolving(false, g);
     }
-    await next(auto: true);
   }
 
   void _onTrackCompleted() {
@@ -630,6 +851,14 @@ class MusicPlayerController extends GetxController
     if (song != null) {
       unawaited(MusicStore.clearResume(song.identityKey));
     }
+    // The finished song's listen session ends HERE, not when the
+    // next track loads: at the end of the queue next() returns early
+    // without loading anything, so the last song was never recorded
+    // until the app was killed or another song started. Finalising
+    // twice is a no-op (finish() returns null once the session is
+    // closed), so the single-loop replay and the next() path below —
+    // which finalise again via _loadCurrent — stay correct.
+    unawaited(_finalizeListenSession());
     // Sleep timer, 到歌单结束: the queue ends here — stop, do not
     // advance or loop, and clear the timer.
     if (_sleepTimer.isQueueEnd) {
@@ -752,12 +981,6 @@ class MusicPlayerController extends GetxController
 
   Future<void> seek(Duration pos) => _active.seek(pos);
 
-  Future<void> setVolume(double v) async {
-    volume.value = v.clamp(0.0, 1.0);
-    await _active.setVolume(volume.value);
-    await MusicStore.setVolume(volume.value);
-  }
-
   // -- playback speed (M-P0-2) ------------------------------------------------
 
   /// Clamp a speed to the supported range (slider 0.6–2.0).
@@ -818,22 +1041,30 @@ class MusicPlayerController extends GetxController
     final wasPlaying = isPlaying.value;
     final pos = position.value;
     final song = currentSong;
-    userQuality.value = q;
-    await MusicStore.setQuality(q);
-    if (song == null) return true;
+    if (song == null) {
+      // No song loaded: the preference applies to the next song.
+      userQuality.value = q;
+      await MusicStore.setQuality(q);
+      return true;
+    }
     final localPath = downloads.localPathFor(song);
     if (localPath != null) {
       // Downloaded song: the file IS the quality — no re-resolve,
       // just re-open the local file at the new (nominal) tier.
+      userQuality.value = q;
+      await MusicStore.setQuality(q);
       actualQuality.value = q;
       _candidates = [Uri.file(localPath).toString()];
       _candidateIdx = 0;
       _playGen++;
-      await _openOn(_active, _candidates[0], vol: volume.value);
+      await _openOn(_active, _candidates[0]);
       if (pos > Duration.zero) await _active.seek(pos);
       if (wasPlaying) await _active.play();
       return true;
     }
+    // Resolve FIRST, then write the preference: writing it before
+    // the resolve left the UI showing the new tier while the song
+    // kept playing the old one (P1-4) when the resolve failed.
     final r = await _resolvers.resolvePlayUrl(
       song.songId,
       song.platform,
@@ -841,11 +1072,13 @@ class MusicPlayerController extends GetxController
       song.title,
     );
     if (r == null || r.url.isEmpty) return false;
+    userQuality.value = q;
+    await MusicStore.setQuality(q);
     _candidates = r.candidates;
     _candidateIdx = 0;
     actualQuality.value = r.quality;
     _playGen++;
-    await _openOn(_active, r.url, vol: volume.value);
+    await _openOn(_active, r.url);
     if (pos > Duration.zero) await _active.seek(pos);
     if (wasPlaying) await _active.play();
     return true;

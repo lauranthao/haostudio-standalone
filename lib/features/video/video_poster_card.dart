@@ -18,6 +18,23 @@ import '../../core/theme/hao_themes.dart';
 import 'video_models.dart';
 import 'widgets/referer_image.dart';
 
+/// Metrics of the text block below the poster in [VideoPosterCard].
+/// The grid's cell ratio is derived from these (see [VideoPosterGrid]),
+/// so changing a size here automatically re-fits the cells — never
+/// hard-code a childAspectRatio for this grid.
+const double _kPosterTitleGap = 6;
+const double _kTitleMetaGap = 2;
+const double _kTitleFontSize = 13;
+const double _kMetaFontSize = 12;
+const double _kTextLineHeight = 1.25;
+
+/// Height of the text block below the poster: gap + title line +
+/// gap + meta line. 6 + 13 x 1.25 + 2 + 12 x 1.25 = 39.25.
+const double kVideoPosterCardTextHeight = _kPosterTitleGap +
+    _kTitleFontSize * _kTextLineHeight +
+    _kTitleMetaGap +
+    _kMetaFontSize * _kTextLineHeight;
+
 class VideoPosterCard extends StatelessWidget {
   const VideoPosterCard({
     super.key,
@@ -114,19 +131,19 @@ class VideoPosterCard extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: _kPosterTitleGap),
             Text(
               item.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 13,
+                fontSize: _kTitleFontSize,
                 fontWeight: FontWeight.w600,
-                height: 1.25,
+                height: _kTextLineHeight,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: _kTitleMetaGap),
             Text(
               [
                 if (item.year.isNotEmpty) item.year,
@@ -136,8 +153,8 @@ class VideoPosterCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: theme.textMuted,
-                fontSize: 12,
-                height: 1.25,
+                fontSize: _kMetaFontSize,
+                height: _kTextLineHeight,
               ),
             ),
           ],
@@ -198,28 +215,46 @@ class VideoPosterGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
-        // Poster 2:3 + ~44px of title/meta below.
-        childAspectRatio: 0.58,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return VideoPosterCard(
-          item: item,
-          isWatched: watchedKeys.contains(item.identityKey),
-          onTap: () => onTapItem(item),
-          onPointerDown: onPointerDownItem == null
-              ? null
-              : () => onPointerDownItem!(item),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Cell height = poster (2:3) + the card's fixed text block.
+        // A fixed childAspectRatio (the old 0.58) only fits one width:
+        // at 420pt it left the text block 12px short of its cell, so
+        // every card overflowed and the meta line painted into the
+        // row gap (chen 2026-11-17: 影视分类页显示不全). Derive the
+        // ratio from the measured width so it is exact at any width.
+        final maxW = constraints.maxWidth;
+        final ratio = maxW.isFinite ? _cellRatio(maxW) : 0.55;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 16,
+            childAspectRatio: ratio,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            return VideoPosterCard(
+              item: item,
+              isWatched: watchedKeys.contains(item.identityKey),
+              onTap: () => onTapItem(item),
+              onPointerDown: onPointerDownItem == null
+                  ? null
+                  : () => onPointerDownItem!(item),
+            );
+          },
         );
       },
     );
   }
+}
+
+/// Exact cell ratio for a 3-column grid of [VideoPosterCard]s at the
+/// given grid width: column width / (poster height + text block).
+double _cellRatio(double gridWidth) {
+  final colW = (gridWidth - 2 * 12) / 3;
+  return colW / (colW * 3 / 2 + kVideoPosterCardTextHeight);
 }

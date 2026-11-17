@@ -122,18 +122,80 @@ void main() {
       for (final icon in [
         Icons.skip_previous,
         Icons.skip_next,
-        Icons.volume_down,
         Icons.queue_music,
       ]) {
         final rect = tester.getRect(find.byIcon(icon).first);
         expect(rect.top, greaterThanOrEqualTo(0.0));
         expect(rect.bottom, lessThanOrEqualTo(screen.height));
       }
-      final sliderRect = tester.getRect(find.byType(Slider).first);
-      expect(sliderRect.top, lessThan(screen.height));
+      // No volume slider anymore (chen 2026-11-17): the player has no
+      // volume control of its own — volume is the system volume.
+      expect(find.byType(Slider), findsNothing);
       // Cover uses the Dio-backed provider, not Image.network.
       final image = tester.widget<Image>(find.byType(Image).first);
       expect(image.image, isA<MusicImageProvider>());
+    });
+  });
+
+  group('AirPlay button: opens the system route picker (chen 2026-11-17)',
+      () {
+    Future<void> pumpPage(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1260, 2736);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put(MusicPlayerController());
+      c.queue.assignAll([
+        Song(
+          songId: '1',
+          title: 'Test Song',
+          artist: 'Test Artist',
+          album: 'Test Album',
+          cover:
+              'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    testWidgets('tap AirPlay with no native picker -> honest failure toast',
+        (tester) async {
+      await pumpPage(tester);
+      // setUp mocks the channel to reply null: native cannot open the
+      // picker, so the button reports the failure instead of the old
+      // dead text ("当前设备不支持隔空播放" was never a real check).
+      await tester.tap(find.byIcon(Icons.airplay));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('无法打开隔空播放选择器'), findsOneWidget);
+      expect(find.text('当前设备不支持隔空播放'), findsNothing);
+    });
+
+    testWidgets('tap AirPlay when native opens the picker -> no toast',
+        (tester) async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel(nowPlayingChannelName),
+        (call) async => call.method == 'showAirPlayPicker' ? true : null,
+      );
+      await pumpPage(tester);
+      await tester.tap(find.byIcon(Icons.airplay));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('无法打开隔空播放选择器'), findsNothing);
+      expect(find.text('当前设备不支持隔空播放'), findsNothing);
     });
   });
 
@@ -323,6 +385,76 @@ void main() {
       await tester.drag(lyricsText, const Offset(-200, 0));
       await tester.pump();
       expect(find.text('Song One'), findsOneWidget);
+    });
+  });
+
+  group('progress bar scrub: one seek on release, none mid-drag (chen 2026-11-17)', () {
+    Future<_NoLoadController> pumpPlayer(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1260, 2736);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put<MusicPlayerController>(_NoLoadController())
+          as _NoLoadController;
+      c.queue.assignAll([
+        Song(
+          songId: 's1',
+          title: 'Song One',
+          artist: 'A',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+      c.duration.value = const Duration(seconds: 200);
+      c.position.value = Duration.zero;
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      return c;
+    }
+
+    testWidgets('drag across the bar seeks exactly once, on release',
+        (tester) async {
+      final c = await pumpPlayer(tester);
+      final bar = find.byKey(const ValueKey('progressBar'));
+      expect(bar, findsOneWidget);
+      final rect = tester.getRect(bar);
+      // 10% -> 60% across the bar: release at 60% of 200 s = 120 s.
+      final start = Offset(rect.left + rect.width * 0.1, rect.center.dy);
+      final end = Offset(rect.left + rect.width * 0.6, rect.center.dy);
+      await tester.timedDragFrom(
+        start,
+        end - start,
+        const Duration(milliseconds: 300),
+      );
+      await tester.pump();
+      // Before the fix the drag seeked on every move event (a native
+      // seek per frame, stuttering the audio) plus the press-down
+      // tap: ~10 seeks. Now: one, on release.
+      expect(c.seeks, hasLength(1));
+      expect(c.seeks.single.inSeconds, closeTo(120, 5));
+    });
+
+    testWidgets('tap on the bar seeks immediately to the tap point',
+        (tester) async {
+      final c = await pumpPlayer(tester);
+      final bar = find.byKey(const ValueKey('progressBar'));
+      final rect = tester.getRect(bar);
+      await tester.tapAt(
+        Offset(rect.left + rect.width * 0.6, rect.center.dy),
+      );
+      await tester.pump();
+      expect(c.seeks, hasLength(1));
+      expect(c.seeks.single.inSeconds, closeTo(120, 5));
     });
   });
 

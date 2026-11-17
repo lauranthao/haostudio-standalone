@@ -19,6 +19,27 @@ import 'player_engine.dart';
 /// because open() returned.
 enum BackendOpenResult { playing, failed }
 
+/// Seed a duration stream with the value the backend already knows.
+///
+/// Duration is a ONE-SHOT signal: mpv reports it once, when the
+/// playlist is parsed, and it never changes for a VOD. The session only
+/// subscribes to the backend's durationStream after the first frame is
+/// verified — by then the event has already fired into a plain broadcast
+/// stream with no listener, so it is lost. A lost duration means the
+/// progress bar (gated on duration > 0) never appears at all (chen
+/// v1.0.8: "根本没有进度条"). Seeding the already-known value when the
+/// stream is first listened to closes the race: a late subscriber still
+/// gets the duration, and later live events still flow through
+/// unchanged. A zero/unknown duration seeds nothing, so live (which
+/// never has a duration) is unaffected.
+Stream<Duration> seedKnownDuration(
+  Duration known,
+  Stream<Duration> source,
+) async* {
+  if (known > Duration.zero) yield known;
+  yield* source;
+}
+
 abstract class PlayerBackend {
   PlayerEngine get engine;
 

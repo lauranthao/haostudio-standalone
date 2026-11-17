@@ -1043,7 +1043,7 @@ class LxScriptEngine {
   /// 溯音 / 非常刀 read `info.keyword` — additive, neither side
   /// is affected by the extra key.
   /// Timeout is 5 s, matching the caller's deadline in
-  /// [SongSearchService.searchAll]: a longer inner timeout only
+  /// [SongSearchService.searchAllStream]: a longer inner timeout only
   /// leaves the requestAction poll loop evaluating JS after the
   /// caller has already discarded the result.
   Future<List<Map<String, dynamic>>> search({

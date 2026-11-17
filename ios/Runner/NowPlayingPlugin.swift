@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import Flutter
 import MediaPlayer
 import UIKit
@@ -123,6 +124,8 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
         case "clearNowPlaying":
             clearNowPlaying()
             result(nil)
+        case "showAirPlayPicker":
+            result(showAirPlayPicker())
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -173,6 +176,75 @@ final class NowPlayingPlugin: NSObject, FlutterPlugin {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         currentCoverURL = ""
         artwork = nil
+    }
+
+    // MARK: - AirPlay route picker
+
+    /// Long-lived hidden AVRoutePickerView (iOS 11+, AVKit).
+    ///
+    /// The system AirPlay route picker can only be opened by tapping
+    /// an AVRoutePickerView — there is no public "present the picker"
+    /// API — so this instance lives in the key window's hierarchy
+    /// (44×44 pt, parked off-screen at -100,-100) and the Dart
+    /// AirPlay button asks it to fire its internal button's action,
+    /// which is exactly what a physical tap would do. The view is
+    /// never removed: it stays alive for the app's lifetime, so the
+    /// picker can be opened any number of times.
+    ///
+    /// AVRoutePickerView only selects the audio output route; it
+    /// never touches volume. The MPVolumeView that used to drive
+    /// volume sync was deleted per chen 2026-11-17 and is NOT brought
+    /// back here.
+    private var routePickerView: AVRoutePickerView?
+    /// Last time the picker action was fired: a second tap while the
+    /// system sheet is still animating in would make UIKit log a
+    /// "presentation in progress" warning, so re-fires within 0.5 s
+    /// are ignored (the picker is already open, so true is returned).
+    private var lastPickerFireAt: Date?
+
+    /// Open the system AirPlay route picker. Returns true when the
+    /// picker's button action fired (the sheet itself is presented by
+    /// the system, which also handles the no-device state — it just
+    /// lists this iPhone). Returns false only when the picker cannot
+    /// be opened at all (no key window, or the picker's internal
+    /// button was not found).
+    private func showAirPlayPicker() -> Bool {
+        if let last = lastPickerFireAt, Date().timeIntervalSince(last) < 0.5 {
+            return true
+        }
+        guard let window = Self.keyWindow else { return false }
+        if routePickerView == nil {
+            let picker = AVRoutePickerView(frame: CGRect(x: -100, y: -100, width: 44, height: 44))
+            window.addSubview(picker)
+            routePickerView = picker
+        }
+        guard let picker = routePickerView else { return false }
+        picker.layoutIfNeeded()
+        guard let button = Self.routePickerButton(in: picker) else { return false }
+        lastPickerFireAt = Date()
+        button.sendActions(for: .touchUpInside)
+        return true
+    }
+
+    /// The picker's button is an internal subview (no public
+    /// accessor): find the first UIButton in its hierarchy. Returns
+    /// nil if Apple ever changes the hierarchy — the caller then
+    /// reports failure instead of crashing.
+    private static func routePickerButton(in view: UIView) -> UIButton? {
+        if let button = view as? UIButton { return button }
+        for subview in view.subviews {
+            if let found = routePickerButton(in: subview) { return found }
+        }
+        return nil
+    }
+
+    /// iOS 13+ scene-based key-window lookup (`keyWindow` is
+    /// deprecated).
+    private static var keyWindow: UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
     }
 
     // The audio session must be .playback and active for iOS to

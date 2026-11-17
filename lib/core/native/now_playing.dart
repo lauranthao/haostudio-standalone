@@ -97,6 +97,23 @@ class NowPlayingService {
     }
   }
 
+  /// Ask iOS to present the system AirPlay route picker
+  /// (AVRoutePickerView). Returns true when the picker opened. The
+  /// picker itself lists the available routes — or just this iPhone
+  /// when none are around — so this side never invents a "no device"
+  /// message. Returns false when the native side could not open the
+  /// picker (no key window / picker button not found) or the channel
+  /// call fails.
+  Future<bool> showAirPlayPicker() async {
+    try {
+      final opened = await _channel.invokeMethod<bool>('showAirPlayPicker');
+      return opened ?? false;
+    } catch (e) {
+      debugPrint('[HAo] now_playing showAirPlayPicker failed: $e');
+      return false;
+    }
+  }
+
   Future<dynamic> _onMethodCall(MethodCall call) async {
     if (call.method != 'remoteCommand') return null;
     final args = call.arguments;

@@ -1,15 +1,18 @@
-// Aggregated song search (fix 12).
+// Aggregated song search (fix 12), streaming (v1.0.9: 秒出).
 //
 // chen's latest instruction wins over music-video spec §1.1: every song
 // search queries ALL FOUR platforms by default (wy + tx + kg + kw),
 // concurrently, each with its own timeout; a failing platform contributes
-// nothing and does not fail the search. Results merge round-robin across
-// platforms (one per platform per round, wy/tx/kg/kw order), deduped by
-// platform + songId + title, each tagged with its platform badge. NO
-// platform picker in the search UI.
-// Infinite scroll: first 20 shown, 20 more per sentinel hit, "已加载全部"
-// at the end — no next-page button. A new query cancels the previous
+// nothing and does not fail the search. Results are NOT round-robin
+// merged any more — the old [mergeSearchResults] needed every leg
+// before it could return anything, so a single slow leg held the whole
+// search up to 5 s. Now each leg emits the moment it returns
+// ([searchAllStream]): the fastest leg (usually ~1 s) shows first, the
+// rest append after it, grouped by platform, in arrival order. Nothing
+// already shown is ever reordered. A new query cancels the previous
 // search (generation guard) so stale results cannot overwrite it.
+// Infinite scroll: first 20 shown, 20 more per sentinel hit, "已加载全部"
+// at the end — no next-page button.
 //
 // Which platforms are queried comes from [MusicSourcesStore] (settings
 // → 音源管理): all four by default, fewer when the user disabled one
@@ -25,32 +28,19 @@ import 'music_models.dart';
 const int kSearchPageSize = 20;
 const int kSearchPerPlatform = 40;
 
-/// Round-robin merge, pure function — unit-tested.
+/// One streaming update from [SongSearchService.searchAllStream].
 ///
-/// [perPlatform] is in wy/tx/kg/kw order; one item per platform per
-/// round. Dedupe key is platform + songId + title (fix 12).
-List<Song> mergeSearchResults(List<List<Song>> perPlatform) {
-  final merged = <Song>[];
-  var pi = 0;
-  var added = true;
-  while (added) {
-    added = false;
-    for (final list in perPlatform) {
-      if (pi < list.length) {
-        merged.add(list[pi]);
-        added = true;
-      }
-    }
-    pi++;
-  }
-  final seen = <String>{};
-  final out = <Song>[];
-  for (final s in merged) {
-    if (seen.contains(s.dedupeKey)) continue;
-    seen.add(s.dedupeKey);
-    out.add(s);
-  }
-  return out;
+/// [songs] is the cumulative result list so far — arrival order
+/// (first-returned platform first, later legs appended after it),
+/// deduped, covers backfilled. A fresh list on every emission; the
+/// service never mutates a list it already handed out. [pending] is
+/// the set of platforms with at least one leg not yet settled; it is
+/// empty on the last emission, just before the stream closes.
+class SearchStreamUpdate {
+  const SearchStreamUpdate({required this.songs, required this.pending});
+
+  final List<Song> songs;
+  final Set<MusicPlatform> pending;
 }
 
 /// Cover backfill (v1.0.6 phone bug: "很多歌曲都没封面"): Kugou search
@@ -79,6 +69,12 @@ List<Song> backfillCovers(List<Song> songs) {
   return changed ? out : songs;
 }
 
+/// Script-hit dedup key (same rule as the old merge): script ids are
+/// sometimes generated (溯音 falls back to `kw_<ts>_<rand>`), so
+/// title+artist — not id — is the only stable key.
+String _titleArtistKey(Song s) =>
+    '${s.title.toLowerCase()}|${s.artist.toLowerCase()}';
+
 class SongSearchService {
   SongSearchService({MusicApi? api, LxScriptEngine? scriptEngine})
       : _api = api ?? MusicApi(),
@@ -90,19 +86,51 @@ class SongSearchService {
   /// tests pass their own engine.
   final LxScriptEngine _scriptEngine;
   var _generation = 0;
+  StreamController<SearchStreamUpdate>? _current;
 
-  /// Fan out to the enabled platforms (40 results each, app.js:6406)
-  /// and merge. Returns [] when every platform failed or returned
-  /// nothing. A stale generation returns [] and the caller must
-  /// ignore it.
-  Future<List<Song>> searchAll(String query) async {
+  /// Streaming aggregated search: one [SearchStreamUpdate] per settled
+  /// leg, in arrival order; the stream closes when every leg has
+  /// settled (or the search was superseded).
+  ///
+  /// A "leg" is one platform's own search, or one LX script search
+  /// for a platform. Platform legs emit the moment their own search
+  /// returns — never waiting for the platform's script legs, and
+  /// never for another platform — so the first result appears as soon
+  /// as the fastest leg returns (~1 s), not when the slowest leg
+  /// gives up at the 5 s cap. A leg that fails or times out
+  /// contributes nothing and never blocks the others; a platform
+  /// with no results at all does not hold up the rest.
+  ///
+  /// Script legs run concurrently with their platform leg, but emit
+  /// only after the platform leg has settled, so the dedup sees the
+  /// platform's own songs (the platform list is authoritative, script
+  /// hits are extras — exactly as before). The platform leg never
+  /// waits for a script leg.
+  ///
+  /// A stale generation emits nothing: starting a new search closes
+  /// the previous stream at once, and late leg completions are
+  /// dropped, so stale results cannot overwrite the new search.
+  Stream<SearchStreamUpdate> searchAllStream(String query) {
     final gen = ++_generation;
+    // Supersede the previous search: close its stream so the page's
+    // loop ends at once instead of waiting out its legs.
+    final prev = _current;
+    final controller = StreamController<SearchStreamUpdate>();
+    _current = controller;
+    unawaited(prev?.close());
+
     final platforms = MusicSourcesStore.enabled();
+    if (platforms.isEmpty) {
+      // The store guarantees >= 1; never hand out a stream that
+      // never closes.
+      unawaited(controller.close());
+      return controller.stream;
+    }
+
     // LX script search legs (M-P0-6): only scripts declaring `search`
     // for an enabled platform (today: 溯音 for kw — mg is not a search
-    // platform, so in practice kw only). They start concurrently with
-    // the platform legs; a slow script never delays the search past
-    // 8 s. Kick off engine load on first use; legs appear once loaded.
+    // platform, so in practice kw only). Kick off engine load on
+    // first use; legs appear once loaded.
     unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
     final scriptLegs = <({MusicPlatform pf, String scriptId})>[];
     for (final pf in platforms) {
@@ -110,32 +138,59 @@ class SongSearchService {
         scriptLegs.add((pf: pf, scriptId: leg.scriptId));
       }
     }
-    final scriptFutures = scriptLegs
-        .map(
-          (leg) => _scriptEngine
-              .search(
-                scriptId: leg.scriptId,
-                platform: leg.pf.code,
-                keyword: query,
-                limit: 20,
-              )
-              // LX-style single deadline (2026-11-17, 歌一刀/LX 借鉴):
-              // LX awaits all sources in one Promise.all. Before, the
-              // script legs got a 2 s grace AFTER the platform legs,
-              // so a search could burn 5 s (platform cap) + 2 s even
-              // when the platform results were ready. Script legs
-              // share the 5 s leg cap and are awaited together with
-              // the platform legs — total search is bounded by 5 s.
-              .timeout(
-                const Duration(seconds: 5),
-                onTimeout: () => const <Map<String, dynamic>>[],
-              )
-              .catchError((_) => const <Map<String, dynamic>>[]),
-        )
-        .toList();
-    final settled = await Future.wait(
-      platforms.map(
-        (pf) => _api
+
+    // Per-search accumulation state. Only touched from synchronous
+    // leg-settle callbacks (no await between the generation check and
+    // the settle), so no interleaving is possible.
+    final accumulated = <Song>[];
+    final seenKeys = <String>{};
+    final shownTitles = <MusicPlatform, Set<String>>{
+      for (final pf in platforms) pf: <String>{},
+    };
+    // Legs not yet settled, per platform. A platform leaves `pending`
+    // when its own leg AND all its script legs have settled.
+    final legsLeftByPlatform = <MusicPlatform, int>{
+      for (final pf in platforms) pf: 1,
+    };
+    for (final leg in scriptLegs) {
+      legsLeftByPlatform[leg.pf] = legsLeftByPlatform[leg.pf]! + 1;
+    }
+    var legsLeft = 0;
+    for (final n in legsLeftByPlatform.values) {
+      legsLeft += n;
+    }
+
+    bool isLive() => gen == _generation && !controller.isClosed;
+
+    void emit() {
+      if (!isLive()) return;
+      final pending = <MusicPlatform>{
+        for (final e in legsLeftByPlatform.entries)
+          if (e.value > 0) e.key,
+      };
+      // Copy first: the page keeps the emitted list while this
+      // search keeps appending to `accumulated`.
+      controller.add(SearchStreamUpdate(
+        songs: backfillCovers(List.of(accumulated)),
+        pending: pending,
+      ));
+    }
+
+    void settle(MusicPlatform pf) {
+      if (!isLive()) return;
+      legsLeftByPlatform[pf] = legsLeftByPlatform[pf]! - 1;
+      legsLeft--;
+      emit();
+      if (legsLeft == 0) {
+        if (identical(_current, controller)) _current = null;
+        unawaited(controller.close());
+      }
+    }
+
+    Future<void> runPlatformLeg(MusicPlatform pf) async {
+      List<Song> songs;
+      try {
+        songs = await _api
             .searchOne(pf, query)
             // 2026-11-17: per-leg 5 s cap. searchOne's own timeouts
             // are 10 s and kg/kw retry — a dead leg used to hold the
@@ -145,47 +200,87 @@ class SongSearchService {
               const Duration(seconds: 5),
               onTimeout: () => <Song>[],
             )
-            .then((r) => (pf, r))
-            .catchError((_) => (pf, <Song>[])),
-      ),
-    );
-    if (gen != _generation) return [];
-    final perPf = platforms.map((pf) {
-      final hit = settled.firstWhere(
-        (e) => e.$1 == pf,
-        orElse: () => (pf, <Song>[]),
-      );
-      return List.of(hit.$2);
-    }).toList();
-    if (scriptLegs.isNotEmpty) {
-      // Script legs started concurrently with the platform legs and
-      // share their 5 s cap, so this wait only collects what is
-      // already done (or finishes within the same deadline) — no
-      // extra grace.
-      final scriptResults = await Future.wait(scriptFutures);
-      if (gen != _generation) return [];
-      for (var i = 0; i < scriptLegs.length; i++) {
-        final pf = scriptLegs[i].pf;
-        final idx = platforms.indexOf(pf);
-        if (idx < 0) continue;
-        // Script ids are sometimes generated (溯音 falls back to
-        // `kw_<ts>_<rand>`), so dedupe script hits against the
-        // platform's own results by title+artist, not by id.
-        final have = perPf[idx]
-            .map((s) => '${s.title.toLowerCase()}|${s.artist.toLowerCase()}')
-            .toSet();
-        for (final raw in scriptResults[i]) {
-          final song = LxScriptEngine.lxSongFromJson(raw, pf);
-          if (song == null) continue;
-          final key =
-              '${song.title.toLowerCase()}|${song.artist.toLowerCase()}';
-          if (have.contains(key)) continue;
-          have.add(key);
-          perPf[idx].add(song);
+            .catchError((_) => <Song>[]);
+      } catch (_) {
+        songs = const [];
+      }
+      if (!isLive()) return;
+      try {
+        for (final s in songs) {
+          if (seenKeys.contains(s.dedupeKey)) continue;
+          seenKeys.add(s.dedupeKey);
+          shownTitles[pf]!.add(_titleArtistKey(s));
+          accumulated.add(s);
+        }
+      } catch (_) {
+        // A corrupt entry must not kill the search.
+      } finally {
+        settle(pf);
+      }
+    }
+
+    Future<void> runScriptLeg(
+      MusicPlatform pf,
+      Future<List<Map<String, dynamic>>> scriptFuture,
+      Future<void> platformDone,
+    ) async {
+      try {
+        // The script search already ran concurrently with the platform
+        // leg; only the emission waits for the platform leg to settle,
+        // so the dedup sees the platform's own songs.
+        final raw = await scriptFuture;
+        await platformDone;
+        if (!isLive()) return;
+        try {
+          for (final item in raw) {
+            final song = LxScriptEngine.lxSongFromJson(item, pf);
+            if (song == null) continue;
+            if (seenKeys.contains(song.dedupeKey)) continue;
+            final taKey = _titleArtistKey(song);
+            if (shownTitles[pf]!.contains(taKey)) continue;
+            seenKeys.add(song.dedupeKey);
+            shownTitles[pf]!.add(taKey);
+            accumulated.add(song);
+          }
+        } catch (_) {
+          // A corrupt entry must not kill the search.
+        }
+      } catch (_) {
+        // The platform gate or the script search failed: this leg
+        // contributes nothing.
+      } finally {
+        settle(pf);
+      }
+    }
+
+    for (final pf in platforms) {
+      final pfScripts = scriptLegs.where((l) => l.pf == pf).toList();
+      if (pfScripts.isEmpty) {
+        unawaited(runPlatformLeg(pf));
+      } else {
+        final platformDone = runPlatformLeg(pf);
+        for (final leg in pfScripts) {
+          // Start the script search now (concurrently with the
+          // platform leg); runScriptLeg only delays its emission.
+          final scriptFuture = _scriptEngine
+              .search(
+                scriptId: leg.scriptId,
+                platform: leg.pf.code,
+                keyword: query,
+                limit: 20,
+              )
+              // LX-style single deadline (2026-11-17, 歌一刀/LX 借鉴):
+              // script legs share the 5 s leg cap.
+              .timeout(
+                const Duration(seconds: 5),
+                onTimeout: () => const <Map<String, dynamic>>[],
+              )
+              .catchError((_) => const <Map<String, dynamic>>[]);
+          unawaited(runScriptLeg(pf, scriptFuture, platformDone));
         }
       }
     }
-    if (!perPf.any((l) => l.isNotEmpty)) return [];
-    return backfillCovers(mergeSearchResults(perPf));
+
+    return controller.stream;
   }
 }

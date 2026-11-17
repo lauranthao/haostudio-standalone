@@ -155,6 +155,37 @@ class MusicStore {
   static Future<void> clearRecent() =>
       HiveStore.put(HiveKeys.musicRecent, '[]');
 
+  // ---- Search history (hao_music_search_hist, max 20) ----
+  //
+  // Mirrors VideoHistoryStore.getSearchHistory/saveSearchQuery: plain
+  // query strings, newest first, dedup, cap 20. Empty queries are
+  // never recorded; only terms for which a search was actually
+  // started are saved (the page calls saveSearchQuery once the query
+  // is trimmed and non-empty).
+  static List<String> getSearchHistory() {
+    final raw = HiveStore.box.get(HiveKeys.musicSearchHist);
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return const [];
+  }
+
+  static Future<void> saveSearchQuery(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final list = getSearchHistory().where((e) => e != q).toList();
+    list.insert(0, q);
+    await HiveStore.put(
+      HiveKeys.musicSearchHist,
+      jsonEncode(list.take(20).toList()),
+    );
+  }
+
+  static Future<void> clearSearchHistory() =>
+      HiveStore.put(HiveKeys.musicSearchHist, '[]');
+
   // ---- Listen log (hao_listen, max 3000, dur in SECONDS) ----
   static List<ListenEvent> getListenLog() =>
       _readList(HiveKeys.musicListen).map(ListenEvent.fromJson).toList();
@@ -230,12 +261,6 @@ class MusicStore {
 
   static Future<void> setPlazaPlatform(MusicPlatform pf) =>
       HiveStore.put(HiveKeys.musicPlazaPf, pf.code);
-
-  // ---- Volume / play mode ----
-  static double get volume => HiveStore.getDouble(HiveKeys.musicVolume, 0.8);
-
-  static Future<void> setVolume(double v) =>
-      HiveStore.put(HiveKeys.musicVolume, v.clamp(0.0, 1.0));
 
   // ---- Playback speed (M-P0-2): 0.6..2.0, default 1.0 ----
   static double get speed =>
@@ -354,15 +379,27 @@ class ListenReport {
   /// Per-day (week/month) or per-month (all) play counts, chronological.
   final List<DayCount> perDay;
 
-  static ListenReport compute(List<ListenEvent> all, String range) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final spanMs = range == 'week'
-        ? 7 * 86400000
+  /// Ranges are CALENDAR ranges, matching the labels: 'week' is
+  /// Monday 00:00 local to now, 'month' is the 1st 00:00 local to
+  /// now, 'all' is everything. (Before v1.0.9 these were rolling
+  /// 7/30 days, so "本周" wrongly included last week's days.)
+  /// `now` is injectable so tests are deterministic.
+  static ListenReport compute(
+    List<ListenEvent> all,
+    String range, {
+    DateTime? now,
+  }) {
+    final ref = now ?? DateTime.now();
+    final refDay = DateTime(ref.year, ref.month, ref.day);
+    final startMs = range == 'week'
+        ? refDay
+            .subtract(Duration(days: ref.weekday - 1))
+            .millisecondsSinceEpoch
         : range == 'month'
-            ? 30 * 86400000
+            ? DateTime(ref.year, ref.month, 1).millisecondsSinceEpoch
             : 0;
-    final evs = spanMs > 0
-        ? all.where((x) => now - x.at <= spanMs).toList()
+    final evs = startMs > 0
+        ? all.where((x) => x.at >= startMs).toList()
         : List.of(all);
     var totalSec = 0;
     final bySong = <String, TopSong>{};
@@ -380,7 +417,11 @@ class ListenReport {
           artist: x.artist,
           platform: x.platform,
           cover: x.cover,
-          dur: x.dur,
+          // Full song length, NOT the listened seconds: the row
+          // shows this as the song's duration. Legacy events carry
+          // totalDur 0, so their rows hide the duration instead of
+          // showing a wrong number.
+          dur: x.totalDur,
         ),
         plays: (prev?.plays ?? 0) + 1,
       );
@@ -416,10 +457,14 @@ class ListenReport {
         days.add(DayCount(label: m.substring(5), plays: byMonth[m] ?? 0));
       }
     } else {
-      final n = range == 'week' ? 7 : 30;
-      final today = DateTime.now();
-      for (var i = n - 1; i >= 0; i--) {
-        final d = today.subtract(Duration(days: i));
+      // Calendar bars: Monday..today for a week, 1st..today for a
+      // month — the same span the filter above keeps.
+      final start = range == 'week'
+          ? refDay.subtract(Duration(days: ref.weekday - 1))
+          : DateTime(ref.year, ref.month, 1);
+      for (var d = start;
+          !d.isAfter(refDay);
+          d = d.add(const Duration(days: 1))) {
         final key = dayKeyOf(d);
         days.add(DayCount(label: key.substring(5), plays: byDay[key] ?? 0));
       }
@@ -498,6 +543,36 @@ class ListenSessionTracker {
       platform: song.platform,
       cover: song.cover,
       dur: dur,
+      totalDur: song.dur,
+      at: at.millisecondsSinceEpoch,
+    );
+  }
+
+  /// Non-destructive snapshot of the session in progress, for the
+  /// report page: the song playing right now has no persisted event
+  /// yet (events are only written on finish), so without this the
+  /// report shows "还没有听歌记录" while a song is playing. Returns
+  /// null when nothing is tracked or fewer than [kMinListenSeconds]
+  /// have been heard. Does NOT close the session — the real event
+  /// still lands on finish() and replaces this snapshot, so the song
+  /// is never counted twice.
+  ListenEvent? currentEvent(DateTime now) {
+    final song = _song;
+    final at = _startedAt;
+    if (song == null || at == null) return null;
+    var heard = _seconds;
+    if (_playingSince != null) {
+      heard += now.difference(_playingSince!).inSeconds;
+    }
+    if (heard < kMinListenSeconds) return null;
+    return ListenEvent(
+      songId: song.songId,
+      title: song.title,
+      artist: song.artist,
+      platform: song.platform,
+      cover: song.cover,
+      dur: heard,
+      totalDur: song.dur,
       at: at.millisecondsSinceEpoch,
     );
   }

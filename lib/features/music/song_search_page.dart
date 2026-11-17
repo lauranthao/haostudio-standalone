@@ -14,6 +14,7 @@ import '../../core/theme/hao_themes.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/search_prewarm.dart';
 import '../../services/music/song_search_service.dart';
 import 'album_detail_page.dart';
 import 'artist_detail_page.dart';
@@ -38,6 +39,17 @@ class _SongSearchPageState extends State<SongSearchPage> {
   final _scrollController = ScrollController();
   final _searchService = SongSearchService();
   final _api = MusicApi();
+  StreamSubscription<SearchStreamUpdate>? _searchSub;
+  // Prewarm: resolve the first few visible songs' URLs while the
+  // user is still looking, so tapping one plays from the cache.
+  final _prewarm = SearchPrewarm();
+  // Page-side generation: a new search cancels the old subscription
+  // and bumps this, so stale stream callbacks can never touch the new
+  // list (the service has the same guard; both must hold).
+  var _pageGen = 0;
+  // Platforms with at least one search leg not yet settled (from the
+  // latest stream update). Shown in the footer while streaming.
+  Set<MusicPlatform> _pendingPlatforms = {};
 
   var _type = _SearchType.song;
   var _loading = false;
@@ -58,13 +70,17 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   @override
   void dispose() {
+    unawaited(_searchSub?.cancel());
+    _prewarm.cancel();
     _queryController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_type != _SearchType.song || _loading) return;
+    // No `_loading` guard: while a search streams in, already-loaded
+    // rows can be revealed by scrolling; new legs append below.
+    if (_type != _SearchType.song) return;
     if (_shown >= _songs.length) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
@@ -75,6 +91,15 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Future<void> _search() async {
     final q = _queryController.text.trim();
     if (q.isEmpty) return;
+    // Record the term once a search is actually started — not on an
+    // empty query, not when the page is just opened. Best-effort, and
+    // fire-and-forget: the Hive write must not sit on the critical
+    // path to the first result (the search starts immediately).
+    unawaited(MusicStore.saveSearchQuery(q).catchError((_) {}));
+    if (_type == _SearchType.song) {
+      _searchSongs(q);
+      return;
+    }
     setState(() {
       _loading = true;
       _searched = true;
@@ -82,58 +107,90 @@ class _SongSearchPageState extends State<SongSearchPage> {
       _shown = kSearchPageSize;
     });
     try {
-      switch (_type) {
-        case _SearchType.song:
-          // searchAll has no catch-all of its own (a throw from the
-          // sources store or the merge left the page showing the
-          // empty "已加载全部" footer as if nothing matched). The
-          // playlist/artist branches already catch per call; the
-          // song branch needs the same honest error.
-          var results = <Song>[];
-          var failed = false;
-          try {
-            results = await _searchService.searchAll(q);
-          } catch (_) {
-            failed = true;
-          }
-          if (!mounted) return;
-          setState(() {
-            _songs = results;
-            if (failed) {
-              _error = '搜索失败，请重试';
-            } else if (results.isEmpty) {
-              _error = '没搜到，换个歌名试试';
-            }
-          });
-        case _SearchType.playlist:
-          final settled = await Future.wait([
-            _api.searchWyPlaylists(q, 1).catchError(
-                  (_) => (items: <PlaylistSummary>[], total: 0),
-                ),
-            _api.searchKwPlaylists(q, 1).catchError(
-                  (_) => (items: <PlaylistSummary>[], total: 0),
-                ),
-          ]);
-          if (!mounted) return;
-          setState(() {
-            _playlists = [...settled[0].items, ...settled[1].items];
-            if (_playlists.isEmpty) _error = '没搜到相关歌单';
-          });
-        case _SearchType.artist:
-          final settled = await Future.wait([
-            _api.searchWyArtists(q).catchError((_) => <ArtistSummary>[]),
-            _api.searchTxArtists(q, 1).catchError((_) => <ArtistSummary>[]),
-            _api.searchKwArtists(q).catchError((_) => <ArtistSummary>[]),
-          ]);
-          if (!mounted) return;
-          setState(() {
-            _artists = settled.expand((l) => l).toList();
-            if (_artists.isEmpty) _error = '没搜到相关歌手';
-          });
+      if (_type == _SearchType.playlist) {
+        final settled = await Future.wait([
+          _api.searchWyPlaylists(q, 1).catchError(
+                (_) => (items: <PlaylistSummary>[], total: 0),
+              ),
+          _api.searchKwPlaylists(q, 1).catchError(
+                (_) => (items: <PlaylistSummary>[], total: 0),
+              ),
+        ]);
+        if (!mounted) return;
+        setState(() {
+          _playlists = [...settled[0].items, ...settled[1].items];
+          if (_playlists.isEmpty) _error = '没搜到相关歌单';
+        });
+      } else {
+        // _SearchType.artist (song is handled above by _searchSongs).
+        final settled = await Future.wait([
+          _api.searchWyArtists(q).catchError((_) => <ArtistSummary>[]),
+          _api.searchTxArtists(q, 1).catchError((_) => <ArtistSummary>[]),
+          _api.searchKwArtists(q).catchError((_) => <ArtistSummary>[]),
+        ]);
+        if (!mounted) return;
+        setState(() {
+          _artists = settled.expand((l) => l).toList();
+          if (_artists.isEmpty) _error = '没搜到相关歌手';
+        });
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Streaming song search: results appear as each platform leg
+  /// returns (the fastest, usually ~1 s), the rest append after it.
+  /// Starting a new search cancels the old subscription and bumps the
+  /// generation, so stale emissions can never touch the new list.
+  void _searchSongs(String q) {
+    final gen = ++_pageGen;
+    unawaited(_searchSub?.cancel());
+    _prewarm.cancel();
+    setState(() {
+      _loading = true;
+      _searched = true;
+      _error = '';
+      _shown = kSearchPageSize;
+      _songs = [];
+      _pendingPlatforms = {};
+    });
+    _searchSub = _searchService.searchAllStream(q).listen(
+      (update) {
+        if (!mounted || gen != _pageGen) return;
+        setState(() {
+          _songs = update.songs;
+          _pendingPlatforms = update.pending;
+        });
+        // Warm the first few visible rows' URLs while the user is
+        // still looking, so tapping one plays from the cache.
+        _prewarm.prewarm(update.songs);
+      },
+      onError: (_) {
+        if (!mounted || gen != _pageGen) return;
+        setState(() {
+          _loading = false;
+          _error = '搜索失败，请重试';
+        });
+      },
+      onDone: () {
+        if (!mounted || gen != _pageGen) return;
+        setState(() {
+          _loading = false;
+          if (_songs.isEmpty) _error = '没搜到，换个歌名试试';
+        });
+      },
+      cancelOnError: false,
+    );
+  }
+
+  /// Footer text while legs are still pending, e.g. "正在搜索 QQ、酷狗…".
+  /// Falls back to a plain "正在搜索…" when no platform names are known
+  /// (the last update already settled every leg — transient).
+  String get _pendingLabel {
+    if (_pendingPlatforms.isEmpty) return '正在搜索…';
+    final names = _pendingPlatforms.map((p) => p.badgeName).join('、');
+    return '正在搜索 $names…';
   }
 
   void _playSong(Song song, List<Song> queue) {
@@ -224,12 +281,46 @@ class _SongSearchPageState extends State<SongSearchPage> {
   }
 
   Widget _results(HaoTheme theme) {
-    if (_loading) {
+    // Streaming: show the list as soon as the first leg returns, even
+    // while other legs are still pending. The full-screen spinner is
+    // only for "nothing yet" (song search with no results so far);
+    // playlist/artist searches are not streamed, so they keep the
+    // plain `_loading` spinner.
+    if (_loading && (_type != _SearchType.song || _songs.isEmpty)) {
       return const Center(child: CircularProgressIndicator());
     }
     if (!_searched) {
-      return Center(
-        child: Text('搜一首歌、歌单或歌手', style: TextStyle(color: theme.textMuted, fontSize: 15)),
+      final history = MusicStore.getSearchHistory();
+      if (history.isEmpty) {
+        return Center(
+          child: Text(
+            '搜一首歌、歌单或歌手',
+            style: TextStyle(color: theme.textMuted, fontSize: 15),
+          ),
+        );
+      }
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        children: [
+          _SearchHistory(
+            history: history,
+            onTap: (q) {
+              _queryController.text = q;
+              unawaited(_search());
+            },
+            onClear: () async {
+              await MusicStore.clearSearchHistory();
+              if (mounted) setState(() {});
+            },
+          ),
+          const SizedBox(height: 28),
+          Center(
+            child: Text(
+              '搜一首歌、歌单或歌手',
+              style: TextStyle(color: theme.textMuted, fontSize: 15),
+            ),
+          ),
+        ],
       );
     }
     if (_error.isNotEmpty) {
@@ -246,6 +337,28 @@ class _SongSearchPageState extends State<SongSearchPage> {
           itemCount: shown.length + 1,
           itemBuilder: (ctx, i) {
             if (i >= shown.length) {
+              if (_loading) {
+                // Legs still pending: more results may arrive. Never
+                // show "已加载全部" while a search is still streaming.
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _pendingLabel,
+                        style: TextStyle(color: theme.textMuted),
+                      ),
+                    ],
+                  ),
+                );
+              }
               final hasMore = _songs.length > _shown;
               return Padding(
                 padding: const EdgeInsets.all(16),
@@ -390,6 +503,76 @@ class _SongSearchPageState extends State<SongSearchPage> {
       MaterialPageRoute<void>(
         builder: (_) => PlazaDetailPage(playlist: p),
       ),
+    );
+  }
+}
+
+/// Search history section (same shape as the video search page's
+/// `_ChipSection`): title + clear on one row, up to 8 recent terms as
+/// chips. Tapping a chip re-runs that search; clearing removes the
+/// whole section (it only renders when history is non-empty).
+class _SearchHistory extends StatelessWidget {
+  const _SearchHistory({
+    required this.history,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  final List<String> history;
+  final void Function(String query) onTap;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '搜索历史',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.01,
+              ),
+            ),
+            const Spacer(),
+            TextButton(
+              onPressed: onClear,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text('清除', style: TextStyle(color: theme.textMuted, fontSize: 14)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: history
+              .take(8)
+              .map(
+                (q) => ActionChip(
+                  label: Text(q),
+                  labelStyle: TextStyle(
+                    color: theme.textSecondary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  backgroundColor: theme.surface,
+                  side: BorderSide(color: theme.hairline),
+                  onPressed: () => onTap(q),
+                ),
+              )
+              .toList(),
+        ),
+      ],
     );
   }
 }

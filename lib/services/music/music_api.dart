@@ -1641,10 +1641,20 @@ class MusicApi {
     final others = [MusicPlatform.tx, MusicPlatform.wy, MusicPlatform.kg, MusicPlatform.kw]
         .where((p) => p != excludePf)
         .toList();
+    // 5 s cap (chen 2026-11-17: 播失败换源不能静默等太久): each leg
+    // has a 10 s internal timeout, and Future.wait holds the whole
+    // error path hostage until the slowest leg answers — up to 10 s
+    // of silence while the player waits for an alt. On timeout the
+    // in-flight legs keep running in the background (not cancelled)
+    // but their results are discarded and the caller falls through
+    // to the next song.
     final settled = await Future.wait(
       others.map(
         (pf) => searchOne(pf, title).catchError((_) => <Song>[]),
       ),
+    ).timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => <List<Song>>[],
     );
     final all = settled.expand((l) => l).toList();
     final order = {

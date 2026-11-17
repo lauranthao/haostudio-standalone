@@ -131,6 +131,36 @@ bool isPlayableUrl(String? url) {
   return true;
 }
 
+/// Trial/preview clip detector (chen 2026-11-17, v1.0.8 phone: 网易云
+/// 很多歌只能放十五秒).
+///
+/// NetEase serves VIP-only songs as a ~15 s (sometimes ~30 s) preview
+/// clip when the resolving source has no VIP rights. The preview URL
+/// looks exactly like a full-song URL — same CDN, same format — and it
+/// plays without any error, so the player treats the 15 s ending as a
+/// normal track end and auto-advances. Nothing in the resolve chain
+/// can tell a preview from a full song: the relay APIs return just a
+/// URL string, no trial flag (verified live 2026-11-17: 11 songs x
+/// every testable built-in resolver and LX script returned full files
+/// — the preview only shows up for songs / sources the relays lack
+/// rights to, or when a relay is degraded; ikun / 落雪 APIs are
+/// unreachable from this VM so they could not be probed).
+///
+/// The reliable signal is the player's real duration vs the metadata
+/// duration from search (`Song.dur`, seconds): a real file of 15 s
+/// for a 4-minute song is a preview. Guards against false positives:
+/// - metadata unknown (`metaDurSec <= 0`) → never a trial;
+/// - genuinely short songs (`metaDurSec < 60`) → never a trial;
+/// - the real file must be short (<= 35 s, covers 15 s and 30 s
+///   previews) AND less than half the metadata duration, so a
+///   different-version file (live cut, radio edit) never trips it.
+bool isTrialClip({required int metaDurSec, required Duration actual}) {
+  if (metaDurSec < 60) return false;
+  final actualSec = actual.inSeconds;
+  if (actualSec <= 0 || actualSec > 35) return false;
+  return actualSec * 2 < metaDurSec;
+}
+
 /// Cover hi-res upgrade — directCoverHi (app.js:468).
 ///
 /// 2026-11-17 fix (v1.0.6 phone bug: "很多歌曲都没封面" + 搜歌/播放慢):
@@ -492,7 +522,9 @@ class LyricLine {
   final String text;
 }
 
-/// One listen event (hao_listen). `dur` is SECONDS; `at` is epoch ms.
+/// One listen event (hao_listen). `dur` is the seconds actually
+/// heard; `totalDur` is the full song length in seconds (0 = unknown,
+/// events written before v1.0.9 did not carry it); `at` is epoch ms.
 class ListenEvent {
   ListenEvent({
     required this.songId,
@@ -501,6 +533,7 @@ class ListenEvent {
     this.platform = MusicPlatform.wy,
     this.cover = '',
     this.dur = 0,
+    this.totalDur = 0,
     required this.at,
   });
 
@@ -512,6 +545,7 @@ class ListenEvent {
       platform: MusicPlatformX.fromCode(j['platform']?.toString()),
       cover: j['cover']?.toString() ?? '',
       dur: (j['dur'] as num?)?.toInt() ?? 0,
+      totalDur: (j['totalDur'] as num?)?.toInt() ?? 0,
       at: (j['at'] as num?)?.toInt() ?? 0,
     );
   }
@@ -523,6 +557,7 @@ class ListenEvent {
         'platform': platform.code,
         'cover': cover,
         'dur': dur,
+        'totalDur': totalDur,
         'at': at,
       };
 
@@ -532,6 +567,10 @@ class ListenEvent {
   final MusicPlatform platform;
   final String cover;
   final int dur;
+
+  /// Full song length, seconds. The report shows this as the
+  /// top-song duration; `dur` is only how long the song was heard.
+  final int totalDur;
   final int at;
 }
 

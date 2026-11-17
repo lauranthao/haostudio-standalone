@@ -142,7 +142,13 @@ class AvPlayerBackend implements PlayerBackend {
   Stream<Duration> get positionStream => _positionController.stream;
 
   @override
-  Stream<Duration> get durationStream => _durationController.stream;
+  // Seed the duration the poll already knows (_lastDuration): the poll
+  // only emits on change, so a duration that arrived before the
+  // session subscribed is otherwise lost forever — same one-shot race
+  // as MPV (chen v1.0.8: "根本没有进度条"). Live keeps _lastDuration at
+  // zero, so the seed is a no-op there.
+  Stream<Duration> get durationStream =>
+      seedKnownDuration(_lastDuration, _durationController.stream);
 
   @override
   Future<void> seekTo(Duration position) async {

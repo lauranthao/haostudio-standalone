@@ -23,6 +23,7 @@ import '../live_follow_store.dart';
 import '../live_history_store.dart';
 import 'live_follows_page.dart';
 import 'live_history_page.dart';
+import 'live_search_page.dart';
 import 'live_tab_controller.dart';
 import 'playback/live_room_page.dart';
 
@@ -79,6 +80,13 @@ class _LiveTabPageState extends State<LiveTabPage> {
       appBar: AppBar(
         title: const Text('直播'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: '搜索直播间',
+            onPressed: () => Get.to(
+              () => LiveSearchPage(initialPlatform: _controller.platform),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: '直播历史',

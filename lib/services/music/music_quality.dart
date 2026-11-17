@@ -235,6 +235,12 @@ AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
         return AudioQuality.hires;
     }
   }
+  // LX script jobs only exist when the script declares the requested
+  // tier (scriptJobsFor filters by lxQualityForScript), so a script
+  // URL IS the requested tier — not 320k. Labelling it 320k made the
+  // resolver loop hunt for a better URL it already had, and mis-set
+  // the quality badge (a hires script result showed as 320k).
+  if (key.startsWith('lx:')) return q;
   switch (key) {
     case 'gd':
     case 'yutang':

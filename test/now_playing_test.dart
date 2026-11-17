@@ -199,4 +199,42 @@ void main() {
       await sendRemote('seek', position: 10);
     });
   });
+
+  group('outgoing: showAirPlayPicker', () {
+    void mockPickerResult(Future<dynamic> Function() answer) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        outgoing.add(call);
+        return answer();
+      });
+    }
+
+    test('returns true and sends showAirPlayPicker when native opens it',
+        () async {
+      mockPickerResult(() async => true);
+      expect(await service.showAirPlayPicker(), isTrue);
+      expect(outgoing, hasLength(1));
+      expect(outgoing.single.method, 'showAirPlayPicker');
+    });
+
+    test('returns false when native reports failure', () async {
+      mockPickerResult(() async => false);
+      expect(await service.showAirPlayPicker(), isFalse);
+      expect(outgoing.single.method, 'showAirPlayPicker');
+    });
+
+    test('returns false when native returns null (no mock / no reply)',
+        () async {
+      mockPickerResult(() async => null);
+      expect(await service.showAirPlayPicker(), isFalse);
+    });
+
+    test('returns false instead of throwing when the channel throws',
+        () async {
+      mockPickerResult(() async {
+        throw PlatformException(code: 'unavailable');
+      });
+      expect(await service.showAirPlayPicker(), isFalse);
+    });
+  });
 }

@@ -3,9 +3,15 @@ import 'dart:async';
 // Listen report (audit P0-3 + fix 17.2).
 //
 // Durations are stored in SECONDS; total minutes = totalSeconds / 60.
-// Ranges week (7 d) / month (30 d) / all; top songs, top artists,
-// platform split, per-day (or per-month for "all") bars. Statistics
-// accumulate only from launch, so the report starts thin — expected.
+// Ranges are CALENDAR ranges: 本周 = Monday 00:00 local to now,
+// 本月 = the 1st 00:00 local to now, 全部 = everything. Top songs,
+// top artists, platform split, per-day (or per-month for "all")
+// bars. Statistics accumulate only from launch, so the report
+// starts thin — expected.
+//
+// Bar labels are sparse when there are many bars: a month has up
+// to 31 ~12pt columns but an "MM-dd" label needs ~22pt, so showing
+// every label makes them overlap. See showBarLabel.
 
 import 'package:flutter/material.dart';
 
@@ -15,6 +21,28 @@ import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
+
+/// Empty-state text for the selected range. The empty state is
+/// about the SELECTED range: "本周还没有听歌记录" when this week is
+/// empty even if other ranges have plays.
+@visibleForTesting
+String listenReportEmptyText(String range) => range == 'week'
+    ? '本周还没有听歌记录'
+    : range == 'month'
+        ? '本月还没有听歌记录'
+        : '还没有听歌记录，统计从现在开始累计';
+
+/// Whether bar `index` of `total` bars shows its date label.
+///
+/// A month has up to 31 columns of ~12pt each, but an "MM-dd" label
+/// at 9pt needs ~22pt — showing every label makes them overlap (or
+/// wrap into two lines). Short ranges show all labels; long ones
+/// show every 5th + the last.
+@visibleForTesting
+bool showBarLabel(int index, int total) {
+  if (total <= 10) return true;
+  return index % 5 == 0 || index == total - 1;
+}
 
 class ListenReportPage extends StatefulWidget {
   const ListenReportPage({super.key});
@@ -28,8 +56,24 @@ class _ListenReportPageState extends State<ListenReportPage> {
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
 
-  ListenReport get _report =>
-      ListenReport.compute(MusicStore.getListenLog(), _range);
+  ListenReport get _report {
+    // The song playing right now has no persisted event yet (the
+    // session is only written when it finishes), so merge the
+    // in-progress snapshot in: otherwise the report shows an empty
+    // state while a song is playing. The snapshot is NOT persisted,
+    // so when the session later finalises the real event replaces
+    // it — no double count.
+    final live = _player.liveListenEvent;
+    final log = MusicStore.getListenLog();
+    return ListenReport.compute(
+      live == null ? log : [live, ...log],
+      _range,
+    );
+  }
+
+  /// The empty state is about the SELECTED range: "本周还没有听歌记录"
+  /// when this week is empty even if other ranges have plays.
+  String get _emptyText => listenReportEmptyText(_range);
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +121,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 child: Text(
-                  '还没有听歌记录，统计从现在开始累计',
+                  _emptyText,
                   style: TextStyle(color: theme.textMuted),
                 ),
               ),
@@ -170,7 +214,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          for (final d in report.perDay)
+          for (var i = 0; i < report.perDay.length; i++)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -178,22 +222,32 @@ class _ListenReportPageState extends State<ListenReportPage> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Container(
-                      height: d.plays > 0
-                          ? (96 * d.plays / maxPlays)
+                      height: report.perDay[i].plays > 0
+                          ? (96 * report.perDay[i].plays / maxPlays)
                               .clamp(6.0, 96.0)
                           : 2,
                       decoration: BoxDecoration(
-                        color: d.plays > 0 ? theme.accent : theme.accentSoft,
+                        color: report.perDay[i].plays > 0
+                            ? theme.accent
+                            : theme.accentSoft,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      d.label,
-                      style: TextStyle(
-                        color: theme.textMuted,
-                        fontSize: 9,
-                      ),
+                    // Every column keeps a fixed-height label slot
+                    // so the bars stay on one baseline; hidden
+                    // labels just leave the slot empty.
+                    SizedBox(
+                      height: 12,
+                      child: showBarLabel(i, report.perDay.length)
+                          ? Text(
+                              report.perDay[i].label,
+                              style: TextStyle(
+                                color: theme.textMuted,
+                                fontSize: 9,
+                              ),
+                            )
+                          : null,
                     ),
                   ],
                 ),

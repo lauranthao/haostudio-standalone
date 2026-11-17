@@ -9,16 +9,21 @@
 // - Jobs (built-in resolvers + LX script jobs) are ordered by measured
 //   speed, fastest first; an unknown job ranks in the middle (500 ms
 //   placeholder) and falls back to its declared order.
-// - Each pass tries jobs one by one (per-job timeout 3 s, pass budget
-//   6 s). The first URL at-or-above the requested tier wins at once.
-//   A below-tier URL is kept as fallback while at most 2 more jobs
-//   (5 for master) are tried for a tier-matching one, then the
-//   fallback is returned. Master honesty gate: only a real master
-//   URL satisfies master; anything lesser downgrades, never
-//   mislabelled.
-// - A job that fails 3 times in a row is cooled down for 5 min (sorted
-//   last, still tried if nothing else works). Speeds persist in Hive
-//   so the ranking survives restarts.
+// - Each pass tries jobs one by one (per-job timeout 2 s, pass budget
+//   6 s). The FIRST playable URL wins at once and the pass stops —
+//   no hunting for a higher tier after a playable URL exists (chen
+//   2026-11-17 铁律: 第一个源搜到了可以播放直接放, 要是没有就下一个
+//   源, 不要把全部源问一遍; 歌一刀就是这个逻辑). A below-target URL
+//   plays now as a per-song downgrade — the preference is untouched
+//   and the next song still aims for the highest quality. The URL is
+//   labelled with its REAL tier, never mislabelled (master honesty
+//   gate: only a real master URL is master).
+// - A job that fails 3 times in a row is cooled down for 5 min
+//   (sorted last, still tried if nothing else works). A job that
+//   TIMES OUT is cooled immediately for 2 min: a source that did not
+//   answer just burned a whole per-job timeout, and retrying it
+//   first on the next song would burn another one. Speeds persist
+//   in Hive so the ranking survives restarts.
 // - Passes: requested quality first; only when NO source returns any
 //   URL at all, re-ask at 320k, then 128k. The old tier loop re-fired
 //   every resolver at every tier (worst case ~15 s); now the common
@@ -179,6 +184,16 @@ class _PlayUrlCache {
       );
     } catch (_) {}
   }
+
+  /// Drop one cached URL (e.g. a trial/preview clip was detected at
+  /// playback): the next resolve for this song re-asks the sources
+  /// instead of replaying the cached bad URL.
+  void evict(String key) {
+    _map.remove(key);
+    try {
+      unawaited(HiveStore.delete('$_prefix$key').catchError((_) {}));
+    } catch (_) {}
+  }
 }
 
 class MusicResolvers {
@@ -209,6 +224,8 @@ class MusicResolvers {
   static const _unknownSpeedMs = 500;
   static const _coolAfterFails = 3;
   static const _coolFor = Duration(minutes: 5);
+  // A single timeout cools the job right away (see _recordAttempt).
+  static const _coolTimeoutFor = Duration(minutes: 2);
 
   void _loadSpeeds() {
     if (_speedLoaded) return;
@@ -262,8 +279,13 @@ class MusicResolvers {
   /// Record one job attempt. Success updates the EMA latency and
   /// resets the failure streak; failure bumps the streak and cools
   /// the job down after [_coolAfterFails] in a row, so a dead
-  /// "fastest" source stops blocking the race (换源).
-  void _recordAttempt(String key, bool ok, int ms) {
+  /// "fastest" source stops blocking the race (换源). A TIMEOUT cools
+  /// the job immediately for [_coolTimeoutFor]: the failure streak
+  /// alone is too slow to learn — the speed average is never updated
+  /// on failure, so a source that was fast once but hangs now would
+  /// otherwise stay ranked first and burn a full per-job timeout on
+  /// every song until it has failed 3 times.
+  void _recordAttempt(String key, bool ok, int ms, {bool timedOut = false}) {
     if (ok) {
       final prev = _speedAvg[key];
       _speedAvg[key] = prev == null ? ms : (prev * 7 + ms * 3) ~/ 10;
@@ -272,7 +294,9 @@ class MusicResolvers {
     } else {
       final fails = (_speedFails[key] ?? 0) + 1;
       _speedFails[key] = fails;
-      if (fails >= _coolAfterFails) {
+      if (timedOut) {
+        _speedCooledUntil[key] = DateTime.now().add(_coolTimeoutFor);
+      } else if (fails >= _coolAfterFails) {
         _speedCooledUntil[key] = DateTime.now().add(_coolFor);
       }
     }
@@ -807,16 +831,19 @@ class MusicResolvers {
   /// one at a time, until a playable URL is found (换源 — chen
   /// 2026-11-17: 每次解析都用最快的, 没有想要的资源就换源继续找,
   /// 直到找到能播的为止; 歌一刀/LX 模型: 一次只问一个源, 不搞
-  /// 十几个并行扇出). The first URL at-or-above the requested tier
-  /// wins at once; a below-tier URL is kept as fallback while a few
-  /// more jobs are tried for a tier-matching one (and a short hunt
-  /// window), then the fallback is returned. Returns null when no job
+  /// 十几个并行扇出). The FIRST playable URL wins at once and the
+  /// pass stops — NO hunting for a higher tier after a playable URL
+  /// exists (chen 2026-11-17 铁律: 第一个源搜到了可以播放直接放,
+  /// 要是没有就下一个源, 不要把全部源问一遍). A below-target URL
+  /// plays now as a per-song downgrade (the preference is untouched;
+  /// the next song still aims for the highest quality), labelled
+  /// with its REAL tier, never mislabelled. Returns null when no job
   /// yields any URL within [budget]. Jobs that time out are added to
   /// [skipTimedOut] so later tiers in the same resolve don't waste
   /// their budget re-asking a source that doesn't answer; a
   /// definitive empty answer is retried at lower tiers, which may
   /// serve the song (e.g. zddyr has hires but no master).
-  static const _perJobTimeout = Duration(seconds: 3);
+  static const _perJobTimeout = Duration(seconds: 2);
 
   Future<PlayUrlResult?> _resolvePass(
     AudioQuality q,
@@ -832,26 +859,11 @@ class MusicResolvers {
     unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
     final jobs = _rankedJobs(pf, q, songId, title);
     if (jobs.isEmpty) return null;
-    // Master is explicitly wanted: hunt longer for a real master URL.
-    final huntCap = q == AudioQuality.master ? 5 : 2;
-    final huntWindow = q == AudioQuality.master
-        ? const Duration(milliseconds: 2500)
-        : const Duration(seconds: 1);
     final deadline = DateTime.now().add(budget);
-    PlayUrlResult? best;
-    var extraTries = 0;
-    var haveUrl = false;
-    DateTime? huntDeadline;
     for (final job in jobs) {
       if (skipTimedOut.contains(job.key)) continue;
-      var remaining = deadline.difference(DateTime.now());
+      final remaining = deadline.difference(DateTime.now());
       if (remaining <= Duration.zero) break;
-      if (haveUrl) {
-        if (extraTries >= huntCap) break;
-        final huntLeft = huntDeadline!.difference(DateTime.now());
-        if (huntLeft <= Duration.zero) break;
-        if (huntLeft < remaining) remaining = huntLeft;
-      }
       final timeout =
           remaining < _perJobTimeout ? remaining : _perJobTimeout;
       final sw = Stopwatch()..start();
@@ -859,7 +871,8 @@ class MusicResolvers {
       try {
         url = await job.fn(songId, pf, q, title).timeout(timeout);
       } on TimeoutException {
-        _recordAttempt(job.key, false, timeout.inMilliseconds);
+        _recordAttempt(job.key, false, timeout.inMilliseconds,
+            timedOut: true);
         skipTimedOut.add(job.key);
         continue;
       } catch (_) {
@@ -879,25 +892,17 @@ class MusicResolvers {
         continue;
       }
       _recordAttempt(job.key, true, sw.elapsedMilliseconds);
-      final realQ = extraQuality(job.key, q, pf.code);
-      final cand = PlayUrlResult(
+      // First playable URL wins immediately. No hunting: even a
+      // below-target URL plays now (per-song downgrade); the caller
+      // still passes the user's chosen tier for the next song.
+      return PlayUrlResult(
         url: https,
         candidates: [https],
-        quality: realQ,
+        quality: extraQuality(job.key, q, pf.code),
         via: job.name,
       );
-      // Tier-matching wins immediately. Master honesty gate: only a
-      // real master URL satisfies master.
-      final matched = q == AudioQuality.master
-          ? realQ == AudioQuality.master
-          : realQ.rank >= q.rank;
-      if (matched) return cand;
-      if (best == null || realQ.rank > best.quality.rank) best = cand;
-      if (haveUrl) extraTries++;
-      haveUrl = true;
-      huntDeadline ??= DateTime.now().add(huntWindow);
     }
-    return best;
+    return null;
   }
 
   /// Main entry. Returns null when no resolver yields a URL at any
@@ -923,7 +928,6 @@ class MusicResolvers {
     // every resolver at every tier (worst case ~15 s).
     final skipTimedOut = <String>{};
     final deadline = DateTime.now().add(const Duration(seconds: 8));
-    PlayUrlResult? best;
     var first = true;
     for (final tier in qualityChainFrom(quality)) {
       final remaining = deadline.difference(DateTime.now());
@@ -940,25 +944,31 @@ class MusicResolvers {
         skipTimedOut,
       );
       first = false;
+      // First playable URL wins, at any tier (chen 2026-11-17 铁律):
+      // a below-target URL plays now as a per-song downgrade — the
+      // chain only advances when NO source returns anything at this
+      // tier. No hunting across tiers for a better URL (the old
+      // "keep the best and walk on at master" is gone: a hires URL
+      // from the master pass plays now, it does not wait for the
+      // hires pass to maybe find a better one).
       if (r == null) continue;
-      final matched = tier == AudioQuality.master
-          ? r.quality == AudioQuality.master
-          : r.quality.rank >= tier.rank;
-      if (matched) {
-        _saveSpeeds();
-        _cache.put(cacheKey, r);
-        return r;
-      }
-      // Below-tier fallback: keep the best. At a non-master tier this
-      // is the answer (lower tiers can only be worse). At master, a
-      // later tier may still beat it (e.g. hires from zddyr beats a
-      // 320k answer), so keep walking the chain.
-      if (best == null || r.quality.rank > best.quality.rank) best = r;
-      if (tier != AudioQuality.master) break;
+      _saveSpeeds();
+      _cache.put(cacheKey, r);
+      return r;
     }
     _saveSpeeds();
-    if (best != null) _cache.put(cacheKey, best);
-    return best;
+    return null;
+  }
+
+  /// Drop a cached play URL (e.g. a trial/preview clip was detected at
+  /// playback): the next resolve for this song re-asks the sources
+  /// instead of replaying the cached bad URL.
+  void evictPlayUrl(
+    String songId,
+    MusicPlatform platform,
+    AudioQuality quality,
+  ) {
+    _cache.evict('$songId|${platform.code}|${quality.code}');
   }
 
   /// Resolver inventory (for settings / debugging). Script resolvers

@@ -157,6 +157,25 @@ void main() {
       );
       expect(extraQuality('lzm', AudioQuality.hires, 'wy'), AudioQuality.q320k);
     });
+
+    test('script jobs return the requested tier, not 320k', () {
+      // A script job only exists when the script declares the tier
+      // (scriptJobsFor filters by lxQualityForScript), so its URL IS
+      // that tier. Labelling it 320k made the resolver loop hunt for
+      // a better URL it already had, and mis-set the quality badge.
+      expect(
+        extraQuality('lx:ikun', AudioQuality.hires, 'wy'),
+        AudioQuality.hires,
+      );
+      expect(
+        extraQuality('lx:suyin', AudioQuality.lossless, 'tx'),
+        AudioQuality.lossless,
+      );
+      expect(
+        extraQuality('lx:feichangdao', AudioQuality.q320k, 'wy'),
+        AudioQuality.q320k,
+      );
+    });
   });
 
   group('lxQualityForScript', () {

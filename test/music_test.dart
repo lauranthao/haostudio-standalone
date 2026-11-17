@@ -1,7 +1,8 @@
 // Music unit tests — pure-Dart rules that must never regress:
 //
-// - Aggregated search merge is round-robin (wy/tx/kg/kw) and dedupes on
-//   platform + songId + title (fix 12).
+// - Aggregated song search streams per leg (v1.0.9): first-returned
+//   platform first, later legs append; dedupe on platform + songId +
+//   title (fix 12). See music_search_stream_test.dart.
 // - Playlist card count is tracks.length, never a stored field (audit P0-1).
 // - Listen-report minutes are totalSeconds / 60 (audit P0-3).
 // - Quality chain downgrades hires → lossless → 320k → 128k; extraQuality
@@ -23,35 +24,6 @@ Song _song(String id, String title, MusicPlatform pf) =>
     Song(songId: id, title: title, platform: pf);
 
 void main() {
-  group('mergeSearchResults (fix 12)', () {
-    test('round-robin across platforms in wy/tx/kg/kw order', () {
-      final wy = [_song('1', 'A', MusicPlatform.wy), _song('2', 'B', MusicPlatform.wy)];
-      final tx = [_song('3', 'C', MusicPlatform.tx)];
-      final kg = [_song('4', 'D', MusicPlatform.kg)];
-      final kw = [_song('5', 'E', MusicPlatform.kw)];
-      final merged = mergeSearchResults([wy, tx, kg, kw]);
-      expect(merged.map((s) => s.title).toList(), ['A', 'C', 'D', 'E', 'B']);
-    });
-
-    test('dedupe only on same platform + songId + title', () {
-      final wy = [_song('1', 'A', MusicPlatform.wy), _song('1', 'A', MusicPlatform.wy)];
-      final tx = [_song('1', 'A', MusicPlatform.tx)];
-      final merged = mergeSearchResults([wy, tx, [], []]);
-      // Same songId+title on a different platform is a different result.
-      expect(merged.length, 2);
-      expect(merged[0].platform, MusicPlatform.wy);
-      expect(merged[1].platform, MusicPlatform.tx);
-    });
-
-    test('empty platforms contribute nothing', () {
-      expect(mergeSearchResults([[], [], [], []]), isEmpty);
-      expect(
-        mergeSearchResults([[_song('1', 'A', MusicPlatform.wy)], [], [], []]).length,
-        1,
-      );
-    });
-  });
-
   group('backfillCovers (v1.0.6: 酷狗搜歌无封面)', () {
     test('kg row without cover takes the wy cover of the same song', () {
       final songs = [

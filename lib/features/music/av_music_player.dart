@@ -82,6 +82,16 @@ class AvMusicPlayer {
     return true;
   }
 
+  /// Current processing state (synchronous). The controller uses it
+  /// to tell a fresh load failure (idle — the native side sets the
+  /// state to idle when it reports the error, AudioPlayer.m
+  /// sendError:switchToIdle:) from a stale error from a superseded
+  /// URL (the new source is loading / ready / playing by the time
+  /// the late error is delivered, because just_audio's error stream
+  /// is an async pipe off the same playback events that update this
+  /// state synchronously). See MusicPlayerController._onStreamError.
+  ProcessingState get processingState => _player.processingState;
+
   Future<void> play() async {
     if (!_hasSource) return;
     try {

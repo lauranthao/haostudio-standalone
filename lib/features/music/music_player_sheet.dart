@@ -10,9 +10,8 @@
 // centred with rounded corners, title (bold white) + artist (lighter)
 // left-aligned below the cover with star + `···` on the right, thin
 // progress bar with elapsed time left + remaining time right, three big
-// white triangle controls (prev/play/next, no background circles), volume
-// slider with speaker icons, bottom row of 3 pure icons only (lyrics,
-// AirPlay, queue), no text labels. The Hi-Res badge sits BELOW the cover,
+// white triangle controls (prev/play/next, no background circles), bottom
+// row of 3 pure icons only (lyrics, AirPlay, queue), no text labels. The
 // centred. The whole player fits one screen — no page scroll; lyrics
 // live BEHIND the cover (chen 2026-11-17): the cover box is two-sided
 // — front = cover image, back = lyrics in the same square, simple
@@ -63,6 +62,14 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   var _lastLyricIdx = -1;
   double _panDx = 0;
   double _panDy = 0;
+
+  /// Progress-bar scrub position (0..1) while the user is dragging
+  /// the bar, null when not dragging. While set, the bar fill and
+  /// the elapsed label follow the finger instead of the player's
+  /// position stream (which would fight the drag), and the seek
+  /// itself fires once on drag end — not once per drag event, which
+  /// queued a native seek per frame and stuttered the audio.
+  double? _scrubFrac;
 
   MusicPlayerController get _c => MusicPlayerController.ensure();
 
@@ -271,9 +278,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                             _progressBar(),
                             const SizedBox(height: 20),
                             _transportRow(),
-                            const SizedBox(height: 10),
-                            _volumeRow(),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 12),
                             _bottomIconRow(),
                           ],
                         ),
@@ -569,13 +574,27 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
           Obx(() {
             final pos = _c.position.value;
             final total = _c.duration.value;
-            final frac = total.inMilliseconds > 0
-                ? (pos.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
-                : 0.0;
+            // While scrubbing, the bar follows the finger.
+            final frac = _scrubFrac ??
+                (total.inMilliseconds > 0
+                    ? (pos.inMilliseconds / total.inMilliseconds)
+                        .clamp(0.0, 1.0)
+                    : 0.0);
             return GestureDetector(
+              key: const ValueKey('progressBar'),
               behavior: HitTestBehavior.opaque,
-              onTapDown: (d) => _seekByFractionTap(d, total),
-              onHorizontalDragUpdate: (d) => _seekByFraction(d, total),
+              // onTapUp (not onTapDown): a drag starts with a press,
+              // and onTapDown would seek to the press point before the
+              // drag even moves — one extra jump per scrub. onTapUp
+              // fires only for a completed tap, so a drag seeks once,
+              // on release (see _endScrub).
+              onTapUp: (d) => _seekByFractionTap(d, total),
+              onHorizontalDragStart: (d) =>
+                  _setScrubFrac(d.globalPosition.dx, total),
+              onHorizontalDragUpdate: (d) =>
+                  _setScrubFrac(d.globalPosition.dx, total),
+              onHorizontalDragEnd: (_) => _endScrub(total),
+              onHorizontalDragCancel: () => _endScrub(total),
               child: SizedBox(
                 height: 24,
                 child: Center(
@@ -615,10 +634,21 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Obx(
-                () => Text(
-                  formatDuration(_c.position.value.inSeconds),
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
+                () {
+                  // While scrubbing, the elapsed label shows the
+                  // scrub target, not the still-moving playhead.
+                  final total = _c.duration.value;
+                  final pos = _scrubFrac != null && total.inMilliseconds > 0
+                      ? Duration(
+                          milliseconds:
+                              (total.inMilliseconds * _scrubFrac!).round())
+                      : _c.position.value;
+                  return Text(
+                    formatDuration(pos.inSeconds),
+                    style:
+                        const TextStyle(color: Colors.white70, fontSize: 12),
+                  );
+                },
               ),
               Obx(
                 () {
@@ -640,17 +670,31 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     );
   }
 
-  void _seekByFraction(DragUpdateDetails d, Duration total) {
-    if (total.inMilliseconds <= 0) return;
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    // Fraction from the bar's own width: the bar spans the padded area.
+  /// Fraction of the bar at a horizontal drag position (bar spans the
+  /// padded area: 24pt insets on a full-width bar).
+  double _fractionAt(double globalDx, Duration total) {
+    if (total.inMilliseconds <= 0) return 0;
     final width = MediaQuery.of(context).size.width - 48;
-    final x = (d.globalPosition.dx - 24).clamp(0.0, width);
-    _c.seek(Duration(milliseconds: (total.inMilliseconds * (x / width)).round()));
+    return ((globalDx - 24) / width).clamp(0.0, 1.0);
   }
 
-  void _seekByFractionTap(TapDownDetails d, Duration total) {
+  /// Drag in progress: move the scrub marker only — no native seek
+  /// until the finger lifts (see _endScrub).
+  void _setScrubFrac(double globalDx, Duration total) {
+    final f = _fractionAt(globalDx, total);
+    if (_scrubFrac != f) setState(() => _scrubFrac = f);
+  }
+
+  /// Finger lifted (or drag cancelled): one seek to the scrub target.
+  void _endScrub(Duration total) {
+    final f = _scrubFrac;
+    if (f == null) return;
+    setState(() => _scrubFrac = null);
+    if (total.inMilliseconds <= 0) return;
+    _c.seek(Duration(milliseconds: (total.inMilliseconds * f).round()));
+  }
+
+  void _seekByFractionTap(TapUpDetails d, Duration total) {
     if (total.inMilliseconds <= 0) return;
     final width = MediaQuery.of(context).size.width - 48;
     final x = (d.globalPosition.dx - 24).clamp(0.0, width);
@@ -667,14 +711,39 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         ),
         const SizedBox(width: 20),
         Obx(
-          () => IconButton(
-            icon: Icon(
-              _c.isPlaying.value ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-              size: 64,
-            ),
-            onPressed: () => _c.togglePlayPause(),
-          ),
+          () {
+            // Resolving a URL with nothing sounding yet: show a
+            // spinner in place of the play button so a tap never
+            // looks dead for the seconds a resolve can take. While a
+            // song is playing (auto-advance / crossfade) the old
+            // track keeps sounding, so no spinner. The box is 80x80,
+            // the same size as the IconButton it replaces, so the
+            // prev/next buttons do not shift.
+            if (_c.isResolving.value && !_c.isPlaying.value) {
+              return const SizedBox(
+                width: 80,
+                height: 80,
+                child: Center(
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  ),
+                ),
+              );
+            }
+            return IconButton(
+              icon: Icon(
+                _c.isPlaying.value ? Icons.pause : Icons.play_arrow,
+                color: Colors.white,
+                size: 64,
+              ),
+              onPressed: () => _c.togglePlayPause(),
+            );
+          },
         ),
         const SizedBox(width: 20),
         IconButton(
@@ -682,38 +751,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
           onPressed: () => _c.next(),
         ),
       ],
-    );
-  }
-
-  Widget _volumeRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          const Icon(Icons.volume_down, color: Colors.white70, size: 20),
-          Expanded(
-            child: Obx(
-              () => SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
-                  ),
-                  activeTrackColor: Colors.white,
-                  inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
-                  thumbColor: Colors.white,
-                  overlayColor: Colors.white.withValues(alpha: 0.1),
-                ),
-                child: Slider(
-                  value: _c.volume.value,
-                  onChanged: (v) => _c.setVolume(v),
-                ),
-              ),
-            ),
-          ),
-          const Icon(Icons.volume_up, color: Colors.white70, size: 20),
-        ],
-      ),
     );
   }
 
@@ -733,10 +770,19 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
           ),
           IconButton(
             icon: const Icon(Icons.airplay, color: Colors.white, size: 26),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('当前设备不支持隔空播放')),
-              );
+            // Real AirPlay: ask iOS to open the system route picker
+            // (AVRoutePickerView). The picker itself shows the
+            // available routes — or just this iPhone when none are
+            // around — so no device-availability message is invented
+            // here. A toast appears only when the picker genuinely
+            // could not be opened at all.
+            onPressed: () async {
+              final opened = await _c.showAirPlayPicker();
+              if (!opened && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('无法打开隔空播放选择器')),
+                );
+              }
             },
           ),
           IconButton(

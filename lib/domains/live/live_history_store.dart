@@ -159,6 +159,39 @@ class LiveHistoryStore {
     await HiveStore.put(HiveKeys.liveHistory, '[]');
   }
 
+  // -- Search history --------------------------------------------------
+  //
+  // Mirrors VideoHistoryStore / MusicStore exactly: plain keywords,
+  // most recent first, max 20, JSON string in the app_settings box.
+  // Saved when a live search starts (the page calls saveSearchQuery
+  // once the query is submitted); only the query is stored, never
+  // results. Search results are per-platform and time-sensitive, so
+  // history holds keywords only — re-running re-searches live.
+
+  static List<String> getSearchHistory() {
+    final raw = HiveStore.box.get(HiveKeys.liveSearchHist);
+    if (raw is! String || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return const [];
+  }
+
+  static Future<void> saveSearchQuery(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final list = getSearchHistory().where((e) => e != q).toList();
+    list.insert(0, q);
+    await HiveStore.put(
+      HiveKeys.liveSearchHist,
+      jsonEncode(list.take(20).toList()),
+    );
+  }
+
+  static Future<void> clearSearchHistory() =>
+      HiveStore.delete(HiveKeys.liveSearchHist);
+
   // -- Limit ------------------------------------------------------------
 
   /// Current limit: 0 = unlimited, default [defaultLimit].
