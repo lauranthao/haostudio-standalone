@@ -160,12 +160,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // Danmaku display settings (DanmakuSettings, Hive-backed): read on
   // entry and re-read live while the room is open, so a change in the
   // settings page takes effect without leaving the room.
-  // Speed / area do NOT exist in DanmakuSettings: a list has no scroll
-  // speed and no overlay area to size, so there is nothing to honour
-  // for them — the settings page says so instead of faking sliders.
+  // Speed does NOT exist in DanmakuSettings: a list has no scroll
+  // speed, so there is nothing to honour for it — the settings page
+  // says so instead of faking a slider. Area DOES exist, fullscreen
+  // only: it caps the flying danmaku's BarrageConfig.area (the
+  // portrait list is a chat list, not an overlay).
   bool _danmakuEnabled = true;
   double _danmakuFontSize = DanmakuSettings.defaultFontSize;
   double _danmakuOpacity = DanmakuSettings.defaultOpacity;
+  double _danmakuArea = DanmakuSettings.defaultAreaFraction;
   bool _danmakuStarted = false;
   bool _roomDetailLoaded = false;
   ValueListenable<Box<dynamic>>? _danmakuSettingsListenable;
@@ -193,7 +196,6 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _session = PlaybackSession(backendFactory: widget.backendFactory);
     _fullscreen = Get.put(FullscreenController());
     _recovery = LiveRecovery(site: _site, room: _room);
-    _recovery.onPrefetchDue = _onPrefetchDue;
     _danmakuFilter = DanmakuContentFilter();
     _readDanmakuSettings();
     _subscribeDanmakuSettings();
@@ -292,6 +294,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _danmakuEnabled = DanmakuSettings.isEnabled(_site.id);
     _danmakuFontSize = DanmakuSettings.fontSize();
     _danmakuOpacity = DanmakuSettings.opacity();
+    _danmakuArea = DanmakuSettings.areaFraction();
     _listStyle = DanmakuSettings.listStyle();
     _listSpacing = DanmakuSettings.listSpacing();
     _showUsernames = DanmakuSettings.showUsernames();
@@ -312,6 +315,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           HiveKeys.danmakuEnabled,
           HiveKeys.danmakuFontSize,
           HiveKeys.danmakuOpacity,
+          HiveKeys.danmakuArea,
           HiveKeys.danmakuListStyle,
           HiveKeys.danmakuListSpacing,
           HiveKeys.danmakuShowUsernames,
@@ -463,9 +467,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     }
     // Server ack differs from request -> correct UI + toast.
     if (quality != null && resolution.appliedQualityData != null) {
-      final acked = resolution.appliedQualityData.toString();
-      final ackedIndex = _qualities.indexWhere(
-        (q) => q.selectionId == acked || q.quality == acked,
+      final ackedIndex = _ackedQualityIndex(
+        _qualities,
+        resolution.appliedQualityData,
       );
       if (ackedIndex >= 0 && ackedIndex != _currentQuality) {
         setState(() => _currentQuality = ackedIndex);
@@ -475,11 +479,16 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
+    _recovery.refreshAt = resolution.refreshAt;
+    _recovery.invalidAt = resolution.invalidAt;
     _recovery.quality = quality;
     _recovery.currentLineIndex = 0;
-    // Arm the ~100 s proactive prefetch for this resolution (fix 3):
-    // the initial resolve never goes through fetchFresh, so without
-    // this the prefetch timer would never exist on the happy path.
+    _recovery.discardHeld(); // a hold belongs to the old resolution
+    // Arm the lease prefetch for this resolution (Pure Live 5.6.5
+    // fetch-and-hold): the initial resolve never goes through
+    // fetchFresh, so without this the hold timer would never exist on
+    // the happy path — and the URL would die at its ~125 s hard expiry
+    // with nothing held for recovery.
     _recovery.schedulePrefetch();
     final firstUrl = resolution.urls.first;
     final ok = await _session.open(
@@ -512,30 +521,30 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     douyuCookie: _site is DouyuSite ? _site.playbackCookie : '',
   );
 
-  /// Fresh-URL callback for the session: re-parse, never the dead URL.
+  /// Fresh-URL callback for the session ladder: the held prefetched
+  /// plan first (Pure Live `_tryRefresh` attempt 0), else a live
+  /// re-parse (attempt 1) — never the dead URL. The matched line goes
+  /// first so the ladder opens the same line that was playing, not
+  /// urls.first (a refresh may re-order lines).
   Future<List<String>?> _refreshUrls() async {
+    final held = _recovery.takeHeld();
+    if (held != null) return _matchedFirst(held.urls);
     final fresh = await _recovery.fetchFresh();
-    return fresh?.urls;
+    if (fresh == null) return null;
+    return _matchedFirst(fresh.urls);
   }
 
-  /// Prefetch point (~100 s after issue): fetch a fresh URL now so the
-  /// transport never dies waiting for EOF. The prefetched URL is only
-  /// swapped in after its first frame is verified (session ladder).
-  Future<void> _onPrefetchDue() async {
-    final fresh = await _recovery.fetchFresh();
-    if (fresh == null || fresh.urls.isEmpty || !mounted) return;
-    final index = _recovery.currentLineIndex % fresh.urls.length;
-    final url = fresh.urls[index];
-    if (url == _session.currentUrl) return;
-    await _session.open(
-      url: url,
-      isLive: true,
-      headers: _playbackHeaders,
-      // Facts of the SAME line index, not factsFor(0): a refresh can
-      // change this line's format (TX FLV -> TX HLS).
-      declaredFormat: _recovery.factsFor(index).format,
-      refreshUrls: _refreshUrls,
-    );
+  /// The given URLs with the currently playing line moved to the front
+  /// (the line `takeHeld` / `fetchFresh` already matched by URL
+  /// identity). The session ladder opens `fresh.first`, so this is
+  /// what makes it resume the same line instead of line 0.
+  List<String> _matchedFirst(List<String> urls) {
+    if (urls.isEmpty) return urls;
+    final index = _recovery.currentLineIndex % urls.length;
+    if (index == 0) return urls;
+    final reordered = List<String>.of(urls);
+    reordered.insert(0, reordered.removeAt(index));
+    return reordered;
   }
 
   void _onSessionError(String message) {
@@ -569,14 +578,16 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(_recoverWithFreshUrls(message));
   }
 
-  /// Recovery with fresh URLs first. `fetchFresh` is throttled to once
-  /// per 60 s inside LiveRecovery: when the session's own
-  /// ladder-exhaust path already refreshed, this returns null and we
-  /// fall through to the next line — whose list `fetchFresh` already
-  /// replaced with fresh URLs, so it is still a fresh line, never the
-  /// dead one.
+  /// Recovery with fresh URLs first. The held prefetched plan is spent
+  /// first (Pure Live `_tryRefresh` attempt 0 — costs no request, no
+  /// throttle); only when nothing usable is held do we live re-parse
+  /// (attempt 1). `fetchFresh` is throttled to once per 60 s inside
+  /// LiveRecovery: when the session's own ladder-exhaust path already
+  /// refreshed, this returns null and we fall through to the next line
+  /// — whose list `fetchFresh` already replaced with fresh URLs, so it
+  /// is still a fresh line, never the dead one.
   Future<void> _recoverWithFreshUrls(String message) async {
-    final fresh = await _recovery.fetchFresh();
+    final fresh = _recovery.takeHeld() ?? await _recovery.fetchFresh();
     if (!mounted) return;
     if (fresh != null && fresh.urls.isNotEmpty) {
       // fetchFresh already matched the line by URL identity and
@@ -640,29 +651,66 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// automatic downgrade (Pure Live has none either): a stall recovers
   /// by re-parsing + sweeping lines at the same quality, and when the
   /// lines are exhausted the room shows the failure card.
+  ///
+  /// Server receipt vs request: the server may confirm a LOWER quality
+  /// than requested (Douyu downgrades anonymous 原画 to 蓝光4M). The
+  /// selection follows the CONFIRMED quality — same rule as entry —
+  /// so the UI shows the quality actually playing, never the requested
+  /// label. When the confirmed stream is identical to the one already
+  /// playing, say the cap plainly ("清晰度已限制为蓝光4M") instead of
+  /// the cryptic "清晰度流未变化". A resolve that throws (all CDNs
+  /// failed) is a toast, not a silent no-op: the throw used to escape
+  /// uncaught through unawaited(), leaving the room on the old quality
+  /// with no feedback at all.
   Future<void> _switchQuality(int index, {bool persist = true}) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     final before = List<String>.of(_recovery.lines);
     final quality = _qualities[index];
-    final resolution = await _site.resolvePlayUrlsForRecovery(
-      liveRoom: _room,
-      quality: quality,
-    );
+    late final LivePlayUrlResolution resolution;
+    try {
+      resolution = await _site.resolvePlayUrlsForRecovery(
+        liveRoom: _room,
+        quality: quality,
+      );
+    } catch (_) {
+      if (epoch != _selectionEpoch || !mounted) return;
+      Get.snackbar('提示', '切换清晰度失败，请重试');
+      return;
+    }
     if (epoch != _selectionEpoch || !mounted) return; // stale response
     if (resolution.urls.isEmpty) {
       Get.snackbar('提示', '该清晰度暂无可用线路');
       return;
     }
+    // Server-confirmed quality (may be lower than requested).
+    final ackedIndex = _ackedQualityIndex(
+      _qualities,
+      resolution.appliedQualityData,
+    );
+    final effectiveIndex = ackedIndex >= 0 ? ackedIndex : index;
     if (_sameUrlList(before, resolution.urls)) {
-      Get.snackbar('提示', '清晰度流未变化');
+      if (ackedIndex >= 0 && ackedIndex != index) {
+        Get.snackbar(
+          '提示',
+          '清晰度已限制为${_qualities[ackedIndex].quality}',
+        );
+      } else {
+        Get.snackbar('提示', '清晰度流未变化');
+      }
       return;
     }
     setState(() {
-      _currentQuality = index;
+      _currentQuality = effectiveIndex;
       _loading = true;
     });
+    if (ackedIndex >= 0 && ackedIndex != index) {
+      Get.snackbar(
+        '提示',
+        '清晰度已限制为${_qualities[ackedIndex].quality}',
+      );
+    }
     if (persist) {
       // Fire-and-forget persistence: the quality switch must not wait
       // on storage I/O (and must keep working when storage is
@@ -677,9 +725,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _recovery.lines = resolution.urls;
     _recovery.facts = resolution.streamFacts;
     _recovery.issuedAt = resolution.issuedAt ?? DateTime.now();
-    _recovery.quality = quality;
+    _recovery.refreshAt = resolution.refreshAt;
+    _recovery.invalidAt = resolution.invalidAt;
+    // Recovery re-parses with the quality ACTUALLY playing (the server
+    // may have capped the request): re-requesting the capped rate keeps
+    // landing on the same stream instead of re-downgrading every time.
+    _recovery.quality = _qualities[effectiveIndex];
     _recovery.currentLineIndex = 0;
-    _recovery.schedulePrefetch(); // new resolution, new 100 s prefetch
+    _recovery.discardHeld(); // a hold belongs to the old quality
+    _recovery.schedulePrefetch(); // new resolution, new lease prefetch
     final ok = await _session.open(
       url: resolution.urls.first,
       isLive: true,
@@ -692,6 +746,24 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _loading = !ok;
       _failed = !ok;
     });
+  }
+
+  /// Index of the quality the server actually confirmed, or -1 when the
+  /// server confirmed nothing usable. The confirmed value is matched by
+  /// selection id (Douyu: the opaque rate id; Huya: the quality id) or
+  /// by label — the same rule the entry path uses. Covered by the room
+  /// widget tests (entry ack + switch ack): the switch path and the
+  /// entry path must agree on what is actually playing, never on what
+  /// was merely requested.
+  static int _ackedQualityIndex(
+    List<LivePlayQuality> qualities,
+    Object? appliedQualityData,
+  ) {
+    if (appliedQualityData == null) return -1;
+    final acked = appliedQualityData.toString();
+    return qualities.indexWhere(
+      (q) => q.selectionId == acked || q.quality == acked,
+    );
   }
 
   /// Default quality when the saved preference has no exact match —
@@ -732,8 +804,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   }
 
   /// Manual retry: same order as automatic recovery (Pure Live
-  /// _runRecoverTask) — FRESH re-parse first, then the next line,
-  /// never the dead URL.
+  /// _runRecoverTask) — HELD prefetched plan first, then a FRESH
+  /// re-parse, then the next line, never the dead URL.
   Future<void> _manualRetry() async {
     setState(() {
       _failed = false;
@@ -742,9 +814,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _ladderHint = null;
       _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     });
-    final fresh = await _recovery.fetchFresh();
+    final fresh = _recovery.takeHeld() ?? await _recovery.fetchFresh();
     if (fresh != null && fresh.urls.isNotEmpty && mounted) {
-      // fetchFresh already matched the line by URL identity — open the
+      // takeHeld/fetchFresh already matched the line by URL identity — open the
       // matched line, not urls.first (the refresh may re-order lines).
       final index = _recovery.currentLineIndex % fresh.urls.length;
       await _session.open(
@@ -1278,6 +1350,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     emitInterval: 0.05,
                     fontSize: _danmakuFontSize,
                     opacity: _danmakuOpacity,
+                    // Danmaku area setting: the fraction of the video
+                    // the flying danmaku may cover (full / top half /
+                    // top third). The engine re-derives the track
+                    // layout live when it changes (forceRefresh).
+                    area: _danmakuArea,
                     rasterizeItems: true,
                     maxPendingCount: 120,
                     maxPendingAge: const Duration(seconds: 5),

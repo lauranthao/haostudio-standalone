@@ -8,8 +8,11 @@
 //   rate is an opaque id, never sorted).
 // - Identical URLs after a quality switch -> toast "清晰度流未变化", abort.
 // - Huya recovery order: next line -> fresh re-parse -> 60 s throttle ->
-//   10 s fallback; prefetch at ~100 s after issue; lines identified by
-//   URL, not index (a refresh can turn a TX FLV line into TX HLS).
+//   10 s fallback; prefetch at the lease refreshAt (~100 s) fetches and
+//   HOLDS a fresh plan — never switches the playing stream; recovery
+//   spends the held plan first (attempt 0), then live re-parses
+//   (attempt 1); lines identified by URL, not index (a refresh can turn
+//   a TX FLV line into TX HLS).
 // - Kernel ladder: FLV never enters AVPlayer; failure walks the ladder
 //   (mpv -> ijk -> avplayer by capability + preference); a manual engine
 //   switch does not lose the stream.
@@ -93,23 +96,150 @@ void main() {
   });
 
   group('LiveRecovery lease + prefetch (Huya)', () {
-    test('prefetch fires ~100 s after a successful fetchFresh', () {
+    test('prefetch holds a fresh plan without switching the stream', () {
       fakeAsync((async) {
         final site = _FakeSite();
+        final recovery = LiveRecovery(site: site, room: _room());
+        // Playing the OLD lines; the lease refreshes at now + 100 s.
+        final issued = DateTime.now();
+        recovery.lines = const [
+          'https://tx.flv.huya.com/src/1?wsSecret=OLD',
+          'https://al.flv.huya.com/src/1?wsSecret=OLD',
+        ];
+        recovery.issuedAt = issued;
+        recovery.refreshAt = issued.add(const Duration(seconds: 100));
+        recovery.invalidAt = issued.add(const Duration(seconds: 125));
+        recovery.schedulePrefetch();
+        // The hold fetch returns NEW signatures.
         site.recoveryUrls = const [
           'https://tx.flv.huya.com/src/1?wsSecret=NEW',
+          'https://al.flv.huya.com/src/1?wsSecret=NEW',
         ];
-        final recovery = LiveRecovery(site: site, room: _room());
-        var due = 0;
-        recovery.onPrefetchDue = () => due++;
-        LivePlayUrlResolution? result;
-        unawaited(recovery.fetchFresh().then((r) => result = r));
-        async.elapse(const Duration(milliseconds: 100));
-        expect(result, isNotNull);
         async.elapse(const Duration(seconds: 99));
-        expect(due, 0);
+        expect(site.recoveryCalls, 0);
         async.elapse(const Duration(seconds: 1));
-        expect(due, 1);
+        // One more second: the timer fired at the boundary, and the
+        // async hold chain (fetch -> store) needs the turns to settle.
+        async.elapse(const Duration(seconds: 1));
+        // Fetched once — and the playing lines did NOT change: the
+        // stream was never switched, the plan is only held.
+        expect(site.recoveryCalls, 1);
+        expect(
+          recovery.lines,
+          const [
+            'https://tx.flv.huya.com/src/1?wsSecret=OLD',
+            'https://al.flv.huya.com/src/1?wsSecret=OLD',
+          ],
+        );
+        expect(recovery.currentUrl, contains('wsSecret=OLD'));
+      });
+    });
+
+    test('recovery takes the held plan first (attempt 0)', () {
+      fakeAsync((async) {
+        final site = _FakeSite();
+        final recovery = LiveRecovery(site: site, room: _room());
+        final issued = DateTime.now();
+        recovery.lines = const [
+          'https://tx.flv.huya.com/src/1?wsSecret=OLD',
+          'https://al.flv.huya.com/src/1?wsSecret=OLD',
+        ];
+        recovery.issuedAt = issued;
+        recovery.refreshAt = issued.add(const Duration(seconds: 100));
+        recovery.invalidAt = issued.add(const Duration(seconds: 125));
+        recovery.schedulePrefetch();
+        site.recoveryUrls = const [
+          'https://tx.flv.huya.com/src/1?wsSecret=NEW',
+          'https://al.flv.huya.com/src/1?wsSecret=NEW',
+        ];
+        async.elapse(const Duration(seconds: 101));
+        expect(site.recoveryCalls, 1);
+        // No live re-parse was needed: the held plan is spent directly.
+        final held = recovery.takeHeld();
+        expect(held, isNotNull);
+        expect(held!.urls, site.recoveryUrls);
+        expect(site.recoveryCalls, 1);
+        // Installed like a live re-parse: same line matched by URL
+        // identity, new lease armed.
+        expect(recovery.lines, site.recoveryUrls);
+        expect(recovery.currentUrl, contains('wsSecret=NEW'));
+        // One-shot: a second take finds nothing held.
+        expect(recovery.takeHeld(), isNull);
+      });
+    });
+
+    test('expired held plan is never served', () {
+      fakeAsync((async) {
+        final site = _FakeSite();
+        final recovery = LiveRecovery(site: site, room: _room());
+        final issued = DateTime.now();
+        recovery.lines = const [
+          'https://tx.flv.huya.com/src/1?wsSecret=OLD',
+        ];
+        recovery.issuedAt = issued;
+        recovery.refreshAt = issued.add(const Duration(seconds: 100));
+        recovery.invalidAt = issued.add(const Duration(seconds: 125));
+        recovery.schedulePrefetch();
+        // The hold fetch returns a plan already past its hard expiry.
+        site.recoveryResolution = LivePlayUrlResolution(
+          urls: const ['https://tx.flv.huya.com/src/1?wsSecret=NEW'],
+          issuedAt: DateTime.now(),
+          refreshAt: DateTime.now().add(const Duration(seconds: 100)),
+          invalidAt: DateTime.now().subtract(const Duration(seconds: 1)),
+          streamFacts: const [LiveStreamFacts(format: 'flv')],
+        );
+        async.elapse(const Duration(seconds: 101));
+        expect(site.recoveryCalls, 1);
+        expect(recovery.takeHeld(), isNull);
+        expect(
+          recovery.lines,
+          const ['https://tx.flv.huya.com/src/1?wsSecret=OLD'],
+        );
+      });
+    });
+
+    test('hold fetch does not stamp the recovery throttle', () {
+      fakeAsync((async) {
+        var now = DateTime.now();
+        final site = _FakeSite();
+        final recovery =
+            LiveRecovery(site: site, room: _room(), clock: () => now);
+        // fetchFresh at T0 stamps the 60 s throttle and arms the hold
+        // at the resolution's refreshAt (T0 + 100 s).
+        site.recoveryResolution = LivePlayUrlResolution(
+          urls: const ['https://tx.flv.huya.com/src/1?wsSecret=NEW1'],
+          issuedAt: now,
+          refreshAt: now.add(const Duration(seconds: 100)),
+          invalidAt: now.add(const Duration(seconds: 125)),
+          streamFacts: const [LiveStreamFacts(format: 'flv')],
+        );
+        LivePlayUrlResolution? first;
+        unawaited(recovery.fetchFresh().then((r) => first = r));
+        async.elapse(const Duration(milliseconds: 100));
+        expect(first, isNotNull);
+        expect(site.recoveryCalls, 1);
+        // 100 s later the hold fetch runs (a second site call). Its
+        // plan carries a far-future refreshAt so the chained hold timer
+        // stays far away and cannot fire inside this test.
+        site.recoveryResolution = LivePlayUrlResolution(
+          urls: const ['https://tx.flv.huya.com/src/1?wsSecret=NEW2'],
+          issuedAt: now,
+          refreshAt: now.add(const Duration(seconds: 3600)),
+          invalidAt: now.add(const Duration(seconds: 3625)),
+          streamFacts: const [LiveStreamFacts(format: 'flv')],
+        );
+        now = now.add(const Duration(seconds: 100));
+        async.elapse(const Duration(seconds: 101));
+        expect(site.recoveryCalls, 2);
+        // 101 s after the first fetch the 60 s throttle has expired —
+        // unless the hold stamped it at T0 + 100 s (then only 1 s
+        // passed and this would be throttled to null).
+        now = now.add(const Duration(seconds: 1));
+        LivePlayUrlResolution? second;
+        unawaited(recovery.fetchFresh().then((r) => second = r));
+        async.elapse(const Duration(milliseconds: 100));
+        expect(second, isNotNull);
+        expect(site.recoveryCalls, 3);
       });
     });
 
@@ -480,7 +610,7 @@ void main() {
 
     // Plain test() runs under FakeAsync, so the 4 s / 12 s health watch
     // is exercised on the REAL clock via tester.runAsync.
-    testWidgets('4 s stall -> hint; 15 s stall -> failure (real clock)',
+    testWidgets('4 s stall -> hint; 12 s stall -> failure (real clock)',
         (tester) async {
       configs[PlayerEngine.mediaKit]!.emitPositions = false;
       final s = session();
@@ -494,10 +624,10 @@ void main() {
         await Future<void>.delayed(const Duration(seconds: 5));
         expect(notices, 1);
         expect(s.status, PlaybackStatus.playing);
-        // Pure Live positionStallTimeout is 15 s (12 s is the buffering
-        // STATE detector, not the position detector): still playing
-        // at 13 s, failed at 16 s.
-        await Future<void>.delayed(const Duration(seconds: 8));
+        // Pure Live 5.6.5 bufferingStall is 12 s (the failure point
+        // for a moved-then-stalled live source): still playing
+        // at 10 s, failed at 13 s.
+        await Future<void>.delayed(const Duration(seconds: 5));
         expect(s.status, PlaybackStatus.playing);
         await Future<void>.delayed(const Duration(seconds: 3));
         expect(s.status, PlaybackStatus.error);
@@ -735,6 +865,78 @@ void main() {
       await disposeRoom(tester, log);
     });
 
+    testWidgets('quality switch: server caps the request, UI corrects + toast',
+        (tester) async {
+      final site = _FakeSite();
+      // Requested 高清 (400), server confirmed 流畅 (250) and returned
+      // the 流畅 stream: the switch opens the confirmed stream and the
+      // selection follows the CONFIRMED quality, not the requested one
+      // (Douyu anonymous 原画 -> 蓝光4M is the same shape).
+      site.recoveryUrlsByQuality['400'] = const [
+        'https://tx.flv.huya.com/src/660000.flv?wsSecret=C2',
+      ];
+      site.recoveryFactsByQuality['400'] = const [
+        LiveStreamFacts(format: 'flv'),
+      ];
+      site.ackByQuality['400'] = '250';
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      expect(site.recoveryCalls, 1);
+      expect(
+        log.opens.last.url,
+        'https://tx.flv.huya.com/src/660000.flv?wsSecret=C2',
+      );
+      expect(chip(tester, '流畅').selected, isTrue);
+      expect(chip(tester, '高清').selected, isFalse);
+      expect(find.textContaining('清晰度已限制为流畅'), findsOneWidget);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets(
+        'quality switch to a capped quality with identical URLs: cap toast, no reload',
+        (tester) async {
+      final site = _FakeSite();
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      // Switch to 高清 first (opens the B2 lines).
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      expect(log.opens.length, 2);
+      expect(chip(tester, '高清').selected, isTrue);
+      // Now ask for 原画: the server caps it to 高清 and returns the
+      // very same lines — the room must say the cap plainly instead of
+      // the cryptic "清晰度流未变化", and must not reload.
+      site.recoveryUrlsByQuality['10000'] =
+          site.recoveryUrlsByQuality['400']!;
+      site.ackByQuality['10000'] = '400';
+      await tester.tap(find.text('原画'));
+      await settle(tester);
+      expect(site.recoveryCalls, 2);
+      expect(find.textContaining('清晰度已限制为高清'), findsOneWidget);
+      expect(find.text('清晰度流未变化'), findsNothing);
+      expect(log.opens.length, 2); // no reload
+      expect(chip(tester, '高清').selected, isTrue);
+      expect(chip(tester, '原画').selected, isFalse);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets('quality switch resolve failure: toast, stays on old quality',
+        (tester) async {
+      final site = _FakeSite()..recoveryThrows = true;
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      expect(site.recoveryCalls, 1);
+      expect(find.textContaining('切换清晰度失败'), findsOneWidget);
+      expect(log.opens.length, 1); // no reload
+      expect(chip(tester, '原画').selected, isTrue);
+      expect(chip(tester, '高清').selected, isFalse);
+      await disposeRoom(tester, log);
+    });
+
     testWidgets('identical URLs after a quality switch: toast + abort, no reload',
         (tester) async {
       final site = _FakeSite();
@@ -910,28 +1112,28 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('prefetch: a fresh URL is fetched ~100 s after issue', (
-      tester,
-    ) async {
-      final site = _FakeSite();
-      final log = _BackendLog();
-      await pumpRoom(tester, site, log, freshConfigs());
-      expect(site.recoveryCalls, 0);
-      await tester.pump(const Duration(seconds: 100));
-      // The prefetch timer fires at exactly the 100 s boundary; its
-      // async chain (fetchFresh -> session.open -> ladder) starts on
-      // microtasks that only flush when fake time advances past the
-      // boundary — one more second gives it the turns it needs.
-      await tester.pump(const Duration(seconds: 1));
-      await settle(tester);
-      // The 100 s prefetch re-parsed and opened the fresh line-1 URL.
-      expect(site.recoveryCalls, 1);
-      expect(
-        log.opens.last.url,
-        'https://tx.flv.huya.com/src/660000.flv?wsSecret=A2',
-      );
-      await disposeRoom(tester, log);
-    });
+    testWidgets(
+      'prefetch: a fresh URL is fetched and held ~100 s after issue, stream not switched',
+      (tester) async {
+        final site = _FakeSite();
+        final log = _BackendLog();
+        await pumpRoom(tester, site, log, freshConfigs());
+        expect(site.recoveryCalls, 0);
+        final firstOpen = log.opens.last.url;
+        await tester.pump(const Duration(seconds: 100));
+        // The prefetch timer fires at exactly the 100 s boundary; its
+        // async chain (hold fetch -> store) starts on microtasks that
+        // only flush when fake time advances past the boundary — one
+        // more second gives it the turns it needs.
+        await tester.pump(const Duration(seconds: 1));
+        await settle(tester);
+        // The 100 s prefetch fetched a fresh plan and HELD it — the
+        // playing stream was never switched: no new session open.
+        expect(site.recoveryCalls, 1);
+        expect(log.opens.last.url, firstOpen);
+        await disposeRoom(tester, log);
+      },
+    );
 
     testWidgets('room starting to play pauses music (chen 2026-11-17)', (
       tester,
@@ -1049,6 +1251,10 @@ class _FakeSite extends LiveSite {
 
   bool recoveryNeverCompletes = false;
 
+  /// When set, the recovery resolve throws (all CDNs failed) instead
+  /// of returning a resolution — the switch path must toast, not crash.
+  bool recoveryThrows = false;
+
   int resolveCalls = 0;
   int recoveryCalls = 0;
 
@@ -1107,6 +1313,9 @@ class _FakeSite extends LiveSite {
     LivePlayQuality? quality,
   }) async {
     recoveryCalls++;
+    if (recoveryThrows) {
+      throw StateError('recovery resolve failed');
+    }
     if (recoveryNeverCompletes) {
       return Completer<LivePlayUrlResolution>().future;
     }
@@ -1121,7 +1330,17 @@ class _FakeSite extends LiveSite {
         streamFacts: recoveryFacts ?? const [],
       );
     }
-    return _resolution(recoveryUrlsByQuality, recoveryFactsByQuality, quality);
+    // The real sites confirm a rate on the recovery path too
+    // (Douyu groups by confirmed rate; Huya re-acks the quality id),
+    // so the fake applies ackByQuality here exactly like resolvePlayUrls.
+    return _resolution(
+      recoveryUrlsByQuality,
+      recoveryFactsByQuality,
+      quality,
+      ack: ackByQuality.containsKey(quality?.selectionId)
+          ? ackByQuality[quality!.selectionId]
+          : null,
+    );
   }
 }
 

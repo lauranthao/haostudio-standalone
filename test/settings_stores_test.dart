@@ -131,6 +131,21 @@ void main() {
       await DanmakuSettings.setOpacity(2, box: box);
       expect(DanmakuSettings.opacity(box: box), 1.0);
     });
+
+    test('danmaku area defaults to full and maps to fractions', () async {
+      expect(DanmakuSettings.area(box: box), DanmakuSettings.areaFull);
+      expect(DanmakuSettings.areaFraction(box: box), 1.0);
+      await DanmakuSettings.setArea(DanmakuSettings.areaHalf, box: box);
+      expect(DanmakuSettings.area(box: box), DanmakuSettings.areaHalf);
+      expect(DanmakuSettings.areaFraction(box: box), 0.5);
+      await DanmakuSettings.setArea(DanmakuSettings.areaThird, box: box);
+      expect(DanmakuSettings.area(box: box), DanmakuSettings.areaThird);
+      expect(DanmakuSettings.areaFraction(box: box), closeTo(1 / 3, 0.001));
+      // A bad stored value falls back to full instead of crashing.
+      await DanmakuSettings.setArea('bogus', box: box);
+      expect(DanmakuSettings.area(box: box), DanmakuSettings.areaFull);
+      expect(DanmakuSettings.areaFraction(box: box), 1.0);
+    });
   });
 
   group('CacheService', () {

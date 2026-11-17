@@ -12,6 +12,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import '../../core/storage/hive_store.dart';
 import 'cms_sources.dart';
 import 'video_models.dart';
+import 'video_title_helpers.dart';
 
 /// Watch history (`hao_video_hist`, max 20, most recent first).
 class VideoHistoryStore {
@@ -23,13 +24,54 @@ class VideoHistoryStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded
+        final list = decoded
             .whereType<Map<String, dynamic>>()
             .map(WatchHistoryEntry.fromJson)
             .toList();
+        return _dedupeByFilm(list);
       }
     } catch (_) {}
     return const [];
+  }
+
+  /// Film identity for history dedup: the normalised title
+  /// ([videoNormTitle]). One film = one history row, even when it was
+  /// watched on different CMS sources (each source has its own vodId)
+  /// or after the detail page switched to a faster source. Episode /
+  /// line / progress are NOT part of the key — watching a new episode
+  /// updates the same row instead of starting a second one.
+  ///
+  /// An empty normalised title (untitled entry) has no film identity
+  /// and falls back to the exact `source|vodId` key, so two untitled
+  /// entries never merge into each other.
+  static String filmKey(WatchHistoryEntry e) => videoNormTitle(e.title);
+
+  /// Merge legacy duplicates: at most one row per film (by [filmKey]),
+  /// keeping the most recently watched entry (`at` latest; ties keep
+  /// the first in stored order, which is most-recent-first). Runs on
+  /// every read so pre-fix duplicates disappear from the UI without
+  /// the user deleting anything; the next [record] persists the
+  /// merged list.
+  static List<WatchHistoryEntry> _dedupeByFilm(
+    List<WatchHistoryEntry> list,
+  ) {
+    final slotByFilm = <String, int>{};
+    final out = <WatchHistoryEntry>[];
+    for (final e in list) {
+      final key = filmKey(e);
+      if (key.isEmpty) {
+        out.add(e);
+        continue;
+      }
+      final slot = slotByFilm[key];
+      if (slot == null) {
+        slotByFilm[key] = out.length;
+        out.add(e);
+      } else if (e.at.isAfter(out[slot].at)) {
+        out[slot] = e;
+      }
+    }
+    return out;
   }
 
   static Future<void> _save(List<WatchHistoryEntry> entries) async {
@@ -41,10 +83,15 @@ class VideoHistoryStore {
 
   /// Record / refresh one entry (moves to the front). Called on play
   /// and periodically while playing (throttled by the caller).
+  /// Dedup is by film ([filmKey]): watching a new episode — even on a
+  /// different CMS source — updates the same row (episode, progress
+  /// and time all take the latest), never a second row.
   static Future<void> record(WatchHistoryEntry entry) async {
-    final list = getAll()
-        .where((e) => e.identityKey != entry.identityKey)
-        .toList();
+    final key = filmKey(entry);
+    final list = getAll().where((e) {
+      if (key.isEmpty) return e.identityKey != entry.identityKey;
+      return filmKey(e) != key;
+    }).toList();
     list.insert(0, entry);
     await _save(list.take(maxEntries).toList());
   }
@@ -53,6 +100,19 @@ class VideoHistoryStore {
     final key = '$source|$vodId';
     for (final e in getAll()) {
       if (e.identityKey == key) return e;
+    }
+    return null;
+  }
+
+  /// Film-level lookup: the most recent entry for a film, whatever
+  /// source it was last watched on. The detail page uses this (not
+  /// [find]) so a film watched on another source still resumes at its
+  /// latest episode instead of starting over at episode 1.
+  static WatchHistoryEntry? findByTitle(String title) {
+    final key = videoNormTitle(title);
+    if (key.isEmpty) return null;
+    for (final e in getAll()) {
+      if (filmKey(e) == key) return e;
     }
     return null;
   }

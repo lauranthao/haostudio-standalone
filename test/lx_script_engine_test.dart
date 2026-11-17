@@ -30,6 +30,8 @@
 // in settings_stores_test.dart's style — see LxScriptSourcesStore
 // tests below using a throwaway box).
 
+import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_js/flutter_js.dart';
@@ -99,7 +101,98 @@ Map<String, dynamic> _respond(String url) {
   if (url == 'https://example.com/bad.js') {
     return {'status': 200, 'body': 'this is not js {{{'};
   }
+  // Deferred-inited script (tongyi UAF fix test): the fake runtime
+  // below delivers `inited` 150ms after evaluate, the real script
+  // never sends it at all — both go through the same download path.
+  if (url == 'https://example.com/deferred.js' ||
+      url == 'https://example.com/never.js') {
+    return {'status': 200, 'body': _deferredScript};
+  }
   return {'status': 404, 'body': '{}'};
+}
+
+/// Script body for the deferred-inited tests. The fake runtime never
+/// executes it; it only needs to pass `addCustomScript`'s
+/// `globalThis.lx` check and carry an `@name` for `_parseMeta`.
+const String _deferredScript = '''
+// @name DeferredScript
+// @version 1.0.0
+const { EVENT_NAMES, send } = globalThis.lx;
+setTimeout(() => send(EVENT_NAMES.inited, { status: true, sources: { wy: { name: 'wy', type: 'music', actions: ['musicUrl'], qualitys: ['128k', '320k'] } } }), 150);
+''';
+
+/// Fake JS runtime: never executes JS. `evaluate` of the prelude is a
+/// no-op; `evaluate` of script code schedules a deferred `inited`
+/// delivery after [initedDelay] (simulating a script like tongyi that
+/// sends `inited` from a setTimeout). With [initedDelay] null, `inited`
+/// is never delivered. Lets the deferred-inited wait be tested on the
+/// Linux host, where the real flutter_js native lib does not exist.
+class _FakeJsRuntime extends JavascriptRuntime {
+  _FakeJsRuntime({this.initedDelay});
+
+  final Duration? initedDelay;
+  final Map<String, Function(dynamic)> _handlers = {};
+  bool disposed = false;
+
+  @override
+  void initChannelFunctions() {}
+
+  @override
+  JsEvalResult evaluate(String code, {String? sourceUrl}) {
+    if (code != kLxPrelude && initedDelay != null) {
+      Timer(initedDelay!, () {
+        _handlers['LxSend']?.call({
+          'event': 'inited',
+          'data': {
+            'status': true,
+            'sources': {
+              'wy': {
+                'name': 'wy',
+                'type': 'music',
+                'actions': ['musicUrl'],
+                'qualitys': ['128k', '320k'],
+              },
+            },
+          },
+        });
+      });
+    }
+    return JsEvalResult('1', null);
+  }
+
+  @override
+  Future<JsEvalResult> evaluateAsync(String code, {String? sourceUrl}) async =>
+      evaluate(code, sourceUrl: sourceUrl);
+
+  @override
+  JsEvalResult callFunction(Pointer<NativeType> fn, Pointer<NativeType> obj) =>
+      JsEvalResult('null', null);
+
+  @override
+  T? convertValue<T>(JsEvalResult jsValue) => null;
+
+  @override
+  String jsonStringify(JsEvalResult jsValue) => 'null';
+
+  @override
+  int executePendingJob() => 0;
+
+  @override
+  void dispose() {
+    disposed = true;
+  }
+
+  @override
+  bool setupBridge(String channelName, Function(dynamic args) fn) {
+    _handlers[channelName] = fn;
+    return true;
+  }
+
+  @override
+  String getEngineInstanceId() => 'fake-${identityHashCode(this)}';
+
+  @override
+  void setInspectable(bool inspectable) {}
 }
 
 /// On the Linux test host the flutter_js native QuickJS library
@@ -666,4 +759,40 @@ void main() {
       );
     });
   }, skip: _linuxSkip);
+
+  // Deferred `inited` (tongyi UAF fix). Uses the fake runtime, so it
+  // runs on the Linux host too — no native JS lib needed.
+  group('deferred inited', () {
+    test('script sending inited after 150ms still loads', () async {
+      final log = <String>[];
+      final engine = LxScriptEngine(
+        dio: buildFakeDio(respond: _respond, log: log),
+        runtimeFactory: () => _FakeJsRuntime(
+          initedDelay: const Duration(milliseconds: 150),
+        ),
+      );
+      addTearDown(engine.dispose);
+      final info = await engine.addCustomScript(
+        'https://example.com/deferred.js',
+      );
+      expect(info.loaded, isTrue);
+      expect(info.name, 'DeferredScript');
+      expect(info.sources.map((s) => s.platform), ['wy']);
+      expect(info.sourceFor('wy')!.actions, ['musicUrl']);
+    });
+
+    test('script never sending inited still fails (bounded wait)', () async {
+      final log = <String>[];
+      final engine = LxScriptEngine(
+        dio: buildFakeDio(respond: _respond, log: log),
+        runtimeFactory: () => _FakeJsRuntime(initedDelay: null),
+      );
+      addTearDown(engine.dispose);
+      await expectLater(
+        engine.addCustomScript('https://example.com/never.js'),
+        throwsA(isA<LxScriptException>()),
+      );
+      expect(engine.scripts.where((s) => s.isCustom), isEmpty);
+    });
+  });
 }

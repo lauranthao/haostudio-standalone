@@ -156,7 +156,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 
   void _applyDetail(VideoDetail detail, dynamic sourceId, String vodId) {
     final resume = VideoHistoryStore.loadResume(sourceId, vodId, detail.lines);
-    final hist = VideoHistoryStore.find(sourceId, vodId);
+    // Film-level lookup: the same film watched on another source still
+    // resumes at its latest episode (history dedups by film, not by
+    // source+vodId).
+    final hist = VideoHistoryStore.findByTitle(detail.meta.name);
     final favItem = VideoItem(
       source: sourceId,
       sourceName: detail.meta.name,
@@ -289,7 +292,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _showWatchedInfo() {
-    final hist = VideoHistoryStore.find(_sid, _vid);
+    final hist =
+        VideoHistoryStore.findByTitle(_detail?.meta.name ?? '');
     final theme = HaoTheme.of(context);
     if (!_watched || hist == null) {
       ScaffoldMessenger.of(context).showSnackBar(

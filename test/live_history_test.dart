@@ -8,6 +8,7 @@
 // Page: grouped sections render, filter box filters, single delete
 // works, clear-all confirms, refresh shows LIVE / 已下播 / 状态未知.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -92,8 +93,12 @@ void main() {
     await HiveStore.init();
   });
 
+  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
+  // fire-and-forget deletes never resolve in the widget-test fake zone, so
+  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
+  // dir is deleted right after anyway.
   tearDownAll(() async {
-    await HiveStore.box.close();
+    unawaited(HiveStore.box.close());
     await hiveDir.delete(recursive: true);
   });
 

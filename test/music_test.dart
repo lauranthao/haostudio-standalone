@@ -7,9 +7,12 @@
 // - Quality chain downgrades hires → lossless → 320k → 128k; extraQuality
 //   maps Huibq hi tiers to 320k.
 // - Daily seeded PRNG is deterministic per day string.
+// - isPlayableUrl refuses URLs NSURL rejects (v1.0.7 crash fix:
+//   AVURLAsset with a nil NSURL kills the process).
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:standalone/features/music/av_music_player.dart';
 import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_quality.dart';
@@ -424,6 +427,54 @@ void main() {
         api.comments('66285', MusicPlatform.wy, '', '', 0),
         throwsException,
       );
+    });
+  });
+
+  // v1.0.7 crash fix: a URL NSURL rejects (nil) raises
+  // NSInvalidArgumentException inside just_audio's AVURLAsset call and
+  // kills the process. isPlayableUrl must refuse every such shape
+  // before it reaches native, and AvMusicPlayer.open must return false
+  // for it without touching the platform.
+  group('isPlayableUrl (v1.0.7 crash fix)', () {
+    test('accepts real resolver URLs', () {
+      expect(
+        isPlayableUrl(
+          'https://m801.music.126.net/20261117134636/9ab1e7786c969ec6858cbf2def844950/jdymusic/obj/wo3DlMOGwrbDjj7DisKw/32367562377/31a5/332a/b6bb/626c1cbe621f9733ad86c0765963e385.mp3?vuutv=abc',
+        ),
+        isTrue,
+      );
+      expect(isPlayableUrl('http://example.com/a.flac'), isTrue);
+      expect(isPlayableUrl('https://x.com/a%20b.mp3'), isTrue);
+      expect(isPlayableUrl('file:///var/mobile/a.mp3'), isTrue);
+    });
+
+    test('rejects scheme-only / no-host URLs', () {
+      expect(isPlayableUrl(''), isFalse);
+      expect(isPlayableUrl('https://'), isFalse);
+      expect(isPlayableUrl('https:///x.mp3'), isFalse);
+      expect(isPlayableUrl('https://[::1/a.mp3'), isFalse);
+    });
+
+    test('rejects non-http(s)/file schemes and unparseable strings', () {
+      expect(isPlayableUrl('not a url'), isFalse);
+      expect(isPlayableUrl('ftp://x.com/a.mp3'), isFalse);
+      expect(isPlayableUrl('file://'), isFalse);
+    });
+
+    test('rejects a host with a space (Dart encodes it, NSURL refuses)', () {
+      expect(isPlayableUrl('https://exa mple.com/a.mp3'), isFalse);
+    });
+  });
+
+  group('AvMusicPlayer.open refuses unplayable URLs (v1.0.7 crash fix)', () {
+    test('returns false without touching native', () async {
+      // AudioPlayer() touches the method channel at construction.
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final player = AvMusicPlayer();
+      expect(await player.open('https://'), isFalse);
+      expect(await player.open(''), isFalse);
+      expect(await player.open('file://'), isFalse);
+      await player.dispose();
     });
   });
 }

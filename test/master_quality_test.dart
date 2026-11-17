@@ -628,4 +628,39 @@ void main() {
       expect(sw.elapsedMilliseconds, lessThan(4500));
     });
   });
+
+  group('unwrapSearchResult (v1.0.7 search crash follow-up)', () {
+    // 裤佬 returns the LX-standard {isEnd, list} object; 溯音/非常刀
+    // return a bare list. Both must reach lxSongFromJson — before,
+    // the object shape was silently dropped and the 裤佬 leg could
+    // never contribute a result.
+    test('bare list passes through', () {
+      final out = LxScriptEngine.unwrapSearchResult([
+        {'id': '1', 'name': 'A'},
+        {'id': '2', 'name': 'B'},
+        'not-a-map',
+      ]);
+      expect(out.length, 2);
+      expect(out.first['name'], 'A');
+    });
+
+    test('{isEnd, list} object unwraps', () {
+      final out = LxScriptEngine.unwrapSearchResult({
+        'isEnd': true,
+        'list': [
+          {'id': '1', 'name': 'A'},
+        ],
+        'total': 1,
+      });
+      expect(out.length, 1);
+      expect(out.first['id'], '1');
+    });
+
+    test('anything else is empty, no throw', () {
+      expect(LxScriptEngine.unwrapSearchResult(null), isEmpty);
+      expect(LxScriptEngine.unwrapSearchResult('nope'), isEmpty);
+      expect(LxScriptEngine.unwrapSearchResult({'isEnd': true}), isEmpty);
+      expect(LxScriptEngine.unwrapSearchResult({'list': 'nope'}), isEmpty);
+    });
+  });
 }

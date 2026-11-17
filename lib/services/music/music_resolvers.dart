@@ -139,6 +139,9 @@ class _PlayUrlCache {
       if (DateTime.now().difference(at) > _ttl) return null;
       final url = j['u']?.toString() ?? '';
       if (url.isEmpty) return null;
+      // Drop a cached URL NSURL would reject (cached before the
+      // v1.0.7 crash fix): re-resolve instead of crashing on it.
+      if (!isPlayableUrl(url)) return null;
       final result = PlayUrlResult(
         url: url,
         candidates: (j['c'] as List<dynamic>?)
@@ -863,10 +866,19 @@ class MusicResolvers {
         url = '';
       }
       sw.stop();
-      _recordAttempt(job.key, url.isNotEmpty, sw.elapsedMilliseconds);
-      if (url.isEmpty) continue;
+      if (url.isEmpty) {
+        _recordAttempt(job.key, false, sw.elapsedMilliseconds);
+        continue;
+      }
       final https = toHttps(url);
-      if (https.isEmpty) continue;
+      // A URL NSURL rejects kills the process the moment it reaches
+      // AVURLAsset (v1.0.7 crash): treat it as a failed source and
+      // try the next one, like any other unusable result.
+      if (https.isEmpty || !isPlayableUrl(https)) {
+        _recordAttempt(job.key, false, sw.elapsedMilliseconds);
+        continue;
+      }
+      _recordAttempt(job.key, true, sw.elapsedMilliseconds);
       final realQ = extraQuality(job.key, q, pf.code);
       final cand = PlayUrlResult(
         url: https,

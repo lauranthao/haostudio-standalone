@@ -311,18 +311,22 @@ void main() {
       expect(find.text('Song One'), findsOneWidget);
     });
 
-    testWidgets('drag left on lyrics area -> no switch', (tester) async {
+    testWidgets('drag left on lyrics face -> no switch', (tester) async {
       await pumpTwoSongs(tester);
+      // Lyrics live behind the cover: flip to the lyrics side first.
+      await tester.tap(find.byKey(const ValueKey('playerCover')));
+      await tester.pump(const Duration(milliseconds: 300));
       final lyricsText = find.byWidgetPredicate((w) =>
           w is Text &&
           (w.data == '歌词加载中…' || w.data == '暂无歌词'));
+      expect(lyricsText, findsOneWidget);
       await tester.drag(lyricsText, const Offset(-200, 0));
       await tester.pump();
       expect(find.text('Song One'), findsOneWidget);
     });
   });
 
-  group('lyrics tap-to-seek + hide/show (chen 2026-11-17)', () {
+  group('lyrics behind cover: tap cover to flip, tap line to seek (chen 2026-11-17)', () {
     Future<_NoLoadController> pumpLyrics(WidgetTester tester) async {
       tester.view.physicalSize = const Size(1260, 2736);
       tester.view.devicePixelRatio = 3.0;
@@ -356,35 +360,59 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
+      // Cover side shows by default (lyrics live behind it); flip first.
+      expect(c.showLyrics.value, isFalse);
+      expect(find.byKey(const ValueKey('playerCover')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('playerCover')));
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('第二句'), findsOneWidget);
       return c;
     }
 
-    testWidgets('tap a lyric line seeks to its timestamp, does not hide',
+    testWidgets('tap a lyric line seeks to its timestamp, stays on lyrics',
         (tester) async {
       final c = await pumpLyrics(tester);
       await tester.tap(find.text('第二句'));
       await tester.pump();
       expect(c.seeks, [const Duration(milliseconds: 25500)]);
-      // Inner (line) tap wins over the outer (area) tap: still shown.
+      // Inner (line) tap wins over the outer (face) tap: still on lyrics.
       expect(c.showLyrics.value, isTrue);
       expect(find.text('第二句'), findsOneWidget);
     });
 
-    testWidgets('tap empty lyrics padding hides; tap hint shows again',
+    testWidgets(
+        'tap empty lyrics padding flips back to cover; tap cover flips to lyrics again',
         (tester) async {
       final c = await pumpLyrics(tester);
-      // Top 8 px of the lyrics box is ListView padding (empty space).
+      // Top 12 px of the lyrics face is ListView padding (empty space).
       final topLeft =
-          tester.getTopLeft(find.byKey(const ValueKey('lyricsArea')));
+          tester.getTopLeft(find.byKey(const ValueKey('playerLyrics')));
       await tester.tapAt(topLeft + const Offset(100, 4));
-      await tester.pump();
+      // Flip-back fades the lyrics out (250 ms); settle so the outgoing
+      // child is actually removed before asserting it is gone.
+      await tester.pumpAndSettle();
       expect(c.showLyrics.value, isFalse);
-      expect(find.text('歌词已隐藏 · 轻点显示'), findsOneWidget);
       expect(find.text('第二句'), findsNothing);
+      expect(find.byKey(const ValueKey('playerCover')), findsOneWidget);
 
-      await tester.tap(find.text('歌词已隐藏 · 轻点显示'));
-      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('playerCover')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(c.showLyrics.value, isTrue);
+      expect(find.text('第二句'), findsOneWidget);
+    });
+
+    testWidgets('bottom lyrics icon toggles cover/lyrics', (tester) async {
+      final c = await pumpLyrics(tester);
+      // On the lyrics side: tap the icon -> back to cover.
+      await tester.tap(find.byIcon(Icons.article_outlined));
+      // Flip-back fades the lyrics out (250 ms); settle so the outgoing
+      // child is actually removed before asserting it is gone.
+      await tester.pumpAndSettle();
+      expect(c.showLyrics.value, isFalse);
+      expect(find.text('第二句'), findsNothing);
+      // On the cover side: tap the icon -> lyrics again.
+      await tester.tap(find.byIcon(Icons.article_outlined));
+      await tester.pump(const Duration(milliseconds: 300));
       expect(c.showLyrics.value, isTrue);
       expect(find.text('第二句'), findsOneWidget);
     });

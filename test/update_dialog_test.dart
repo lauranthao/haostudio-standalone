@@ -10,6 +10,7 @@
 //   跳过 records the skip, 稍后 just dismisses.
 // - The dialog renders under all 4 themes x light/dark.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -91,8 +92,12 @@ void main() {
     await HiveStore.init();
   });
 
+  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
+  // fire-and-forget deletes never resolve in the widget-test fake zone, so
+  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
+  // dir is deleted right after anyway.
   tearDownAll(() async {
-    await HiveStore.box.close();
+    unawaited(HiveStore.box.close());
     await hiveDir.delete(recursive: true);
   });
 

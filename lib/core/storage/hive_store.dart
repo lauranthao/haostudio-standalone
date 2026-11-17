@@ -230,4 +230,10 @@ class HiveKeys {
 
   /// Danmaku list text opacity (double, 0.3..1.0, default 1.0).
   static const String danmakuOpacity = 'hao_danmaku_opacity';
+
+  /// Fullscreen floating-danmaku area (`hao_danmaku_area`): 'full'
+  /// (whole video, default) | 'half' (top half) | 'third' (top third).
+  /// The live room maps it to the flame_barrage BarrageConfig.area
+  /// fraction; see DanmakuSettings.
+  static const String danmakuArea = 'hao_danmaku_area';
 }

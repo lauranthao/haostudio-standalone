@@ -14,15 +14,22 @@
 // slider with speaker icons, bottom row of 3 pure icons only (lyrics,
 // AirPlay, queue), no text labels. The Hi-Res badge sits BELOW the cover,
 // centred. The whole player fits one screen — no page scroll; lyrics
-// sit below in their own scrollable area. Swipe-to-switch-songs (chen
+// live BEHIND the cover (chen 2026-11-17): the cover box is two-sided
+// — front = cover image, back = lyrics in the same square, simple
+// cross-fade between the two. Tap the cover flips to lyrics, tap
+// lyrics blank flips back, tap a lyric line seeks (stays on lyrics);
+// the bottom lyrics icon flips too. Swipe-to-switch-songs (chen
 // 2026-11-17): ONLY on the cover — left/right on the cover switches
 // songs; title / progress / lyrics / blank areas do not.
 //
-// Behaviour (fix 16): swipe LEFT on the Now Playing area = next song,
+// Behaviour (fix 16): swipe LEFT on the cover = next song,
 // swipe RIGHT = previous song. Threshold: horizontal distance ≥ 60 px
-// AND |dx| > 1.2 × |dy|. The swipe must NOT switch to a lyrics view —
-// lyrics already sit below on the same page. Vertical lyrics scroll
-// keeps working (the gesture detector covers only the cover/title area).
+// AND |dx| > 1.2 × |dy|. Tap vs swipe are disambiguated by the gesture
+// arena (quick tap flips to lyrics, drag switches songs). On the lyrics
+// side, swipe scrolls the lyrics and never switches songs — the switch
+// detector wraps the cover side only. The cover/lyrics state is the
+// user's last choice and survives song changes; the lyrics themselves
+// follow the new song.
 //
 // The gradient is tinted from the active theme's accent so the player
 // follows all 4 themes × light/dark; the reference deep-blue look is
@@ -72,6 +79,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   void initState() {
     super.initState();
     _songSub = _c.currentIndex.listen((_) {
+      // New song: its lyrics must scroll to the current line even if the
+      // line index happens to equal the old song's (the scroll cache key).
+      _lastLyricIdx = -1;
       final song = _c.currentSong;
       if (song != null) unawaited(_updateCoverBackground(song));
     });
@@ -247,17 +257,12 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                         physics: const NeverScrollableScrollPhysics(),
                         child: Column(
                           children: [
-                            // Swipe-to-switch-songs lives ONLY on the cover
-                            // (chen 2026-11-17): left/right on the cover
-                            // switches songs; title / progress / lyrics /
-                            // blank areas do not.
-                            GestureDetector(
-                              onPanStart: _onPanStart,
-                              onPanUpdate: _onPanUpdate,
-                              onPanEnd: _onPanEnd,
-                              behavior: HitTestBehavior.opaque,
-                              child: _cover(song),
-                            ),
+                            // Two-sided cover box: front = cover, back =
+                            // lyrics (chen 2026-11-17). Swipe-to-switch
+                            // lives ONLY on the cover side; title /
+                            // progress / lyrics / blank areas do not
+                            // switch songs.
+                            _coverOrLyrics(song, lyricIdx),
                             const SizedBox(height: 14),
                             _qualityBadge(),
                             const SizedBox(height: 18),
@@ -274,7 +279,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                         ),
                       ),
                     ),
-                    _lyricsArea(lyricIdx),
                   ],
                 );
               }),
@@ -319,8 +323,116 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     );
   }
 
-  Widget _cover(Song song) {
+  /// Two-sided cover box (chen 2026-11-17): front = cover image, back =
+  /// lyrics, both in the SAME fixed square, so flipping never moves the
+  /// badge / title / controls below. Simple cross-fade (250 ms), no
+  /// flip animation. `showLyrics` false => cover, true => lyrics; the
+  /// flag is the user's last choice and is NOT reset on song change.
+  Widget _coverOrLyrics(Song song, int lyricIdx) {
     final size = math.min(MediaQuery.of(context).size.width * 0.68, 300.0);
+    return Obx(() {
+      final showL = _c.showLyrics.value;
+      return SizedBox(
+        width: size,
+        height: size,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          child: showL
+              ? _lyricsFace(lyricIdx, size)
+              : _coverFace(song, size),
+        ),
+      );
+    });
+  }
+
+  /// Cover side: tap flips to lyrics, horizontal swipe switches songs.
+  /// Tap vs swipe are disambiguated by the gesture arena (quick tap
+  /// fires onTap, drag fires the pan handlers, never both).
+  Widget _coverFace(Song song, double size) {
+    return GestureDetector(
+      key: const ValueKey('playerCover'),
+      onPanStart: _onPanStart,
+      onPanUpdate: _onPanUpdate,
+      onPanEnd: _onPanEnd,
+      onTap: _toggleLyrics,
+      behavior: HitTestBehavior.opaque,
+      child: _cover(song, size),
+    );
+  }
+
+  /// Lyrics side, in the cover's square. Dark scrim so white lyrics stay
+  /// readable over the bright blurred-cover background (the player is
+  /// white text on dark by design, so this is neutral, not a theme
+  /// color). Tap a line = seek (stays on lyrics); tap blank = back to
+  /// cover. The ListView scrolls vertically; there is NO switch-songs
+  /// detector here, so swiping lyrics never changes songs.
+  Widget _lyricsFace(int lyricIdx, double size) {
+    return Container(
+      key: const ValueKey('playerLyrics'),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.30),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Obx(() {
+          final lines = _c.lyrics;
+          if (lines.isEmpty) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleLyrics,
+              child: Center(
+                child: Text(
+                  _c.lyricsFailed.value ? '暂无歌词' : '歌词加载中…',
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ),
+            );
+          }
+          // Tap a line = seek to that line's timestamp; tap empty space
+          // = back to cover. The inner (line) tap wins the gesture arena
+          // over the outer (face) tap, so a line tap never also flips.
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggleLyrics,
+            child: ListView.builder(
+              controller: _lyricScroll,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              itemCount: lines.length,
+              itemBuilder: (ctx, i) {
+                final current = i == lyricIdx;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _c.seek(
+                    Duration(milliseconds: (lines[i].t * 1000).round()),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Text(
+                      lines[i].text,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: current ? Colors.white : Colors.white54,
+                        fontSize: current ? 16 : 14,
+                        fontWeight:
+                            current ? FontWeight.w700 : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _cover(Song song, double size) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: song.cover.isEmpty
@@ -614,11 +726,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         children: [
           IconButton(
             icon: const Icon(Icons.article_outlined, color: Colors.white, size: 26),
-            onPressed: () {
-              final idx = _c.lyricIndexFor(_c.position.value);
-              _lastLyricIdx = -1;
-              _scrollToLyric(idx);
-            },
+            // Flip cover <-> lyrics (chen 2026-11-17). Auto-scroll already
+            // follows the current line, so the old scroll-to-line action
+            // is not needed anymore; tapping again flips back to cover.
+            onPressed: _toggleLyrics,
           ),
           IconButton(
             icon: const Icon(Icons.airplay, color: Colors.white, size: 26),
@@ -637,9 +748,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     );
   }
 
-  /// Toggle lyrics visibility; when showing again, re-scroll to the
-  /// current line after the rebuild (the ListView has no clients
-  /// while hidden, so the scroll must wait a frame).
+  /// Flip cover <-> lyrics; when flipping to lyrics, re-scroll to the
+  /// current line after the rebuild (the ListView has no clients while
+  /// the cover side is showing, so the scroll must wait a frame).
   void _toggleLyrics() {
     final wasShown = _c.showLyrics.value;
     _c.toggleLyrics();
@@ -649,70 +760,5 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
       _lastLyricIdx = -1;
       _scrollToLyric(_c.lyricIndexFor(_c.position.value));
     });
-  }
-
-  Widget _lyricsArea(int lyricIdx) {
-    return SizedBox(
-      key: const ValueKey('lyricsArea'),
-      height: 150,
-      child: Obx(() {
-        if (!_c.showLyrics.value) {
-          // Hidden state keeps the same box (layout never jumps) and
-          // stays tappable, so one more tap brings lyrics back.
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleLyrics,
-            child: const Center(
-              child: Text(
-                '歌词已隐藏 · 轻点显示',
-                style: TextStyle(color: Colors.white54, fontSize: 13),
-              ),
-            ),
-          );
-        }
-        final lines = _c.lyrics;
-        if (lines.isEmpty) {
-          return Center(
-            child: Text(
-              _c.lyricsFailed.value ? '暂无歌词' : '歌词加载中…',
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-          );
-        }
-        // Tap a line = seek to that line's timestamp; tap empty space
-        // = hide lyrics. The inner (line) tap wins the gesture arena
-        // over the outer (area) tap, so a line tap never also hides.
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _toggleLyrics,
-          child: ListView.builder(
-            controller: _lyricScroll,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
-            itemCount: lines.length,
-            itemBuilder: (ctx, i) {
-              final current = i == lyricIdx;
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _c.seek(
-                  Duration(milliseconds: (lines[i].t * 1000).round()),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text(
-                    lines[i].text,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: current ? Colors.white : Colors.white54,
-                      fontSize: current ? 16 : 14,
-                      fontWeight: current ? FontWeight.w700 : FontWeight.w400,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      }),
-    );
   }
 }

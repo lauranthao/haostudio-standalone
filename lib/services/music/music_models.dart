@@ -85,6 +85,52 @@ String toHttps(String? url) {
   return url;
 }
 
+/// True when [url] can be handed to AVPlayer (just_audio) without
+/// killing the process.
+///
+/// Root cause of the v1.0.7 music crash: just_audio 0.10.6's iOS layer
+/// (`UriAudioSource.m createPlayerItem:`) passes the URL string
+/// straight to `[NSURL URLWithString:]` and then to
+/// `[AVURLAsset URLAssetWithURL:]` with NO nil check. A URL string
+/// NSURL rejects (nil) raises NSInvalidArgumentException and the app
+/// dies instantly — no error event, no FlutterError, nothing the
+/// controller can catch. media_kit/MPV used to turn the same URL into
+/// a plain load error, so this only surfaced with the AVPlayer switch.
+///
+/// Dart's `Uri.parse` already percent-encodes most illegal characters,
+/// so the holes left are a missing/empty host (e.g. `https://`), a
+/// host Dart encoded but NSURL still rejects (space inside the host
+/// becomes `%20`, which NSURL refuses), and a file URL with no real
+/// path. Every one of those must be refused here — at the resolver
+/// (try the next source) and at the player (never call native).
+bool isPlayableUrl(String? url) {
+  if (url == null || url.isEmpty) return false;
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  if (uri.scheme == 'file') {
+    // The native file branch strips 'file://' and builds a path from
+    // the rest: it needs a real path, not just '/'.
+    return uri.path.length > 1;
+  }
+  if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+  final host = uri.host;
+  if (host.isEmpty) return false;
+  // A host never contains '%' in a real music URL (IPv6 zone ids
+  // excepted — not our case). Dart encodes a space inside the host
+  // as %20, and NSURL rejects such a host outright (nil).
+  if (host.contains('%')) return false;
+  // Belt and braces: characters NSURL URLWithString: rejects outright.
+  // Dart's Uri.parse percent-encodes these, so a surviving one means
+  // the string was hand-built — refuse it rather than crash.
+  const hostile = [' ', '"', '<', '>', '\\', '^', '`', '{', '}', '|'];
+  final s = uri.toString();
+  for (final c in hostile) {
+    if (s.contains(c)) return false;
+  }
+  if (s.codeUnits.any((c) => c < 0x20 || c == 0x7f)) return false;
+  return true;
+}
+
 /// Cover hi-res upgrade — directCoverHi (app.js:468).
 ///
 /// 2026-11-17 fix (v1.0.6 phone bug: "很多歌曲都没封面" + 搜歌/播放慢):

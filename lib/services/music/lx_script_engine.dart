@@ -779,6 +779,18 @@ class LxScriptEngine {
         throw LxScriptException('脚本执行失败: ${ev.stringResult}');
       }
       rt.js.executePendingJob();
+      // Some scripts defer `inited` behind a short timer (统一音乐源 used
+      // to send it from setTimeout(100ms)). Poll briefly so a deferred
+      // inited is still accepted: deciding failure synchronously would
+      // dispose a runtime whose Dart setTimeout timer is still pending,
+      // and the timer's later evaluate would run on the released
+      // JSContext — a native use-after-free crash on iOS. Scripts that
+      // send `inited` synchronously (all 20 bundled ones now) exit this
+      // loop immediately, so there is no cost in the common case; a
+      // script that never sends `inited` still fails after ~1s.
+      for (var i = 0; i < 10 && !rt.initedReceived; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
       if (!rt.initedReceived) {
         throw LxScriptException('脚本未发送 inited (不是有效的 LX 音源)');
       }
@@ -892,6 +904,13 @@ class LxScriptEngine {
     }
     final deadline = DateTime.now().add(timeout);
     while (true) {
+      // The runtime may have been disposed/replaced while this dispatch
+      // was in flight (script removed in settings). Evaluating on a
+      // released JSContext is a native use-after-free — bail out
+      // instead of polling a dead runtime.
+      if (_runtimes[scriptId] != rt) {
+        throw LxScriptException('脚本已卸载: $scriptId');
+      }
       await _pumpHttp(rt);
       final resRaw =
           rt.js.evaluate('__haoLxDispatchResult($id)').stringResult;
@@ -919,6 +938,9 @@ class LxScriptEngine {
   /// requests one at a time.
   Future<void> _pumpHttp(_ScriptRuntime rt) async {
     while (rt.httpJobs.isNotEmpty) {
+      // Same disposed-runtime guard as requestAction: never evaluate
+      // on a JSContext that has been released.
+      if (_runtimes[rt.scriptId] != rt) return;
       final job = rt.httpJobs.removeAt(0);
       String? err;
       String? respJson;
@@ -1012,6 +1034,18 @@ class LxScriptEngine {
   /// Search via one script (only scripts declaring `search` for the
   /// platform). Returns raw result maps; use [lxSongFromJson] to map
   /// them to [Song]. Returns [] on any failure.
+  ///
+  /// Two shapes are accepted (verified 2026-11-17 with the real
+  /// scripts): a bare list (溯音 / 非常刀) and the LX-standard
+  /// `{isEnd, list}` object (裤佬). Before, the object shape was
+  /// silently dropped, so the 裤佬 leg could never contribute.
+  /// `text` is sent alongside `keyword`: 裤佬 reads `info.text`,
+  /// 溯音 / 非常刀 read `info.keyword` — additive, neither side
+  /// is affected by the extra key.
+  /// Timeout is 5 s, matching the caller's deadline in
+  /// [SongSearchService.searchAll]: a longer inner timeout only
+  /// leaves the requestAction poll loop evaluating JS after the
+  /// caller has already discarded the result.
   Future<List<Map<String, dynamic>>> search({
     required String scriptId,
     required String platform,
@@ -1028,19 +1062,35 @@ class LxScriptEngine {
         scriptId: scriptId,
         action: 'search',
         source: platform,
-        info: {'keyword': keyword, 'page': page, 'limit': limit},
-        timeout: const Duration(seconds: 15),
+        info: {'keyword': keyword, 'text': keyword, 'page': page, 'limit': limit},
+        timeout: const Duration(seconds: 5),
       );
-      if (v is List) {
-        return [
-          for (final e in v)
-            if (e is Map) Map<String, dynamic>.from(e),
-        ];
-      }
-      return const [];
+      return unwrapSearchResult(v);
     } catch (_) {
       return const [];
     }
+  }
+
+  /// Unwrap a script search result into raw song maps. Pure function
+  /// (unit-tested): bare list, or the LX-standard `{isEnd, list}`
+  /// object; anything else is [].
+  static List<Map<String, dynamic>> unwrapSearchResult(dynamic v) {
+    if (v is List) {
+      return [
+        for (final e in v)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ];
+    }
+    if (v is Map) {
+      final list = v['list'];
+      if (list is List) {
+        return [
+          for (final e in list)
+            if (e is Map) Map<String, dynamic>.from(e),
+        ];
+      }
+    }
+    return const [];
   }
 
   /// Script search results use LX's song shape

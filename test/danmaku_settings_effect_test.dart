@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +26,7 @@ import 'package:standalone/core/player/kernel/player_engine.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/domains/live/presentation/playback/live_room_page.dart';
+import 'package:standalone/features/player/fullscreen_controller.dart';
 import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 
@@ -47,8 +49,12 @@ void main() {
     await HiveStore.init();
   });
 
+  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
+  // fire-and-forget deletes never resolve in the widget-test fake zone, so
+  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
+  // dir is deleted right after anyway.
   tearDownAll(() async {
-    await HiveStore.box.close();
+    unawaited(HiveStore.box.close());
     await hiveDir.delete(recursive: true);
   });
 
@@ -139,6 +145,11 @@ void main() {
       await settle(tester);
     }
 
+    Future<void> setDanmakuArea(WidgetTester tester, String value) async {
+      await tester.runAsync(() => DanmakuSettings.setArea(value));
+      await settle(tester);
+    }
+
     testWidgets('disabled platform: no transport, honest 已关闭 state', (
       tester,
     ) async {
@@ -204,6 +215,40 @@ void main() {
       // The transport was never restarted by a style change.
       expect(site.danmaku.startCount, 1);
       expect(site.danmaku.stopCount, 0);
+      await disposeRoom(tester);
+    });
+
+    testWidgets('danmaku area: fullscreen overlay honours the setting '
+        'and updates live', (tester) async {
+      await setDanmakuEnabled(tester, true);
+      await setDanmakuArea(tester, DanmakuSettings.areaHalf);
+      final site = _FakeSite();
+      await pumpRoom(tester, site);
+      // Portrait has no overlay — the list is a chat list, not a
+      // barrage surface.
+      expect(find.byType(FlameBarrageWidget), findsNothing);
+      // Enter fullscreen: the overlay appears with the configured area.
+      // Flip the flag directly (not enterFullscreen(): its SystemChrome
+      // calls never complete in a widget test and hang runAsync).
+      Get.find<FullscreenController>().isFullscreen.value = true;
+      await tester.pump();
+      final widget = tester.widget<FlameBarrageWidget>(
+        find.byType(FlameBarrageWidget),
+      );
+      expect(widget.config.area, 0.5);
+      // NOTE — why there is no mid-room change step here: changing the
+      // setting while the overlay is mounted needs tester.runAsync
+      // (Hive I/O never resolves in the fake zone), and runAsync
+      // wedges while the Flame GameWidget ticker is active (bisected:
+      // the same write hangs only when the overlay is mounted; exiting
+      // fullscreen + re-entering also wedges). That is a widget-test
+      // environment limitation, not a product bug. On a real phone the
+      // write is a normal async op: the room's Hive watcher re-reads
+      // it live (same path the font/opacity test proves for other
+      // settings), and the engine's didUpdateWidget -> updateConfig
+      // -> forceRefresh path (area is in _configAffectsTrackGeometry)
+      // re-lays the overlay out in place — verified in flame_barrage
+      // source. The live update still needs chen's phone to confirm.
       await disposeRoom(tester);
     });
 

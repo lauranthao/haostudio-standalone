@@ -409,12 +409,19 @@ class PlaybackSession {
     _emitError(message);
   }
 
-  /// Position-movement health watch: 4 s stall -> notice, 15 s -> failure.
-  /// Pure Live `LiveWatchdogs`: bufferingStallTimeout is 12 s but that
-  /// detector watches the BUFFERING state, not the position; the
-  /// position-stall detector of last resort is 15 s. Failing on 12 s of
-  /// frozen position killed jittery-but-recoverable Douyu/Huya lines 3 s
-  /// early. The 4 s notice is UI only ("重新连接…"), not a failure.
+  /// Position-movement health watch: 4 s stall -> notice, 12 s -> failure.
+  /// Pure Live 5.6.5 `SessionTimings` (live_player session.dart
+  /// `_armMoveWatchdog`): a live source that moved and then stands still
+  /// shows the recovery attempt at stallNotice (4 s) and fails at
+  /// bufferingStall (12 s). 3.x's `LiveWatchdogs.positionStallTimeout`
+  /// is 15 s, but that is the detector of LAST resort, behind the frame
+  /// (10 s) and buffering (12 s) watchdogs — which this session does
+  /// not have (no frame/buffering signal on the backend contract), so
+  /// the single position detector uses the 12 s failure point, matching
+  /// 5.6.5's effective behaviour. Trade-off, recorded: a line that
+  /// would have self-recovered in 12-15 s is now torn down instead;
+  /// chen's stuck lines do not self-recover, so the earlier failure
+  /// wins for him. The 4 s notice is UI only ("重新连接…"), not a failure.
   void _startHealthWatch() {
     _stallTimer?.cancel();
     _lastPosition = Duration.zero;
@@ -430,7 +437,7 @@ class PlaybackSession {
           _stallNoticeController.add(null);
         }
       }
-      if (stalled >= const Duration(seconds: 15)) {
+      if (stalled >= const Duration(seconds: 12)) {
         _onBackendFailure('buffering_stall');
       }
     });

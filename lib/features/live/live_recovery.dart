@@ -16,9 +16,14 @@
 // failure UI. Clear any "already posted this URL" dedupe before a retry,
 // so a retry tapped within 2 s of the last post is not silently swallowed.
 //
-// Proactive refresh (Huya): prefetch a new URL ~100 s after issue, hard
-// expiry ~125 s. Lines are identified by URL (CDN + path + credential
-// family), NOT by index — a refresh can turn a TX FLV line into TX HLS.
+// Lease prefetch, Pure Live 5.6.5 style (live_player session.dart
+// `_schedulePrefetch` / `_prefetch` / `_takePrefetched`): at the lease
+// refreshAt (~100 s after issue, hard expiry ~125 s) fetch a fresh
+// resolution and HOLD it — never touch the healthy transport. The held
+// plan is spent by recovery (`takeHeld`, first refresh attempt); a held
+// plan past its hard expiry is never served. Lines are identified by
+// URL (CDN + path + credential family), NOT by index — a refresh can
+// turn a TX FLV line into TX HLS.
 
 import 'dart:async';
 
@@ -30,10 +35,19 @@ class LiveRecovery {
     required this.site,
     required this.room,
     this.quality,
+    this.clock,
   });
 
   final LiveSite site;
   final LiveRoom room;
+
+  /// Injectable clock for tests: fakeAsync fakes Timer, not
+  /// DateTime.now(), so lease/throttle math needs a controllable now.
+  /// Production passes nothing and gets real time.
+  final DateTime Function()? clock;
+
+  /// Now via the injected clock (or real time in production).
+  DateTime _now() => clock?.call() ?? DateTime.now();
 
   /// The quality the current lines were resolved for. Mutable on
   /// purpose: the room page re-resolves on quality switch, and every
@@ -66,6 +80,16 @@ class LiveRecovery {
   /// When the current resolution was issued (for 100 s / 125 s math).
   DateTime? issuedAt;
 
+  /// Lease deadlines of the CURRENT resolution, when the platform
+  /// reports them (Huya/Douyu do; Douyin leaves them null — no lease,
+  /// no prefetch, exactly like Pure Live's `lease == null` early-out).
+  DateTime? refreshAt;
+  DateTime? invalidAt;
+
+  /// The held prefetched resolution (Pure Live `_prefetched`): fetched
+  /// at refreshAt, spent by the next recovery, never opened on its own.
+  LivePlayUrlResolution? _held;
+
   DateTime? _lastFreshFetchAt;
   Timer? _prefetchTimer;
   bool _disposed = false;
@@ -74,6 +98,9 @@ class LiveRecovery {
   static const Duration freshFetchTimeout = Duration(seconds: 10);
   static const Duration prefetchAfterIssue = Duration(seconds: 100);
   static const Duration hardExpiryAfterIssue = Duration(seconds: 125);
+
+  /// Retry delay after a failed hold fetch (Pure Live `refreshRetry`).
+  static const Duration refreshRetry = Duration(seconds: 10);
 
   String? get currentUrl =>
       lines.isEmpty ? null : lines[currentLineIndex % lines.length];
@@ -98,7 +125,7 @@ class LiveRecovery {
   /// when throttled, timed out, or the room is offline / parse failed.
   /// A null result means: show the failure card, do not loop.
   Future<LivePlayUrlResolution?> fetchFresh() async {
-    final now = DateTime.now();
+    final now = _now();
     if (_lastFreshFetchAt != null &&
         now.difference(_lastFreshFetchAt!) < freshFetchThrottle) {
       return null;
@@ -117,6 +144,8 @@ class LiveRecovery {
       lines = resolution.urls;
       facts = resolution.streamFacts;
       issuedAt = resolution.issuedAt ?? now;
+      refreshAt = resolution.refreshAt;
+      invalidAt = resolution.invalidAt;
       // Keep the user's format/line family: match the new list to the
       // previously playing URL by CDN + path, not by index.
       currentLineIndex = _matchLineIndex(resolution.urls, previousUrl);
@@ -170,33 +199,100 @@ class LiveRecovery {
     return dot > 0 ? last.substring(0, dot) : last;
   }
 
-  /// Schedule the proactive prefetch ~100 s after issue. The caller passes
-  /// the prefetch callback (open the prefetched URL only after its first
-  /// frame is verified — never swap in an unverified candidate).
+  /// Arm the lease prefetch (Pure Live `_schedulePrefetch`): at [at]
+  /// — default the CURRENT resolution's refreshAt — fetch a fresh
+  /// resolution and HOLD it. No lease deadline ([refreshAt] null, e.g.
+  /// Douyin) means no prefetch at all, exactly like Pure Live's
+  /// `lease == null` early-out. A deadline already past fires in 1 s
+  /// (Pure Live clamps the same way) instead of never firing.
   ///
   /// Public so the room page can arm it after the INITIAL resolve too:
   /// fetchFresh arms it on the recovery path, but the happy path never
-  /// calls fetchFresh — without this the 100 s prefetch never fires and
-  /// the URL dies at its ~125 s hard expiry with no prefetch.
-  void schedulePrefetch() {
+  /// calls fetchFresh — without this the hold timer would never exist
+  /// on the happy path, and the URL would die at its ~125 s hard
+  /// expiry with nothing held for recovery.
+  void schedulePrefetch({DateTime? at}) {
     _prefetchTimer?.cancel();
-    if (issuedAt == null) return;
-    final delay = issuedAt!.add(prefetchAfterIssue).difference(DateTime.now());
-    if (delay.isNegative) return;
+    final target = at ?? refreshAt;
+    if (target == null) return;
+    final remaining = target.difference(_now());
+    final delay = remaining > const Duration(seconds: 1)
+        ? remaining
+        : const Duration(seconds: 1);
     _prefetchTimer = Timer(delay, () {
       if (_disposed) return;
-      // The room page observes [prefetchDue] via this timer's callback.
-      onPrefetchDue?.call();
+      unawaited(_prefetchHold());
     });
   }
 
-  /// Called when the ~100 s prefetch point is reached.
-  void Function()? onPrefetchDue;
+  /// Fetch a fresh resolution and HOLD it (Pure Live `_prefetch`).
+  /// Never touches the playing transport, the current lines, or the
+  /// recovery throttle stamp: holding costs no stream switch, so it
+  /// must not block a later recovery fetch. On success the hold is
+  /// replaced and the next hold chains at the HELD plan's refreshAt
+  /// (else its issuedAt + 100 s); on failure — or an empty plan —
+  /// retry after [refreshRetry]. Past hard expiry there is nothing
+  /// worth holding: the stall watchdog owns recovery from there.
+  Future<void> _prefetchHold() async {
+    if (_disposed || isExpired) return;
+    try {
+      final resolution = await site
+          .resolvePlayUrlsForRecovery(liveRoom: room, quality: quality)
+          .timeout(freshFetchTimeout);
+      if (_disposed) return;
+      if (resolution.urls.isEmpty) {
+        schedulePrefetch(at: _now().add(refreshRetry));
+        return;
+      }
+      _held = resolution;
+      final next =
+          resolution.refreshAt ?? resolution.issuedAt?.add(prefetchAfterIssue);
+      schedulePrefetch(at: next ?? _now().add(refreshRetry));
+    } catch (_) {
+      if (_disposed) return;
+      schedulePrefetch(at: _now().add(refreshRetry));
+    }
+  }
+
+  /// Take the held prefetched resolution for recovery (Pure Live
+  /// `_takePrefetched`, first refresh attempt): one-shot — clears the
+  /// hold — and only when its hard expiry is still in the future.
+  /// Installing it replaces the current lines/facts/lease exactly like
+  /// [fetchFresh] does, and re-arms the hold timer at the new
+  /// resolution's refreshAt. Returns null when nothing usable is held.
+  /// Costs no request and no throttle stamp: the hold was fetched
+  /// earlier, taking it is free.
+  LivePlayUrlResolution? takeHeld() {
+    final held = _held;
+    _held = null;
+    if (held == null || held.urls.isEmpty) return null;
+    final invalid = held.invalidAt;
+    if (invalid != null && !invalid.isAfter(_now())) return null;
+    final previousUrl = currentUrl;
+    lines = held.urls;
+    facts = held.streamFacts;
+    issuedAt = held.issuedAt ?? _now();
+    refreshAt = held.refreshAt;
+    invalidAt = held.invalidAt;
+    currentLineIndex = _matchLineIndex(held.urls, previousUrl);
+    schedulePrefetch();
+    return held;
+  }
+
+  /// Drop the held plan (a NEW resolution was adopted — initial resolve
+  /// or quality switch — and a hold fetched for the old quality must
+  /// never be served for the new one). Pure Live clears `_prefetched`
+  /// on every new play the same way.
+  void discardHeld() {
+    _held = null;
+  }
 
   /// True when the current URL is past its hard expiry (~125 s).
   bool get isExpired {
+    final invalid = invalidAt;
+    if (invalid != null) return _now().isAfter(invalid);
     if (issuedAt == null) return false;
-    return DateTime.now().isAfter(issuedAt!.add(hardExpiryAfterIssue));
+    return _now().isAfter(issuedAt!.add(hardExpiryAfterIssue));
   }
 
   void dispose() {

@@ -75,11 +75,14 @@ class MusicPlayerController extends GetxController
   final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
   final RxBool lyricsFailed = false.obs;
-  /// Lyrics visible (chen 2026-11-17): tap the lyrics area to hide,
-  /// tap again to show. Default shown.
-  final RxBool showLyrics = true.obs;
+  /// Lyrics live BEHIND the cover (chen 2026-11-17): the cover box is
+  /// two-sided — front = cover, back = lyrics. `true` = lyrics side
+  /// showing, `false` = cover side. Default cover (lyrics are behind).
+  /// Tap the cover flips to lyrics, tap lyrics blank flips back; the
+  /// state is the user's last choice and is NOT reset on song change.
+  final RxBool showLyrics = false.obs;
 
-  /// Toggle lyrics visibility (lyrics-area tap).
+  /// Flip cover <-> lyrics (cover tap, lyrics-blank tap, bottom icon).
   void toggleLyrics() => showLyrics.value = !showLyrics.value;
   final RxBool showQueuePanel = false.obs;
   final RxString queueLabel = ''.obs;
@@ -355,7 +358,14 @@ class MusicPlayerController extends GetxController
   }
 
   Future<void> _openOn(AvMusicPlayer player, String url, {double? vol}) async {
-    await player.open(url, play: true);
+    // open() returns false only when the URL was refused before any
+    // native call, so no error will arrive on the error stream: fall
+    // back to the next candidate here, the same path the error stream
+    // uses for a native load failure.
+    if (!await player.open(url, play: true)) {
+      await _onPlayError();
+      return;
+    }
     if (vol != null) await player.setVolume(vol);
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
@@ -535,7 +545,13 @@ class MusicPlayerController extends GetxController
     final outgoing = _active;
     final incoming = _standby;
     _fadeTimer?.cancel();
-    await incoming.open(url, play: false);
+    // Refused URL: never touched native, so no error stream event
+    // will come — fall back on the still-active player instead of
+    // swapping in a player with no source.
+    if (!await incoming.open(url, play: false)) {
+      await _onPlayError();
+      return;
+    }
     await incoming.setVolume(0);
     await incoming.setRate(speed.value);
     await incoming.play();

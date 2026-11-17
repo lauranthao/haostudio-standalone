@@ -8,6 +8,7 @@
 // - Empty state is honest: "还没有观看记录".
 // - Clear-all empties the list (and the stored history).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -83,8 +84,12 @@ void main() {
     await HiveStore.init();
   });
 
+  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
+  // fire-and-forget deletes never resolve in the widget-test fake zone, so
+  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
+  // dir is deleted right after anyway.
   tearDownAll(() async {
-    await HiveStore.box.close();
+    unawaited(HiveStore.box.close());
     await hiveDir.delete(recursive: true);
   });
 

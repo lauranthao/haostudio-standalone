@@ -32,6 +32,8 @@ import 'dart:io';
 
 import 'package:just_audio/just_audio.dart';
 
+import '../../services/music/music_models.dart';
+
 /// One AVPlayer-backed audio player (one half of the A/B crossfade pair).
 class AvMusicPlayer {
   final AudioPlayer _player = AudioPlayer();
@@ -50,10 +52,20 @@ class AvMusicPlayer {
   AvMusicPlayerStreams get stream => AvMusicPlayerStreams(_player);
 
   /// Open [url] (http(s) stream or file:// local download) and start
-  /// playing when [play] is true. Load failures are reported on
-  /// [stream.error], never thrown.
-  Future<void> open(String url, {bool play = true}) async {
+  /// playing when [play] is true.
+  ///
+  /// Returns false when [url] can never load and was refused *before*
+  /// any native call — in that case no error is emitted on
+  /// [stream.error], so the caller must fall back itself (the
+  /// controller's `_onPlayError` path). Returns true once a source was
+  /// handed to the native player, even if the native load later fails:
+  /// that failure IS reported on [stream.error], exactly as before.
+  Future<bool> open(String url, {bool play = true}) async {
     _hasSource = false;
+    // Never let a URL NSURL rejects reach AVURLAsset: it throws
+    // NSInvalidArgumentException and kills the process (see
+    // isPlayableUrl). Refuse it here instead.
+    if (!isPlayableUrl(url)) return false;
     try {
       if (url.startsWith('file://')) {
         await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
@@ -67,6 +79,7 @@ class AvMusicPlayer {
     } catch (_) {
       // Same: a load failure is a stream error, not a throw.
     }
+    return true;
   }
 
   Future<void> play() async {

@@ -483,8 +483,24 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
 
   void _armHideTimer() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _playing) setState(() => _showControls = false);
+    // 5 s, Pure Live's value: after revealing the controls the user
+    // needs enough time to find and tap the exit button.
+    _hideTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      // Never hide mid-interaction. A drag's onCancel (this drag lost
+      // the gesture arena to another drag, e.g. the Slider) re-arms the
+      // timer at drag start; if it fired here the controls would vanish
+      // under the user's finger, the Slider would unmount and the seek
+      // would be swallowed. Defer instead of hiding — the drag's end
+      // handler re-arms the timer for 5 s after the interaction ends.
+      if (_scrubbing ||
+          _dragSeekTarget != null ||
+          _dragSide != null ||
+          _longPressSpeeding) {
+        _armHideTimer();
+        return;
+      }
+      if (_playing) setState(() => _showControls = false);
     });
   }
 
@@ -501,7 +517,21 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   // Gesture arena keeps this from fighting the drags: a hold still for
   // ~500ms wins the long-press, any real movement wins the drag instead.
   void _onLongPressStart(LongPressStartDetails details) {
+    // Controls hidden: the user's intent is to wake the UI, not to
+    // speed up. A hold is the natural "wake" press — letting it start
+    // 2x instead wins the gesture arena over onTap, so the controls
+    // stay hidden and there is no way out (chen v1.0.7: controls
+    // gone, can't exit). Reveal first; 2x only when the controls
+    // are already up.
+    if (!_showControls) {
+      setState(() => _showControls = true);
+      _armHideTimer();
+      return;
+    }
     if (!_playing || _failed || _ended || _longPressSpeeding) return;
+    // Don't let the hide timer fire mid-hold and unmount the
+    // controls under the user's finger; re-armed on release.
+    _hideTimer?.cancel();
     setState(() => _longPressSpeeding = true);
     unawaited(_session.setRate(2.0));
   }
@@ -518,6 +548,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     if (!_longPressSpeeding) return;
     setState(() => _longPressSpeeding = false);
     unawaited(_session.setRate(_rate));
+    _armHideTimer();
   }
 
   /// Full-width horizontal swipe covers up to 5 minutes (or the whole
@@ -574,7 +605,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
 
   void _onSeekDragCancel() {
     if (mounted) setState(() => _dragSeekTarget = null);
-    _armHideTimer();
+    // Do NOT re-arm the hide timer here: this fires when the drag loses
+    // the gesture arena to another gesture (e.g. the Slider won), i.e.
+    // the user is still interacting — re-arming would hide the controls
+    // mid-drag. If the pointer was genuinely cancelled, leaving the
+    // controls visible is the safe direction; the next interaction
+    // re-arms the timer.
   }
 
   // -- Vertical drag: left half brightness, right half volume. --
@@ -624,7 +660,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   void _onSystemDragCancel() {
     _dragHintTimer?.cancel();
     if (mounted) setState(() => _dragSide = null);
-    _armHideTimer();
+    // Do NOT re-arm the hide timer here — same reason as
+    // _onSeekDragCancel: losing the arena to another gesture means the
+    // user is still interacting; re-arming would hide the controls
+    // mid-gesture.
   }
 
   void _openEpisodeSheet() {
@@ -1027,6 +1066,19 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                                             .clamp(0.0, _duration),
                                     max: _duration,
                                     onChangeStart: (_) {
+                                      // The hide timer must not fire
+                                      // mid-drag: it would unmount the
+                                      // whole control bar (this Slider
+                                      // included), cancel the drag and
+                                      // swallow the seek — onChangeEnd
+                                      // never runs, so the progress
+                                      // never moves (chen v1.0.7:
+                                      // dragging the progress bar
+                                      // sometimes does nothing). Same
+                                      // cancel/re-arm pattern as the
+                                      // outer seek/brightness drags
+                                      // (onChangeEnd re-arms below).
+                                      _hideTimer?.cancel();
                                       setState(() {
                                         _scrubbing = true;
                                         _scrubValue = _position;

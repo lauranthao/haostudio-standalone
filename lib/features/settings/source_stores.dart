@@ -389,6 +389,47 @@ class DanmakuSettings {
     if (b == null) return;
     await b.put(HiveKeys.danmakuDouyuBotFilter, value);
   }
+
+  // -- Fullscreen floating-danmaku area -------------------------------
+  //
+  // Which part of the video the flying danmaku may cover, fullscreen
+  // only (the portrait list below the video is a chat list, not an
+  // overlay — it has no area to size). 'full' = whole video (default),
+  // 'half' = top half, 'third' = top third. Stored as a string so a
+  // bad value falls back to full; the live room maps it to the
+  // flame_barrage BarrageConfig.area fraction (usableHeight =
+  // screenHeight * area), exactly like Pure Live's danmakuArea.
+  static const String areaFull = 'full';
+  static const String areaHalf = 'half';
+  static const String areaThird = 'third';
+
+  /// Default area fraction (whole video).
+  static const double defaultAreaFraction = 1.0;
+
+  static const Map<String, double> areaFractions = {
+    areaFull: 1.0,
+    areaHalf: 0.5,
+    areaThird: 1 / 3,
+  };
+
+  static String area({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final raw = b?.get(HiveKeys.danmakuArea);
+    if (raw is String && areaFractions.containsKey(raw)) return raw;
+    return areaFull;
+  }
+
+  static double areaFraction({Box<dynamic>? box}) =>
+      areaFractions[area(box: box)] ?? defaultAreaFraction;
+
+  static Future<void> setArea(String value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuArea,
+      areaFractions.containsKey(value) ? value : areaFull,
+    );
+  }
 }
 
 /// The caller's box, or HiveStore.box when Hive is initialised.

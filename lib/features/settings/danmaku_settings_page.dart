@@ -1,11 +1,14 @@
-// Danmaku settings — per-platform on/off, font size, opacity.
+// Danmaku settings — per-platform on/off, font size, opacity, area.
 //
 // Every control below saves to Hive immediately via [DanmakuSettings]
 // and the live room honours it (live_room_page.dart): the per-platform
-// switch gates the transport, font size / opacity style the list, and
-// changes apply while a room is open, no restart. Speed / area have
-// no control: a list has no scroll speed and no overlay area to size,
-// so they are explained as text, not fake sliders.
+// switch gates the transport, font size / opacity style the list, the
+// area caps the fullscreen floating danmaku (BarrageConfig.area), and
+// changes apply while a room is open, no restart. Speed has no control:
+// a list has no scroll speed, so it is explained as text, not a fake
+// slider. The area does NOT move the portrait list — that list is a
+// chat list below the video, not an overlay; it only limits the
+// fullscreen flying danmaku, and the UI says so.
 
 import 'package:flutter/material.dart';
 
@@ -26,6 +29,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
   late Map<String, bool> _enabled;
   late double _fontSize;
   late double _opacity;
+  late String _area;
 
   // S2 chat-list style.
   late String _listStyle;
@@ -51,6 +55,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
     _enabled = DanmakuSettings.enabledMap();
     _fontSize = DanmakuSettings.fontSize();
     _opacity = DanmakuSettings.opacity();
+    _area = DanmakuSettings.area();
     _listStyle = DanmakuSettings.listStyle();
     _listSpacing = DanmakuSettings.listSpacing();
     _showUsernames = DanmakuSettings.showUsernames();
@@ -185,6 +190,33 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                     fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const HaoSectionTitle('弹幕区域'),
+          SettingsGroup(
+            children: [
+              ListTile(
+                title: Text('弹幕区域', style: TextStyle(color: theme.textPrimary)),
+                subtitle: Text(
+                  '仅全屏时生效：弹幕在视频上覆盖的区域。竖屏时弹幕是下方列表，不受影响',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                trailing: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'full', label: Text('全屏')),
+                    ButtonSegment(value: 'half', label: Text('上半屏')),
+                    ButtonSegment(value: 'third', label: Text('上 1/3')),
+                  ],
+                  selected: {_area},
+                  onSelectionChanged: (selected) async {
+                    final v = selected.first;
+                    await DanmakuSettings.setArea(v);
+                    if (!mounted) return;
+                    setState(() => _area = v);
+                  },
                 ),
               ),
             ],
@@ -475,13 +507,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                 title: Text('弹幕速度', style: TextStyle(color: theme.textPrimary)),
                 subtitle: Text(
                   '当前弹幕为直播间下方的列表形式，没有滚动速度可调',
-                  style: TextStyle(color: theme.textMuted),
-                ),
-              ),
-              ListTile(
-                title: Text('弹幕区域', style: TextStyle(color: theme.textPrimary)),
-                subtitle: Text(
-                  '弹幕列表占直播间下方全部区域，暂无区域范围设置',
                   style: TextStyle(color: theme.textMuted),
                 ),
               ),

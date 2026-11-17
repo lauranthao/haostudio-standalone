@@ -272,34 +272,32 @@ if (typeof globalThis.lx === 'undefined') {
   // 初始化
   console.log('准备初始化');
   
-  setTimeout(function() {
-    try {
-      console.log('发送初始化事件');
-      
-      var config = {
-        sources: {
-          kw: {
-            name: '酷我音乐',
-            type: 'music',
-            actions: ['musicUrl'],
-            qualitys: ['128k', '192k', '320k', 'flac'] // 添加flac支持
-          },
-          wy: {
-            name: '网易云音乐',
-            type: 'music',
-            actions: ['musicUrl'],
-            qualitys: ['128k', '320k', 'flac'] // 添加flac支持
-          }
+  try {
+    console.log('发送初始化事件');
+    
+    var config = {
+      sources: {
+        kw: {
+          name: '酷我音乐',
+          type: 'music',
+          actions: ['musicUrl'],
+          qualitys: ['128k', '192k', '320k', 'flac'] // 添加flac支持
+        },
+        wy: {
+          name: '网易云音乐',
+          type: 'music',
+          actions: ['musicUrl'],
+          qualitys: ['128k', '320k', 'flac'] // 添加flac支持
         }
-      };
-      
-      globalThis.lx.send(globalThis.lx.EVENT_NAMES.inited, config);
-      console.log('初始化完成');
-      
-    } catch (error) {
-      console.log('初始化失败:', error);
-    }
-  }, 100);
+      }
+    };
+    
+    globalThis.lx.send(globalThis.lx.EVENT_NAMES.inited, config);
+    console.log('初始化完成');
+    
+  } catch (error) {
+    console.log('初始化失败:', error);
+  }
 }
 
 console.log('脚本加载完成');
