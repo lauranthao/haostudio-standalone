@@ -9,12 +9,24 @@ import 'dart:async';
 //   vertical padding 6), FeatureCard :400-457 (230x132, radius 12,
 //   white 0.12 stroke 0.5pt, padding 14, icon 22, title 15 bold,
 //   subtitle 11 white 0.75, text shadow black 0.4 r2 y1, cover +
-//   black 0.1->0.68 gradient). C1/C2: NO Kumone red/purple gradient —
-//   no-cover cards use a theme-accent gradient (accent darkened
-//   25%->45% toward black, + white 0.18 radial highlight top-leading,
-//   same shape as Kumone's); the daily card uses the cached daily
-//   first cover when the Daily page has built one (MusicStore.getDaily
-//   sync read — no extra network), gradient fallback otherwise.
+//   black 0.1->0.68 gradient). C1/C2 (REVISED 2026-11-18 — chen: the
+//   all-black cards are ugly): NO theme-accent gradient — the accent
+//   is black after the blue->black rule, so all five cards read black.
+//   Each card gets its own Kumone gradient (topLeading->
+//   bottomTrailing + white 0.18 radial highlight, same shape as
+//   Kumone's FeatureCard): 搜歌 = Theme.swift:9-10 accentGradient
+//   #F85B5B->#C92929; 每日推荐 fallback = HomeView.swift:401-402
+//   FeatureCard default #BF2938->#F25947 (cover path unchanged);
+//   歌单广场 = HomeView.swift:268-269 心动模式 #D93069->#FA6B57;
+//   排行榜 = HomeView.swift:262-263 私人漫游 indigo, SHIFTED blue
+//   (#29336B->#5C3D9E is purple — banned — so red lowered and blue
+//   raised: #1A408C->#2959D9, hue ~220deg, reads deep blue);
+//   听歌报告 = derived from :268-269 pink-orange, hue shifted
+//   rose->amber: #D96114->#FA9433. No two cards share a gradient,
+//   none is black or grey. Cards are coloured artwork like Kumone's
+//   and do not change with the app theme (white text + shadow stay
+//   readable in light and dark); the blue->black rule still applies
+//   everywhere else.
 // - P0-2: sections default EXPANDED (Kumone home never collapses);
 //   head 22 semibold, no leading chevron (Components.swift:100-130
 //   SectionHeader, title2 22 semibold); section spacing 20 and
@@ -112,14 +124,16 @@ class MusicTabPage extends StatefulWidget {
   State<MusicTabPage> createState() => _MusicTabPageState();
 }
 
-/// One feature-shelf card: icon, title, subtitle, destination, and an
-/// optional real cover (daily card only — the rest use the theme
-/// gradient, see the file header).
+/// One feature-shelf card: icon, title, subtitle, destination, its own
+/// Kumone gradient (see the file header — one distinct gradient per
+/// card, never black/grey), and an optional real cover (daily card
+/// only — the cover replaces the gradient, with the black scrim).
 class _FeatureTile {
   const _FeatureTile({
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.gradient,
     required this.onTap,
     this.showsDate = false,
     this.cover,
@@ -128,6 +142,10 @@ class _FeatureTile {
   final IconData icon;
   final String title;
   final String subtitle;
+
+  /// Two-stop gradient, topLeading -> bottomTrailing (Kumone
+  /// FeatureCard, HomeView.swift:415).
+  final List<Color> gradient;
   final VoidCallback onTap;
   final bool showsDate;
   final String? cover;
@@ -411,36 +429,49 @@ class _MusicTabPageState extends State<MusicTabPage> {
 
   Widget _featureShelf(HaoTheme theme) {
     final tiles = <_FeatureTile>[
+      // Kumone Theme.swift:9-10 accentGradient.
       _FeatureTile(
         icon: Icons.search,
         title: '搜歌',
         subtitle: '全网音乐一键搜',
+        gradient: const [Color(0xFFF85B5B), Color(0xFFC92929)],
         onTap: () => _push(const SongSearchPage()),
       ),
+      // Kumone HomeView.swift:401-402 FeatureCard default — fallback
+      // when there is no cached daily cover; the cover path wins.
       _FeatureTile(
         icon: Icons.calendar_today,
         title: '每日推荐',
         subtitle: '根据你的口味生成',
+        gradient: const [Color(0xFFBF2938), Color(0xFFF25947)],
         showsDate: true,
         cover: _dailyFirstCover(),
         onTap: () => _push(const DailyPage()),
       ),
+      // Kumone HomeView.swift:268-269 心动模式.
       _FeatureTile(
         icon: Icons.grid_view,
         title: '歌单广场',
         subtitle: '发现大家的好歌单',
+        gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
         onTap: () => _push(const PlazaPage()),
       ),
+      // Kumone HomeView.swift:262-263 私人漫游 indigo, shifted blue
+      // (purple end banned — see the file header).
       _FeatureTile(
         icon: Icons.leaderboard,
         title: '排行榜',
         subtitle: '热门歌曲榜单',
+        gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
         onTap: () => _push(const ChartsPage()),
       ),
+      // Derived from HomeView.swift:268-269 pink-orange, hue shifted
+      // rose -> amber (see the file header).
       _FeatureTile(
         icon: Icons.bar_chart,
         title: '听歌报告',
         subtitle: '回顾你的听歌足迹',
+        gradient: const [Color(0xFFD96114), Color(0xFFFA9433)],
         onTap: () => _push(const ListenReportPage()),
       ),
     ];
@@ -454,7 +485,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
             _StaggerIn(
               index: i,
               id: 'home-feature-$i',
-              child: _FeatureCard(tile: tiles[i], theme: theme),
+              child: _FeatureCard(tile: tiles[i]),
             ),
           ],
         ],
@@ -985,16 +1016,15 @@ class _MusicTabPageState extends State<MusicTabPage> {
 /// (Theme.Radius.large), white 0.12 stroke 0.5pt, padding 14, icon 22
 /// top-left, title 15 bold + subtitle 11 white 0.75 bottom-left, text
 /// shadow black 0.4 r2 y1; background is the cover + black 0.1->0.68
-/// gradient, or (no cover) a gradient + white 0.18 radial highlight.
-/// C1/C2: the no-cover gradient is theme-accent (accent darkened 25%
-/// toward black at the top-leading end, 45% at the bottom-trailing
-/// end — white bold text stays readable in all 8 theme/mode combos),
-/// never Kumone's red or purple.
+/// gradient, or (no cover) the tile's own Kumone gradient + white 0.18
+/// radial highlight (top-leading, endRadius 220). The gradient comes
+/// from the tile (one distinct Kumone gradient per card — see the file
+/// header); the theme accent is never used here, so the cards stay
+/// coloured in all 4 themes x light/dark.
 class _FeatureCard extends StatelessWidget {
-  const _FeatureCard({required this.tile, required this.theme});
+  const _FeatureCard({required this.tile});
 
   final _FeatureTile tile;
-  final HaoTheme theme;
 
   @override
   Widget build(BuildContext context) {
@@ -1026,9 +1056,9 @@ class _FeatureCard extends StatelessWidget {
                       ? Image(
                           image: MusicImageProvider(cover),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _themeGradientBackground(),
+                          errorBuilder: (_, _, _) => _gradientBackground(),
                         )
-                      : _themeGradientBackground(),
+                      : _gradientBackground(),
                 ),
                 if (cover != null)
                   const Positioned.fill(
@@ -1099,9 +1129,9 @@ class _FeatureCard extends StatelessWidget {
     );
   }
 
-  /// Theme-accent gradient + Kumone's white 0.18 radial highlight
-  /// (top-leading, endRadius 220 on a 230x132 card).
-  Widget _themeGradientBackground() {
+  /// The tile's own Kumone gradient + Kumone's white 0.18 radial
+  /// highlight (top-leading, endRadius 220 on a 230x132 card).
+  Widget _gradientBackground() {
     return Stack(
       children: [
         Positioned.fill(
@@ -1110,10 +1140,7 @@ class _FeatureCard extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color.lerp(theme.accent, Colors.black, 0.25)!,
-                  Color.lerp(theme.accent, Colors.black, 0.45)!,
-                ],
+                colors: tile.gradient,
               ),
             ),
           ),
