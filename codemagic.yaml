@@ -45,9 +45,12 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios && pod install
       - name: Build iOS simulator app
         script: |
-          flutter build ios --simulator
+          flutter build ios --simulator --release --no-codesign
           ls -lh build/ios/iphonesimulator/Runner.app
       - name: Zip simulator app for Appetize
         script: |
