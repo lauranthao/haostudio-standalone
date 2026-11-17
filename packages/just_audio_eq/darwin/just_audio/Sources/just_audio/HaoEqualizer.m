@@ -249,7 +249,7 @@ static void HaoEqualizerTapProcess(MTAudioProcessingTapRef tap,
         return nil;
     }
     AVMutableAudioMixInputParameters *params =
-        [[AVMutableAudioMixInputParameters alloc] initWithTrack:track];
+        [AVMutableAudioMixInputParameters audioMixInputParametersWithTrack:track];
     params.audioTapProcessor = tap;
     // audioTapProcessor retains the tap; release our create reference.
     CFRelease(tap);

@@ -55,6 +55,15 @@ just_audio exposes no handle to it (see below).
    The `audioTapProcessor` selector error in the same build was a
    knock-on of the unknown type. Lesson: Swift->ObjC ports must use the
    `Ref` CF type names, never the Swift-renamed ones.
+6. **Build #10 fix (2026-11-18): `[[... alloc] initWithTrack:track]` ->
+   `[AVMutableAudioMixInputParameters audioMixInputParametersWithTrack:track]`**
+   in `audioMixForTrack:`. Build #10 (with the Ref fix in) failed with
+   "No visible @interface ... declares the selector 'initWithTrack:'" —
+   the instance initializer is not visible to the ObjC compiler in the
+   current SDK, while the `audioMixInputParametersWithTrack:` class
+   factory is the canonical documented constructor (Apple sample code
+   and every ObjC tutorial use it). Build #10's log had no other error,
+   so `audioTapProcessor` resolves fine once the type is right.
 
 ## Behaviour contract (what Dart relies on)
 
