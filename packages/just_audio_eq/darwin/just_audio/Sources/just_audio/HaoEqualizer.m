@@ -49,14 +49,14 @@ static float HaoLinearGain(double gainDb) {
     return (float)pow(10, gainDb / 20);
 }
 
-static void HaoEqualizerTapInit(MTAudioProcessingTap tap,
+static void HaoEqualizerTapInit(MTAudioProcessingTapRef tap,
                                 void *clientInfo, void **tapStorageOut);
-static void HaoEqualizerTapFinalize(MTAudioProcessingTap tap);
-static void HaoEqualizerTapPrepare(MTAudioProcessingTap tap,
+static void HaoEqualizerTapFinalize(MTAudioProcessingTapRef tap);
+static void HaoEqualizerTapPrepare(MTAudioProcessingTapRef tap,
                                    CMItemCount maxFrames,
                                    const AudioStreamBasicDescription *processingFormat);
-static void HaoEqualizerTapUnprepare(MTAudioProcessingTap tap);
-static void HaoEqualizerTapProcess(MTAudioProcessingTap tap,
+static void HaoEqualizerTapUnprepare(MTAudioProcessingTapRef tap);
+static void HaoEqualizerTapProcess(MTAudioProcessingTapRef tap,
                                    CMItemCount numberFrames,
                                    MTAudioProcessingTapFlags flags,
                                    AudioBufferList *bufferListInOut,
@@ -240,7 +240,7 @@ static void HaoEqualizerTapProcess(MTAudioProcessingTap tap,
     callbacks.unprepare = HaoEqualizerTapUnprepare;
     callbacks.process = HaoEqualizerTapProcess;
 
-    MTAudioProcessingTap tap = NULL;
+    MTAudioProcessingTapRef tap = NULL;
     OSStatus status = MTAudioProcessingTapCreate(
         kCFAllocatorDefault, &callbacks,
         kMTAudioProcessingTapCreationFlag_PostEffects, &tap);
@@ -339,17 +339,17 @@ static void HaoEqualizerTapProcess(MTAudioProcessingTap tap,
 
 // MARK: - Tap callbacks (C functions, Beans equalizerTap*)
 
-static void HaoEqualizerTapInit(MTAudioProcessingTap tap,
+static void HaoEqualizerTapInit(MTAudioProcessingTapRef tap,
                                 void *clientInfo, void **tapStorageOut) {
     (void)tap;
     *tapStorageOut = clientInfo;
 }
 
-static void HaoEqualizerTapFinalize(MTAudioProcessingTap tap) {
+static void HaoEqualizerTapFinalize(MTAudioProcessingTapRef tap) {
     (void)tap;
 }
 
-static void HaoEqualizerTapPrepare(MTAudioProcessingTap tap,
+static void HaoEqualizerTapPrepare(MTAudioProcessingTapRef tap,
                                    CMItemCount maxFrames,
                                    const AudioStreamBasicDescription *processingFormat) {
     (void)maxFrames;
@@ -358,11 +358,11 @@ static void HaoEqualizerTapPrepare(MTAudioProcessingTap tap,
     [equalizer prepareWithFormat:processingFormat];
 }
 
-static void HaoEqualizerTapUnprepare(MTAudioProcessingTap tap) {
+static void HaoEqualizerTapUnprepare(MTAudioProcessingTapRef tap) {
     (void)tap;
 }
 
-static void HaoEqualizerTapProcess(MTAudioProcessingTap tap,
+static void HaoEqualizerTapProcess(MTAudioProcessingTapRef tap,
                                    CMItemCount numberFrames,
                                    MTAudioProcessingTapFlags flags,
                                    AudioBufferList *bufferListInOut,

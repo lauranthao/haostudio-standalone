@@ -18,5 +18,8 @@ A flutter plugin for playing audio.
   s.osx.dependency 'FlutterMacOS'
   s.ios.deployment_target = '12.0'
   s.osx.deployment_target = '10.14'
+  # HaoEqualizer.m uses MTAudioProcessingTap (MediaToolbox) + AVAudioMix
+  # (AVFoundation); upstream just_audio links neither explicitly.
+  s.frameworks = 'AVFoundation', 'MediaToolbox'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

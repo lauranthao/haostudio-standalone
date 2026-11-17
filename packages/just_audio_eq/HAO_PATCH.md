@@ -45,6 +45,16 @@ just_audio exposes no handle to it (see below).
    `com.haostudio.standalone/equalizer`, method `updateSettings`
    `{enabled, gains[10], preamp}` -> `HaoEqualizer` singleton. Same
    plugin instance handles both channels; method names do not collide.
+4. **`just_audio.podspec` — `s.frameworks = 'AVFoundation', 'MediaToolbox'`**
+   (upstream lists neither; the tap symbols live in MediaToolbox).
+5. **Build #8 fix (2026-11-18): `MTAudioProcessingTap` -> `MTAudioProcessingTapRef`**
+   in `HaoEqualizer.m` (11 sites: tap callbacks + local). Beans is Swift,
+   where the type is `MTAudioProcessingTap`; in ObjC the type is
+   `MTAudioProcessingTapRef` only — the Swift name does not exist, and
+   Xcode failed the build with "Unknown type name 'MTAudioProcessingTap'".
+   The `audioTapProcessor` selector error in the same build was a
+   knock-on of the unknown type. Lesson: Swift->ObjC ports must use the
+   `Ref` CF type names, never the Swift-renamed ones.
 
 ## Behaviour contract (what Dart relies on)
 
