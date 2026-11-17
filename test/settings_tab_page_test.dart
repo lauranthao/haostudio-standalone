@@ -94,8 +94,8 @@ void main() {
     expect(engineChevron(Icons.keyboard_arrow_down), findsOneWidget);
 
     // Expand: all three engines appear; the state is persisted.
-    // Two '播放器引擎' texts (section title + header) — the header is
-    // the last one.
+    // One '播放器引擎' text now (the redundant section title above the
+    // header was removed — chen: no duplicates).
     await tester.tap(find.text('播放器引擎').last);
     await tester.pumpAndSettle();
     expect(find.byType(RadioListTile<String>), findsNWidgets(3));
@@ -141,8 +141,8 @@ void main() {
     await pumpPage(tester);
     // Collapsed: panel rows hidden.
     expect(find.text('与其他音频同时播放'), findsNothing);
-    // Two '播放设置' texts: the section title and the expandable
-    // header — the header is the last one.
+    // One '播放设置' text now (the redundant section title above the
+    // header was removed — chen: no duplicates).
     await tester.tap(find.text('播放设置').last);
     await tester.pumpAndSettle();
     expect(HiveStore.getBool(HiveKeys.playbackSectionExpanded, false),
@@ -168,7 +168,12 @@ void main() {
     expect(find.text('调节低音、人声与高音'), findsOneWidget);
     expect(find.text('已关闭'), findsOneWidget);
     expect(find.text('第三方音源'), findsOneWidget);
-    expect(find.text('管理 / 导入音源'), findsOneWidget);
+    // No second entry: the '管理 / 导入音源' button inside this panel
+    // opened the same page as the standalone 音源管理 row (chen: no
+    // duplicates) — it was removed; the count row stays as info only
+    // and the single entry is the 音源管理 row in 源管理.
+    expect(find.text('管理 / 导入音源'), findsNothing);
+    expect(find.text('音源管理'), findsOneWidget);
     // Removed by chen: VIP notice (不提醒). The equalizer removal was
     // only because no engine existed; the engine is stage 3.
     expect(find.textContaining('会员歌提醒'), findsNothing);

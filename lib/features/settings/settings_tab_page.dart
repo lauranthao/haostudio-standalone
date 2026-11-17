@@ -288,7 +288,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             onTap: () => _resetFont(context),
           ),
           const SizedBox(height: 20),
-          const _SectionTitle('播放设置'),
           _ExpandableHeader(
             icon: Icons.play_circle_fill,
             title: '播放设置',
@@ -332,11 +331,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 if (value) HaoHaptics.tap();
               },
               sourceCount: _sourceCount,
-              onManageSources: () async {
-                HaoHaptics.tap();
-                await Get.to(() => const MusicSourcesPage());
-                _loadSourceCount();
-              },
               equalizerEnabled: EqualizerStore.ensure().enabled,
               onOpenEqualizer: () async {
                 HaoHaptics.tap();
@@ -346,7 +340,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             ),
           ],
           const SizedBox(height: 20),
-          const _SectionTitle('播放器引擎'),
           _ExpandableHeader(
             icon: Icons.movie_filter,
             title: '播放器引擎',
@@ -1006,7 +999,8 @@ class _ExpandableHeader extends StatelessWidget {
 /// 与其他音频同时播放 / 120Hz 高刷新 (display) / 启动时自动播放上次歌曲 /
 /// 播放音质 (chips) / 触感反馈 / 均衡器 (Beans `equalizerSection`,
 /// ProfileView.swift:2255: row + 已开启/已关闭 trailing, opens the
-/// 10-band page) / 第三方音源 (count + black manage button).
+/// 10-band page) / 第三方音源 (count display only — management lives
+/// in 源管理 → 音源管理， the single entry; no second button here).
 /// No VIP-notice row (chen: 不提醒) and a single quality row (chen:
 /// 全是第三方源，只留一个音质设置).
 class _PlaybackPanel extends StatelessWidget {
@@ -1020,7 +1014,6 @@ class _PlaybackPanel extends StatelessWidget {
     required this.hapticsOn,
     required this.onHapticsChanged,
     required this.sourceCount,
-    required this.onManageSources,
     required this.equalizerEnabled,
     required this.onOpenEqualizer,
   });
@@ -1034,14 +1027,12 @@ class _PlaybackPanel extends StatelessWidget {
   final bool hapticsOn;
   final ValueChanged<bool> onHapticsChanged;
   final int? sourceCount;
-  final VoidCallback onManageSources;
   final bool equalizerEnabled;
   final VoidCallback onOpenEqualizer;
 
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GlassCard(
       radius: 22,
       padding: const EdgeInsets.all(16),
@@ -1172,45 +1163,6 @@ class _PlaybackPanel extends StatelessWidget {
                 style: TextStyle(color: theme.textSecondary, fontSize: 12),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          GlassPressScale(
-            pressedScale: 0.97,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onManageSources,
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    // Beans: black capsule, white text. In dark mode a
-                    // pure-black capsule is invisible on a black page,
-                    // so dark mode uses dark grey (chen's rule).
-                    color: isDark
-                        ? const Color(0xFF3A3A3C)
-                        : const Color(0xFF000000),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.edit_square, size: 15, color: Colors.white),
-                      SizedBox(width: 8),
-                      Text(
-                        '管理 / 导入音源',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
