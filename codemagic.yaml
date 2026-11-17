@@ -50,7 +50,7 @@ workflows:
           cd ios && pod install
       - name: Build iOS simulator app
         script: |
-          flutter build ios --simulator --release --no-codesign
+          flutter build ios --simulator --no-codesign
           ls -lh build/ios/iphonesimulator/Runner.app
       - name: Zip simulator app for Appetize
         script: |
