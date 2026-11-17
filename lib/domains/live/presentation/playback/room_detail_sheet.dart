@@ -26,6 +26,8 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/glass.dart';
+import '../../../../features/video/widgets/referer_image.dart';
 import '../../live_follow_store.dart';
 import '../../live_status.dart';
 import 'live_room_links.dart';
@@ -39,11 +41,10 @@ Future<void> showRoomDetailSheet({
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    backgroundColor: HaoTheme.of(context).surfaceStrong,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (context) => _RoomDetailSheet(room: room),
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    builder: (context) =>
+        GlassSheetBackground(child: _RoomDetailSheet(room: room)),
   );
 }
 
@@ -167,14 +168,23 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       ),
                     ],
                   ),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundImage: room.avatar.isEmpty
-                        ? null
-                        : NetworkImage(room.avatar),
+                  // Dio loader (RefererImage), not CircleAvatar +
+                  // NetworkImage: plain NetworkImage shows blank on
+                  // chen's phone (v1.0.5 bug). Same 48x48 circle, same
+                  // '?' fallback while loading / on failure.
+                  child: ClipOval(
                     child: room.avatar.isEmpty
-                        ? Text(room.nick.isEmpty ? '?' : room.nick[0])
-                        : null,
+                        ? _AvatarFallback(room: room, theme: theme)
+                        : RefererImage(
+                            url: room.avatar,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            fallback: _AvatarFallback(
+                              room: room,
+                              theme: theme,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -370,6 +380,34 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 48x48 avatar fallback: the old CircleAvatar '?' child, same size
+/// and colours — shown when there is no avatar URL and while the Dio
+/// avatar load is pending / on failure (RefererImage fallback).
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback({required this.room, required this.theme});
+
+  final LiveRoom room;
+  final HaoTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      color: theme.accentSoft,
+      alignment: Alignment.center,
+      child: Text(
+        room.nick.isEmpty ? '?' : room.nick[0],
+        style: TextStyle(
+          color: theme.textPrimary,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

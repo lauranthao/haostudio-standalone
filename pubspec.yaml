@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.9+10
+version: 1.1.0+11
 
 environment:
   sdk: ^3.13.0
@@ -34,6 +34,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+
+  # Liquid glass (iOS 26/27 shader glass) for floating chrome: mini
+  # player, dialogs, sheets, switches. Zero third-party deps of its
+  # own. Our 4-theme system stays authoritative — see
+  # lib/core/theme/liquid_glass_theme.dart for the mapping.
+  liquid_glass_widgets: ^1.17.5
 
   # --- Player kernels (Pure Live 3.x, inventory §4.1) ---
   # media_kit / media_kit_video come from the Predidit fork, NOT pub.dev:
@@ -95,7 +101,27 @@ dependencies:
   share_plus: ^13.3.1
   url_launcher: ^6.3.3
   flutter_js: ^0.8.7
-  just_audio: ^0.10.6
+  # Equalizer (stage 3): vendored just_audio fork with the
+  # MTAudioProcessingTap EQ engine in the darwin layer — see
+  # packages/just_audio_eq/HAO_PATCH.md. Dart API is identical to
+  # just_audio 0.10.6; do NOT switch back to the hosted version or
+  # the EQ hook is lost.
+  just_audio:
+    path: packages/just_audio_eq
+
+  # Audio-session config for the "与其他音频同时播放" setting
+  # (Beans PlayerManager.applyAudioMixPreference): category playback +
+  # mixWithOthers. Direct dep (not transitive via just_audio) because
+  # lib/ imports it; just_audio only activates the session, it never
+  # re-configures the category, so our configure() call is not clobbered.
+  audio_session: ^0.2.4
+
+  # Screen-on during live / VOD playback — owned by PlaybackSession
+  # (see playback_session.dart). Declared here (not just in the
+  # override below) because lib/ imports it directly; the platform
+  # interface is imported by test/playback_wakelock_test.dart's fake.
+  wakelock_plus: ^1.7.0
+  wakelock_plus_platform_interface: ^1.7.0
 
 # The Predidit media_kit_video fork pins wakelock_plus 1.3.3 exactly, while
 # better_player_plus 1.4.1 needs wakelock_plus ^1.7.0. Pure Live resolves

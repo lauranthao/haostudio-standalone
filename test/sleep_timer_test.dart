@@ -130,10 +130,22 @@ void main() {
 
   group('option labels', () {
     test('sheet order and labels', () {
-      expect(
-        SleepTimerOptionX.all.map((o) => o.label).toList(),
-        ['15 分钟', '30 分钟', '60 分钟', '90 分钟', '到歌单结束', '关闭'],
-      );
+      expect(SleepTimerOptionX.all.map((o) => o.label).toList(), [
+        '5 分钟',
+        '15 分钟',
+        '30 分钟',
+        '45 分钟',
+        '60 分钟',
+        '90 分钟',
+        '到歌单结束',
+        '自定义',
+        '关闭',
+      ]);
+    });
+
+    test('new 5/45 options carry their durations (Beans sleep ladder)', () {
+      expect(SleepTimerOption.min5.duration, const Duration(minutes: 5));
+      expect(SleepTimerOption.min45.duration, const Duration(minutes: 45));
     });
   });
 }

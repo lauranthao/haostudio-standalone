@@ -395,13 +395,14 @@ class DanmakuSettings {
   // Which part of the video the flying danmaku may cover, fullscreen
   // only (the portrait list below the video is a chat list, not an
   // overlay — it has no area to size). 'full' = whole video (default),
-  // 'half' = top half, 'third' = top third. Stored as a string so a
-  // bad value falls back to full; the live room maps it to the
-  // flame_barrage BarrageConfig.area fraction (usableHeight =
+  // 'half' = top half, 'third' = top third, 'fifth' = top fifth. Stored
+  // as a string so a bad value falls back to full; the live room maps it
+  // to the flame_barrage BarrageConfig.area fraction (usableHeight =
   // screenHeight * area), exactly like Pure Live's danmakuArea.
   static const String areaFull = 'full';
   static const String areaHalf = 'half';
   static const String areaThird = 'third';
+  static const String areaFifth = 'fifth';
 
   /// Default area fraction (whole video).
   static const double defaultAreaFraction = 1.0;
@@ -410,6 +411,7 @@ class DanmakuSettings {
     areaFull: 1.0,
     areaHalf: 0.5,
     areaThird: 1 / 3,
+    areaFifth: 1 / 5,
   };
 
   static String area({Box<dynamic>? box}) {

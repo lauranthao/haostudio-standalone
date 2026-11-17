@@ -674,6 +674,14 @@ void main() {
       expect(find.text('当前'), findsOneWidget);
       await tester.tap(find.text('other room'));
       await tester.pump();
+      // Let the sheet's exit animation finish before asserting: while
+      // it is still animating out, its row ('other room') is still in
+      // the tree next to the new room's AppBar title, so the count
+      // would read 2 for the right outcome. (Before the switch fix
+      // this test passed by accident: the extra pop() removed the new
+      // room page, and the count of 1 was the animating sheet row.)
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
       await settle(tester);
       // Switched: the new room's title is the AppBar title.
       expect(find.text('other room'), findsOneWidget);

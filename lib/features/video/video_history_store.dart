@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+import '../../core/player/kernel/video_fit.dart';
 import '../../core/storage/hive_store.dart';
 import 'cms_sources.dart';
 import 'video_models.dart';
@@ -302,6 +303,19 @@ class VideoPlaybackSettings {
   static Future<void> setPlaybackRate(double value) async {
     try {
       await HiveStore.put(HiveKeys.vodPlaybackRate, value);
+    } catch (_) {}
+  }
+
+  /// VOD picture fit (PiliPlus VideoFitType + Kazumi PlayerAspectRatio
+  /// intersection — see `VideoFitMode`): 自动 / 拉伸 / 裁剪, default
+  /// 自动. Unknown/stored garbage -> 自动. VOD only: live always
+  /// renders contain (the backends gate on their own `_isLive`).
+  static VideoFitMode get videoFit => VideoFitMode.current;
+
+  /// Fire-and-forget safe, same as [setPlaybackRate].
+  static Future<void> setVideoFit(VideoFitMode mode) async {
+    try {
+      await VideoFitMode.save(mode);
     } catch (_) {}
   }
 }

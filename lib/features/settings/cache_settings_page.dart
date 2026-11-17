@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/music_downloads.dart';
 import 'cache_service.dart';
@@ -60,22 +61,11 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
   }
 
   Future<void> _clearDownloads() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清除全部下载？'),
-        content: const Text('已下载的歌曲文件都会删除，之后需要重新下载才能离线播放。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+    final confirm = await showGlassConfirmDialog(
+      context,
+      title: '清除全部下载？',
+      content: '已下载的歌曲文件都会删除，之后需要重新下载才能离线播放。',
+      confirmLabel: '清除',
     );
     if (confirm != true || !mounted) return;
     final freed = await MusicDownloadService().clearAll();
@@ -85,22 +75,11 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
   }
 
   Future<void> _clearAll() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清除全部缓存？'),
-        content: const Text('视频首页、豆瓣、每日推荐与图片缓存都会清除，下次打开时重新加载。历史记录、收藏与歌单不受影响。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('清除'),
-          ),
-        ],
-      ),
+    final confirm = await showGlassConfirmDialog(
+      context,
+      title: '清除全部缓存？',
+      content: '视频首页、豆瓣、每日推荐与图片缓存都会清除，下次打开时重新加载。历史记录、收藏与歌单不受影响。',
+      confirmLabel: '清除',
     );
     if (confirm != true || !mounted) return;
     final freed = await CacheService.clearAll();

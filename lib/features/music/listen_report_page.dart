@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/glass.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
@@ -166,13 +167,9 @@ class _ListenReportPageState extends State<ListenReportPage> {
 
   Widget _stat(HaoTheme theme, String value, String label) {
     return Expanded(
-      child: Container(
+      child: GlassCard(
+        radius: 24,
         padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: theme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: theme.hairline),
-        ),
         child: Column(
           children: [
             Text(

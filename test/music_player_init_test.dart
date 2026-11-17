@@ -64,6 +64,13 @@ void main() {
 
   group('MusicTabPage widget', () {
     testWidgets('pumps and renders the music tab', (tester) async {
+      // iPhone-ish 390x844 logical @2x: the 最近播放 head sits below
+      // the fold in the default 800x600 test viewport and the ListView
+      // would not have built it yet.
+      tester.view.physicalSize = const Size(780, 1688);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         GetMaterialApp(
           theme: HaoThemes.of(HaoThemeId.appleGlass).light,
@@ -71,7 +78,12 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('音乐'), findsWidgets);
+      // P0-4 (Kumone redo): the AppBar title '音乐' is gone by design
+      // — the tab bar already says 音乐 and the greeting is the page's
+      // one large title. Assert on the page's own content instead.
+      expect(find.text('我的歌单'), findsOneWidget);
+      expect(find.text('最近播放'), findsOneWidget);
+      expect(find.text('搜歌'), findsOneWidget);
       expect(find.byType(Scaffold), findsOneWidget);
       await tester.pumpAndSettle();
     });

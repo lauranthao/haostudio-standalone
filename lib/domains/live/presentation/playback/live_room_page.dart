@@ -41,6 +41,7 @@ import '../../../../core/models/live_models.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/glass.dart';
 import '../../../../features/settings/source_stores.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
@@ -48,6 +49,7 @@ import '../../data/playback_header_resolver.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../features/player/screen_brightness.dart';
+import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
 import '../../../../features/music/music_player_controller.dart';
@@ -859,12 +861,19 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           if (next.platform == _room.platform && next.roomId == _room.roomId) {
             return;
           }
-          // Close the panel after switching: the sheet is a Flutter
-          // route Get doesn't track, so Get.off alone replaces the
-          // page UNDER the sheet and the panel stays open over the
-          // new room. pop() must come AFTER off: popping first then
-          // replacing in the same frame locks the navigator
-          // ('!_debugLocked' / empty history assertion).
+          // The panel already popped itself before calling onSelect
+          // (showRoomSwitchPanel's wrapper pops the sheet, then
+          // invokes this callback), so there is nothing left to pop
+          // here — the old extra pop() removed the room page itself.
+          //
+          // Get.off defaults preventDuplicates: true and derives the
+          // route name from the page builder's runtime type, so every
+          // LiveRoomPage gets the same name; the room was entered via
+          // Get.to with the same builder shape, so the guard compared
+          // the names equal and silently returned null — the switch
+          // did nothing (chen: "切换直播间也没用"). Pass
+          // preventDuplicates: false: replacing a room page with
+          // another room page is exactly what this action is for.
           Get.off(
             () => LiveRoomPage(
               room: next,
@@ -878,8 +887,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               // it builds backends by engine, not by platform.
               backendFactory: widget.backendFactory,
             ),
+            preventDuplicates: false,
           );
-          Navigator.of(context).pop();
         },
       ),
     );
@@ -905,11 +914,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         // clipped — same bug class as the music track sheet (v1.0.6).
         isScrollControlled: true,
         showDragHandle: true,
-        backgroundColor: theme.surfaceStrong,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (sheetContext) => SafeArea(
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => GlassSheetBackground(
+          child: SafeArea(
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -955,6 +963,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -1132,11 +1141,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         // (same bug class as the music track sheet, v1.0.6).
         isScrollControlled: true,
         showDragHandle: true,
-        backgroundColor: theme.surfaceStrong,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (sheetContext) => SafeArea(
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => GlassSheetBackground(
+          child: SafeArea(
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1175,6 +1183,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -1190,11 +1199,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         // the music track sheet (v1.0.6) — tall content was clipped.
         isScrollControlled: true,
         showDragHandle: true,
-        backgroundColor: theme.surfaceStrong,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        builder: (sheetContext) => SafeArea(
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => GlassSheetBackground(
+          child: SafeArea(
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1232,6 +1240,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -1273,8 +1282,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        _session.setForeground(false);
         _enterBackground();
       case AppLifecycleState.resumed:
+        _session.setForeground(true);
         unawaited(_enterForeground());
       case AppLifecycleState.inactive:
         // Transient (call, Control Center, app switcher): the room
@@ -1352,7 +1363,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     opacity: _danmakuOpacity,
                     // Danmaku area setting: the fraction of the video
                     // the flying danmaku may cover (full / top half /
-                    // top third). The engine re-derives the track
+                    // top third / top fifth). The engine re-derives the track
                     // layout live when it changes (forceRefresh).
                     area: _danmakuArea,
                     rasterizeItems: true,
@@ -1397,14 +1408,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 child: AnimatedOpacity(
                   opacity: _dragHudVisible ? 0.8 : 0.0,
                   duration: const Duration(milliseconds: 300),
-                  // Over-video HUD: black stays legible over any frame
-                  // in every theme/mode, so the card keeps its black.
-                  child: Card(
-                    color: Colors.black,
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                  // Over-video HUD: dark glass — the blur is real
+                  // (BackdropFilter over the video), black stays
+                  // legible over any frame in every theme/mode.
+                  child: DarkGlass(
+                    radius: 16,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -1640,21 +1648,22 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               left: 0,
               right: 0,
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    '重新连接…',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                child: DarkGlass(
+                  radius: 999,
+                  sigma: 16,
+                  color: Colors.black.withValues(alpha: 0.45),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      '重新连接…',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
@@ -1687,7 +1696,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.swap_horiz),
-                      tooltip: '切换',
+                      tooltip: '切换直播间',
                       // L04: switch-room panel (follows / current list /
                       // history / replay follows).
                       onPressed: _openSwitchPanel,
@@ -1724,15 +1733,51 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             shape: BoxShape.circle,
                             border: Border.all(color: theme.hairline),
                           ),
-                          child: CircleAvatar(
-                            backgroundImage: _room.avatar.isEmpty
-                                ? null
-                                : NetworkImage(_room.avatar),
+                          // Dio loader (RefererImage), not CircleAvatar
+                          // + NetworkImage: plain NetworkImage shows
+                          // blank on chen's phone (v1.0.5 bug). Same
+                          // 40x40 circle (default CircleAvatar radius
+                          // 20), same '?' fallback.
+                          child: ClipOval(
                             child: _room.avatar.isEmpty
-                                ? Text(
-                                    _room.nick.isEmpty ? '?' : _room.nick[0],
+                                ? Container(
+                                    width: 40,
+                                    height: 40,
+                                    color: theme.accentSoft,
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      _room.nick.isEmpty
+                                          ? '?'
+                                          : _room.nick[0],
+                                      style: TextStyle(
+                                        color: theme.textPrimary,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   )
-                                : null,
+                                : RefererImage(
+                                    url: _room.avatar,
+                                    width: 40,
+                                    height: 40,
+                                    fit: BoxFit.cover,
+                                    fallback: Container(
+                                      width: 40,
+                                      height: 40,
+                                      color: theme.accentSoft,
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        _room.nick.isEmpty
+                                            ? '?'
+                                            : _room.nick[0],
+                                        style: TextStyle(
+                                          color: theme.textPrimary,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -2021,15 +2066,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                     );
                               final Widget row;
                               if (_listStyle == DanmakuSettings.listStyleCard) {
-                                row = Container(
+                                row = GlassCard(
+                                  radius: 14,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme.surface,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: theme.hairline),
                                   ),
                                   child: Row(
                                     crossAxisAlignment:

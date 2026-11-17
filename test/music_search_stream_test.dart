@@ -167,10 +167,14 @@ void main() {
       );
       expect(oldDone, isTrue);
       // The new search ran the same legs and got all four.
+      // wy's OLD song (3 s) settles last but sorts to the front
+      // group — behind tx's B, which arrived first inside the
+      // wy/tx group (arrival order within the group), ahead of
+      // kg/kw (2026-11-17 platform-priority rule).
       expect(newDone, isTrue);
       expect(
         newUpdates.last.songs.map((s) => s.title).toList(),
-        ['B', 'C', 'D', 'OLD'],
+        ['B', 'OLD', 'C', 'D'],
       );
     });
   });
@@ -317,6 +321,176 @@ void main() {
       expect(titles.where((t) => t == 'Same Song').length, 1,
           reason: 'script dupe of the platform song is dropped');
       expect(titles, contains('Script Only'));
+    });
+  });
+
+  test('sortSongsByPlatformPriority: wy+tx first, arrival order within groups', () {
+    final songs = [
+      _song('k1', 'K1', MusicPlatform.kw),
+      _song('w1', 'W1', MusicPlatform.wy),
+      _song('g1', 'G1', MusicPlatform.kg),
+      _song('t1', 'T1', MusicPlatform.tx),
+      _song('w2', 'W2', MusicPlatform.wy),
+      _song('k2', 'K2', MusicPlatform.kw),
+    ];
+    final sorted = sortSongsByPlatformPriority(songs);
+    // wy + tx first (arrival order between them: W1, then T1, then
+    // W2), others after (arrival order: K1, G1, K2). Same-platform
+    // order never changes (W1 before W2, K1 before K2).
+    expect(
+      sorted.map((s) => s.title).toList(),
+      ['W1', 'T1', 'W2', 'K1', 'G1', 'K2'],
+    );
+    // Input untouched.
+    expect(
+      songs.map((s) => s.title).toList(),
+      ['K1', 'W1', 'G1', 'T1', 'W2', 'K2'],
+    );
+    // Empty / single-song are no-ops.
+    expect(sortSongsByPlatformPriority(const []), isEmpty);
+    expect(
+      sortSongsByPlatformPriority([songs.first]).map((s) => s.title),
+      ['K1'],
+    );
+  });
+
+  test('kw fast leg shows first, wy/tx jump to front when they settle', () {
+    fakeAsync((async) {
+      final api = _FakeApi(
+        delays: const {
+          MusicPlatform.wy: Duration(seconds: 2),
+          MusicPlatform.tx: Duration(seconds: 3),
+          MusicPlatform.kg: Duration(seconds: 5),
+          MusicPlatform.kw: Duration(milliseconds: 100),
+        },
+        results: {
+          MusicPlatform.wy: [
+            _song('w1', 'WY1', MusicPlatform.wy),
+            _song('w2', 'WY2', MusicPlatform.wy),
+          ],
+          MusicPlatform.tx: [_song('t', 'TX', MusicPlatform.tx)],
+          MusicPlatform.kg: [_song('g', 'KG', MusicPlatform.kg)],
+          MusicPlatform.kw: [
+            _song('k1', 'KW1', MusicPlatform.kw),
+            _song('k2', 'KW2', MusicPlatform.kw),
+          ],
+        },
+      );
+      final service = SongSearchService(api: api, scriptEngine: _FakeEngine());
+      final updates = <SearchStreamUpdate>[];
+      var done = false;
+      service.searchAllStream('test').listen(updates.add, onDone: () => done = true);
+      async.elapse(const Duration(milliseconds: 100));
+      async.flushMicrotasks();
+      // t = 100 ms: only the fastest leg (kw) has returned — its
+      // songs show immediately (秒出 kept, no waiting for wy/tx).
+      expect(updates.length, 1);
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['KW1', 'KW2'],
+      );
+      expect(done, isFalse);
+      async.elapse(const Duration(seconds: 5));
+      async.flushMicrotasks();
+      // t = 5 s: every leg settled. wy + tx moved to the front
+      // (arrival order between them: WY1/WY2 at 2 s, TX at 3 s),
+      // kw/kg after (arrival order), same-platform order kept.
+      expect(done, isTrue);
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['WY1', 'WY2', 'TX', 'KW1', 'KW2', 'KG'],
+      );
+      expect(updates.last.pending, isEmpty);
+    });
+  });
+
+  test('tx arriving before wy stays ahead of it inside the priority group', () {
+    fakeAsync((async) {
+      final api = _FakeApi(
+        delays: const {
+          MusicPlatform.wy: Duration(seconds: 2),
+          MusicPlatform.tx: Duration(milliseconds: 100),
+          MusicPlatform.kg: Duration(seconds: 5),
+          MusicPlatform.kw: Duration(seconds: 5),
+        },
+        results: {
+          MusicPlatform.wy: [_song('w', 'WY', MusicPlatform.wy)],
+          MusicPlatform.tx: [_song('t', 'TX', MusicPlatform.tx)],
+          MusicPlatform.kg: [_song('g', 'KG', MusicPlatform.kg)],
+          MusicPlatform.kw: [_song('k', 'KW', MusicPlatform.kw)],
+        },
+      );
+      final service = SongSearchService(api: api, scriptEngine: _FakeEngine());
+      final updates = <SearchStreamUpdate>[];
+      var done = false;
+      service.searchAllStream('test').listen(updates.add, onDone: () => done = true);
+      async.elapse(const Duration(milliseconds: 100));
+      async.flushMicrotasks();
+      // t = 100 ms: only tx has returned.
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['TX'],
+      );
+      async.elapse(const Duration(seconds: 5));
+      async.flushMicrotasks();
+      // wy settles at 2 s but does NOT jump ahead of tx: inside the
+      // wy/tx group the original arrival order rules.
+      expect(done, isTrue);
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['TX', 'WY', 'KG', 'KW'],
+      );
+    });
+  });
+
+  test('script-leg songs sort by their own platform, not by leg', () {
+    fakeAsync((async) {
+      final api = _FakeApi(
+        delays: const {
+          MusicPlatform.wy: Duration(seconds: 2),
+          MusicPlatform.tx: Duration(seconds: 5),
+          MusicPlatform.kg: Duration(seconds: 5),
+          MusicPlatform.kw: Duration(milliseconds: 100),
+        },
+        results: {
+          MusicPlatform.wy: [_song('w', 'W1', MusicPlatform.wy)],
+          MusicPlatform.kw: [_song('k1', 'K1', MusicPlatform.kw)],
+        },
+      );
+      final engine = _FakeEngine(
+        legs: [(pf: MusicPlatform.kw, scriptId: 'suyin')],
+        scriptResults: {
+          'suyin': [
+            {
+              'id': 'kw-s2',
+              'name': 'K2',
+              'singer': 'Y',
+              'interval': '2:30',
+            },
+          ],
+        },
+        scriptDelay: const Duration(milliseconds: 200),
+      );
+      final service = SongSearchService(api: api, scriptEngine: engine);
+      final updates = <SearchStreamUpdate>[];
+      var done = false;
+      service.searchAllStream('test').listen(updates.add, onDone: () => done = true);
+      async.elapse(const Duration(milliseconds: 200));
+      async.flushMicrotasks();
+      // t = 200 ms: kw platform song + kw script song, both rank 1.
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['K1', 'K2'],
+      );
+      async.elapse(const Duration(seconds: 5));
+      async.flushMicrotasks();
+      // t = 5 s: the late wy song sorts to the front even though
+      // the kw songs (platform + script) arrived first.
+      expect(done, isTrue);
+      expect(
+        updates.last.songs.map((s) => s.title).toList(),
+        ['W1', 'K1', 'K2'],
+      );
     });
   });
 }

@@ -17,7 +17,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/haptics.dart';
+import '../../../features/video/widgets/referer_image.dart';
+import '../../../widgets/glass_dialog.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
 import '../live_history_store.dart';
@@ -89,25 +93,14 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
   }
 
   Future<void> _confirmClear() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: const Text('清空直播历史？'),
-        content: const Text('将删除全部直播观看记录，此操作无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
+    // Glass confirm, like every other destructive confirm in the app
+    // (playlist delete, video history clear).
+    final confirmed = await showGlassConfirmDialog(
+      context,
+      title: '清空直播历史？',
+      content: '将删除全部直播观看记录，此操作无法恢复。',
+      confirmLabel: '清空',
+      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirmed != true || !mounted) return;
     await LiveHistoryStore.clear();
@@ -122,22 +115,29 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
           ? ''
           : '$selected',
     );
-    final chosen = await showDialog<int>(
-      context: context,
-      builder: (context) => StatefulBuilder(
+    // Glass dialog, like every other dialog in the app (glass_dialog
+    // rule): same shell, same title/action styles as the glass
+    // confirm; chips / field / warning are unchanged.
+    final chosen = await showGlassDialog<int>(
+      context,
+      builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           final wouldDelete = LiveHistoryStore.wouldDeleteCount(selected);
           final theme = HaoTheme.of(context);
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text('历史记录上限'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '历史记录上限',
+                style: TextStyle(
+                  color: theme.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
@@ -218,16 +218,25 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                     ),
                   ),
                 ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(selected),
-                child: const Text('确定'),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      '取消',
+                      style: TextStyle(color: theme.textSecondary),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(selected),
+                    child: Text(
+                      '确定',
+                      style: TextStyle(color: theme.accent),
+                    ),
+                  ),
+                ],
               ),
             ],
           );
@@ -502,18 +511,18 @@ class _HistoryCardState extends State<_HistoryCard> {
       entry.platform,
       entry.roomId,
     );
-    return Card(
-      color: theme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: theme.hairline),
-      ),
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: widget.onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            HaoHaptics.tap();
+            widget.onTap();
+          },
+          borderRadius: BorderRadius.circular(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -532,10 +541,12 @@ class _HistoryCardState extends State<_HistoryCard> {
                       fit: StackFit.expand,
                       children: [
                         if (entry.cover.isNotEmpty)
-                          Image.network(
-                            entry.cover,
+                          // Dio loader, not Image.network (v1.0.5 phone
+                          // bug: plain NetworkImage shows blank).
+                          RefererImage(
+                            url: entry.cover,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => ColoredBox(
+                            fallback: ColoredBox(
                               color: theme.surfaceSolid,
                             ),
                           )

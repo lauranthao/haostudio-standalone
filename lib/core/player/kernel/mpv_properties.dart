@@ -17,9 +17,112 @@
 
 import 'dart:io';
 
+import '../../storage/hive_store.dart';
+
+/// Low-memory mode — Kazumi `LowMemoryMode`
+/// (`lib/services/player/low_memory_mode.dart`, GPL-3.0: idea + mode
+/// set only, no code copied) adapted to our table.
+///
+/// Kazumi: auto / always / never, stored as 'auto' | 'always' |
+/// 'never' (legacy bool key migrates to always/auto); auto means
+/// "metered network" (mobile data on, WLAN off) and the effect is
+/// `cache-secs 0` + `demuxer-readahead-secs 0` while suspended
+/// (`player_playback_controller.dart:255`).
+///
+/// Our adaptation (own structure, same three modes):
+/// - auto (default): keeps the behaviour this table already had —
+///   low-end when the device has <= 4 CPU cores (`_lowEnd`). We have
+///   no metered-network service, so Kazumi's network trigger is NOT
+///   copied; the doc says so instead of faking it.
+/// - always: force the low-end property set on any device.
+/// - never: force the full property set on any device.
+/// The low-end set itself is unchanged (40 MB forward / 5 MB back,
+/// audio-buffer 0.4, reconnect triple, vd-lavc-threads 2, lowres=1,
+/// skiploopfilter nonref); the mode only decides WHEN it applies.
+/// Applied at open() (mpv_backend reads the mode then), so a change
+/// takes effect on the NEXT open — live and VOD share the base table,
+/// so the mode covers both.
+enum LowMemoryMode {
+  auto('auto', '自动'),
+  always('always', '始终开启'),
+  never('never', '始终关闭');
+
+  const LowMemoryMode(this.storageValue, this.label);
+
+  final String storageValue;
+  final String label;
+
+  static LowMemoryMode fromStorageValue(Object? value) {
+    if (value is String) {
+      for (final mode in LowMemoryMode.values) {
+        if (mode.storageValue == value) return mode;
+      }
+    }
+    return LowMemoryMode.auto;
+  }
+
+  /// Cycle order for the settings row: 自动 -> 始终开启 -> 始终关闭.
+  LowMemoryMode get next {
+    final i = LowMemoryMode.values.indexOf(this);
+    return LowMemoryMode.values[(i + 1) % LowMemoryMode.values.length];
+  }
+
+  /// Persisted mode; uninitialised/corrupt Hive falls back to [auto].
+  static LowMemoryMode get current {
+    try {
+      return fromStorageValue(
+        HiveStore.getString(HiveKeys.lowMemoryMode, 'auto'),
+      );
+    } catch (_) {
+      return LowMemoryMode.auto;
+    }
+  }
+
+  static Future<void> save(LowMemoryMode mode) =>
+      HiveStore.put(HiveKeys.lowMemoryMode, mode.storageValue);
+
+  /// Whether the low-end property set applies. [cpuCores] is a test
+  /// seam (production passes nothing and reads the device).
+  bool isEffective({int? cpuCores}) {
+    switch (this) {
+      case LowMemoryMode.always:
+        return true;
+      case LowMemoryMode.never:
+        return false;
+      case LowMemoryMode.auto:
+        return (cpuCores ?? _cpuCores) <= 4;
+    }
+  }
+
+  /// Description shown in Settings (Kazumi's words where they still
+  /// apply; the auto line is ours — Kazumi's metered-network trigger
+  /// does not exist here, see the enum doc above).
+  String get description => switch (this) {
+    LowMemoryMode.auto => '按设备性能自动决定，低配设备自动开启',
+    LowMemoryMode.always => '所有网络均减少缓存，降低内存占用',
+    LowMemoryMode.never => '使用完整缓存',
+  };
+
+  String statusDescription({int? cpuCores}) {
+    final on = isEffective(cpuCores: cpuCores);
+    return switch (this) {
+      LowMemoryMode.auto => on
+          ? '自动 · 已开启（低配设备，减少缓存）'
+          : '自动 · 已关闭（完整缓存）',
+      LowMemoryMode.always => '始终开启 · 减少缓存',
+      LowMemoryMode.never => '始终关闭 · 完整缓存',
+    };
+  }
+}
+
 /// Base mpv properties applied to every media_kit player.
 /// Pure Live `MediaKitLiveProperties.build()`, verbatim.
-Map<String, String> mpvBaseProperties() {
+/// [mode] selects the low-end property set (Kazumi low-memory mode):
+/// null = persisted mode ([LowMemoryMode.current]).
+Map<String, String> mpvBaseProperties({LowMemoryMode? mode}) {
+  // Resolved once: every low-end branch below reads this, never the
+  // raw core count, so `always`/`never` override the auto rule.
+  final lowEnd = (mode ?? LowMemoryMode.current).isEffective();
   final properties = <String, String>{
     'protocol_whitelist':
         'httpproxy,udp,rtp,tcp,tls,data,file,http,https,crypto,rtmp,rtmps,rtsp,srt',
@@ -33,9 +136,9 @@ Map<String, String> mpvBaseProperties() {
     'cache-on-disk': 'no',
     'cache-secs': _cacheSeconds.toString(),
     'demuxer-max-bytes':
-        (_lowEnd ? _lowEndForwardBytes : _forwardBytes).toString(),
+        (lowEnd ? _lowEndForwardBytes : _forwardBytes).toString(),
     'demuxer-max-back-bytes':
-        (_lowEnd ? _lowEndBackBytes : _backBytes).toString(),
+        (lowEnd ? _lowEndBackBytes : _backBytes).toString(),
     // Past media must not borrow the unused forward reserve.
     'demuxer-donate-buffer': 'no',
     'demuxer-readahead-secs': _readaheadSeconds.toString(),
@@ -47,7 +150,7 @@ Map<String, String> mpvBaseProperties() {
     'framedrop': 'decoder+vo',
   };
 
-  if (_lowEnd) {
+  if (lowEnd) {
     properties['audio-buffer'] = '0.4';
     properties['stream-lavf-o'] =
         'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2';
@@ -66,7 +169,7 @@ Map<String, String> mpvBaseProperties() {
 
   // Decode-cost policy: a software decoder's thread pool is what actually
   // costs CPU on a weak box, so cap it there and let lowres absorb the rest.
-  if (_lowEnd) {
+  if (lowEnd) {
     properties['vd-lavc-threads'] = '2';
     properties['vd-lavc-o'] = 'lowres=1';
     properties['vd-lavc-skiploopfilter'] = 'nonref';
@@ -85,8 +188,6 @@ const int _lowEndBackBytes = 5 * 1024 * 1024;
 const int _readaheadSeconds = 8;
 const int _cacheSeconds = 30;
 const int _cachePauseWaitSeconds = 4;
-
-bool get _lowEnd => _cpuCores <= 4;
 
 int get _cpuCores {
   try {

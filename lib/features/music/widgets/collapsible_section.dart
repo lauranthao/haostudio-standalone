@@ -4,6 +4,12 @@
 // over 0.2 s. State is per-section and independent; navigating away and
 // back keeps the user's last state for the session (the owning page holds
 // the state — this widget is stateless and driven by [expanded]).
+//
+// The [trailing] widget (e.g. the music home's 「播放全部」 capsule)
+// sits OUTSIDE the head InkWell: a button nested inside another
+// button's tap area competes in the gesture arena, and the head toggle
+// would swallow the trailing's tap. Tapping the title area toggles;
+// tapping the trailing acts only on the trailing.
 
 import 'package:flutter/material.dart';
 
@@ -18,6 +24,9 @@ class CollapsibleSection extends StatelessWidget {
     required this.child,
     this.trailing,
     this.titleStyle,
+    this.showLeadingChevron = true,
+    this.horizontalPadding = 16,
+    this.verticalPadding = 14,
   });
 
   final String title;
@@ -27,49 +36,81 @@ class CollapsibleSection extends StatelessWidget {
   final Widget? trailing;
   final TextStyle? titleStyle;
 
+  /// Kumone `SectionHeader` (Components.swift:100-130) has no leading
+  /// chevron — the title alone is the head. Defaults to true so the
+  /// artist pages that share this widget keep their chevron; the music
+  /// home passes false.
+  final bool showLeadingChevron;
+
+  /// Head horizontal padding. Kumone `Theme.Layout.contentInset` = 24
+  /// (Theme.swift:20); the music home passes 24, other users keep 16.
+  final double horizontalPadding;
+
+  /// Head vertical padding. Kumone iOS `sectionHeaderSpacing` = 10
+  /// (Theme.swift:64) is the gap from head to content; the music home
+  /// passes 10, other users keep 14.
+  final double verticalPadding;
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        InkWell(
-          onTap: onToggle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  turns: expanded ? 0.25 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    Icons.chevron_right,
-                    color: theme.textSecondary,
-                    size: 22,
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: onToggle,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: verticalPadding,
                   ),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: titleStyle ??
-                        TextStyle(
-                          color: theme.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
+                  child: Row(
+                    children: [
+                      if (showLeadingChevron) ...[
+                        AnimatedRotation(
+                          turns: expanded ? 0.25 : 0.0,
+                          duration: const Duration(milliseconds: 200),
+                          child: Icon(
+                            Icons.chevron_right,
+                            color: theme.textSecondary,
+                            size: 22,
+                          ),
                         ),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          title,
+                          style:
+                              titleStyle ??
+                              TextStyle(
+                                color: theme.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                ?trailing,
-              ],
+              ),
             ),
-          ),
+            if (trailing != null)
+              Padding(
+                padding: EdgeInsets.only(right: horizontalPadding),
+                child: trailing,
+              ),
+          ],
         ),
         AnimatedCrossFade(
           firstChild: const SizedBox.shrink(),
           secondChild: child,
-          crossFadeState:
-              expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+          crossFadeState: expanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 200),
         ),
       ],

@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart';
 
 import 'player_backend.dart';
 import 'player_engine.dart';
+import 'video_fit.dart';
 
 class AvPlayerBackend implements PlayerBackend {
   AvPlayerBackend();
@@ -60,11 +61,25 @@ class AvPlayerBackend implements PlayerBackend {
       headers: headers ?? const {},
     );
     _controller = BetterPlayerController(
-      const BetterPlayerConfiguration(
+      // NOT const: `fit` is read from the persisted VideoFitMode at
+      // open time. BetterPlayerConfiguration is fixed when the
+      // controller is created, so a mid-play fit cycle on this engine
+      // takes effect on the NEXT open (MPV/IJK apply it live — see
+      // video_fit.dart); the choice is never lost, just deferred.
+      // Live always renders contain: this backend serves live rooms
+      // too, and a stretched live room is never what the user asked
+      // for when they set a VOD fit.
+      BetterPlayerConfiguration(
         autoPlay: true,
         controlsConfiguration: BetterPlayerControlsConfiguration(
           showControls: false,
         ),
+        // fit: contain, explicit — BetterPlayer defaults to fill
+        // (stretches a non-16:9 stream). MPV and IJK both render
+        // contain, so all three kernels behave identically in the
+        // 16:9 room container: a 16:9 stream fills it, anything else
+        // is letterboxed, never distorted.
+        fit: isLive ? BoxFit.contain : VideoFitMode.current.boxFit,
       ),
       betterPlayerDataSource: dataSource,
     );

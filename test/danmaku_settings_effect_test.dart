@@ -252,6 +252,25 @@ void main() {
       await disposeRoom(tester);
     });
 
+    testWidgets('danmaku area: fifth narrows the fullscreen overlay '
+        'to the top fifth', (tester) async {
+      await setDanmakuEnabled(tester, true);
+      await setDanmakuArea(tester, DanmakuSettings.areaFifth);
+      final site = _FakeSite();
+      await pumpRoom(tester, site);
+      // Portrait has no overlay — the list is a chat list, not a
+      // barrage surface.
+      expect(find.byType(FlameBarrageWidget), findsNothing);
+      // Enter fullscreen: the overlay appears with the configured area.
+      Get.find<FullscreenController>().isFullscreen.value = true;
+      await tester.pump();
+      final widget = tester.widget<FlameBarrageWidget>(
+        find.byType(FlameBarrageWidget),
+      );
+      expect(widget.config.area, closeTo(1 / 5, 0.001));
+      await disposeRoom(tester);
+    });
+
     testWidgets('disabling mid-room stops the transport and shows 已关闭',
         (tester) async {
       await setDanmakuEnabled(tester, true);

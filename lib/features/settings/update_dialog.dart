@@ -14,12 +14,12 @@
 // the same style as the audio-quality sheet.
 
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/update_service.dart';
 
@@ -56,28 +56,14 @@ Future<UpdateDialogAction?> showUpdateDialog(
     barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => Center(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: theme.glassBlurSigma,
-            sigmaY: theme.glassBlurSigma,
-          ),
-          child: Container(
+      child: GlassCard(
+        radius: 24,
+        shadow: GlassShadow.panel,
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 480),
+          child: SizedBox(
             width: MediaQuery.of(ctx).size.width * 0.82,
-            constraints: const BoxConstraints(maxHeight: 480),
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            decoration: BoxDecoration(
-              color: theme.surfaceStrong,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                // Theme hairline: a white 0.35 edge washed out on light
-                // glass and looked grey on dark glass; the hairline
-                // reads correctly in all 8 combinations.
-                color: theme.hairline,
-                width: 1,
-              ),
-            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -23,8 +23,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
+import '../../core/theme/appearance_store.dart';
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
 import 'video_detail_page.dart';
 import 'video_detail_service.dart';
 import 'video_favs_page.dart';
@@ -162,8 +166,8 @@ class _VideoTabPageState extends State<VideoTabPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
+    return Obx(() => Scaffold(
+      backgroundColor: tabScaffoldBackground(context),
       // Full-bleed, no card wrapper (Infuse H1): the artwork IS the UI.
       body: SafeArea(
         child: _loading
@@ -198,28 +202,15 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                   children: [
                                     Expanded(
                                       child: GestureDetector(
-                                        onTap: _openSearch,
-                                        child: Container(
-                                          padding:
-                                              const EdgeInsets.symmetric(
+                                        onTap: () {
+                                          HaoHaptics.tap();
+                                          _openSearch();
+                                        },
+                                        child: GlassCard(
+                                          radius: 999,
+                                          padding: const EdgeInsets.symmetric(
                                             horizontal: 14,
                                             vertical: 11,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: theme.surface,
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                            border: Border.all(
-                                              color: theme.hairline,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.06),
-                                                blurRadius: 12,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
                                           ),
                                           child: Row(
                                             children: [
@@ -243,39 +234,37 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                       ),
                                     ),
                                     const SizedBox(width: 10),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: theme.surface,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: theme.hairline,
-                                        ),
-                                      ),
+                                    GlassCard(
+                                      radius: 999,
+                                      padding: EdgeInsets.zero,
+                                      shadow: GlassShadow.card,
                                       child: IconButton(
                                         icon: Icon(
                                           Icons.history,
                                           color: theme.textPrimary,
                                         ),
                                         tooltip: '历史记录',
-                                        onPressed: _openHistory,
+                                        onPressed: () {
+                                          HaoHaptics.tap();
+                                          _openHistory();
+                                        },
                                       ),
                                     ),
                                     const SizedBox(width: 10),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: theme.surface,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: theme.hairline,
-                                        ),
-                                      ),
+                                    GlassCard(
+                                      radius: 999,
+                                      padding: EdgeInsets.zero,
+                                      shadow: GlassShadow.card,
                                       child: IconButton(
                                         icon: Icon(
                                           Icons.favorite_border,
                                           color: theme.textPrimary,
                                         ),
                                         tooltip: '我的收藏',
-                                        onPressed: _openFavs,
+                                        onPressed: () {
+                                          HaoHaptics.tap();
+                                          _openFavs();
+                                        },
                                       ),
                                     ),
                                   ],
@@ -289,18 +278,11 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                     16,
                                     0,
                                   ),
-                                  child: Container(
-                                    width: double.infinity,
+                                  child: GlassCard(
+                                    radius: 10,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
                                       vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: theme.accentSoft,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: theme.hairline,
-                                      ),
                                     ),
                                     child: Row(
                                       children: [
@@ -464,7 +446,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                     ),
                   ),
       ),
-    );
+    ));
   }
 }
 

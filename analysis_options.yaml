@@ -18,6 +18,11 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # Vendored just_audio fork (stage 3): third-party Dart code, kept
+    # byte-identical to upstream 0.10.6 (see packages/just_audio_eq/
+    # HAO_PATCH.md). Its info-level lints are upstream's, not ours;
+    # only the darwin layer is patched, and that is ObjC.
+    - packages/just_audio_eq/**
 
 linter:
   # The lint rules applied to this project can be customized in the

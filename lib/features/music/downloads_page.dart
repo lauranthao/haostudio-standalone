@@ -16,6 +16,7 @@ import 'package:get/get.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
+import '../../widgets/glass_dialog.dart';
 import '../settings/cache_service.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
@@ -293,6 +294,16 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 ),
                 tooltip: '删除下载',
                 onPressed: () async {
+                  // Same glass confirm as every other destructive
+                  // delete: the downloaded file itself is removed.
+                  final ok = await showGlassConfirmDialog(
+                    context,
+                    title: '删除下载',
+                    content: '将删除「${song.title}」的下载文件，之后需要重新下载才能离线播放。',
+                    confirmLabel: '删除',
+                    confirmColor: theme.liveRed,
+                  );
+                  if (ok != true || !mounted) return;
                   await _service.delete(song);
                   await _refresh();
                 },

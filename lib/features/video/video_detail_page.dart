@@ -33,6 +33,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/video/douban_parsers.dart';
 import '../../services/video/douban_service.dart';
@@ -416,18 +417,13 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                         runSpacing: 6,
                         children: genreChips
                             .map(
-                              (g) => Container(
+                              (g) => GlassCard(
+                                radius: 999,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 5,
                                 ),
-                                decoration: BoxDecoration(
-                                  color: theme.surface,
-                                  border: Border.all(
-                                    color: theme.hairline,
-                                  ),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
+                                shadow: GlassShadow.none,
                                 child: Text(
                                   g,
                                   style: TextStyle(

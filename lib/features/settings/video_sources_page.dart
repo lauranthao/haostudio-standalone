@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../video/video_history_store.dart';
 import '../video/video_models.dart';
@@ -74,22 +75,15 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       Get.snackbar('不能删除最后一个开启的影视源', '至少需要一个开启的影视源');
       return;
     }
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('删除「${source.name}」？'),
-        content: const Text('删除后该源不再参与搜索与播放，可通过「恢复默认」找回预置源。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    // Glass confirm, like every other destructive confirm in the app
+    // (playlist delete, video history clear): same shell, same button
+    // order (cancel left, confirm right), red confirm for destructive.
+    final confirm = await showGlassConfirmDialog(
+      context,
+      title: '删除「${source.name}」？',
+      content: '删除后该源不再参与搜索与播放，可通过「恢复默认」找回预置源。',
+      confirmLabel: '删除',
+      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirm != true || !mounted) return;
     _sources = _sources.where((s) => s.idKey != source.idKey).toList();
@@ -99,13 +93,25 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
   Future<void> _addSource() async {
     final nameController = TextEditingController();
     final urlController = TextEditingController();
-    final added = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加影视源'),
-        content: Column(
+    // Glass dialog, like every other dialog in the app (glass_dialog
+    // rule): same shell, title 17 w700, actions right-aligned.
+    final added = await showGlassDialog<bool>(
+      context,
+      builder: (ctx) {
+        final theme = HaoTheme.of(ctx);
+        return Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              '添加影视源',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: nameController,
               decoration: const InputDecoration(labelText: '名称'),
@@ -118,19 +124,26 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
               ),
               keyboardType: TextInputType.url,
             ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: Text('添加', style: TextStyle(color: theme.accent)),
+                ),
+              ],
+            ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('添加'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     if (added != true || !mounted) return;
     final name = nameController.text.trim();
@@ -159,22 +172,12 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
   }
 
   Future<void> _reset() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('恢复默认影视源？'),
-        content: const Text('将恢复 17 个预置源，删除自定义源，并清除开关与排序修改。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('恢复'),
-          ),
-        ],
-      ),
+    final confirm = await showGlassConfirmDialog(
+      context,
+      title: '恢复默认影视源？',
+      content: '将恢复 17 个预置源，删除自定义源，并清除开关与排序修改。',
+      confirmLabel: '恢复',
+      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirm != true || !mounted) return;
     await VideoSourcesStore.resetToDefaults();

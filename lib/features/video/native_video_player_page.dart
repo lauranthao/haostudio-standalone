@@ -25,7 +25,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/player/kernel/video_fit.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/glass.dart';
 import '../music/music_player_controller.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
@@ -92,7 +94,8 @@ class NativeVideoPlayerPage extends StatefulWidget {
   State<NativeVideoPlayerPage> createState() => _NativeVideoPlayerPageState();
 }
 
-class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
+class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
+    with WidgetsBindingObserver {
   late final PlaybackSession _session;
   late final FullscreenController _fullscreen;
   late final VideoDetailService _detailService;
@@ -105,6 +108,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   late int _lineIdx;
   late int _epIdx;
   late bool _autoNext;
+  late VideoFitMode _videoFit;
   double _position = 0;
   double _duration = 0;
   double _resumePosition = 0;
@@ -156,12 +160,14 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _detail = widget.detail;
     _detailService = widget.detailService ?? VideoDetailService();
     _lineIdx = widget.initialLineIndex.clamp(0, _detail.lines.length - 1);
     final eps = _detail.lines[_lineIdx].episodes;
     _epIdx = widget.initialEpisodeIndex.clamp(0, eps.length - 1);
     _autoNext = VideoPlaybackSettings.autoNext;
+    _videoFit = VideoPlaybackSettings.videoFit;
     _session = widget.session ?? PlaybackSession();
     _fullscreen = Get.put(FullscreenController());
     _rate = VideoPlaybackSettings.playbackRate;
@@ -504,9 +510,31 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     });
   }
 
+  // NO double-tap seek (PiliPlus has it — quarters, 10 s step — but
+  // deliberately NOT ported): adding onDoubleTap makes Flutter hold
+  // every single tap until the double-tap timeout (~300 ms, the
+  // DoubleTap recognizer holds the arena on first tap-up,
+  // multitap.dart _registerFirstTap -> arena.hold), so the tap that
+  // wakes the controls after auto-hide lands 300 ms late — the
+  // v1.0.7 "controls gone, can't exit" path. PiliPlus's
+  // ImmediateTap only makes onTapDown immediate, not onTapUp, so it
+  // does not fix this either; PiliPlus accepts the delay, we don't
+  // (video_controls_show_test pins the immediate wake-tap). If this
+  // is ever revisited, it needs a tap path that stays immediate AND
+  // a double-tap path — not GestureDetector's onDoubleTap.
   void _onSurfaceTap() {
     setState(() => _showControls = !_showControls);
     if (_showControls) _armHideTimer();
+  }
+
+  /// Cycle the VOD picture fit (自动 -> 拉伸 -> 裁剪): persists, then
+  /// rebuilds — MPV/IJK re-apply the fit live, AVPlayer on next open
+  /// (see video_fit.dart).
+  void _cycleVideoFit() {
+    final next = _videoFit.next;
+    setState(() => _videoFit = next);
+    unawaited(VideoPlaybackSettings.setVideoFit(next));
+    _armHideTimer();
   }
 
   String get _rateLabel => '${_longPressSpeeding ? 2.0 : _rate}x';
@@ -677,9 +705,11 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
       // Content already scrolls via the ListView below, so no extra
       // SingleChildScrollView wrapper is needed here.
       isScrollControlled: true,
-      backgroundColor: theme.surfaceSolid,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (context) {
-        return SafeArea(
+        return GlassSheetBackground(
+          child: SafeArea(
           child: SizedBox(
             height: MediaQuery.of(context).size.height * 0.6,
             child: Column(
@@ -760,6 +790,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
               ],
             ),
           ),
+        ),
         );
       },
     );
@@ -801,8 +832,38 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
     unawaited(_saveProgress());
   }
 
+  // Screen-on follows the session (playback_session.dart): background
+  // releases it, foreground re-holds it only if still playing. VOD
+  // pauses in background (normal for video-on-demand; live keeps
+  // audio-only instead) — pausing the SESSION, not just the native
+  // player, so the status the UI shows stays honest: the Video widget
+  // already pauses the native player on background but never tells
+  // the session, which used to leave the page showing "playing" over
+  // a frozen frame (double-tap to resume). Inactive is transient
+  // (call / Control Center): leave the track alone, like the live room.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _session.setForeground(false);
+        final s = _session.status;
+        if (s == PlaybackStatus.playing ||
+            s == PlaybackStatus.buffering ||
+            s == PlaybackStatus.opening) {
+          unawaited(_session.pause());
+        }
+      case AppLifecycleState.resumed:
+        _session.setForeground(true);
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
     _positionSub?.cancel();
@@ -928,6 +989,17 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage> {
                           ),
                           tooltip: '自动连播',
                           onPressed: _toggleAutoNext,
+                        ),
+                        // Picture fit (PiliPlus VideoFitType + Kazumi
+                        // PlayerAspectRatio): cycles 自动/拉伸/裁剪.
+                        // VOD only — this page never serves live.
+                        IconButton(
+                          icon: const Icon(
+                            Icons.aspect_ratio,
+                            color: Colors.white,
+                          ),
+                          tooltip: '画面比例：${_videoFit.label}',
+                          onPressed: _cycleVideoFit,
                         ),
                         IconButton(
                           icon: const Icon(Icons.list, color: Colors.white),
@@ -1194,6 +1266,27 @@ class _FailureCard extends StatelessWidget {
   }
 }
 
+
+/// Centre hint pill over the video (seek / 2x / brightness-volume):
+/// dark glass — BackdropFilter blurs the video behind the pill, so the
+/// white text stays legible over any frame. Theme GlassCard is NOT used
+/// here: the player is a dark scene in both modes and GlassCard's light
+/// -mode fill (near-white) would make the white text unreadable.
+class _HintPill extends StatelessWidget {
+  const _HintPill({required this.child, this.width});
+
+  final Widget child;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    return DarkGlass(
+      radius: 12,
+      child: SizedBox(width: width, child: child),
+    );
+  }
+}
+
 /// Center overlay shown while the user drags horizontally to seek:
 /// target time + the delta from where the drag started.
 class _SeekHint extends StatelessWidget {
@@ -1208,29 +1301,27 @@ class _SeekHint extends StatelessWidget {
     final deltaText = delta.abs() < 1
         ? ''
         : ' ${forward ? '+' : '-'}${delta.abs().round()}s';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            forward ? Icons.fast_forward : Icons.fast_rewind,
-            color: Colors.white,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '${formatMmSs(target)}$deltaText',
-            style: const TextStyle(
+    return _HintPill(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              forward ? Icons.fast_forward : Icons.fast_rewind,
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              '${formatMmSs(target)}$deltaText',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1244,13 +1335,10 @@ class _LongPressSpeedHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Row(
+    return _HintPill(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.fast_forward, color: Colors.white),
@@ -1264,6 +1352,7 @@ class _LongPressSpeedHint extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -1278,14 +1367,11 @@ class _SystemHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBrightness = side == _PlayerDragSide.brightness;
-    return Container(
+    return _HintPill(
       width: 160,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
@@ -1313,6 +1399,7 @@ class _SystemHint extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

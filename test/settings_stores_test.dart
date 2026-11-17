@@ -141,6 +141,9 @@ void main() {
       await DanmakuSettings.setArea(DanmakuSettings.areaThird, box: box);
       expect(DanmakuSettings.area(box: box), DanmakuSettings.areaThird);
       expect(DanmakuSettings.areaFraction(box: box), closeTo(1 / 3, 0.001));
+      await DanmakuSettings.setArea(DanmakuSettings.areaFifth, box: box);
+      expect(DanmakuSettings.area(box: box), DanmakuSettings.areaFifth);
+      expect(DanmakuSettings.areaFraction(box: box), closeTo(1 / 5, 0.001));
       // A bad stored value falls back to full instead of crashing.
       await DanmakuSettings.setArea('bogus', box: box);
       expect(DanmakuSettings.area(box: box), DanmakuSettings.areaFull);

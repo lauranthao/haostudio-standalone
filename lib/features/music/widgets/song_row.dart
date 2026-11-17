@@ -12,7 +12,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_models.dart';
 import 'music_image.dart';
 
@@ -29,6 +31,7 @@ class SongRow extends StatelessWidget {
     this.showPlatformBadge = true,
     this.showDuration = true,
     this.onLongPress,
+    this.compact = false,
   });
 
   final Song song;
@@ -38,8 +41,10 @@ class SongRow extends StatelessWidget {
   final VoidCallback? onOpenArtist;
   final VoidCallback? onOpenAlbum;
 
-  /// Long-press opens the song `···` menu (下一首播放 / 下载 / 倍速).
-  final VoidCallback? onLongPress;
+  /// Long-press opens the song quick menu (下一首播放 / 下载 / 立即播放 /
+  /// 收藏) — the row's own context is passed so the menu anchors to
+  /// the row (Beans context-menu pattern), not the full `···` sheet.
+  final void Function(BuildContext)? onLongPress;
 
   /// Optional leading widget (rank number, drag handle, ...).
   final Widget? leading;
@@ -47,31 +52,47 @@ class SongRow extends StatelessWidget {
   final bool showPlatformBadge;
   final bool showDuration;
 
+  /// Kumone `TrackRow` compact (TrackList.swift:39-40,93-165), used by
+  /// the music home 最近播放 list only: plain row, 64 high, no glass
+  /// card (the owning list draws 1pt dividers), cover 48 radius 6,
+  /// title 16 medium, duration 11. Default false: every other page
+  /// keeps the glass row exactly as it was.
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return InkWell(
-      onTap: onPlay,
-      onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    // Compact values are Kumone TrackRow compact (see [compact]);
+    // the glass row below keeps its own values.
+    final titleSize = compact ? 16.0 : 15.0;
+    final titleWeight = compact ? FontWeight.w500 : FontWeight.w600;
+    final coverRadius = compact ? 6.0 : 10.0;
+    final durationSize = compact ? 11.0 : 12.0;
+    final row = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HaoHaptics.tap();
+          onPlay();
+        },
+        onLongPress: onLongPress == null
+            ? null
+            : () {
+                HaoHaptics.medium();
+                onLongPress!(context);
+              },
+        borderRadius: BorderRadius.circular(compact ? 8 : 16),
         child: Row(
           children: [
-            if (leading != null) ...[
-              leading!,
-              const SizedBox(width: 8),
-            ],
+            if (leading != null) ...[leading!, const SizedBox(width: 8)],
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(coverRadius),
               child: song.cover.isEmpty
                   ? Container(
                       width: 48,
                       height: 48,
                       color: theme.accentSoft,
-                      child: Icon(
-                        Icons.music_note,
-                        color: theme.textMuted,
-                      ),
+                      child: Icon(Icons.music_note, color: theme.textMuted),
                     )
                   : Image(
                       // 200px thumb (coverThumb): the full coverHi URL
@@ -84,10 +105,7 @@ class SongRow extends StatelessWidget {
                         width: 48,
                         height: 48,
                         color: theme.accentSoft,
-                        child: Icon(
-                          Icons.music_note,
-                          color: theme.textMuted,
-                        ),
+                        child: Icon(Icons.music_note, color: theme.textMuted),
                       ),
                     ),
             ),
@@ -108,8 +126,8 @@ class SongRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: theme.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                            fontSize: titleSize,
+                            fontWeight: titleWeight,
                           ),
                         ),
                       ),
@@ -184,7 +202,7 @@ class SongRow extends StatelessWidget {
                           formatDuration(song.dur),
                           style: TextStyle(
                             color: theme.textMuted,
-                            fontSize: 12,
+                            fontSize: durationSize,
                           ),
                         ),
                       ],
@@ -205,7 +223,10 @@ class SongRow extends StatelessWidget {
                       color: isFav ? theme.accent : theme.textMuted,
                       size: 22,
                     ),
-                    onPressed: onToggleFav,
+                    onPressed: () {
+                      HaoHaptics.tap();
+                      onToggleFav();
+                    },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                       minWidth: 40,
@@ -218,7 +239,10 @@ class SongRow extends StatelessWidget {
                       color: theme.textPrimary,
                       size: 26,
                     ),
-                    onPressed: onPlay,
+                    onPressed: () {
+                      HaoHaptics.tap();
+                      onPlay();
+                    },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                       minWidth: 40,
@@ -230,6 +254,29 @@ class SongRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+    if (compact) {
+      // Plain 64-high row: the owning list draws the dividers.
+      return SizedBox(
+        height: 64,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: row,
+        ),
+      );
+    }
+    // Glass row (Beans `SongCell` glassRow, SongCell.swift: glassRow
+    // branch: rowContent padded h10, glass RoundedRectangle radius 16;
+    // v padding 6 inside, rows spaced 8 apart in the list — here the
+    // 4pt vertical margin on each side gives the same 8pt gap).
+    return GlassPressScale(
+      pressedScale: 0.97,
+      child: GlassCard(
+        radius: 16,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: row,
       ),
     );
   }

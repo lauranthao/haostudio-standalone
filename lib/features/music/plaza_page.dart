@@ -13,13 +13,21 @@ import 'dart:async';
 // Cache per platform; a platform switch cancels the in-flight load for
 // the previous platform (sequence guard) so a late response cannot
 // overwrite the newly selected platform.
+//
+// Stage 2: the plaza shares the ONE search-platform capsule
+// (SearchPlatformStore) with the search page — the plaza opens on the
+// capsule platform, and changing the platform here changes the capsule
+// too (both writes go through both stores, so the legacy plaza key
+// stays in sync for any reader that still uses it).
 
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/glass.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/search_platform_store.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
@@ -47,7 +55,7 @@ class _PlazaPageState extends State<PlazaPage> {
   @override
   void initState() {
     super.initState();
-    _platform = MusicStore.plazaPlatform;
+    _platform = SearchPlatformStore.current();
     _load(_platform);
   }
 
@@ -88,6 +96,7 @@ class _PlazaPageState extends State<PlazaPage> {
 
   Future<void> _selectPlatform(MusicPlatform pf) async {
     if (pf == _platform && _cache.containsKey(pf)) return;
+    await SearchPlatformStore.set(pf);
     await MusicStore.setPlazaPlatform(pf);
     await _load(pf);
   }
@@ -128,13 +137,9 @@ class _PlazaPageState extends State<PlazaPage> {
             child: Row(
               children: [
                 Expanded(
-                  child: Container(
+                  child: GlassCard(
+                    radius: 14,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: theme.hairline),
-                      borderRadius: BorderRadius.circular(14),
-                      color: theme.surface,
-                    ),
                     child: DropdownButton<MusicPlatform>(
                       value: _platform,
                       isExpanded: true,
@@ -354,19 +359,18 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
       name: widget.playlist.name,
     );
     if (!lists.contains(list)) lists.add(list);
-    final seen = list.tracks.map((t) => t.identityKey).toSet();
-    var added = 0;
-    for (final t in tracks) {
-      if (seen.contains(t.identityKey)) continue;
-      if (list.tracks.length >= 200) break;
-      list.tracks.add(t);
-      added++;
-    }
+    final res = MusicStore.addTracks(list, tracks);
     await MusicStore.saveLists(lists);
     await MusicStore.setCurrentListId(list.id);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('导入成功 $added 首 → ${list.name}')),
+      SnackBar(
+        content: Text(
+          res.dropped > 0
+              ? '导入成功 ${res.added} 首，还有 ${res.dropped} 首没进来（每歌单最多 ${MusicStore.maxTracksPerList} 首）→ ${list.name}'
+              : '导入成功 ${res.added} 首 → ${list.name}',
+        ),
+      ),
     );
   }
 
@@ -542,8 +546,8 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                               await _player.toggleFav(song);
                               setState(() {});
                             },
-                            onLongPress: () =>
-                                unawaited(openTrackMoreSheet(context, song)),
+                            onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
                           );
                         },
                       ),

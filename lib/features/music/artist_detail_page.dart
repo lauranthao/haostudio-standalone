@@ -12,6 +12,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../core/theme/glass.dart';
 import '../../services/clipboard_service.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
@@ -306,12 +308,19 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
           fontWeight: FontWeight.w700,
         ),
       ),
-      onLongPress: () => unawaited(openTrackMoreSheet(context, song)),
+      onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
     );
   }
 
   Widget _albumRow(HaoTheme theme, AlbumSummary album) {
-    return ListTile(
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: album.cover.isEmpty
@@ -351,18 +360,23 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         style: TextStyle(color: theme.textSecondary, fontSize: 13),
       ),
       trailing: Icon(Icons.chevron_right, color: theme.textMuted),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AlbumDetailPage(
-            platform: widget.platform,
-            albumId: album.id,
-            albumName: album.name,
-            artistName: album.artist.isEmpty
-                ? widget.artistName
-                : album.artist,
-            albumCover: album.cover,
-            albumYear: album.year,
+      onTap: () {
+        HaoHaptics.tap();
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => AlbumDetailPage(
+              platform: widget.platform,
+              albumId: album.id,
+              albumName: album.name,
+              artistName: album.artist.isEmpty
+                  ? widget.artistName
+                  : album.artist,
+              albumCover: album.cover,
+              albumYear: album.year,
+            ),
           ),
+        );
+      },
         ),
       ),
     );

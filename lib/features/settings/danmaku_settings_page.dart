@@ -98,13 +98,11 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                '设置立即生效：直播间打开时读取，直播中修改也会实时更新。',
-                style: TextStyle(color: theme.textSecondary, fontSize: 13),
-              ),
+          HaoGlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              '设置立即生效：直播间打开时读取，直播中修改也会实时更新。',
+              style: TextStyle(color: theme.textSecondary, fontSize: 13),
             ),
           ),
           const SizedBox(height: 16),
@@ -204,11 +202,18 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   '仅全屏时生效：弹幕在视频上覆盖的区域。竖屏时弹幕是下方列表，不受影响',
                   style: TextStyle(color: theme.textSecondary),
                 ),
-                trailing: SegmentedButton<String>(
+              ),
+              // Four segments no longer fit as a ListTile trailing
+              // (the button consumed the whole tile width and Flutter
+              // asserts). Its own full-width row below the title.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'full', label: Text('全屏')),
                     ButtonSegment(value: 'half', label: Text('上半屏')),
                     ButtonSegment(value: 'third', label: Text('上 1/3')),
+                    ButtonSegment(value: 'fifth', label: Text('上 1/5')),
                   ],
                   selected: {_area},
                   onSelectionChanged: (selected) async {

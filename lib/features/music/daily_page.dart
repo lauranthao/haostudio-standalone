@@ -249,8 +249,8 @@ class _DailyPageState extends State<DailyPage> {
                                     ),
                                   ),
                                 ),
-                                onLongPress: () =>
-                                    unawaited(openTrackMoreSheet(context, song)),
+                                onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
                               ),
                               Padding(
                                 padding: const EdgeInsets.only(

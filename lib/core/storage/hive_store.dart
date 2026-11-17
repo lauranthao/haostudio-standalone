@@ -58,6 +58,27 @@ class HiveKeys {
   /// bool, default false (collapsed). Persisted across restarts.
   static const String engineSectionExpanded = 'engineSectionExpanded';
 
+  /// Haptic feedback master switch (Beans `BeansHaptics.enabledKey`,
+  /// `beans.haptics.enabled`, default true). Every haptic call in the
+  /// app goes through [HaoHaptics], which reads this key first.
+  static const String hapticsEnabled = 'hapticsEnabled';
+
+  /// "与其他音频同时播放" (Beans `beans.audio.mixothers.v1`,
+  /// default false). Applied to AVAudioSession by
+  /// [AvMusicPlayer.applyMixWithOthers].
+  static const String audioMixWithOthers = 'audioMixWithOthers';
+
+  /// "启动时自动播放上次歌曲" (Beans
+  /// `beans.playback.autoResumeLast`, default false). Only reads the
+  /// resume map that is saved on app kill — it never changes the
+  /// "杀后台才存进度" rule.
+  static const String autoResumeLastPlayback = 'autoResumeLastPlayback';
+
+  /// Playback-settings section expanded state on the settings page:
+  /// bool, default false (collapsed). Same pattern as
+  /// [engineSectionExpanded].
+  static const String playbackSectionExpanded = 'playbackSectionExpanded';
+
   /// Preferred quality (all networks — there is no separate
   /// cellular preference: the key for one was defined but never read,
   /// written or shown, so it was deleted rather than left dead).
@@ -82,6 +103,7 @@ class HiveKeys {
   static const String musicRecent = 'hao_recent'; // [Song] max 100
   static const String musicListen = 'hao_listen'; // [ListenEvent] max 3000
   static const String musicSearchHist = 'hao_music_search_hist'; // [String] max 20
+  static const String musicCoverCache = 'hao_cover_cache'; // {normTitle|normArtist: coverUrl} max 500
   static const String musicPlazaPf = 'musicPlazaPf'; // 'wy' default
   static const String musicSpeed = 'musicSpeed'; // double 0.6..2.0, default 1.0 (M-P0-2)
   static const String musicQueue = 'musicQueue'; // {songs: [Song], index: int} (M-P0-4)
@@ -93,12 +115,55 @@ class HiveKeys {
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
 
+  /// Sleep timer custom minutes (stage 2, Beans `SleepTimerSheet`
+  /// customMinutesText, clamped 1..720, default 30). Persisted so the
+  /// next open remembers the last custom value.
+  static const String musicSleepCustomMinutes = 'musicSleepCustomMinutes';
+
+  /// Single search platform capsule (stage 2, Beans `SearchView`
+  /// provider / `RootView` PlatformPickerSheet): 'wy' | 'tx' | 'kg' |
+  /// 'kw', default 'wy'. No 'all' option — one platform at a time.
+  static const String musicSearchPlatform = 'musicSearchPlatform';
+
+  /// Local audio files (stage 2): JSON list of Song (with localPath),
+  /// newest first. Files live in app docs `local_music/`.
+  static const String musicLocalFiles = 'hao_local_music';
+
+  /// Wallpaper (stage 2, Beans `ThemeStore` wallpaperPaths /
+  /// backgroundImagePath): enabled flag, JSON list of absolute paths,
+  /// current path. Files live in app docs `wallpapers/`.
+  static const String wallpaperEnabled = 'hao_wallpaper_enabled';
+  static const String wallpaperPaths = 'hao_wallpaper_paths';
+  static const String wallpaperCurrent = 'hao_wallpaper_current';
+
+  /// Custom background colour (stage 2, Beans `ThemeStore`
+  /// backgroundHexLight/Dark, single value here — see
+  /// AppearanceStore): enabled flag + '#RRGGBB' hex ('' = none).
+  static const String bgColorEnabled = 'hao_bgcolor_enabled';
+  static const String bgColorHex = 'hao_bgcolor_hex';
+
+  /// Custom font (stage 2, Beans `FontManager`): registered family
+  /// name ('HaoCustomFont' when installed, '' = system default) and
+  /// the installed file's display name.
+  static const String customFontFamily = 'hao_custom_font_family';
+  static const String customFontName = 'hao_custom_font_name';
+  static const String customFontPath = 'hao_custom_font_path';
+
   /// VOD auto-play next episode (`hao_video_auto_next`): bool,
   /// default true. When off, playback stops at the end of the
   /// episode (end state, no advance). Read by the native VOD player
   /// on completion and by the settings toggle.
   static const String videoAutoNext = 'hao_video_auto_next';
   static const String vodPlaybackRate = 'hao_vod_playback_rate';
+
+  /// VOD picture fit (`hao_vod_video_fit`): 'auto' | 'fill' | 'cover',
+  /// default 'auto' (contain). PiliPlus VideoFitType + Kazumi
+  /// PlayerAspectRatio intersection — see `VideoFitMode`.
+  static const String vodVideoFit = 'hao_vod_video_fit';
+
+  /// Kazumi low-memory mode (`hao_low_memory_mode`): 'auto' |
+  /// 'always' | 'never', default 'auto'. See `LowMemoryMode`.
+  static const String lowMemoryMode = 'hao_low_memory_mode';
 
   /// Video home cache (fix 13): cached home rows JSON, rendered
   /// immediately while fresh data loads in the background.
@@ -241,4 +306,19 @@ class HiveKeys {
   /// The live room maps it to the flame_barrage BarrageConfig.area
   /// fraction; see DanmakuSettings.
   static const String danmakuArea = 'hao_danmaku_area';
+
+  /// Equalizer (stage 3, Beans `BeansEqualizer` UserDefaults keys
+  /// `beans.equalizer.*`): enabled bool (default false), 10 band gains
+  /// in dB as a 10-item double list (default all 0), selected preset id
+  /// (default 'flat'), selected custom preset name ('' = none), preamp
+  /// gain in dB (default 0), custom presets as JSON list of
+  /// {name, gains[10], preamp}. Persisted in Hive; the native tap
+  /// engine is pushed the same values over the equalizer method
+  /// channel on every change (see EqualizerStore).
+  static const String equalizerEnabled = 'hao_eq_enabled';
+  static const String equalizerBandGains = 'hao_eq_band_gains';
+  static const String equalizerPreset = 'hao_eq_preset';
+  static const String equalizerCustomPresetName = 'hao_eq_custom_name';
+  static const String equalizerPreamp = 'hao_eq_preamp';
+  static const String equalizerCustomPresets = 'hao_eq_custom_presets';
 }

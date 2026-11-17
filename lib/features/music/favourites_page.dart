@@ -104,8 +104,8 @@ class _FavouritesPageState extends State<FavouritesPage> {
                             ),
                           ),
                         ),
-                        onLongPress: () =>
-                            unawaited(openTrackMoreSheet(context, song)),
+                        onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
                       );
                     },
                   ),

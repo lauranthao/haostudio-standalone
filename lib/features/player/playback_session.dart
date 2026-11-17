@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/player/kernel/avplayer_backend.dart';
 import '../../core/player/kernel/ijk_backend.dart';
@@ -108,6 +109,17 @@ class PlaybackSession {
   /// backend swap re-applies it to the new backend, like [_rate].
   bool _audioOnly = false;
 
+  /// Whether the app is in the foreground, as told by the owning page
+  /// via [setForeground]. Defaults to foreground so a session used
+  /// without a page (tests) still holds the wakelock while playing.
+  bool _foreground = true;
+
+  /// Whether the wakelock is currently held by this session. Guards
+  /// the platform call so repeated playing emissions do not spam the
+  /// channel (WakelockPlus itself dedupes, but the call is still a
+  /// platform round-trip per emission).
+  bool _wakelockHeld = false;
+
   bool get isAudioOnly => _audioOnly;
 
   final _statusController = StreamController<PlaybackStatus>.broadcast();
@@ -185,6 +197,56 @@ class PlaybackSession {
   void _emitStatus(PlaybackStatus status) {
     _status = status;
     if (!_statusController.isClosed) _statusController.add(status);
+    _applyWakelock();
+  }
+
+  /// Screen-on (wakelock) is owned HERE, by the session — the single
+  /// place that knows "playing" for every engine:
+  ///
+  /// - MPV's Video widget has its own wakelock, but it is driven by a
+  ///   playing subscription on the widget's controller: after a backend
+  ///   swap the widget updates (didUpdateWidget only refreshes view
+  ///   params) and the subscription still points at the disposed old
+  ///   player, so the wakelock never re-enables — and a stale
+  ///   playing=false event from the disposed player can switch it off
+  ///   mid-playback. mpv_backend passes wakelock: false so this
+  ///   session is the only writer.
+  /// - IJK (FijkView) has no wakelock at all; BetterPlayer only holds
+  ///   it in fullscreen. Either engine reached by user choice or by
+  ///   ladder fallback (which persists via _preferred) left the screen
+  ///   free to auto-lock during live AND VOD — chen 2026-11-17:
+  ///   "看直播的时候系统会自动熄屏" + "估计影视也一样".
+  ///
+  /// Held while the session is actively playing (opening / buffering /
+  /// playing — a room/line/quality switch must not drop it), in the
+  /// foreground, and not in audio-only mode (live background audio
+  /// must not force the screen on). Released on pause, completion,
+  /// error, backgrounding, and dispose.
+  bool get _wantWakelock =>
+      _foreground &&
+      !_audioOnly &&
+      (_status == PlaybackStatus.opening ||
+          _status == PlaybackStatus.buffering ||
+          _status == PlaybackStatus.playing);
+
+  void _applyWakelock() {
+    final want = !_disposed && _wantWakelock;
+    if (want == _wakelockHeld) return;
+    _wakelockHeld = want;
+    // Fire-and-forget, never throws: a failed platform call must not
+    // break playback (same pattern as media_kit_video's Wakelock).
+    unawaited(
+      (want ? WakelockPlus.enable() : WakelockPlus.disable())
+          .catchError((_) {}),
+    );
+  }
+
+  /// App foreground state, told by the owning page (the lifecycle
+  /// observer lives on the page, never on the shared session).
+  void setForeground(bool foreground) {
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+    _applyWakelock();
   }
 
   void _emitError(String message) {
@@ -480,6 +542,7 @@ class PlaybackSession {
     try {
       await _backend?.setAudioOnly(audioOnly);
     } catch (_) {}
+    _applyWakelock();
   }
 
   /// Playback speed (VOD only). Stored so a ladder backend swap
@@ -503,6 +566,7 @@ class PlaybackSession {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _applyWakelock();
     _stallTimer?.cancel();
     unawaited(_positionSub?.cancel());
     unawaited(_durationSub?.cancel());

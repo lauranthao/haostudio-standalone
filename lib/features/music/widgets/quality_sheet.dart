@@ -12,10 +12,9 @@
 // unavailable the resolver downgrades and the badge shows hires (or
 // whatever really played) — a hires stream is never labelled Master.
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../services/music/music_quality.dart';
 
@@ -28,54 +27,38 @@ Future<AudioQuality?> showQualitySheet(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => Center(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: theme.glassBlurSigma,
-            sigmaY: theme.glassBlurSigma,
-          ),
-          child: Container(
-            width: MediaQuery.of(ctx).size.width * 0.78,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: theme.surfaceStrong,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: theme.textPrimary.withValues(alpha: 0.22),
-                width: 1,
+      child: GlassCard(
+        radius: 24,
+        shadow: GlassShadow.panel,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: SizedBox(
+          width: MediaQuery.of(ctx).size.width * 0.78,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(
+                  '音质',
+                  style: TextStyle(
+                    color: theme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    '音质',
-                    style: TextStyle(
-                      color: theme.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+              for (final q in kQualityChain)
+                _QualityRow(
+                  quality: q,
+                  selected: q == current,
+                  onTap: () => Navigator.of(ctx).pop(q),
                 ),
-                for (final q in kQualityChain)
-                  _QualityRow(
-                    quality: q,
-                    selected: q == current,
-                    onTap: () => Navigator.of(ctx).pop(q),
-                  ),
-                const SizedBox(height: 4),
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(
-                    '取消',
-                    style: TextStyle(color: theme.textSecondary),
-                  ),
-                ),
-              ],
-            ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('取消', style: TextStyle(color: theme.textSecondary)),
+              ),
+            ],
           ),
         ),
       ),
@@ -118,8 +101,7 @@ class _QualityRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (selected)
-              Icon(Icons.check, color: theme.accent, size: 20),
+            if (selected) Icon(Icons.check, color: theme.accent, size: 20),
           ],
         ),
       ),

@@ -15,11 +15,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../core/theme/glass.dart';
 import '../../services/clipboard_service.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_quality.dart';
 import '../../services/music/music_store.dart';
+import '../../widgets/glass_dialog.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
@@ -65,7 +68,18 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   Future<void> _load() async {
     try {
       AlbumDetail detail;
-      if (widget.albumId.isEmpty) {
+      // No real album id -> search the album name and filter to the
+      // artist (the Kuwo workaround). "No real id" also covers the
+      // opaque ids album search returns: Kugou's `album|artist` key
+      // and QQ's `qq-album-{id}-{name}` fallback — neither is an id
+      // any track endpoint accepts, so passing one to albumSongsWy
+      // (the old default branch) would return an empty detail.
+      final useNameSearch =
+          widget.albumId.isEmpty ||
+          widget.platform == MusicPlatform.kg ||
+          (widget.platform == MusicPlatform.tx &&
+              widget.albumId.startsWith('qq-album-'));
+      if (useNameSearch) {
         // No album id: search the album name and filter to the artist.
         final found = await _api
             .searchOne(widget.platform, widget.albumName)
@@ -138,18 +152,33 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       await _addSongsTo(lists.first);
       return;
     }
-    final picked = await showDialog<UserPlaylist>(
-      context: context,
+    // Glass dialog, like every other dialog in the app (glass_dialog
+    // rule): same shell, title 17 w700, one row per playlist.
+    final picked = await showGlassDialog<UserPlaylist>(
+      context,
       builder: (ctx) {
         final theme = HaoTheme.of(ctx);
-        return SimpleDialog(
-          backgroundColor: theme.surfaceSolid,
-          title: Text('选择歌单', style: TextStyle(color: theme.textPrimary)),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              '选择歌单',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
             for (final l in lists)
-              SimpleDialogOption(
-                onPressed: () => Navigator.of(ctx).pop(l),
-                child: Text(l.name, style: TextStyle(color: theme.textPrimary)),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  l.name,
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                onTap: () => Navigator.of(ctx).pop(l),
               ),
           ],
         );
@@ -164,19 +193,18 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       (l) => l.id == list.id,
       orElse: () => list,
     );
-    final seen = target.tracks.map((t) => t.identityKey).toSet();
-    var added = 0;
-    for (final s in _songs) {
-      if (seen.contains(s.identityKey)) continue;
-      if (target.tracks.length >= 200) break;
-      target.tracks.add(s);
-      added++;
-    }
+    final res = MusicStore.addTracks(target, _songs);
     if (!lists.any((l) => l.id == target.id)) lists.add(target);
     await MusicStore.saveLists(lists);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已加入歌单 $added 首 → ${target.name}')),
+      SnackBar(
+        content: Text(
+          res.dropped > 0
+              ? '已加入歌单 ${res.added} 首，还有 ${res.dropped} 首没进来（每歌单最多 ${MusicStore.maxTracksPerList} 首）→ ${target.name}'
+              : '已加入歌单 ${res.added} 首 → ${target.name}',
+        ),
+      ),
     );
   }
 
@@ -353,17 +381,19 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     VoidCallback onTap,
   ) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HaoHaptics.tap();
+        onTap();
+      },
       borderRadius: BorderRadius.circular(24),
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: theme.surface,
-          border: Border.all(color: theme.hairline),
+      child: GlassCard(
+        radius: 999,
+        padding: EdgeInsets.zero,
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(icon, color: theme.textPrimary, size: 22),
         ),
-        child: Icon(icon, color: theme.textPrimary, size: 22),
       ),
     );
   }
@@ -392,7 +422,8 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           fontWeight: FontWeight.w700,
         ),
       ),
-      onLongPress: () => unawaited(openTrackMoreSheet(context, song)),
+      onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
     );
   }
 }

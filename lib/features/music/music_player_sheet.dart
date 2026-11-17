@@ -42,6 +42,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
 import 'music_player_controller.dart';
@@ -62,6 +63,16 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   var _lastLyricIdx = -1;
   double _panDx = 0;
   double _panDy = 0;
+
+  /// Lyrics manual-scroll state (Beans `LyricsSection`): while the
+  /// user is dragging the lyrics, auto-follow pauses so the list never
+  /// fights the finger. On release the list snaps to the nearest line
+  /// at the auto-follow anchor, and 3 s later auto-follow resumes.
+  /// Programmatic auto-scrolls never set this — only a real drag does
+  /// (ScrollStartNotification with dragDetails != null).
+  var _lyricsUserScrolling = false;
+  var _lyricsUserDrag = false;
+  Timer? _lyricsResumeTimer;
 
   /// Progress-bar scrub position (0..1) while the user is dragging
   /// the bar, null when not dragging. While set, the bar fill and
@@ -98,6 +109,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
 
   @override
   void dispose() {
+    _lyricsResumeTimer?.cancel();
     _songSub?.cancel();
     _lyricScroll.dispose();
     super.dispose();
@@ -155,10 +167,16 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   }
 
   void _scrollToLyric(int idx) {
+    // Manual scroll in progress: never fight the finger (Beans).
+    if (_lyricsUserScrolling) return;
     if (idx < 0 || !_lyricScroll.hasClients) return;
     if (idx == _lastLyricIdx) return;
     _lastLyricIdx = idx;
-    final target = math.max(0.0, idx * 30.0 - 90.0);
+    // Row stride: 17pt lines (~20.4pt line height) + 12pt vertical
+    // padding ≈ 32pt; the current 20pt line is ~36pt, one row only,
+    // so the stride error stays < 4pt. -90 keeps the current line
+    // ~102pt from the viewport top (upper-middle), as before.
+    final target = math.max(0.0, idx * 32.0 - 90.0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_lyricScroll.hasClients) return;
       _lyricScroll.animateTo(
@@ -167,6 +185,62 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  /// Snap the lyrics to the nearest line at the auto-follow anchor
+  /// (same -90 offset as [_scrollToLyric]) after a manual scroll ends
+  /// (Beans `LyricsSection`: release snaps to the viewport-centre line).
+  ///
+  /// The animateTo MUST be deferred with addPostFrameCallback:
+  /// ScrollEnd is dispatched synchronously from inside
+  /// ScrollPosition.beginActivity, so an animateTo called directly
+  /// from the notification creates a Driven activity that the outer
+  /// beginActivity disposes immediately afterwards — the snap would
+  /// never move (found by the snap widget test: target computed, offset
+  /// never changed). Deferring lets the activity transition finish
+  /// first, the same reason [_scrollToLyric] defers.
+  void _snapLyricsToNearest() {
+    if (!_lyricScroll.hasClients) return;
+    final count = _c.lyrics.length;
+    if (count == 0) return;
+    final idx = ((_lyricScroll.offset + 90.0) / 32.0).round().clamp(
+      0,
+      count - 1,
+    );
+    _lastLyricIdx = idx;
+    final target = math
+        .max(0.0, idx * 32.0 - 90.0)
+        .clamp(0.0, _lyricScroll.position.maxScrollExtent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_lyricScroll.hasClients) return;
+      _lyricScroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// Lyrics scroll notifications: a user drag pauses auto-follow;
+  /// release snaps to the nearest line and starts the 3 s resume
+  /// timer; when it fires, auto-follow resumes (Beans: 3 s).
+  bool _onLyricScroll(ScrollNotification n) {
+    if (n is ScrollStartNotification && n.dragDetails != null) {
+      _lyricsUserDrag = true;
+      _lyricsUserScrolling = true;
+      _lyricsResumeTimer?.cancel();
+    } else if (n is ScrollEndNotification && _lyricsUserDrag) {
+      _lyricsUserDrag = false;
+      _snapLyricsToNearest();
+      _lyricsResumeTimer?.cancel();
+      _lyricsResumeTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        _lyricsUserScrolling = false;
+        _lastLyricIdx = -1;
+        _scrollToLyric(_c.lyricIndexFor(_c.position.value));
+      });
+    }
+    return false;
   }
 
   /// Deep gradient tinted from the theme accent (deep blue on the
@@ -236,71 +310,85 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Scaffold(
+    // Back closes the floating queue panel first: the panel is a Stack
+    // overlay, not a route, so without this the system back (Android)
+    // / swipe-back (iOS) pops the whole player page while the queue is
+    // open. Only a second back leaves the player. The outer Obx reads
+    // showQueuePanel only — the blurred-cover background and the inner
+    // Obx scopes are untouched, so position ticks do not rebuild this.
+    return Obx(
+      () => PopScope(
+        canPop: !_c.showQueuePanel.value,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _c.showQueuePanel.value = false;
+        },
+        child: Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
           _background(theme),
           SafeArea(
             child: Stack(
-            children: [
-              Obx(() {
-                final song = _c.currentSong;
-                if (song == null) {
-                  return const Center(
-                    child: Text(
-                      '还没有选歌',
-                      style: TextStyle(color: Colors.white70, fontSize: 16),
-                    ),
-                  );
-                }
-                final lyricIdx = _c.lyricIndexFor(_c.position.value);
-                _scrollToLyric(lyricIdx);
-                return Column(
-                  children: [
-                    _topBar(),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Column(
-                          children: [
-                            // Two-sided cover box: front = cover, back =
-                            // lyrics (chen 2026-11-17). Swipe-to-switch
-                            // lives ONLY on the cover side; title /
-                            // progress / lyrics / blank areas do not
-                            // switch songs.
-                            _coverOrLyrics(song, lyricIdx),
-                            const SizedBox(height: 14),
-                            _qualityBadge(),
-                            const SizedBox(height: 18),
-                            _titleRow(song),
-                            const SizedBox(height: 16),
-                            _progressBar(),
-                            const SizedBox(height: 20),
-                            _transportRow(),
-                            const SizedBox(height: 12),
-                            _bottomIconRow(),
-                          ],
+              children: [
+                Obx(() {
+                  final song = _c.currentSong;
+                  if (song == null) {
+                    return const Center(
+                      child: Text(
+                        '还没有选歌',
+                        style: TextStyle(color: Colors.white70, fontSize: 16),
+                      ),
+                    );
+                  }
+                  final lyricIdx = _c.lyricIndexFor(_c.position.value);
+                  _scrollToLyric(lyricIdx);
+                  return Column(
+                    children: [
+                      _topBar(),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Column(
+                            children: [
+                              // Two-sided cover box: front = cover, back =
+                              // lyrics (chen 2026-11-17). Swipe-to-switch
+                              // lives ONLY on the cover side; title /
+                              // progress / lyrics / blank areas do not
+                              // switch songs.
+                              _coverOrLyrics(song, lyricIdx),
+                              const SizedBox(height: 14),
+                              _qualityBadge(),
+                              const SizedBox(height: 18),
+                              _titleRow(song),
+                              const SizedBox(height: 16),
+                              _progressBar(),
+                              const SizedBox(height: 20),
+                              _transportRow(),
+                              const SizedBox(height: 12),
+                              _bottomIconRow(),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                );
-              }),
-              Obx(
-                () => _c.showQueuePanel.value
-                    ? PlayQueuePanel(
-                        onClose: () => _c.showQueuePanel.value = false,
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                    ],
+                  );
+                }),
+                Obx(
+                  () => _c.showQueuePanel.value
+                      ? PlayQueuePanel(
+                          onClose: () => _c.showQueuePanel.value = false,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
+        ],
+      ),
         ),
-      ],
-    ),
-  );
-}
+      ),
+    );
+  }
 
   Widget _topBar() {
     return Padding(
@@ -308,7 +396,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 30),
+            icon: const Icon(
+              Icons.keyboard_arrow_down,
+              color: Colors.white,
+              size: 30,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
           const Expanded(
@@ -329,23 +421,32 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
   }
 
   /// Two-sided cover box (chen 2026-11-17): front = cover image, back =
-  /// lyrics, both in the SAME fixed square, so flipping never moves the
-  /// badge / title / controls below. Simple cross-fade (250 ms), no
-  /// flip animation. `showLyrics` false => cover, true => lyrics; the
-  /// flag is the user's last choice and is NOT reset on song change.
+  /// lyrics, both in the SAME fixed height, so flipping never moves the
+  /// badge / title / controls below. The cover stays a square; the
+  /// lyrics face is wider (near full screen width, 16pt margins) with
+  /// bigger text and no background box (chen 2026-11-17). Simple
+  /// cross-fade (250 ms), no flip animation. `showLyrics` false =>
+  /// cover, true => lyrics; the flag is the user's last choice and is
+  /// NOT reset on song change.
   Widget _coverOrLyrics(Song song, int lyricIdx) {
-    final size = math.min(MediaQuery.of(context).size.width * 0.68, 300.0);
+    final screenW = MediaQuery.of(context).size.width;
+    final size = math.min(screenW * 0.68, 300.0);
+    // Lyrics use near-full width (16pt margins each side, capped so
+    // a tablet line never gets absurdly long); the cover stays a
+    // square. Height is the same on both sides so nothing below
+    // moves when flipping.
+    final lyricsWidth = math.min(screenW - 32.0, 560.0);
     return Obx(() {
       final showL = _c.showLyrics.value;
       return SizedBox(
-        width: size,
+        width: showL ? lyricsWidth : size,
         height: size,
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
           transitionBuilder: (child, animation) =>
               FadeTransition(opacity: animation, child: child),
           child: showL
-              ? _lyricsFace(lyricIdx, size)
+              ? _lyricsFace(lyricIdx, lyricsWidth, size)
               : _coverFace(song, size),
         ),
       );
@@ -367,73 +468,130 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     );
   }
 
-  /// Lyrics side, in the cover's square. Dark scrim so white lyrics stay
-  /// readable over the bright blurred-cover background (the player is
-  /// white text on dark by design, so this is neutral, not a theme
-  /// color). Tap a line = seek (stays on lyrics); tap blank = back to
-  /// cover. The ListView scrolls vertically; there is NO switch-songs
-  /// detector here, so swiping lyrics never changes songs.
-  Widget _lyricsFace(int lyricIdx, double size) {
-    return Container(
+  /// Faint text shadow under lyric text: with no background box, this
+  /// is what keeps white lyrics readable over a bright blurred cover.
+  static const _lyricShadow = Shadow(
+    color: Color.fromRGBO(0, 0, 0, 0.45),
+    offset: Offset(0, 1),
+    blurRadius: 8,
+  );
+
+  /// Lyrics side: same height as the cover square, near-full width,
+  /// NO background box (chen 2026-11-17 — the dark rounded container
+  /// is deleted entirely, no replacement backdrop/border/shadow-box).
+  /// White lyrics sit directly on the blurred-cover background; a
+  /// faint text shadow keeps them readable over bright covers (the
+  /// player background is already a dark-tinted wash, top bright,
+  /// bottom near-black). Tap a line = seek (stays on lyrics); tap
+  /// blank = back to cover. The ListView scrolls vertically; there is
+  /// NO switch-songs detector here, so swiping lyrics never changes
+  /// songs.
+  Widget _lyricsFace(int lyricIdx, double width, double height) {
+    return SizedBox(
       key: const ValueKey('playerLyrics'),
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.30),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Obx(() {
-          final lines = _c.lyrics;
-          if (lines.isEmpty) {
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggleLyrics,
-              child: Center(
-                child: Text(
-                  _c.lyricsFailed.value ? '暂无歌词' : '歌词加载中…',
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-              ),
-            );
-          }
-          // Tap a line = seek to that line's timestamp; tap empty space
-          // = back to cover. The inner (line) tap wins the gesture arena
-          // over the outer (face) tap, so a line tap never also flips.
+      width: width,
+      height: height,
+      child: Obx(() {
+        final lines = _c.lyrics;
+        if (lines.isEmpty) {
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _toggleLyrics,
-            child: ListView.builder(
-              controller: _lyricScroll,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              itemCount: lines.length,
-              itemBuilder: (ctx, i) {
-                final current = i == lyricIdx;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _c.seek(
-                    Duration(milliseconds: (lines[i].t * 1000).round()),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Text(
-                      lines[i].text,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: current ? Colors.white : Colors.white54,
-                        fontSize: current ? 16 : 14,
-                        fontWeight:
-                            current ? FontWeight.w700 : FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                );
-              },
+            child: Center(
+              child: Text(
+                _c.lyricsFailed.value ? '暂无歌词' : '歌词加载中…',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 16,
+                  shadows: [_lyricShadow],
+                ),
+              ),
             ),
           );
-        }),
-      ),
+        }
+        // Tap a line = seek to that line's timestamp; tap empty space
+        // = back to cover. The inner (line) tap wins the gesture arena
+        // over the outer (face) tap, so a line tap never also flips.
+        // Manual scroll pauses auto-follow (see _onLyricScroll); the
+        // top/bottom fade mask is Beans' lyrics viewport fade.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleLyrics,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onLyricScroll,
+            child: ShaderMask(
+              shaderCallback: (rect) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color.fromRGBO(0, 0, 0, 0),
+                  Colors.black,
+                  Colors.black,
+                  Color.fromRGBO(0, 0, 0, 0),
+                ],
+                stops: [0.0, 0.10, 0.90, 1.0],
+              ).createShader(rect),
+              blendMode: BlendMode.dstIn,
+              child: ListView.builder(
+                controller: _lyricScroll,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                itemCount: lines.length,
+                itemBuilder: (ctx, i) {
+                  final current = i == lyricIdx;
+                  final translation = lines[i].translation;
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _c.seek(
+                      Duration(milliseconds: (lines[i].t * 1000).round()),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            lines[i].text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: current ? Colors.white : Colors.white54,
+                              fontSize: current ? 20 : 17,
+                              fontWeight: current
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              shadows: const [_lyricShadow],
+                            ),
+                          ),
+                          // Translation under the focused line only
+                          // (Beans `LyricsSection`): smaller, dimmer.
+                          if (current &&
+                              translation != null &&
+                              translation.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(
+                                translation,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                  shadows: [_lyricShadow],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -445,7 +603,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
               width: size,
               height: size,
               color: Colors.white.withValues(alpha: 0.15),
-              child: const Icon(Icons.music_note, color: Colors.white54, size: 72),
+              child: const Icon(
+                Icons.music_note,
+                color: Colors.white54,
+                size: 72,
+              ),
             )
           : Image(
               image: MusicImageProvider(song.cover),
@@ -474,9 +636,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         if (picked != null) {
           final ok = await _c.setQuality(picked);
           if (!ok && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('这首歌播不了，换一首试试')),
-            );
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('这首歌播不了，换一首试试')));
           }
         }
       },
@@ -485,9 +646,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.16),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.35),
-          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
         ),
         child: Obx(
           () => Text(
@@ -546,13 +705,17 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
               size: 26,
             ),
             onPressed: () async {
+              HaoHaptics.tap();
               await _c.toggleFav(song);
               setState(() {});
             },
           ),
           IconButton(
             icon: const Icon(Icons.more_horiz, color: Colors.white, size: 26),
-            onPressed: () => _openTrackMore(song),
+            onPressed: () {
+              HaoHaptics.tap();
+              _openTrackMore(song);
+            },
           ),
         ],
       ),
@@ -575,10 +738,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             final pos = _c.position.value;
             final total = _c.duration.value;
             // While scrubbing, the bar follows the finger.
-            final frac = _scrubFrac ??
+            final frac =
+                _scrubFrac ??
                 (total.inMilliseconds > 0
-                    ? (pos.inMilliseconds / total.inMilliseconds)
-                        .clamp(0.0, 1.0)
+                    ? (pos.inMilliseconds / total.inMilliseconds).clamp(
+                        0.0,
+                        1.0,
+                      )
                     : 0.0);
             return GestureDetector(
               key: const ValueKey('progressBar'),
@@ -589,8 +755,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
               // fires only for a completed tap, so a drag seeks once,
               // on release (see _endScrub).
               onTapUp: (d) => _seekByFractionTap(d, total),
-              onHorizontalDragStart: (d) =>
-                  _setScrubFrac(d.globalPosition.dx, total),
+              onHorizontalDragStart: (d) {
+                HaoHaptics.medium();
+                _setScrubFrac(d.globalPosition.dx, total);
+              },
               onHorizontalDragUpdate: (d) =>
                   _setScrubFrac(d.globalPosition.dx, total),
               onHorizontalDragEnd: (_) => _endScrub(total),
@@ -604,6 +772,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                       builder: (ctx, constraints) {
                         final w = constraints.maxWidth;
                         return Stack(
+                          clipBehavior: Clip.none,
                           children: [
                             Container(
                               width: w,
@@ -621,6 +790,44 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
+                            // Scrub bubble (Beans `SeekBar`): while the
+                            // finger is down, the scrub time floats
+                            // above the thumb, clamped to the bar.
+                            if (_scrubFrac != null && total.inMilliseconds > 0)
+                              Positioned(
+                                left: (w * _scrubFrac! - 31).clamp(
+                                  0.0,
+                                  math.max(0.0, w - 62),
+                                ),
+                                top: -30,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.48),
+                                    borderRadius: BorderRadius.circular(11),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.22,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    formatDuration(
+                                      (total.inMilliseconds * _scrubFrac!)
+                                              .round() ~/
+                                          1000,
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         );
                       },
@@ -633,36 +840,32 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Obx(
-                () {
-                  // While scrubbing, the elapsed label shows the
-                  // scrub target, not the still-moving playhead.
-                  final total = _c.duration.value;
-                  final pos = _scrubFrac != null && total.inMilliseconds > 0
-                      ? Duration(
-                          milliseconds:
-                              (total.inMilliseconds * _scrubFrac!).round())
-                      : _c.position.value;
-                  return Text(
-                    formatDuration(pos.inSeconds),
-                    style:
-                        const TextStyle(color: Colors.white70, fontSize: 12),
-                  );
-                },
-              ),
-              Obx(
-                () {
-                  final total = _c.duration.value;
-                  final remain = total - _c.position.value;
-                  final text = total.inSeconds <= 0
-                      ? '-0:00'
-                      : '-${formatDuration(remain.inSeconds < 0 ? 0 : remain.inSeconds)}';
-                  return Text(
-                    text,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  );
-                },
-              ),
+              Obx(() {
+                // While scrubbing, the elapsed label shows the
+                // scrub target, not the still-moving playhead.
+                final total = _c.duration.value;
+                final pos = _scrubFrac != null && total.inMilliseconds > 0
+                    ? Duration(
+                        milliseconds: (total.inMilliseconds * _scrubFrac!)
+                            .round(),
+                      )
+                    : _c.position.value;
+                return Text(
+                  formatDuration(pos.inSeconds),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                );
+              }),
+              Obx(() {
+                final total = _c.duration.value;
+                final remain = total - _c.position.value;
+                final text = total.inSeconds <= 0
+                    ? '-0:00'
+                    : '-${formatDuration(remain.inSeconds < 0 ? 0 : remain.inSeconds)}';
+                return Text(
+                  text,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                );
+              }),
             ],
           ),
         ],
@@ -691,6 +894,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     if (f == null) return;
     setState(() => _scrubFrac = null);
     if (total.inMilliseconds <= 0) return;
+    HaoHaptics.tap();
     _c.seek(Duration(milliseconds: (total.inMilliseconds * f).round()));
   }
 
@@ -698,7 +902,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
     if (total.inMilliseconds <= 0) return;
     final width = MediaQuery.of(context).size.width - 48;
     final x = (d.globalPosition.dx - 24).clamp(0.0, width);
-    _c.seek(Duration(milliseconds: (total.inMilliseconds * (x / width)).round()));
+    _c.seek(
+      Duration(milliseconds: (total.inMilliseconds * (x / width)).round()),
+    );
   }
 
   Widget _transportRow() {
@@ -707,48 +913,66 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
       children: [
         IconButton(
           icon: const Icon(Icons.skip_previous, color: Colors.white, size: 54),
-          onPressed: () => _c.prev(),
-        ),
-        const SizedBox(width: 20),
-        Obx(
-          () {
-            // Resolving a URL with nothing sounding yet: show a
-            // spinner in place of the play button so a tap never
-            // looks dead for the seconds a resolve can take. While a
-            // song is playing (auto-advance / crossfade) the old
-            // track keeps sounding, so no spinner. The box is 80x80,
-            // the same size as the IconButton it replaces, so the
-            // prev/next buttons do not shift.
-            if (_c.isResolving.value && !_c.isPlaying.value) {
-              return const SizedBox(
-                width: 80,
-                height: 80,
-                child: Center(
-                  child: SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
-                    ),
-                  ),
-                ),
-              );
-            }
-            return IconButton(
-              icon: Icon(
-                _c.isPlaying.value ? Icons.pause : Icons.play_arrow,
-                color: Colors.white,
-                size: 64,
-              ),
-              onPressed: () => _c.togglePlayPause(),
-            );
+          onPressed: () {
+            HaoHaptics.tap();
+            _c.prev();
           },
         ),
         const SizedBox(width: 20),
+        Obx(() {
+          // Resolving a URL with nothing sounding yet: show a
+          // spinner in place of the play button so a tap never
+          // looks dead for the seconds a resolve can take. While a
+          // song is playing (auto-advance / crossfade) the old
+          // track keeps sounding, so no spinner. The box is 80x80,
+          // the same size as the IconButton it replaces, so the
+          // prev/next buttons do not shift.
+          if (_c.isResolving.value && !_c.isPlaying.value) {
+            return const SizedBox(
+              width: 80,
+              height: 80,
+              child: Center(
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 3,
+                  ),
+                ),
+              ),
+            );
+          }
+          final playing = _c.isPlaying.value;
+          return IconButton(
+            // Play/pause morph (Beans `PlayPauseMorphIcon`): the
+            // icon cross-fades + scales instead of swapping hard.
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: animation,
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+              child: Icon(
+                playing ? Icons.pause : Icons.play_arrow,
+                key: ValueKey(playing),
+                color: Colors.white,
+                size: 64,
+              ),
+            ),
+            onPressed: () {
+              HaoHaptics.tap();
+              _c.togglePlayPause();
+            },
+          );
+        }),
+        const SizedBox(width: 20),
         IconButton(
           icon: const Icon(Icons.skip_next, color: Colors.white, size: 54),
-          onPressed: () => _c.next(),
+          onPressed: () {
+            HaoHaptics.tap();
+            _c.next();
+          },
         ),
       ],
     );
@@ -762,11 +986,18 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            icon: const Icon(Icons.article_outlined, color: Colors.white, size: 26),
+            icon: const Icon(
+              Icons.article_outlined,
+              color: Colors.white,
+              size: 26,
+            ),
             // Flip cover <-> lyrics (chen 2026-11-17). Auto-scroll already
             // follows the current line, so the old scroll-to-line action
             // is not needed anymore; tapping again flips back to cover.
-            onPressed: _toggleLyrics,
+            onPressed: () {
+              HaoHaptics.tap();
+              _toggleLyrics();
+            },
           ),
           IconButton(
             icon: const Icon(Icons.airplay, color: Colors.white, size: 26),
@@ -777,17 +1008,20 @@ class _MusicPlayerPageState extends State<MusicPlayerPage> {
             // here. A toast appears only when the picker genuinely
             // could not be opened at all.
             onPressed: () async {
+              HaoHaptics.tap();
               final opened = await _c.showAirPlayPicker();
               if (!opened && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('无法打开隔空播放选择器')),
-                );
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('无法打开隔空播放选择器')));
               }
             },
           ),
           IconButton(
             icon: const Icon(Icons.queue_music, color: Colors.white, size: 26),
-            onPressed: () => _c.showQueuePanel.value = true,
+            onPressed: () {
+              HaoHaptics.tap();
+              _c.showQueuePanel.value = true;
+            },
           ),
         ],
       ),

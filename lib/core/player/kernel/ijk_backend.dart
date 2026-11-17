@@ -10,6 +10,7 @@ import 'package:flv_lzc/fijkplayer.dart';
 
 import 'player_backend.dart';
 import 'player_engine.dart';
+import 'video_fit.dart';
 
 class IjkBackend implements PlayerBackend {
   IjkBackend() {
@@ -22,11 +23,33 @@ class IjkBackend implements PlayerBackend {
   bool _disposed = false;
   bool _opened = false;
 
+  /// Set by open(): whether this backend is serving a live room
+  /// (same as MpvBackend — gates the VOD-only video fit).
+  bool _isLive = false;
+
   @override
   PlayerEngine get engine => PlayerEngine.fijk;
 
   @override
-  Widget buildVideoWidget() => FijkView(player: _player);
+  // fit: contain, explicit — the same fit MPV and AVPlayer use, so
+  // all three kernels render a 16:9 stream into the 16:9 room
+  // container identically (FijkView already defaults to contain;
+  // this pins the contract instead of relying on the default).
+  // VOD honours the persisted VideoFitMode (自动/拉伸/裁剪); live
+  // stays contain. A change applies LIVE: FijkView re-applies fit
+  // in didUpdateWidget (fijkview.dart:407/429).
+  Widget buildVideoWidget() => FijkView(
+    player: _player,
+    fit: _isLive ? FijkFit.contain : _toFijkFit(VideoFitMode.current),
+  );
+
+  /// Our modes only ever produce contain/fill/cover (VideoFitMode has
+  /// no other values), so this mapping is total.
+  static FijkFit _toFijkFit(VideoFitMode mode) => switch (mode) {
+    VideoFitMode.auto => FijkFit.contain,
+    VideoFitMode.fill => FijkFit.fill,
+    VideoFitMode.cover => FijkFit.cover,
+  };
 
   @override
   Future<void> open({
@@ -35,6 +58,7 @@ class IjkBackend implements PlayerBackend {
     required bool isLive,
     String? declaredFormat,
   }) async {
+    _isLive = isLive;
     // IJK reconnect triple for live (headers are not supported by the
     // fijk data source call; live lines carry auth in the URL itself).
     if (isLive) {

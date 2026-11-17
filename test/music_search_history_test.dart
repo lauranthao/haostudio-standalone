@@ -34,11 +34,11 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/path_provider');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return hiveDir.path;
-      }
-      return null;
-    });
+          if (call.method == 'getApplicationDocumentsDirectory') {
+            return hiveDir.path;
+          }
+          return null;
+        });
     await HiveStore.init();
     final memBox = await Hive.openBox<dynamic>(
       'test_search_history',
@@ -118,16 +118,18 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('empty history: placeholder only, no history section',
-        (tester) async {
+    testWidgets('empty history: placeholder only, no history section', (
+      tester,
+    ) async {
       await pumpPage(tester);
       expect(find.text('搜索历史'), findsNothing);
       expect(find.text('清除'), findsNothing);
-      expect(find.text('搜一首歌、歌单或歌手'), findsOneWidget);
+      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
     });
 
-    testWidgets('seeded history renders as chips with a clear entry',
-        (tester) async {
+    testWidgets('seeded history renders as chips with a clear entry', (
+      tester,
+    ) async {
       await MusicStore.saveSearchQuery('周杰伦');
       await MusicStore.saveSearchQuery('林俊杰');
       await pumpPage(tester);
@@ -145,12 +147,13 @@ void main() {
       await tester.pump();
       expect(find.text('搜索历史'), findsNothing);
       expect(find.text('周杰伦'), findsNothing);
-      expect(find.text('搜一首歌、歌单或歌手'), findsOneWidget);
+      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
       expect(MusicStore.getSearchHistory(), isEmpty);
     });
 
-    testWidgets('tap a chip fills the query and starts a search',
-        (tester) async {
+    testWidgets('tap a chip fills the query and starts a search', (
+      tester,
+    ) async {
       await MusicStore.saveSearchQuery('周杰伦');
       await pumpPage(tester);
       // The tap fires a real search (network + 5 s timeout timers),
@@ -162,6 +165,67 @@ void main() {
       await tester.pump();
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.controller?.text, '周杰伦');
+    });
+
+    testWidgets('type tabs are a segmented control, not a dropdown (Beans)', (
+      tester,
+    ) async {
+      await pumpPage(tester);
+      expect(
+        find.byWidgetPredicate((w) => w is SegmentedButton),
+        findsOneWidget,
+      );
+      expect(find.text('歌曲'), findsOneWidget);
+      expect(find.text('歌单'), findsOneWidget);
+      expect(find.text('歌手'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is DropdownButton), findsNothing);
+    });
+
+    testWidgets('search field has a magnifier and a clear button (Beans)', (
+      tester,
+    ) async {
+      await pumpPage(tester);
+      expect(find.byIcon(Icons.search), findsOneWidget);
+      expect(find.byIcon(Icons.cancel), findsNothing);
+      await tester.enterText(find.byType(TextField), 'abc');
+      await tester.pump();
+      expect(find.byIcon(Icons.cancel), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.cancel));
+      await tester.pump();
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.controller?.text, isEmpty);
+      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+    });
+
+    testWidgets('per-chip × deletes just that term (Beans)', (tester) async {
+      await MusicStore.saveSearchQuery('周杰伦');
+      await MusicStore.saveSearchQuery('林俊杰');
+      await pumpPage(tester);
+      expect(find.text('林俊杰'), findsOneWidget);
+      expect(find.text('周杰伦'), findsOneWidget);
+      // InputChip's default delete icon is Icons.clear (not cancel).
+      await tester.tap(find.byIcon(Icons.clear).first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('林俊杰'), findsNothing);
+      expect(find.text('周杰伦'), findsOneWidget);
+      expect(MusicStore.getSearchHistory(), ['周杰伦']);
+    });
+
+    testWidgets('failed search shows an error with a retry button (Beans)', (
+      tester,
+    ) async {
+      await pumpPage(tester);
+      await tester.enterText(find.byType(TextField), '不存在的歌名xyz');
+      // Real network in the VM fails fast (egress proxy rejects Dart
+      // HTTP), so the stream settles with an error quickly.
+      await tester.runAsync(() async {
+        await tester.tap(find.text('搜索'));
+        await Future<void>.delayed(const Duration(seconds: 2));
+      });
+      await tester.pump();
+      expect(find.byIcon(Icons.search_off), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
   });
 }

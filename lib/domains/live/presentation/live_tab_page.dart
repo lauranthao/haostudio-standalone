@@ -16,8 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/models/live_models.dart';
+import '../../../core/theme/appearance_store.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../features/settings/source_stores.dart';
+import '../../../features/video/widgets/referer_image.dart';
 import '../../../shared/platforms/sites.dart';
 import '../live_follow_store.dart';
 import '../live_history_store.dart';
@@ -75,8 +77,8 @@ class _LiveTabPageState extends State<LiveTabPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
+    return Obx(() => Scaffold(
+      backgroundColor: tabScaffoldBackground(context),
       appBar: AppBar(
         title: const Text('直播'),
         actions: [
@@ -119,7 +121,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
           );
         },
       ),
-    );
+    ));
   }
 
   Widget _buildBody(HaoTheme theme) {
@@ -371,10 +373,13 @@ class _RoomCardState extends State<_RoomCard> {
               fit: StackFit.expand,
               children: [
                 if (room.cover.isNotEmpty)
-                  Image.network(
-                    room.cover,
+                  // Dio loader, not Image.network: plain NetworkImage
+                  // shows blank on chen's phone (v1.0.5 bug — same
+                  // reason music/video posters use Dio loaders).
+                  RefererImage(
+                    url: room.cover,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const _MissingCover(),
+                    fallback: const _MissingCover(),
                   )
                 else
                   const _MissingCover(),

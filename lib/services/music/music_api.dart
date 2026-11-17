@@ -131,10 +131,12 @@ class MusicApi {
 
   /// NetEase: POST music.163.com/api/cloudsearch/pc, type=1.
   Future<List<Song>> searchWy(String q, int limit) async {
-    final j = await _postFormJson(
-      'https://music.163.com/api/cloudsearch/pc',
-      {'s': q, 'type': '1', 'limit': '$limit', 'offset': '0'},
-    );
+    final j = await _postFormJson('https://music.163.com/api/cloudsearch/pc', {
+      's': q,
+      'type': '1',
+      'limit': '$limit',
+      'offset': '0',
+    });
     final songs = _asList(j?['result']?['songs']);
     return songs.map((x) {
       final durMs = (x['duration'] as num?) ?? (x['dt'] as num?) ?? 0;
@@ -248,10 +250,7 @@ class MusicApi {
     final url =
         'https://search.kuwo.cn/r.s?all=${Uri.encodeComponent(q)}&ft=music&rformat=json&encoding=utf8&rn=$limit';
     for (var attempt = 0; attempt < 2; attempt++) {
-      final txt = await _getText(
-        url,
-        headers: {'User-Agent': kMusicUa},
-      );
+      final txt = await _getText(url, headers: {'User-Agent': kMusicUa});
       // Null = network/timeout: do not retry (see searchKg).
       if (txt == null) return [];
       final out = _parseKwSongs(txt);
@@ -298,24 +297,33 @@ class MusicApi {
           },
       ];
     }
-    return list.map((x) {
-      final rid = x['MUSICRID']?.toString() ?? '';
-      final picShort = x['web_albumpic_short']?.toString() ?? '';
-      final picPath = x['PICPATH']?.toString() ?? '';
-      return Song(
-        songId: rid.replaceAll('MUSIC_', ''),
-        title: x['NAME']?.toString() ?? '',
-        artist: x['ARTIST']?.toString() ?? '',
-        album: x['ALBUM']?.toString() ?? '',
-        cover: coverHi(
-          picShort.isNotEmpty
-              ? 'https://img1.kuwo.cn/star/albumcover/$picShort'
-              : picPath,
-        ),
-        platform: MusicPlatform.kw,
-        dur: _asInt(x['DURATION']),
-      );
-    }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList();
+    return list
+        .map((x) {
+          final rid = x['MUSICRID']?.toString() ?? '';
+          final picShort = x['web_albumpic_short']?.toString() ?? '';
+          final picPath = x['PICPATH']?.toString() ?? '';
+          return Song(
+            songId: rid.replaceAll('MUSIC_', ''),
+            // Kuwo names arrive with raw escapes (double-escaped \uXXXX
+            // + HTML entities, e.g. '明天会更好-1985&nbsp;TVB...',
+            // '梅艳芳\\u0026张学友...') — decode here so the row shows
+            // clean text AND backfillCovers' title keys match the other
+            // platforms. Both the JSON path and the regex fallback above
+            // flow through this construction.
+            title: decodeEntities(x['NAME']?.toString() ?? ''),
+            artist: decodeEntities(x['ARTIST']?.toString() ?? ''),
+            album: decodeEntities(x['ALBUM']?.toString() ?? ''),
+            cover: coverHi(
+              picShort.isNotEmpty
+                  ? 'https://img1.kuwo.cn/star/albumcover/$picShort'
+                  : picPath,
+            ),
+            platform: MusicPlatform.kw,
+            dur: _asInt(x['DURATION']),
+          );
+        })
+        .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+        .toList();
   }
 
   /// Single-platform dispatch (directSearchOne). Aggregated search lives
@@ -335,6 +343,240 @@ class MusicApi {
     }
   }
 
+  // -- album search (stage 2, Beans `SearchView` albumResults) --------
+  // Beans searches albums per provider (`NetEaseAPI.searchAlbums`,
+  // `QQMusicAPI.searchAlbums`, `KugouMusicAPI.searchAlbums`); Kuwo has
+  // no Beans album search, but our own `artistDetailKw` already uses
+  // the Kuwo r.s ft=album endpoint, so the same endpoint serves
+  // album search here. No fake data: a platform with no results
+  // returns an empty list. Order follows song search (wy + tx first)
+  // — with the stage-2 capsule only one platform is queried at a time,
+  // so the sort is a no-op in practice; the dispatch keeps the same
+  // wy/tx-first thinking for any future multi-platform caller.
+
+  /// Album search for one platform (stage-2 capsule dispatch).
+  Future<List<AlbumSummary>> searchAlbums(MusicPlatform pf, String q) {
+    switch (pf) {
+      case MusicPlatform.wy:
+        return searchWyAlbums(q);
+      case MusicPlatform.tx:
+        return searchTxAlbums(q);
+      case MusicPlatform.kg:
+        return searchKgAlbums(q);
+      case MusicPlatform.kw:
+        return searchKwAlbums(q);
+      case MusicPlatform.mg:
+        return Future.value([]);
+    }
+  }
+
+  /// NetEase album search (Beans `NetEaseAPI.searchAlbums`,
+  /// NetEaseAPI.swift:365: POST /api/cloudsearch/pc, type=10,
+  /// result.albums[]: id / name / artist.name / picUrl /
+  /// publishTime (ms) / size).
+  Future<List<AlbumSummary>> searchWyAlbums(String q) async {
+    final j = await _getJson(
+      'https://music.163.com/api/cloudsearch/pc',
+      headers: {'User-Agent': kMusicUa},
+      query: {'s': q, 'type': '10', 'limit': '30', 'offset': '0'},
+    );
+    return parseWyAlbums(j?['result'] as Map<String, dynamic>? ?? {});
+  }
+
+  /// NetEase album payload -> [AlbumSummary] (`result.albums`).
+  /// Extracted for tests: the network half is `_getJson`, the parse
+  /// half is pure and runs on canned JSON.
+  static List<AlbumSummary> parseWyAlbums(Map<String, dynamic> result) {
+    return _asList(result['albums'])
+        .map(
+          (x) => AlbumSummary(
+            id: x['id']?.toString() ?? '',
+            name: x['name']?.toString() ?? '',
+            cover: coverHi(x['picUrl']?.toString() ?? ''),
+            artist:
+                (x['artist'] as Map<String, dynamic>?)?['name']
+                    ?.toString() ??
+                '',
+            publishTime: (x['publishTime'] as num?)?.toInt() ?? 0,
+            songCount: (x['size'] as num?)?.toInt() ?? 0,
+            platform: MusicPlatform.wy,
+          ),
+        )
+        .where((a) => a.id.isNotEmpty && a.name.isNotEmpty)
+        .toList();
+  }
+
+  /// QQ album search (Beans `QQMusicAPI.searchAlbums`,
+  /// QQMusicAPI.swift:304: client_search_cp t=8, data.album.list;
+  /// musicu search_type=2 is the fallback there — we have no musicu
+  /// helper in this codebase, so there is no second leg here: an
+  /// empty first leg returns [] instead of a fabricated fallback).
+  Future<List<AlbumSummary>> searchTxAlbums(String q) async {
+    final j = await _getJson(
+      'https://c.y.qq.com/soso/fcgi-bin/client_search_cp',
+      headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
+      query: {
+        'g_tk': '5381',
+        'uin': '0',
+        'format': 'json',
+        'inCharset': 'utf-8',
+        'outCharset': 'utf-8',
+        'notice': '0',
+        'platform': 'h5',
+        'needNewCode': '1',
+        'w': q,
+        'zhidaqu': '1',
+        'catZhida': '1',
+        't': '8',
+        'flag': '1',
+        'ie': 'utf-8',
+        'sem': '1',
+        'aggr': '0',
+        'perpage': '30',
+        'n': '30',
+        'p': '1',
+        'remoteplace': 'txt.mqq.all',
+      },
+    );
+    return parseTxAlbums(j?['data'] as Map<String, dynamic>? ?? {});
+  }
+
+  /// QQ album payload -> [AlbumSummary] (`data.album.list`).
+  /// Beans `parseAlbumItems` (QQMusicAPI.swift:323): name from
+  /// name/albumname/albumName, mid from mid/albummid/albumMID, artist
+  /// from singer[].name (fallback singerName), cover from the
+  /// T002R300x300M000{mid} photo URL, trackCount from total.
+  /// An item with no mid gets the opaque id `qq-album-{id}-{name}`
+  /// (Beans does the same) — AlbumDetailPage treats that id as
+  /// "no real id" and falls back to a name search.
+  static List<AlbumSummary> parseTxAlbums(Map<String, dynamic> data) {
+    final album = data['album'];
+    final list = album is Map<String, dynamic>
+        ? _asList(album['list'])
+        : <Map<String, dynamic>>[];
+    return list
+        .map((x) {
+          final name =
+              x['name']?.toString() ??
+              x['albumname']?.toString() ??
+              x['albumName']?.toString() ??
+              '';
+          final mid =
+              x['mid']?.toString() ??
+              x['albummid']?.toString() ??
+              x['albumMID']?.toString() ??
+              '';
+          final singers = _asList(x['singer']);
+          var artist = singers
+              .map((s) => s['name']?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .join(' / ');
+          if (artist.isEmpty) artist = x['singerName']?.toString() ?? '';
+          final numericId = (x['id'] as num?)?.toInt() ?? 0;
+          return AlbumSummary(
+            id: mid.isNotEmpty ? mid : 'qq-album-$numericId-$name',
+            name: name,
+            cover: mid.isEmpty
+                ? ''
+                : coverHi(
+                    'https://y.gtimg.cn/music/photo_new/T002R300x300M000$mid.jpg',
+                  ),
+            artist: artist,
+            songCount: (x['total'] as num?)?.toInt() ?? 0,
+            platform: MusicPlatform.tx,
+          );
+        })
+        .where((a) => a.name.isNotEmpty)
+        .toList();
+  }
+
+  /// Kugou album search (Beans `KugouMusicAPI.searchAlbums`,
+  /// KugouMusicAPI.swift:614: NO dedicated album endpoint — it
+  /// aggregates the official song-search results by album, keeping
+  /// the official album name / artist / cover). The id is the opaque
+  /// `album|artist` key (Beans does the same) — AlbumDetailPage
+  /// treats it as "no real id" and falls back to a name search.
+  /// Kugou songs carry no cover in our search, so cover is ''.
+  Future<List<AlbumSummary>> searchKgAlbums(String q) async {
+    final songs = await searchKg(q, 40).catchError((_) => <Song>[]);
+    return parseKgAlbums(songs);
+  }
+
+  /// Kugou song results -> deduped [AlbumSummary] list.
+  static List<AlbumSummary> parseKgAlbums(List<Song> songs) {
+    final seen = <String>{};
+    final out = <AlbumSummary>[];
+    for (final s in songs) {
+      if (s.album.isEmpty) continue;
+      final key = '${s.album}|${s.artist}';
+      if (!seen.add(key)) continue;
+      out.add(
+        AlbumSummary(
+          id: key,
+          name: s.album,
+          artist: s.artist,
+          platform: MusicPlatform.kg,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Kuwo album search (r.s ft=album — the same endpoint our own
+  /// `artistDetailKw` already uses for an artist's albums).
+  Future<List<AlbumSummary>> searchKwAlbums(String q) async {
+    final txt = await _getText(
+      'https://search.kuwo.cn/r.s?all=${Uri.encodeComponent(q)}&ft=album&rformat=json&encoding=utf8&rn=30&pn=0',
+      headers: {'User-Agent': kMusicUa},
+    );
+    if (txt == null) return [];
+    return parseKwAlbums(txt);
+  }
+
+  /// Kuwo r.s ft=album payload -> [AlbumSummary]. Same field mapping
+  /// as `artistDetailKw`'s album parse: id from
+  /// ALBUMID/DC_TARGETID/albumid/id, name from ALBUM/name, artist
+  /// from ARTIST/artist, cover from hts_PICPATH/PICPATH, track count
+  /// from SONGNUM.
+  static List<AlbumSummary> parseKwAlbums(String txt) {
+    try {
+      final decoded = jsonDecode(txt.replaceAll("'", '"'));
+      if (decoded is! Map<String, dynamic>) return [];
+      final raw = _asList(decoded['abslist']).isNotEmpty
+          ? _asList(decoded['abslist'])
+          : _asList(decoded['albumlist']);
+      return raw
+          .map(
+            (a) => AlbumSummary(
+              id:
+                  (a['ALBUMID'] ??
+                          a['DC_TARGETID'] ??
+                          a['albumid'] ??
+                          a['id'])
+                      ?.toString() ??
+                  '',
+              name: decodeEntities(
+                a['ALBUM']?.toString() ?? a['name']?.toString() ?? '',
+              ),
+              cover: coverHi(
+                a['hts_PICPATH']?.toString() ??
+                    a['PICPATH']?.toString() ??
+                    '',
+              ),
+              songCount: (a['SONGNUM'] as num?)?.toInt() ?? 0,
+              artist: decodeEntities(
+                a['ARTIST']?.toString() ?? a['artist']?.toString() ?? '',
+              ),
+              platform: MusicPlatform.kw,
+            ),
+          )
+          .where((a) => a.id.isNotEmpty && a.name.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // -- playlist search (app.js:539-571) ------------------------------------
   // QQ playlist search is rejected by its API — only wy + kw exist.
 
@@ -346,12 +588,7 @@ class MusicApi {
     final j = await _getJson(
       'https://music.163.com/api/cloudsearch/pc',
       headers: {'User-Agent': kMusicUa},
-      query: {
-        's': q,
-        'type': '1000',
-        'limit': '30',
-        'offset': '$off',
-      },
+      query: {'s': q, 'type': '1000', 'limit': '30', 'offset': '$off'},
     );
     final res = j?['result'] as Map<String, dynamic>? ?? {};
     final list = _asList(res['playlists']);
@@ -362,7 +599,8 @@ class MusicApi {
               id: x['id']?.toString() ?? '',
               name: x['name']?.toString() ?? '',
               cover: coverHi(x['coverImgUrl']?.toString() ?? ''),
-              creator: (x['creator'] as Map<String, dynamic>?)?['nickname']
+              creator:
+                  (x['creator'] as Map<String, dynamic>?)?['nickname']
                       ?.toString() ??
                   '',
               playCount: (x['playCount'] as num?)?.toInt() ?? 0,
@@ -441,7 +679,9 @@ class MusicApi {
             (x) => PlaylistSummary(
               id: (x['DC_TARGETID'] ?? x['playlistid'])?.toString() ?? '',
               name: decodeEntities(x['name']?.toString() ?? ''),
-              cover: coverHi(x['hts_pic']?.toString() ?? x['pic']?.toString() ?? ''),
+              cover: coverHi(
+                x['hts_pic']?.toString() ?? x['pic']?.toString() ?? '',
+              ),
               creator: x['nickname']?.toString() ?? '',
               playCount: int.tryParse(x['playcnt']?.toString() ?? '0') ?? 0,
               trackCount: int.tryParse(x['songnum']?.toString() ?? '0') ?? 0,
@@ -458,10 +698,12 @@ class MusicApi {
   // -- artist search (app.js:573+) -----------------------------------------
 
   Future<List<ArtistSummary>> searchWyArtists(String q) async {
-    final j = await _postFormJson(
-      'https://music.163.com/api/cloudsearch/pc',
-      {'s': q, 'type': '100', 'limit': '30', 'offset': '0'},
-    );
+    final j = await _postFormJson('https://music.163.com/api/cloudsearch/pc', {
+      's': q,
+      'type': '100',
+      'limit': '30',
+      'offset': '0',
+    });
     final list = _asList(j?['result']?['artists']);
     return list.map((x) {
       final alias = _asList(x['alias']);
@@ -541,13 +783,10 @@ class MusicApi {
       }
     }
     final nq = normalizeName(q);
-    final ranked = counts.entries
-        .where((e) {
-          final n = normalizeName(e.key);
-          return n.contains(nq) || nq.contains(n);
-        })
-        .toList()
-      ..sort((a, b) => b.value.$1.compareTo(a.value.$1));
+    final ranked = counts.entries.where((e) {
+      final n = normalizeName(e.key);
+      return n.contains(nq) || nq.contains(n);
+    }).toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1));
     for (final e in ranked) {
       if (out.any((a) => a.id == e.value.$2 && e.value.$2.isNotEmpty)) {
         continue;
@@ -639,7 +878,8 @@ class MusicApi {
       final artists = _asList(s['artists']).isNotEmpty
           ? _asList(s['artists'])
           : _asList(s['ar']);
-      final album = (s['album'] as Map<String, dynamic>?) ??
+      final album =
+          (s['album'] as Map<String, dynamic>?) ??
           (s['al'] as Map<String, dynamic>?) ??
           {};
       final durMs = (s['duration'] as num?) ?? (s['dt'] as num?) ?? 0;
@@ -652,9 +892,7 @@ class MusicApi {
         cover: coverHi(album['picUrl']?.toString() ?? ''),
         platform: MusicPlatform.wy,
         dur: (durMs / 1000).round(),
-        albumYear: pt > 0
-            ? DateTime.fromMillisecondsSinceEpoch(pt).year
-            : 0,
+        albumYear: pt > 0 ? DateTime.fromMillisecondsSinceEpoch(pt).year : 0,
       );
     }
 
@@ -741,25 +979,32 @@ class MusicApi {
           );
     final results = await Future.wait(jobs);
     final albJ = await albP;
-    final albums = _asList(albJ?['data']?['list']).map((a) {
-      final albumMid = a['albumMID']?.toString() ?? '';
-      return AlbumSummary(
-        id: albumMid,
-        name: a['albumName']?.toString() ?? '',
-        cover: albumMid.isEmpty
-            ? ''
-            : coverHi(
-                'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albumMid.jpg',
-              ),
-        publishTime:
-            DateTime.tryParse(a['pubTime']?.toString() ?? '')?.millisecondsSinceEpoch ?? 0,
-        songCount:
-            ((a['latest_song'] as Map<String, dynamic>?)?['song_count'] as num?)
+    final albums = _asList(albJ?['data']?['list'])
+        .map((a) {
+          final albumMid = a['albumMID']?.toString() ?? '';
+          return AlbumSummary(
+            id: albumMid,
+            name: a['albumName']?.toString() ?? '',
+            cover: albumMid.isEmpty
+                ? ''
+                : coverHi(
+                    'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albumMid.jpg',
+                  ),
+            publishTime:
+                DateTime.tryParse(a['pubTime']?.toString() ?? '')
+                    ?.millisecondsSinceEpoch ??
+                0,
+            songCount:
+                ((a['latest_song'] as Map<String, dynamic>?)?['song_count']
+                        as num?)
                     ?.toInt() ??
                 0,
-        artist: a['singerName']?.toString() ?? q,
-      );
-    }).where((a) => a.id.isNotEmpty && a.name.isNotEmpty).toList();
+            artist: a['singerName']?.toString() ?? q,
+            platform: MusicPlatform.tx,
+          );
+        })
+        .where((a) => a.id.isNotEmpty && a.name.isNotEmpty)
+        .toList();
     final seen = <String>{};
     final songs = <Song>[];
     var songnum = 0;
@@ -787,8 +1032,7 @@ class MusicApi {
           Song(
             songId: songmid,
             title: s['songname']?.toString() ?? '',
-            artist:
-                singers.map((a) => a['name']?.toString() ?? '').join(' / '),
+            artist: singers.map((a) => a['name']?.toString() ?? '').join(' / '),
             album: s['albumname']?.toString() ?? '',
             cover: albummid.isEmpty
                 ? ''
@@ -839,7 +1083,9 @@ class MusicApi {
     }).toList();
     var albums = <AlbumSummary>[];
     try {
-      final decoded = jsonDecode((trio[1] as String? ?? '').replaceAll("'", '"'));
+      final decoded = jsonDecode(
+        (trio[1] as String? ?? '').replaceAll("'", '"'),
+      );
       if (decoded is Map<String, dynamic>) {
         final raw = _asList(decoded['abslist']).isNotEmpty
             ? _asList(decoded['abslist'])
@@ -847,7 +1093,11 @@ class MusicApi {
         albums = raw
             .map(
               (a) => AlbumSummary(
-                id: (a['ALBUMID'] ?? a['DC_TARGETID'] ?? a['albumid'] ?? a['id'])
+                id:
+                    (a['ALBUMID'] ??
+                            a['DC_TARGETID'] ??
+                            a['albumid'] ??
+                            a['id'])
                         ?.toString() ??
                     '',
                 name: decodeEntities(
@@ -862,6 +1112,7 @@ class MusicApi {
                 artist: decodeEntities(
                   a['ARTIST']?.toString() ?? a['artist']?.toString() ?? '',
                 ),
+                platform: MusicPlatform.kw,
               ),
             )
             .where((a) => a.id.isNotEmpty && a.name.isNotEmpty)
@@ -870,7 +1121,9 @@ class MusicApi {
     } catch (_) {}
     var pic = '';
     try {
-      final decoded = jsonDecode((trio[2] as String? ?? '').replaceAll("'", '"'));
+      final decoded = jsonDecode(
+        (trio[2] as String? ?? '').replaceAll("'", '"'),
+      );
       if (decoded is Map<String, dynamic>) {
         final list = _asList(decoded['abslist']);
         String norm(String s) => s.replaceAll(RegExp(r'\s+'), '');
@@ -897,11 +1150,7 @@ class MusicApi {
     );
   }
 
-  Future<ArtistDetail> artistDetail(
-    MusicPlatform pf,
-    String id,
-    String name,
-  ) {
+  Future<ArtistDetail> artistDetail(MusicPlatform pf, String id, String name) {
     switch (pf) {
       case MusicPlatform.kw:
         return artistDetailKw(name.isEmpty ? id : name);
@@ -926,7 +1175,8 @@ class MusicApi {
     return AlbumDetail(
       name: al['name']?.toString() ?? '',
       pic: coverHi(al['picUrl']?.toString() ?? ''),
-      artist: (al['artist'] as Map<String, dynamic>?)?['name']?.toString() ?? '',
+      artist:
+          (al['artist'] as Map<String, dynamic>?)?['name']?.toString() ?? '',
       songs: songs.map((s) {
         final ar = _asList(s['ar']);
         final sal = s['al'] as Map<String, dynamic>?;
@@ -971,17 +1221,22 @@ class MusicApi {
       name: d['name']?.toString() ?? '',
       pic: pic,
       artist: d['singername']?.toString() ?? '',
-      songs: _asList(d['list']).map((s) {
-        final singers = _asList(s['singer']);
-        return Song(
-          songId: s['songmid']?.toString() ?? '',
-          title: s['songname']?.toString() ?? '',
-          artist: singers.map((a) => a['name']?.toString() ?? '').join(' / '),
-          cover: pic,
-          platform: MusicPlatform.tx,
-          dur: (s['interval'] as num?)?.toInt() ?? 0,
-        );
-      }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+      songs: _asList(d['list'])
+          .map((s) {
+            final singers = _asList(s['singer']);
+            return Song(
+              songId: s['songmid']?.toString() ?? '',
+              title: s['songname']?.toString() ?? '',
+              artist: singers
+                  .map((a) => a['name']?.toString() ?? '')
+                  .join(' / '),
+              cover: pic,
+              platform: MusicPlatform.tx,
+              dur: (s['interval'] as num?)?.toInt() ?? 0,
+            );
+          })
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
     );
   }
 
@@ -1005,12 +1260,7 @@ class MusicApi {
       }).toList();
       if (mine.isNotEmpty) list = mine;
     }
-    return AlbumDetail(
-      name: q,
-      pic: '',
-      artist: artist,
-      songs: list,
-    );
+    return AlbumDetail(name: q, pic: '', artist: artist, songs: list);
   }
 
   Future<AlbumDetail> albumSongs(
@@ -1036,17 +1286,20 @@ class MusicApi {
       'https://music.163.com/api/personalized/playlist?limit=30',
       headers: {'User-Agent': kMusicUa},
     );
-    return _asList(j?['result']).map((x) {
-      return PlaylistSummary(
-        id: x['id']?.toString() ?? '',
-        name: x['name']?.toString() ?? '',
-        cover: coverHi(x['picUrl']?.toString() ?? ''),
-        playCount: (x['playCount'] as num?)?.toInt() ?? 0,
-        trackCount: (x['trackCount'] as num?)?.toInt() ?? 0,
-        desc: x['copywriter']?.toString() ?? '',
-        platform: MusicPlatform.wy,
-      );
-    }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
+    return _asList(j?['result'])
+        .map((x) {
+          return PlaylistSummary(
+            id: x['id']?.toString() ?? '',
+            name: x['name']?.toString() ?? '',
+            cover: coverHi(x['picUrl']?.toString() ?? ''),
+            playCount: (x['playCount'] as num?)?.toInt() ?? 0,
+            trackCount: (x['trackCount'] as num?)?.toInt() ?? 0,
+            desc: x['copywriter']?.toString() ?? '',
+            platform: MusicPlatform.wy,
+          );
+        })
+        .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
+        .toList();
   }
 
   Future<List<PlaylistSummary>> plazaTx() async {
@@ -1072,19 +1325,22 @@ class MusicApi {
         'ein': '29',
       },
     );
-    return _asList(j?['data']?['list']).map((x) {
-      final creator = x['creator'] as Map<String, dynamic>?;
-      return PlaylistSummary(
-        id: x['dissid']?.toString() ?? '',
-        name: decodeEntities(x['dissname']?.toString() ?? ''),
-        cover: coverHi(x['imgurl']?.toString() ?? ''),
-        creator: creator?['name']?.toString() ?? '',
-        playCount: (x['listennum'] as num?)?.toInt() ?? 0,
-        trackCount: 0,
-        desc: x['introduction']?.toString() ?? '',
-        platform: MusicPlatform.tx,
-      );
-    }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
+    return _asList(j?['data']?['list'])
+        .map((x) {
+          final creator = x['creator'] as Map<String, dynamic>?;
+          return PlaylistSummary(
+            id: x['dissid']?.toString() ?? '',
+            name: decodeEntities(x['dissname']?.toString() ?? ''),
+            cover: coverHi(x['imgurl']?.toString() ?? ''),
+            creator: creator?['name']?.toString() ?? '',
+            playCount: (x['listennum'] as num?)?.toInt() ?? 0,
+            trackCount: 0,
+            desc: x['introduction']?.toString() ?? '',
+            platform: MusicPlatform.tx,
+          );
+        })
+        .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
+        .toList();
   }
 
   Future<List<PlaylistSummary>> plazaKw() async {
@@ -1099,21 +1355,24 @@ class MusicApi {
       ),
       headers: {'User-Agent': kMusicUa},
     );
-    return _asList(j?['data']?['info']).map((x) {
-      return PlaylistSummary(
-        id: x['specialid']?.toString() ?? '',
-        name: x['specialname']?.toString() ?? '',
-        cover: coverHi(
-          (x['imgurl']?.toString() ?? '').replaceAll('{size}', '400'),
-        ),
-        creator: x['nickname']?.toString() ?? '',
-        playCount: (x['playcount'] as num?)?.toInt() ?? 0,
-        trackCount: (x['songcount'] as num?)?.toInt() ?? 0,
-        desc: x['intro']?.toString() ?? '',
-        time: x['publishtime']?.toString() ?? '',
-        platform: MusicPlatform.kg,
-      );
-    }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
+    return _asList(j?['data']?['info'])
+        .map((x) {
+          return PlaylistSummary(
+            id: x['specialid']?.toString() ?? '',
+            name: x['specialname']?.toString() ?? '',
+            cover: coverHi(
+              (x['imgurl']?.toString() ?? '').replaceAll('{size}', '400'),
+            ),
+            creator: x['nickname']?.toString() ?? '',
+            playCount: (x['playcount'] as num?)?.toInt() ?? 0,
+            trackCount: (x['songcount'] as num?)?.toInt() ?? 0,
+            desc: x['intro']?.toString() ?? '',
+            time: x['publishtime']?.toString() ?? '',
+            platform: MusicPlatform.kg,
+          );
+        })
+        .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
+        .toList();
   }
 
   /// Fetch ONLY the given platform (fix 9: never silently fall back).
@@ -1134,24 +1393,42 @@ class MusicApi {
 
   // -- plaza import (app.js:762-830) -----------------------------------------
 
-  Future<({String name, List<Song> tracks})> importWyPlaylist(
-    String id,
-  ) async {
+  Future<({String name, List<Song> tracks})> importWyPlaylist(String id) async {
     var name = '';
     var tids = <String>[];
-    try {
-      final j = await _getJson(
-        'https://music.163.com/api/v6/playlist/detail?id=$id',
-        headers: {'User-Agent': kMusicUa},
-        timeout: const Duration(seconds: 15),
-      );
-      final pl = j?['playlist'] as Map<String, dynamic>? ?? {};
-      name = pl['name']?.toString() ?? '';
-      tids = _asList(pl['trackIds'])
-          .map((t) => t['id']?.toString() ?? '')
-          .where((s) => s.isNotEmpty)
-          .toList();
-    } catch (_) {}
+    // One v6 detail fetch. Returns true when the call answered at
+    // all (even with an error body); false on network/timeout/throw.
+    Future<bool> fetchV6() async {
+      try {
+        final j = await _getJson(
+          'https://music.163.com/api/v6/playlist/detail?id=$id',
+          headers: {'User-Agent': kMusicUa},
+          timeout: const Duration(seconds: 15),
+        );
+        if (j == null) return false;
+        final pl = j['playlist'] as Map<String, dynamic>? ?? {};
+        name = pl['name']?.toString() ?? '';
+        tids = _asList(pl['trackIds'])
+            .map((t) => t['id']?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toList();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final answered = await fetchV6();
+    if (tids.isEmpty && answered) {
+      // v6 answered but gave no ids (transient API error?) — retry
+      // once before falling back to the old endpoint, whose track
+      // list is truncated to ~10 for big playlists (measured
+      // 2026-11-17: 836-song playlist -> 10 tracks, no trackIds).
+      // Null = network/timeout: do not retry (same rule as
+      // searchKw/searchKg).
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await fetchV6();
+    }
     if (tids.isEmpty) {
       final j = await _getJson(
         'https://music.163.com/api/playlist/detail?id=$id',
@@ -1162,20 +1439,23 @@ class MusicApi {
       final tr = _asList(result['tracks']);
       return (
         name: result['name']?.toString() ?? name,
-        tracks: tr.map((t) {
-          final ars = _asList(t['artists']);
-          final alb = t['album'] as Map<String, dynamic>?;
-          final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
-          return Song(
-            songId: t['id']?.toString() ?? '',
-            title: t['name']?.toString() ?? '',
-            artist: ars.map((a) => a['name']?.toString() ?? '').join('/'),
-            album: alb?['name']?.toString() ?? '',
-            cover: coverHi(alb?['picUrl']?.toString() ?? ''),
-            platform: MusicPlatform.wy,
-            dur: (durMs / 1000).round(),
-          );
-        }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+        tracks: tr
+            .map((t) {
+              final ars = _asList(t['artists']);
+              final alb = t['album'] as Map<String, dynamic>?;
+              final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
+              return Song(
+                songId: t['id']?.toString() ?? '',
+                title: t['name']?.toString() ?? '',
+                artist: ars.map((a) => a['name']?.toString() ?? '').join('/'),
+                album: alb?['name']?.toString() ?? '',
+                cover: coverHi(alb?['picUrl']?.toString() ?? ''),
+                platform: MusicPlatform.wy,
+                dur: (durMs / 1000).round(),
+              );
+            })
+            .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+            .toList(),
       );
     }
     final out = <Song>[];
@@ -1197,7 +1477,8 @@ class MusicApi {
           final ars = _asList(t['artists']).isNotEmpty
               ? _asList(t['artists'])
               : _asList(t['ar']);
-          final alb = (t['album'] as Map<String, dynamic>?) ??
+          final alb =
+              (t['album'] as Map<String, dynamic>?) ??
               (t['al'] as Map<String, dynamic>?) ??
               {};
           final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
@@ -1217,13 +1498,13 @@ class MusicApi {
     }
     return (
       name: name,
-      tracks: out.where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
     );
   }
 
-  Future<({String name, List<Song> tracks})> importTxPlaylist(
-    String id,
-  ) async {
+  Future<({String name, List<Song> tracks})> importTxPlaylist(String id) async {
     final j = await _getJson(
       'https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg',
       headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
@@ -1250,29 +1531,30 @@ class MusicApi {
         : <String, dynamic>{};
     return (
       name: decodeEntities(cd['dissname']?.toString() ?? ''),
-      tracks: _asList(cd['songlist']).map((x) {
-        final singers = _asList(x['singer']);
-        final album = x['album'] as Map<String, dynamic>?;
-        final albumMid = album?['mid']?.toString() ?? '';
-        return Song(
-          songId: x['mid']?.toString() ?? '',
-          title: x['name']?.toString() ?? '',
-          artist: singers.map((a) => a['name']?.toString() ?? '').join('/'),
-          cover: albumMid.isEmpty
-              ? ''
-              : coverHi(
-                  'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albumMid.jpg',
-                ),
-          platform: MusicPlatform.tx,
-          dur: (x['interval'] as num?)?.toInt() ?? 0,
-        );
-      }).where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+      tracks: _asList(cd['songlist'])
+          .map((x) {
+            final singers = _asList(x['singer']);
+            final album = x['album'] as Map<String, dynamic>?;
+            final albumMid = album?['mid']?.toString() ?? '';
+            return Song(
+              songId: x['mid']?.toString() ?? '',
+              title: x['name']?.toString() ?? '',
+              artist: singers.map((a) => a['name']?.toString() ?? '').join('/'),
+              cover: albumMid.isEmpty
+                  ? ''
+                  : coverHi(
+                      'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albumMid.jpg',
+                    ),
+              platform: MusicPlatform.tx,
+              dur: (x['interval'] as num?)?.toInt() ?? 0,
+            );
+          })
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
     );
   }
 
-  Future<({String name, List<Song> tracks})> importKwPlaylist(
-    String id,
-  ) async {
+  Future<({String name, List<Song> tracks})> importKwPlaylist(String id) async {
     final out = <Song>[];
     var name = '';
     for (var pn = 0; pn < 10; pn++) {
@@ -1311,13 +1593,13 @@ class MusicApi {
     }
     return (
       name: name,
-      tracks: out.where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
     );
   }
 
-  Future<({String name, List<Song> tracks})> importKgPlaylist(
-    String id,
-  ) async {
+  Future<({String name, List<Song> tracks})> importKgPlaylist(String id) async {
     final out = <Song>[];
     for (var pn = 1; pn <= 10; pn++) {
       final j = await _getJson(
@@ -1341,9 +1623,7 @@ class MusicApi {
             songId: x['hash']?.toString() ?? '',
             title: title,
             artist: artist,
-            cover: uc.isEmpty
-                ? ''
-                : coverHi(uc.replaceAll('{size}', '400')),
+            cover: uc.isEmpty ? '' : coverHi(uc.replaceAll('{size}', '400')),
             platform: MusicPlatform.kg,
             dur: (x['duration'] as num?)?.toInt() ?? 0,
           ),
@@ -1353,7 +1633,9 @@ class MusicApi {
     }
     return (
       name: '',
-      tracks: out.where((s) => s.songId.isNotEmpty && s.title.isNotEmpty).toList(),
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
     );
   }
 
@@ -1375,11 +1657,51 @@ class MusicApi {
     }
   }
 
+  /// NetEase charts (Beans Discover charts: 飙升/新歌/原创/热歌 + the rest).
+  /// `GET https://music.163.com/api/toplist` returns 65 charts; the four
+  /// canonical ones are pinned first in that order, the rest keep API
+  /// order. A chart IS a playlist id — tap opens [PlazaDetailPage].
+  static List<PlaylistSummary> parseNeteaseCharts(Map<String, dynamic> j) {
+    const pinned = ['飙升榜', '新歌榜', '原创榜', '热歌榜'];
+    final all = _asList(j['list'])
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (c) => PlaylistSummary(
+            id: c['id']?.toString() ?? '',
+            name: c['name']?.toString() ?? '',
+            cover: c['coverImgUrl']?.toString() ?? '',
+            trackCount: (c['trackCount'] as num?)?.toInt() ?? 0,
+            desc: c['updateFrequency']?.toString() ?? '',
+            platform: MusicPlatform.wy,
+          ),
+        )
+        .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
+        .toList();
+    final head = <PlaylistSummary>[];
+    for (final name in pinned) {
+      final i = all.indexWhere((p) => p.name == name);
+      if (i >= 0) head.add(all.removeAt(i));
+    }
+    return [...head, ...all];
+  }
+
+  Future<List<PlaylistSummary>> neteaseCharts() async {
+    final j = await _getJson(
+      'https://music.163.com/api/toplist',
+      headers: {'User-Agent': kMusicUa},
+      timeout: const Duration(seconds: 15),
+    );
+    if (j == null) return const [];
+    return parseNeteaseCharts(j);
+  }
+
   /// Import a playlist from a pasted public link (wy / kw / tx).
   /// Returns null when the URL is not a recognised playlist link.
-  Future<({String name, List<Song> tracks, MusicPlatform pf})?>
-      importFromLink(String url) async {
-    final wy = RegExp(r'music\.163\.com/(#\/)?playlist\?id=(\d+)').firstMatch(url);
+  Future<({String name, List<Song> tracks, MusicPlatform pf})?> importFromLink(
+    String url,
+  ) async {
+    final wy = RegExp(r'music\.163\.com/(#\/)?playlist\?id=(\d+)')
+        .firstMatch(url);
     if (wy != null) {
       final r = await importWyPlaylist(wy.group(2)!);
       return (name: r.name, tracks: r.tracks, pf: MusicPlatform.wy);
@@ -1405,8 +1727,11 @@ class MusicApi {
 
   static const int commentsPageSize = 30;
 
-  Future<({List<CommentItem> hot, List<CommentItem> list})?>
-      _commentsWy(String id, int limit, int offset) async {
+  Future<({List<CommentItem> hot, List<CommentItem> list})?> _commentsWy(
+    String id,
+    int limit,
+    int offset,
+  ) async {
     final j = await _getJson(
       'https://music.163.com/api/v1/resource/comments/R_SO_4_$id?limit=$limit&offset=$offset',
       headers: {'User-Agent': kMusicUa},
@@ -1431,8 +1756,11 @@ class MusicApi {
     );
   }
 
-  Future<({List<CommentItem> hot, List<CommentItem> list})?>
-      _commentsTx(String mid, int limit, int page) async {
+  Future<({List<CommentItem> hot, List<CommentItem> list})?> _commentsTx(
+    String mid,
+    int limit,
+    int page,
+  ) async {
     final j = await _getJson(
       'https://c.y.qq.com/base/fcgi-bin/fcg_global_comment_h5.fcg',
       headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
@@ -1463,8 +1791,11 @@ class MusicApi {
     );
   }
 
-  Future<({List<CommentItem> hot, List<CommentItem> list})?>
-      _commentsKg(String hash, int limit, int page) async {
+  Future<({List<CommentItem> hot, List<CommentItem> list})?> _commentsKg(
+    String hash,
+    int limit,
+    int page,
+  ) async {
     final j = await _getJson(
       'https://www.kugou.com/yy/index.php?r=comment/commentData&hash=$hash&page=$page&pagesize=$limit',
       headers: {'User-Agent': kMusicUa},
@@ -1482,7 +1813,8 @@ class MusicApi {
           nick: c['user_name']?.toString() ?? c['nickname']?.toString() ?? '',
           avatar: c['user_pic']?.toString() ?? c['avatar']?.toString() ?? '',
           content: c['content']?.toString() ?? '',
-          likes: (c['like_count'] as num?)?.toInt() ??
+          likes:
+              (c['like_count'] as num?)?.toInt() ??
               (c['praisenum'] as num?)?.toInt() ??
               0,
           time: ((c['addtime'] as num?)?.toInt() ?? 0) * 1000,
@@ -1492,8 +1824,11 @@ class MusicApi {
     );
   }
 
-  Future<({List<CommentItem> hot, List<CommentItem> list})?>
-      _commentsKw(String rid, int limit, int page) async {
+  Future<({List<CommentItem> hot, List<CommentItem> list})?> _commentsKw(
+    String rid,
+    int limit,
+    int page,
+  ) async {
     final j = await _getJson(
       'https://comment.kuwo.cn/com.s?digest=0&sid=$rid&page=$page&rows=$limit',
       headers: {'User-Agent': kMusicUa},
@@ -1516,7 +1851,7 @@ class MusicApi {
   }
 
   Future<({List<CommentItem> hot, List<CommentItem> latest, bool hasMore})>
-      comments(
+  comments(
     String songId,
     MusicPlatform platform,
     String title,
@@ -1547,9 +1882,15 @@ class MusicApi {
     if (title.isNotEmpty) {
       try {
         final others = kSearchPlatforms.where((p) => p != platform).toList();
-        final found = await Future.wait(
-          others.map((p) => searchOne(p, title).catchError((_) => <Song>[])),
-        ).timeout(const Duration(milliseconds: 2500), onTimeout: () => <List<Song>>[]);
+        final found =
+            await Future.wait(
+              others.map(
+                (p) => searchOne(p, title).catchError((_) => <Song>[]),
+              ),
+            ).timeout(
+              const Duration(milliseconds: 2500),
+              onTimeout: () => <List<Song>>[],
+            );
         final ta = normalizeName(title);
         final aa = normalizeName(firstArtist(artist));
         final alts = <({MusicPlatform pf, String id})>[];
@@ -1581,13 +1922,15 @@ class MusicApi {
       if (r == null) continue;
       anyOk = true;
       for (final c in r.hot) {
-        final k = '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}';
+        final k =
+            '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}';
         if (c.content.isEmpty || seen.contains(k)) continue;
         seen.add(k);
         hot.add(c);
       }
       for (final c in r.list) {
-        final k = '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}';
+        final k =
+            '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}';
         if (c.content.isEmpty || seen.contains(k)) continue;
         seen.add(k);
         pool.add(c);
@@ -1597,9 +1940,7 @@ class MusicApi {
       throw Exception('comments fail');
     }
     hot.sort((a, b) => b.likes.compareTo(a.likes));
-    final extra = pool
-        .where((c) => c.likes > 0)
-        .toList()
+    final extra = pool.where((c) => c.likes > 0).toList()
       ..sort((a, b) => b.likes.compareTo(a.likes));
     final extraTop = extra.take(5).toList();
     final hotKeys = extraTop
@@ -1608,18 +1949,17 @@ class MusicApi {
               '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}',
         )
         .toSet();
-    hot = [...hot, ...extraTop]
-      ..sort((a, b) => b.likes.compareTo(a.likes));
+    hot = [...hot, ...extraTop]..sort((a, b) => b.likes.compareTo(a.likes));
     hot = hot.take(15).toList();
-    final ordinary = pool
-        .where(
-          (c) =>
-              !hotKeys.contains(
+    final ordinary =
+        pool
+            .where(
+              (c) => !hotKeys.contains(
                 '${c.nick}|${c.content.substring(0, c.content.length > 60 ? 60 : c.content.length)}',
               ),
-        )
-        .toList()
-      ..sort((a, b) => b.time.compareTo(a.time));
+            )
+            .toList()
+          ..sort((a, b) => b.time.compareTo(a.time));
     final latest = ordinary.skip(offset).take(commentsPageSize).toList();
     return (
       hot: offset == 0 ? hot : <CommentItem>[],
@@ -1638,9 +1978,12 @@ class MusicApi {
     MusicPlatform excludePf,
     String album,
   ) async {
-    final others = [MusicPlatform.tx, MusicPlatform.wy, MusicPlatform.kg, MusicPlatform.kw]
-        .where((p) => p != excludePf)
-        .toList();
+    final others = [
+      MusicPlatform.tx,
+      MusicPlatform.wy,
+      MusicPlatform.kg,
+      MusicPlatform.kw,
+    ].where((p) => p != excludePf).toList();
     // 5 s cap (chen 2026-11-17: 播失败换源不能静默等太久): each leg
     // has a 10 s internal timeout, and Future.wait holds the whole
     // error path hostage until the slowest leg answers — up to 10 s
@@ -1649,13 +1992,8 @@ class MusicApi {
     // but their results are discarded and the caller falls through
     // to the next song.
     final settled = await Future.wait(
-      others.map(
-        (pf) => searchOne(pf, title).catchError((_) => <Song>[]),
-      ),
-    ).timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => <List<Song>>[],
-    );
+      others.map((pf) => searchOne(pf, title).catchError((_) => <Song>[])),
+    ).timeout(const Duration(seconds: 5), onTimeout: () => <List<Song>>[]);
     final all = settled.expand((l) => l).toList();
     final order = {
       MusicPlatform.tx: 0,
@@ -1692,8 +2030,10 @@ class MusicApi {
       if (m == null) continue;
       final text = line.replaceAll(RegExp(r'\[.*?\]'), '').trim();
       if (text.isEmpty) continue;
-      if (RegExp(r'^(ti|ar|al|by|offset):', caseSensitive: false)
-          .hasMatch(text)) {
+      if (RegExp(
+        r'^(ti|ar|al|by|offset):',
+        caseSensitive: false,
+      ).hasMatch(text)) {
         continue;
       }
       if (text.startsWith('暂无歌词') || text.startsWith('纯音乐')) continue;
@@ -1708,6 +2048,40 @@ class MusicApi {
     return out;
   }
 
+  /// Parse LRC with an optional translation track (NetEase `tlyric`):
+  /// translations are matched to main lines by timestamp (centisecond
+  /// key, nearest within 0.5 s as fallback — translated lines usually
+  /// share the main line's timestamp exactly). Lines without a match
+  /// keep `translation == null`.
+  static List<LyricLine> parseLrcWithTranslation(String txt, String? tTxt) {
+    final main = parseLrc(txt);
+    if (tTxt == null || tTxt.isEmpty || main.isEmpty) return main;
+    final trans = parseLrc(tTxt);
+    if (trans.isEmpty) return main;
+    final byTime = <int, String>{};
+    for (final l in trans) {
+      byTime[(l.t * 100).round()] = l.text;
+    }
+    String? nearest(double t) {
+      String? best;
+      var bestDiff = 0.5;
+      for (final l in trans) {
+        final d = (l.t - t).abs();
+        if (d < bestDiff) {
+          bestDiff = d;
+          best = l.text;
+        }
+      }
+      return best;
+    }
+
+    return main.map((l) {
+      final tr = byTime[(l.t * 100).round()] ?? nearest(l.t);
+      if (tr == null || tr.isEmpty) return l;
+      return LyricLine(t: l.t, text: l.text, translation: tr);
+    }).toList();
+  }
+
   Future<List<LyricLine>> lyrics(Song song) async {
     try {
       switch (song.platform) {
@@ -1717,14 +2091,15 @@ class MusicApi {
             headers: {'User-Agent': kMusicUa},
           );
           final lrc = j?['lrc'] as Map<String, dynamic>?;
-          return parseLrc(lrc?['lyric']?.toString() ?? '');
+          final tlyric = j?['tlyric'] as Map<String, dynamic>?;
+          return parseLrcWithTranslation(
+            lrc?['lyric']?.toString() ?? '',
+            tlyric?['lyric']?.toString(),
+          );
         case MusicPlatform.tx:
           final j = await _getJson(
             'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg',
-            headers: {
-              'Referer': 'https://y.qq.com/',
-              'User-Agent': kMusicUa,
-            },
+            headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
             query: {
               'songmid': song.songId,
               'format': 'json',

@@ -7,10 +7,20 @@
 // merged any more — the old [mergeSearchResults] needed every leg
 // before it could return anything, so a single slow leg held the whole
 // search up to 5 s. Now each leg emits the moment it returns
-// ([searchAllStream]): the fastest leg (usually ~1 s) shows first, the
-// rest append after it, grouped by platform, in arrival order. Nothing
-// already shown is ever reordered. A new query cancels the previous
-// search (generation guard) so stale results cannot overwrite it.
+// ([searchAllStream]): the fastest leg (usually ~1 s) shows first, and
+// the rest follow.
+//
+// DISPLAY ORDER (2026-11-17, chen: "搜歌先展示网易和QQ的歌"):
+// every emission is sorted by platform priority — 网易 + QQ first
+// (in arrival order between them), other platforms after (in arrival
+// order), same-platform order never changes. So a fast kw/kg leg still
+// shows first (~1 s, 秒出 kept), and when a wy/tx leg settles later
+// its songs move to the front — the list jumps once, early, while the
+// user is still scanning the top. After wy/tx have settled the order
+// is stable: later legs can only append at the back. Sorting is by
+// each song's own [Song.platform], so a script leg's wy song also
+// sorts to the front. A new query cancels the previous search
+// (generation guard) so stale results cannot overwrite it.
 // Infinite scroll: first 20 shown, 20 more per sentinel hit, "已加载全部"
 // at the end — no next-page button.
 //
@@ -30,8 +40,9 @@ const int kSearchPerPlatform = 40;
 
 /// One streaming update from [SongSearchService.searchAllStream].
 ///
-/// [songs] is the cumulative result list so far — arrival order
-/// (first-returned platform first, later legs appended after it),
+/// [songs] is the cumulative result list so far — platform-priority
+/// order ([sortSongsByPlatformPriority]: wy + tx first, others after;
+/// arrival order within a group, same-platform order preserved),
 /// deduped, covers backfilled. A fresh list on every emission; the
 /// service never mutates a list it already handed out. [pending] is
 /// the set of platforms with at least one leg not yet settled; it is
@@ -69,6 +80,42 @@ List<Song> backfillCovers(List<Song> songs) {
   return changed ? out : songs;
 }
 
+/// Platform priority for song-search display (2026-11-17, chen:
+/// "搜歌先展示网易和QQ的歌"): 网易 + QQ are one priority group,
+/// everything else is the other group. Within a group the original
+/// (arrival) order rules — so a tx leg that returns first stays
+/// ahead of a wy leg that returns later, and same-platform order
+/// never changes.
+int searchPlatformRank(MusicPlatform pf) {
+  switch (pf) {
+    case MusicPlatform.wy:
+    case MusicPlatform.tx:
+      return 0;
+    default:
+      return 1;
+  }
+}
+
+/// Sort search results by platform priority, stably: wy + tx first
+/// (arrival order between them), other platforms after (arrival
+/// order), same-platform order preserved. Pure, unit-tested. Sorts
+/// by each song's own [Song.platform], so a script leg's song sorts
+/// by the platform it was searched for, not by which leg returned it.
+/// Returns a new list; the input is untouched.
+List<Song> sortSongsByPlatformPriority(List<Song> songs) {
+  if (songs.length < 2) return List.of(songs);
+  final indexed = <({int index, Song song})>[
+    for (var i = 0; i < songs.length; i++) (index: i, song: songs[i]),
+  ];
+  indexed.sort((a, b) {
+    final rank = searchPlatformRank(a.song.platform)
+        .compareTo(searchPlatformRank(b.song.platform));
+    if (rank != 0) return rank;
+    return a.index.compareTo(b.index);
+  });
+  return indexed.map((e) => e.song).toList();
+}
+
 /// Script-hit dedup key (same rule as the old merge): script ids are
 /// sometimes generated (溯音 falls back to `kw_<ts>_<rand>`), so
 /// title+artist — not id — is the only stable key.
@@ -92,6 +139,14 @@ class SongSearchService {
   /// leg, in arrival order; the stream closes when every leg has
   /// settled (or the search was superseded).
   ///
+  /// Display order is platform priority, not raw arrival order
+  /// (2026-11-17): each emission is sorted by
+  /// [sortSongsByPlatformPriority] — wy + tx first (arrival order
+  /// between them), others after. The first emission still comes from
+  /// the fastest leg (~1 s), so a slow wy/tx leg arriving later moves
+  /// its songs to the front once; after wy/tx have settled the order
+  /// is stable and later legs only append at the back.
+  ///
   /// A "leg" is one platform's own search, or one LX script search
   /// for a platform. Platform legs emit the moment their own search
   /// returns — never waiting for the platform's script legs, and
@@ -110,7 +165,17 @@ class SongSearchService {
   /// A stale generation emits nothing: starting a new search closes
   /// the previous stream at once, and late leg completions are
   /// dropped, so stale results cannot overwrite the new search.
-  Stream<SearchStreamUpdate> searchAllStream(String query) {
+  ///
+  /// [onlyPlatform] (stage 2 capsule): when set, only that platform
+  /// is queried — no other platform leg runs, no script leg for
+  /// another platform runs, and the emitted list can only contain
+  /// that platform's songs. The wy+tx-first sort stays in place; with
+  /// a single platform it is a no-op. Null keeps the old aggregated
+  /// behaviour (all enabled platforms).
+  Stream<SearchStreamUpdate> searchAllStream(
+    String query, {
+    MusicPlatform? onlyPlatform,
+  }) {
     final gen = ++_generation;
     // Supersede the previous search: close its stream so the page's
     // loop ends at once instead of waiting out its legs.
@@ -119,7 +184,9 @@ class SongSearchService {
     _current = controller;
     unawaited(prev?.close());
 
-    final platforms = MusicSourcesStore.enabled();
+    final platforms = onlyPlatform != null
+        ? [onlyPlatform]
+        : MusicSourcesStore.enabled();
     if (platforms.isEmpty) {
       // The store guarantees >= 1; never hand out a stream that
       // never closes.
@@ -169,9 +236,13 @@ class SongSearchService {
           if (e.value > 0) e.key,
       };
       // Copy first: the page keeps the emitted list while this
-      // search keeps appending to `accumulated`.
+      // search keeps appending to `accumulated`. Sort by platform
+      // priority (wy + tx first) before emitting, so the page, the
+      // cover backfill and the prewarm all see the final display
+      // order — prewarm warms the visible top-3 rows, not rows that
+      // are about to be pushed down by a late wy/tx leg.
       controller.add(SearchStreamUpdate(
-        songs: backfillCovers(List.of(accumulated)),
+        songs: backfillCovers(sortSongsByPlatformPriority(List.of(accumulated))),
         pending: pending,
       ));
     }

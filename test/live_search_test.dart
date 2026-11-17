@@ -13,6 +13,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -160,7 +161,7 @@ void main() {
     }
 
     Future<void> submit(WidgetTester tester, String query) async {
-      await tester.enterText(find.byType(TextField), query);
+      await tester.enterText(find.byType(CupertinoTextField), query);
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await settle(tester);
       await tester.pump();
@@ -279,10 +280,10 @@ void main() {
           return [_room(roomId: 'fast', title: '快的房间')];
         },
       );
-      await tester.enterText(find.byType(TextField), '慢的');
+      await tester.enterText(find.byType(CupertinoTextField), '慢的');
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pump();
-      await tester.enterText(find.byType(TextField), '快的');
+      await tester.enterText(find.byType(CupertinoTextField), '快的');
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await settle(tester);
       await tester.pump();

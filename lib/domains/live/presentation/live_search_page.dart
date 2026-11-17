@@ -37,7 +37,12 @@ import 'package:get/get.dart';
 
 import '../../../core/models/live_models.dart';
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/glass.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassCard, GlassShadow;
+import '../../../core/theme/haptics.dart';
 import '../../../features/settings/source_stores.dart';
+import '../../../features/video/widgets/referer_image.dart';
 import '../../../shared/platforms/sites.dart';
 import '../live_history_store.dart';
 import 'playback/live_room_page.dart';
@@ -174,47 +179,27 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-            child: TextField(
+            // Library glass search bar (SKILL.md: inputs are a control
+            // surface; the bar is a standalone top-of-page control, not
+            // a row inside a scrolling list, so `glass` is correct
+            // here, not `solid`). The built-in clear button replaces
+            // our suffixIcon clear; textInputAction.search is the
+            // library search variant's default; the cursor follows
+            // DefaultSelectionStyle -> colorScheme.primary = accent.
+            child: GlassSearchBar(
               controller: _controller,
               autofocus: true,
-              textInputAction: TextInputAction.search,
-              onSubmitted: _search,
-              decoration: InputDecoration(
-                hintText: '搜索直播间、主播…',
-                hintStyle: TextStyle(color: theme.textMuted),
-                prefixIcon: Icon(Icons.search, color: theme.textMuted),
-                suffixIcon: _controller.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: Icon(Icons.clear, color: theme.textMuted),
-                        onPressed: () {
-                          _controller.clear();
-                          setState(() {});
-                        },
-                      ),
-                filled: true,
-                fillColor: theme.surface,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(
-                    color: theme.accent,
-                    width: 1.5,
-                  ),
-                ),
+              placeholder: '搜索直播间、主播…',
+              placeholderStyle: TextStyle(color: theme.textMuted),
+              textStyle: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 16,
               ),
-              style: TextStyle(color: theme.textPrimary, fontSize: 16),
-              cursorColor: theme.accent,
+              searchIconColor: theme.textMuted,
+              clearIconColor: theme.textMuted,
+              onSubmitted: _search,
             ),
-          ),
+        ),
           _PlatformRow(
             platform: _platform,
             platforms: enabled,
@@ -406,17 +391,18 @@ class _RoomRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: theme.hairline),
-        ),
-        padding: const EdgeInsets.all(10),
-        child: Row(
+    return GlassCard(
+      radius: 16,
+      padding: const EdgeInsets.all(10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            HaoHaptics.tap();
+            onTap();
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
@@ -424,10 +410,12 @@ class _RoomRow extends StatelessWidget {
                 width: 112,
                 height: 63,
                 child: room.cover.isNotEmpty
-                    ? Image.network(
-                        room.cover,
+                    // Dio loader, not Image.network (v1.0.5 phone bug:
+                    // plain NetworkImage shows blank).
+                    ? RefererImage(
+                        url: room.cover,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _MissingCover(theme: theme),
+                        fallback: _MissingCover(theme: theme),
                       )
                     : _MissingCover(theme: theme),
               ),
@@ -515,6 +503,7 @@ class _RoomRow extends StatelessWidget {
               size: 20,
             ),
           ],
+        ),
         ),
       ),
     );

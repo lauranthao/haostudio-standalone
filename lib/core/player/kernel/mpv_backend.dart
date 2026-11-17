@@ -15,6 +15,7 @@ import 'mpv_properties.dart';
 import 'player_backend.dart';
 import 'player_engine.dart';
 import 'player_kernel.dart';
+import 'video_fit.dart';
 
 class MpvBackend implements PlayerBackend {
   MpvBackend() {
@@ -49,16 +50,53 @@ class MpvBackend implements PlayerBackend {
     // Slider, speed, exit-fullscreen) — media_kit's Video defaults
     // `controls` to AdaptiveVideoControls, which draws a SECOND seek
     // bar + play/pause + fullscreen button on top of it (chen:
-    // "看电影为什么有两个进度条"). Suppress the built-in controls for
-    // VOD so exactly one progress bar remains. Live is deliberately
-    // untouched here: the same backend serves the live room, and its
-    // overlay behaviour stays exactly as it is today (a live-scoped
-    // task can revisit it — do NOT widen this branch to live without
-    // checking the live room's own controls first).
-    if (_isLive) return Video(controller: _videoController);
+    // "看电影为什么有两个进度条"). Suppress the built-in controls so
+    // exactly one control bar remains. The live room draws its own
+    // Pure Live-style bars too (top + bottom, in the room page), so
+    // live gets the SAME suppression: the built-in seek bar is
+    // meaningless for live (no seek), and its fullscreen button is
+    // wired to media_kit's own native fullscreen
+    // (defaultEnterNativeFullscreen) — a SECOND fullscreen path that
+    // bypasses FullscreenController's whole-app rotation (chen:
+    // "全屏也有问题").
+    // wakelock: false — the PlaybackSession owns the screen-on state
+    // for every engine (see playback_session.dart): the Video widget's
+    // own wakelock is driven by a playing subscription on its
+    // controller, which goes stale across backend swaps (didUpdateWidget
+    // only refreshes view params), and a stale event from the disposed
+    // player can switch the screen off mid-playback.
+    // fit: contain, explicit — the same fit IJK uses, and AVPlayer's
+    // backend is pinned to contain too, so all three kernels render a
+    // 16:9 stream into the 16:9 container identically (and a non-16:9
+    // stream is letterboxed, never stretched).
+    if (_isLive) {
+      return Video(
+        controller: _videoController,
+        wakelock: false,
+        controls: (_) => const SizedBox.shrink(),
+        // The room owns background behaviour: leaving the app switches
+        // the session to audio-only (vid=no, audio keeps flowing).
+        // The Video widget's default pauseUponEnteringBackgroundMode
+        // would pause the native player behind the session's back —
+        // background live audio dies and the room keeps showing
+        // "playing" while paused (same bug family as the VOD
+        // background fix, but here it breaks a feature, not just
+        // state honesty).
+        pauseUponEnteringBackgroundMode: false,
+        resumeUponEnteringForegroundMode: false,
+        fit: BoxFit.contain,
+      );
+    }
+    // fit: VOD honours the persisted VideoFitMode (自动/拉伸/裁剪,
+    // PiliPlus VideoFitType + Kazumi PlayerAspectRatio); live stays
+    // contain — the room is portrait 16:9 and must never stretch.
+    // A change applies LIVE: media_kit Video re-applies fit in
+    // didUpdateWidget, and the VOD page rebuilds after cycling.
     return Video(
       controller: _videoController,
+      wakelock: false,
       controls: (_) => const SizedBox.shrink(),
+      fit: VideoFitMode.current.boxFit,
     );
   }
 

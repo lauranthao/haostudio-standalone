@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 
 class ClipboardService {
   ClipboardService._();
@@ -34,19 +35,36 @@ class ClipboardService {
     }
     if (!context.mounted) return false;
     final theme = HaoTheme.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.surfaceSolid,
-        title: Text('复制', style: TextStyle(color: theme.textPrimary)),
-        content: SelectableText(
-          text,
-          style: TextStyle(color: theme.textPrimary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('关闭', style: TextStyle(color: theme.accent)),
+    // Glass dialog, like every other dialog in the app (glass_dialog
+    // rule): same shell, title 17 w700, one close action.
+    await showGlassDialog<void>(
+      context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '复制',
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SelectableText(
+            text,
+            style: TextStyle(color: theme.textPrimary),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('关闭', style: TextStyle(color: theme.accent)),
+              ),
+            ],
           ),
         ],
       ),

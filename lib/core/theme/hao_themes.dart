@@ -158,6 +158,7 @@ class HaoThemePair {
 ThemeData _buildThemeData({
   required Brightness brightness,
   required Color accent,
+  required Color onAccent,
   required Color scaffoldBackground,
   required Color surface,
   required Color surfaceStrong,
@@ -167,16 +168,20 @@ ThemeData _buildThemeData({
   required Color textSecondary,
   required Color textMuted,
   required double glassBlurSigma,
+  // Custom font family (stage 2, Beans `FontManager`): null = system
+  // default. Passed to the ThemeData constructor so it lands in the
+  // default text themes (ThemeData.copyWith has NO fontFamily
+  // parameter — a copyWith would silently drop it).
+  String? fontFamily,
 }) {
-  final isDark = brightness == Brightness.dark;
   // Red is reserved for the LIVE badge / recording dot only.
   const liveRed = Color(0xFFE5484D);
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: accent,
-    onPrimary: isDark ? const Color(0xFF0B0B0F) : Colors.white,
+    onPrimary: onAccent,
     secondary: accent,
-    onSecondary: isDark ? const Color(0xFF0B0B0F) : Colors.white,
+    onSecondary: onAccent,
     error: liveRed,
     onError: Colors.white,
     surface: surfaceSolid,
@@ -184,6 +189,7 @@ ThemeData _buildThemeData({
   );
   return ThemeData(
     brightness: brightness,
+    fontFamily: fontFamily,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: scaffoldBackground,
     primaryColor: accent,
@@ -411,6 +417,11 @@ ThemeData _buildThemeData({
 }
 
 /// All four themes, each with light + dark. No purple anywhere.
+/// Blue -> black (chen 2026-11-18): the two blue/cyan accents
+/// (appleGlass, polarIce) are black in light mode and dark grey
+/// #76767A in dark mode (black-on-black would be invisible; white
+/// text on the grey is ~4.6:1). Gold and mint accents are not blue
+/// and are unchanged.
 class HaoThemes {
   HaoThemes._();
 
@@ -421,13 +432,15 @@ class HaoThemes {
     HaoThemeId.polarIce: '极夜冰蓝',
   };
 
-  static HaoThemePair of(HaoThemeId id) {
+  static HaoThemePair of(HaoThemeId id, {String? fontFamily}) {
     switch (id) {
       case HaoThemeId.appleGlass:
         return HaoThemePair(
           light: _buildThemeData(
             brightness: Brightness.light,
-            accent: const Color(0xFF0A84FF),
+            fontFamily: fontFamily,
+            accent: const Color(0xFF000000),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFFF2F2F7),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -440,7 +453,9 @@ class HaoThemes {
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
-            accent: const Color(0xFF0A84FF),
+            fontFamily: fontFamily,
+            accent: const Color(0xFF76767A),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFF000000),
             surface: Colors.white.withValues(alpha: 0.10),
             surfaceStrong: Colors.white.withValues(alpha: 0.16),
@@ -456,7 +471,9 @@ class HaoThemes {
         return HaoThemePair(
           light: _buildThemeData(
             brightness: Brightness.light,
+            fontFamily: fontFamily,
             accent: const Color(0xFF9A7B1E),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFFFAF6EC),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -469,7 +486,9 @@ class HaoThemes {
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
+            fontFamily: fontFamily,
             accent: const Color(0xFFD4AF37),
+            onAccent: const Color(0xFF0B0B0F),
             scaffoldBackground: const Color(0xFF0D0B08),
             surface: Colors.white.withValues(alpha: 0.08),
             surfaceStrong: Colors.white.withValues(alpha: 0.14),
@@ -485,7 +504,9 @@ class HaoThemes {
         return HaoThemePair(
           light: _buildThemeData(
             brightness: Brightness.light,
+            fontFamily: fontFamily,
             accent: const Color(0xFF00897B),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFFEFFAF6),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -498,7 +519,9 @@ class HaoThemes {
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
+            fontFamily: fontFamily,
             accent: const Color(0xFF4DD0C4),
+            onAccent: const Color(0xFF0B0B0F),
             scaffoldBackground: const Color(0xFF07110F),
             surface: Colors.white.withValues(alpha: 0.09),
             surfaceStrong: Colors.white.withValues(alpha: 0.15),
@@ -514,12 +537,14 @@ class HaoThemes {
         return HaoThemePair(
           light: _buildThemeData(
             brightness: Brightness.light,
-            accent: const Color(0xFF0284C7),
+            fontFamily: fontFamily,
+            accent: const Color(0xFF000000),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFFEEF6FB),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
             surfaceSolid: Colors.white,
-            hairline: const Color(0xFF0284C7).withValues(alpha: 0.14),
+            hairline: Colors.black.withValues(alpha: 0.14),
             textPrimary: const Color(0xFF0F2436),
             textSecondary: const Color(0xFF3A5568),
             textMuted: const Color(0xFF7D9BB0),
@@ -527,12 +552,14 @@ class HaoThemes {
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
-            accent: const Color(0xFF38BDF8),
+            fontFamily: fontFamily,
+            accent: const Color(0xFF76767A),
+            onAccent: Colors.white,
             scaffoldBackground: const Color(0xFF050B12),
             surface: Colors.white.withValues(alpha: 0.08),
             surfaceStrong: Colors.white.withValues(alpha: 0.14),
             surfaceSolid: const Color(0xFF0E1E2E),
-            hairline: const Color(0xFF38BDF8).withValues(alpha: 0.20),
+            hairline: Colors.white.withValues(alpha: 0.20),
             textPrimary: const Color(0xFFE8F4FC),
             textSecondary: const Color(0xFFB4D2E6),
             textMuted: const Color(0xFF7D9BB0),

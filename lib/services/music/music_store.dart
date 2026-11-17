@@ -9,6 +9,7 @@ import 'dart:convert';
 import '../../core/storage/hive_store.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
+import 'sleep_timer.dart';
 
 class MusicStore {
   MusicStore._();
@@ -28,8 +29,7 @@ class MusicStore {
   static Future<void> _writeList(
     String key,
     List<Map<String, dynamic>> items,
-  ) =>
-      HiveStore.put(key, jsonEncode(items));
+  ) => HiveStore.put(key, jsonEncode(items));
 
   static Map<String, dynamic> _readMap(String key) {
     final raw = HiveStore.box.get(key) as String?;
@@ -44,14 +44,50 @@ class MusicStore {
   static Future<void> _writeMap(String key, Map<String, dynamic> map) =>
       HiveStore.put(key, jsonEncode(map));
 
-  // ---- User playlists (hao_lists, max 10 lists, max 200 tracks each) ----
+  // ---- User playlists (hao_lists, max 10 lists, max 1000 tracks each) ----
+  // Max tracks in one user playlist. Was 200 — an arbitrary cap that
+  // silently dropped songs on import (chen 2026-11-17: a 500-song
+  // playlist only imported 200). 1000 matches the Kuwo importer
+  // (10 pages x 100) and costs ~191 KB of JSON per list (measured in
+  // music_playlist_import_test.dart: 1000 songs, 190801 bytes).
+  static const int maxTracksPerList = 1000;
+
+  /// Add [incoming] songs to [list], skipping true duplicates (same
+  /// platform + songId — the same title/artist in a different version
+  /// has a different songId and is kept) and stopping at
+  /// [maxTracksPerList]. Returns (added, dropped, dupes): dropped
+  /// counts new songs that did not fit, dupes counts skipped
+  /// duplicates. Never throws; callers must saveLists afterwards.
+  static ({int added, int dropped, int dupes}) addTracks(
+    UserPlaylist list,
+    Iterable<Song> incoming,
+  ) {
+    final seen = list.tracks.map((t) => t.identityKey).toSet();
+    var added = 0;
+    var dropped = 0;
+    var dupes = 0;
+    for (final t in incoming) {
+      // Set.add returns false when already present — covers both
+      // songs already in the list and repeats within this batch.
+      if (!seen.add(t.identityKey)) {
+        dupes++;
+        continue;
+      }
+      if (list.tracks.length >= maxTracksPerList) {
+        dropped++;
+        continue;
+      }
+      list.tracks.add(t);
+      added++;
+    }
+    return (added: added, dropped: dropped, dupes: dupes);
+  }
+
   static List<UserPlaylist> getLists() =>
       _readList(HiveKeys.musicLists).map(UserPlaylist.fromJson).toList();
 
-  static Future<void> saveLists(List<UserPlaylist> lists) => _writeList(
-        HiveKeys.musicLists,
-        lists.map((l) => l.toJson()).toList(),
-      );
+  static Future<void> saveLists(List<UserPlaylist> lists) =>
+      _writeList(HiveKeys.musicLists, lists.map((l) => l.toJson()).toList());
 
   static String get currentListId =>
       HiveStore.getString(HiveKeys.musicCurListId, '');
@@ -70,9 +106,7 @@ class MusicStore {
   static List<Map<String, dynamic>> _readFavEntries() =>
       _readList(HiveKeys.musicFav);
 
-  static Future<void> _writeFavEntries(
-    List<Map<String, dynamic>> entries,
-  ) =>
+  static Future<void> _writeFavEntries(List<Map<String, dynamic>> entries) =>
       _writeList(HiveKeys.musicFav, entries);
 
   static Set<String> getFavIds() => _readFavEntries()
@@ -124,9 +158,7 @@ class MusicStore {
   static Future<bool> toggleFav(Song song) async {
     final entries = _readFavEntries();
     final key = song.identityKey;
-    final idx = entries.indexWhere(
-      (m) => m['key']?.toString() == key,
-    );
+    final idx = entries.indexWhere((m) => m['key']?.toString() == key);
     if (idx >= 0) {
       entries.removeAt(idx);
       await _writeFavEntries(entries);
@@ -186,6 +218,34 @@ class MusicStore {
   static Future<void> clearSearchHistory() =>
       HiveStore.put(HiveKeys.musicSearchHist, '[]');
 
+  /// Remove one history term (Beans history chips have a per-chip ×).
+  static Future<void> removeSearchQuery(String query) async {
+    final list = getSearchHistory().where((e) => e != query).toList();
+    await HiveStore.put(HiveKeys.musicSearchHist, jsonEncode(list));
+  }
+
+  // ---- Cover cache (hao_cover_cache, max 500) ----
+  //
+  // Cover URLs found by the search cover backfill (NetEase lookup for
+  // coverless songs), keyed by normalised base title|artist — the same
+  // key idea as backfillCovers' dedup. Covers are stable (album art
+  // does not change), so no TTL; only positive results are stored, a
+  // miss is retried on the next search. Cap 500, oldest dropped first.
+  static Map<String, String> getCoverCache() {
+    final map = _readMap(HiveKeys.musicCoverCache);
+    return map.map((k, v) => MapEntry(k.toString(), v.toString()));
+  }
+
+  static Future<void> saveCover(String key, String cover) async {
+    if (key.isEmpty || cover.isEmpty) return;
+    final map = _readMap(HiveKeys.musicCoverCache);
+    map[key] = cover;
+    while (map.length > 500) {
+      map.remove(map.keys.first);
+    }
+    await _writeMap(HiveKeys.musicCoverCache, map);
+  }
+
   // ---- Listen log (hao_listen, max 3000, dur in SECONDS) ----
   static List<ListenEvent> getListenLog() =>
       _readList(HiveKeys.musicListen).map(ListenEvent.fromJson).toList();
@@ -235,11 +295,7 @@ class MusicStore {
     }
   }
 
-  static Future<void> saveDaily(
-    String dayKey,
-    List<Song> tracks,
-    bool cold,
-  ) =>
+  static Future<void> saveDaily(String dayKey, List<Song> tracks, bool cold) =>
       HiveStore.put(
         HiveKeys.musicDailyKey(dayKey),
         jsonEncode({
@@ -249,8 +305,9 @@ class MusicStore {
       );
 
   // ---- Quality preference (curQuality, default hires) ----
-  static AudioQuality get quality =>
-      AudioQualityX.fromCode(HiveStore.getString(HiveKeys.musicQuality, 'hires'));
+  static AudioQuality get quality => AudioQualityX.fromCode(
+    HiveStore.getString(HiveKeys.musicQuality, 'hires'),
+  );
 
   static Future<void> setQuality(AudioQuality q) =>
       HiveStore.put(HiveKeys.musicQuality, q.code);
@@ -261,6 +318,16 @@ class MusicStore {
 
   static Future<void> setPlazaPlatform(MusicPlatform pf) =>
       HiveStore.put(HiveKeys.musicPlazaPf, pf.code);
+
+  // ---- Sleep timer custom minutes (stage 2): 1..720, default 30 ----
+  static int get sleepCustomMinutes =>
+      clampSleepCustomMinutes(HiveStore.getInt(HiveKeys.musicSleepCustomMinutes, 30));
+
+  static Future<void> setSleepCustomMinutes(int minutes) =>
+      HiveStore.put(
+        HiveKeys.musicSleepCustomMinutes,
+        clampSleepCustomMinutes(minutes),
+      );
 
   // ---- Playback speed (M-P0-2): 0.6..2.0, default 1.0 ----
   static double get speed =>
@@ -292,16 +359,16 @@ class MusicStore {
     return (songs: <Song>[], index: -1);
   }
 
-  static Future<void> saveQueue(List<Song> songs, int index) =>
-      HiveStore.put(
-        HiveKeys.musicQueue,
-        jsonEncode({
-          'songs': songs.map((s) => s.toJson()).toList(),
-          'index': index,
-        }),
-      );
+  static Future<void> saveQueue(List<Song> songs, int index) => HiveStore.put(
+    HiveKeys.musicQueue,
+    jsonEncode({
+      'songs': songs.map((s) => s.toJson()).toList(),
+      'index': index,
+    }),
+  );
 
-  static String get playMode => HiveStore.getString(HiveKeys.musicPlayMode, 'seq');
+  static String get playMode =>
+      HiveStore.getString(HiveKeys.musicPlayMode, 'seq');
 
   static Future<void> setPlayMode(String mode) =>
       HiveStore.put(HiveKeys.musicPlayMode, mode);
@@ -318,8 +385,7 @@ class MusicStore {
     return out;
   }
 
-  static int resumeFor(String identityKey) =>
-      getResumeMap()[identityKey] ?? 0;
+  static int resumeFor(String identityKey) => getResumeMap()[identityKey] ?? 0;
 
   static Future<void> saveResume(String identityKey, int seconds) async {
     if (seconds <= 0) return;
@@ -332,19 +398,13 @@ class MusicStore {
         map.remove(keys[i]);
       }
     }
-    await _writeMap(
-      HiveKeys.musicResume,
-      map.map((k, v) => MapEntry(k, v)),
-    );
+    await _writeMap(HiveKeys.musicResume, map.map((k, v) => MapEntry(k, v)));
   }
 
   static Future<void> clearResume(String identityKey) async {
     final map = getResumeMap();
     map.remove(identityKey);
-    await _writeMap(
-      HiveKeys.musicResume,
-      map.map((k, v) => MapEntry(k, v)),
-    );
+    await _writeMap(HiveKeys.musicResume, map.map((k, v) => MapEntry(k, v)));
   }
 }
 
@@ -393,11 +453,11 @@ class ListenReport {
     final refDay = DateTime(ref.year, ref.month, ref.day);
     final startMs = range == 'week'
         ? refDay
-            .subtract(Duration(days: ref.weekday - 1))
-            .millisecondsSinceEpoch
+              .subtract(Duration(days: ref.weekday - 1))
+              .millisecondsSinceEpoch
         : range == 'month'
-            ? DateTime(ref.year, ref.month, 1).millisecondsSinceEpoch
-            : 0;
+        ? DateTime(ref.year, ref.month, 1).millisecondsSinceEpoch
+        : 0;
     final evs = startMs > 0
         ? all.where((x) => x.at >= startMs).toList()
         : List.of(all);
@@ -427,8 +487,7 @@ class ListenReport {
       );
       byArtist[x.artist.isEmpty ? '—' : x.artist] =
           (byArtist[x.artist.isEmpty ? '—' : x.artist] ?? 0) + 1;
-      byPlatform[x.platform.code] =
-          (byPlatform[x.platform.code] ?? 0) + 1;
+      byPlatform[x.platform.code] = (byPlatform[x.platform.code] ?? 0) + 1;
       final day = DateTime.fromMillisecondsSinceEpoch(x.at)
           .toIso8601String()
           .substring(0, 10);
@@ -436,14 +495,16 @@ class ListenReport {
     }
     final topSongs = bySong.values.toList()
       ..sort((a, b) => b.plays.compareTo(a.plays));
-    final topArtists = byArtist.entries
-        .map((e) => TopArtist(artist: e.key, plays: e.value))
-        .toList()
-      ..sort((a, b) => b.plays.compareTo(a.plays));
-    final topPlatforms = byPlatform.entries
-        .map((e) => TopPlatform(platform: e.key, plays: e.value))
-        .toList()
-      ..sort((a, b) => b.plays.compareTo(a.plays));
+    final topArtists =
+        byArtist.entries
+            .map((e) => TopArtist(artist: e.key, plays: e.value))
+            .toList()
+          ..sort((a, b) => b.plays.compareTo(a.plays));
+    final topPlatforms =
+        byPlatform.entries
+            .map((e) => TopPlatform(platform: e.key, plays: e.value))
+            .toList()
+          ..sort((a, b) => b.plays.compareTo(a.plays));
     final days = <DayCount>[];
     if (range == 'all') {
       final byMonth = <String, int>{};
@@ -453,7 +514,8 @@ class ListenReport {
       }
       final months = byMonth.keys.toList()..sort();
       for (final m in months.sublist(
-          months.length > 12 ? months.length - 12 : 0)) {
+        months.length > 12 ? months.length - 12 : 0,
+      )) {
         days.add(DayCount(label: m.substring(5), plays: byMonth[m] ?? 0));
       }
     } else {
@@ -462,9 +524,11 @@ class ListenReport {
       final start = range == 'week'
           ? refDay.subtract(Duration(days: ref.weekday - 1))
           : DateTime(ref.year, ref.month, 1);
-      for (var d = start;
-          !d.isAfter(refDay);
-          d = d.add(const Duration(days: 1))) {
+      for (
+        var d = start;
+        !d.isAfter(refDay);
+        d = d.add(const Duration(days: 1))
+      ) {
         final key = dayKeyOf(d);
         days.add(DayCount(label: key.substring(5), plays: byDay[key] ?? 0));
       }

@@ -18,6 +18,7 @@
 // - Next/previous advance exactly one track (fix 14 Dart-side rule).
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
@@ -25,6 +26,7 @@ import 'package:just_audio/just_audio.dart' show ProcessingState;
 import 'av_music_player.dart';
 
 import '../../core/native/now_playing.dart';
+import '../../core/storage/hive_store.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
@@ -108,6 +110,9 @@ class MusicPlayerController extends GetxController
   late final SleepTimer _sleepTimer;
   final Rx<SleepTimerOption> sleepOption = SleepTimerOption.off.obs;
   final Rx<Duration?> sleepRemaining = Rx<Duration?>(null);
+
+  /// Last custom sleep minutes (stage 2, persisted — default 30).
+  final RxInt sleepCustomMinutes = 30.obs;
 
   Song? get currentSong {
     final i = currentIndex.value;
@@ -195,6 +200,17 @@ class MusicPlayerController extends GetxController
     }
   }
 
+  /// "启动时自动播放上次歌曲" pref (Beans
+  /// `beans.playback.autoResumeLast`, default false). Hive may be
+  /// uninitialised in unit tests — then it is off.
+  bool get _autoResumeEnabled {
+    try {
+      return HiveStore.getBool(HiveKeys.autoResumeLastPlayback, false);
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -246,11 +262,31 @@ class MusicPlayerController extends GetxController
       onChanged: _syncSleepState,
     );
     _syncSleepState();
+    // Remembered custom minutes (stage 2): the sheet opens with the
+    // last value the user typed, not a hardcoded 30.
+    try {
+      sleepCustomMinutes.value = MusicStore.sleepCustomMinutes;
+    } catch (_) {}
     // Publish on track change / play / pause; elapsed time is
     // throttled to 1 s while playing (see _publishNowPlayingThrottled).
     ever(currentIndex, (_) => _publishNowPlaying());
     ever(isPlaying, (_) => _publishNowPlaying());
     ever(position, (_) => _publishNowPlayingThrottled());
+    // Auto-resume (Beans `PlayerManager.resumePersistedPlaybackIfEnabled`,
+    // PlayerManager.swift: resume once per launch, only when the pref is
+    // on — default off). This is the ONLY addition to this file: it
+    // calls the existing public playQueue() with the queue restored
+    // above; the resume position is applied by _loadCurrent from the
+    // kill-saved resume map, so the "save progress only on kill" rule
+    // is untouched. No resolve/play logic is changed.
+    if (_autoResumeEnabled) {
+      final songs = queue.toList();
+      final idx = currentIndex.value.clamp(0, songs.length - 1);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_disposed) return;
+        unawaited(playQueue(songs, idx));
+      });
+    }
   }
 
   @override
@@ -536,6 +572,26 @@ class MusicPlayerController extends GetxController
     moveQueueItem(index, index + 1);
   }
 
+  /// Clear the queue, keeping ONLY the currently playing song
+  /// (stage 2, Beans `PlayerManager.clearQueue`,
+  /// PlayerManager.swift:364-375: `queue = [current]`,
+  /// `currentIndex = 0`; empty queue is a no-op). The playing song
+  /// is untouched — no reload, no pause, no seek — and the queue
+  /// panel falls back to its empty state for the rest. Persisted, so
+  /// a restart does not resurrect the cleared songs.
+  void clearQueue() {
+    if (queue.isEmpty) return;
+    final current = currentSong;
+    if (current == null) {
+      queue.clear();
+      currentIndex.value = -1;
+    } else {
+      queue.assignAll([current]);
+      currentIndex.value = 0;
+    }
+    _persistQueue();
+  }
+
   /// Insert [song] right after the current track ("下一首播放").
   /// Returns false when the song is already the one playing (inserting
   /// it after itself would only duplicate it). An empty queue just
@@ -559,6 +615,27 @@ class MusicPlayerController extends GetxController
     final gen = ++_playGen;
     final song = currentSong;
     if (song == null) return;
+    // LX (lx-music-mobile player.ts handlePlay, ~line 256): stop the
+    // old song FIRST, before resolving the new one — never let the old
+    // song keep sounding under the new song's UI while the resolve
+    // runs. The v1.0.9 video bug was exactly that: the UI had moved to
+    // 蜜蜂 while 生而为人 kept playing — its resolve was still in
+    // flight, so _openOn never ran, and the position stream kept
+    // reporting the old song's playhead under the new song's name with
+    // duration stuck at -0:00. Manual loads have no crossfade to
+    // preserve, so pause up front; auto loads keep the crossfade
+    // overlap (the fade itself stops the old player). A stale fade
+    // timer is cancelled on a manual load so it cannot fight the new
+    // song's volume or pause the wrong player when it ends.
+    if (!auto) _fadeTimer?.cancel();
+    if (!auto && _playersReady) {
+      await _active.pause();
+    }
+    // LX identity stamp (player.ts createGettingUrlId / setMusicUrl):
+    // the URL this load resolves belongs to THIS song only. The gen
+    // check below catches a newer load; the identity check catches a
+    // queue-slot replacement that did not bump the gen.
+    final loadKey = song.identityKey;
     // Close the previous track's listen session (real seconds only)
     // and start one for this song. The old code recorded the song's
     // FULL duration here, before a second had played.
@@ -572,7 +649,8 @@ class MusicPlayerController extends GetxController
     lyricsFailed.value = false;
     position.value = Duration.zero;
     duration.value = Duration.zero;
-    unawaited(_loadLyrics(song));
+    // Local files have no remote lyrics — skip the API call entirely.
+    if (!song.isLocal) unawaited(_loadLyrics(song));
 
     // Resume position for the SAME song (old web rule: > 5 s in, > 10 s
     // from the end). Only applies when this is a fresh open, not a
@@ -580,12 +658,24 @@ class MusicPlayerController extends GetxController
     final resumeSec = MusicStore.resumeFor(song.identityKey);
 
     // Offline first (M-P0-5): a downloaded song plays from the local
-    // file — no resolve, no network. Otherwise resolve the remote URL
-    // at the user's quality (with the prefetch cache).
+    // file — no resolve, no network. Stage 2 local files use the same
+    // branch: Song.localPath (isLocal) is checked first, so an
+    // imported file plays through the existing AVPlayer chain with no
+    // new playback path. A local entry whose file is gone goes
+    // straight to _tryAltOrNext (below) instead of resolving a bogus
+    // remote URL.
     String url;
     List<String> candidates;
     AudioQuality quality;
-    final localPath = downloads.localPathFor(song);
+    final localPath = song.isLocal
+        ? (File(song.localPath).existsSync() ? song.localPath : null)
+        : downloads.localPathFor(song);
+    // Local entry whose file is gone: never resolve the bogus
+    // 'local:' id remotely — go straight to alt/next.
+    if (song.isLocal && localPath == null) {
+      await _tryAltOrNext(song, gen);
+      return;
+    }
     if (localPath != null) {
       url = Uri.file(localPath).toString();
       candidates = [url];
@@ -597,7 +687,12 @@ class MusicPlayerController extends GetxController
       // Resolving (or opening a prefetched URL) takes 1–6 s on the
       // network: mark it so the player page can show a spinner.
       _setResolving(true, gen);
-      if (_nextCache != null && _nextCache!.key == cacheKey) {
+      // A cache key is only meaningful with a real song id: two
+      // different songs with an empty songId share the key
+      // '|platform|quality' and the second would play the first's URL.
+      if (song.songId.isNotEmpty &&
+          _nextCache != null &&
+          _nextCache!.key == cacheKey) {
         r = PlayUrlResult(
           url: _nextCache!.url,
           candidates: _nextCache!.candidates,
@@ -619,7 +714,9 @@ class MusicPlayerController extends GetxController
           r = null;
         }
       }
-      if (gen != _playGen || _disposed) {
+      if (gen != _playGen ||
+          _disposed ||
+          currentSong?.identityKey != loadKey) {
         _setResolving(false, gen);
         return;
       }
@@ -645,7 +742,7 @@ class MusicPlayerController extends GetxController
     // try/finally: if the open throws, the spinner must still clear.
     try {
       if (auto) {
-        await _crossfadeTo(url);
+        await _crossfadeTo(url, gen);
       } else {
         await _openOn(_active, url);
       }
@@ -670,7 +767,7 @@ class MusicPlayerController extends GetxController
     _prefetchNext();
   }
 
-  Future<void> _crossfadeTo(String url) async {
+  Future<void> _crossfadeTo(String url, int gen) async {
     final outgoing = _active;
     final incoming = _standby;
     _fadeTimer?.cancel();
@@ -705,6 +802,12 @@ class MusicPlayerController extends GetxController
       await _onPlayError();
       return;
     }
+    // LX generation guard (player.ts diffCurrentMusicInfo): a manual
+    // next may have started — and already opened a newer song on the
+    // then-active player — while this crossfade's open was in flight.
+    // A stale crossfade must never steal _active back or start a fade
+    // that pauses the newer song's player.
+    if (gen != _playGen || _disposed) return;
     _active = incoming;
     _attach(incoming);
     position.value = Duration.zero;
@@ -713,6 +816,12 @@ class MusicPlayerController extends GetxController
     const step = Duration(milliseconds: 100);
     const targetVol = 1.0;
     _fadeTimer = Timer.periodic(step, (timer) async {
+      // A newer load owns the players now: stop touching them (no
+      // volume fight, and never pause the newer song's player).
+      if (gen != _playGen || _disposed) {
+        timer.cancel();
+        return;
+      }
       final t = DateTime.now().difference(start).inMilliseconds /
           _crossfadeDuration.inMilliseconds;
       if (t >= 1.0 || _disposed) {
@@ -744,6 +853,14 @@ class MusicPlayerController extends GetxController
   void onRealDuration(Duration actual) {
     if (_trialChecked) return;
     if (actual <= Duration.zero) return;
+    // LX identity rule for async callbacks: a duration event that
+    // arrives while a new song is still resolving belongs to the OLD
+    // song (its item was still loading when the user switched) — never
+    // let it trigger trial handling for the new song. (Residual: a
+    // genuine trial duration that arrives during the open's own await
+    // is also skipped; the trial then plays out its 15 s and advances,
+    // the pre-v1.0.9 behaviour for that fast-load edge case.)
+    if (isResolving.value) return;
     final song = currentSong;
     if (song == null) return;
     _trialChecked = true;
@@ -892,6 +1009,8 @@ class MusicPlayerController extends GetxController
     final tr = queue[next];
     // A downloaded next track plays from disk — nothing to prefetch.
     if (downloads.localPathFor(tr) != null) return;
+    // No real song id, no meaningful cache key (see _loadCurrent).
+    if (tr.songId.isEmpty) return;
     final key = '${tr.songId}|${tr.platform.code}|${userQuality.value.code}';
     if (_nextCache != null && _nextCache!.key == key) return;
     unawaited(
@@ -899,6 +1018,12 @@ class MusicPlayerController extends GetxController
           .resolvePlayUrl(tr.songId, tr.platform, userQuality.value, tr.title)
           .then((r) {
         if (r != null && r.url.isNotEmpty) {
+          // LX: a fetched URL only lands where it was fetched for.
+          // The queue may have moved on while this resolve was in
+          // flight — never let a stale prefetch overwrite the cache
+          // for a different next song.
+          final now = _peekNextIndex(auto: true);
+          if (now < 0 || queue[now].identityKey != tr.identityKey) return;
           _nextCache = (
             key: key,
             url: r.url,
@@ -1020,11 +1145,40 @@ class MusicPlayerController extends GetxController
   void _syncSleepState() {
     sleepOption.value = _sleepTimer.option;
     sleepRemaining.value = _sleepTimer.remaining;
+    sleepCustomMinutes.value = _sleepTimer.customMinutes;
+  }
+
+  /// Human label for the active sleep timer, with the custom
+  /// minutes filled in ("自定义 45 分钟" — the enum label alone is
+  /// just "自定义").
+  String get sleepLabel {
+    if (sleepOption.value == SleepTimerOption.custom) {
+      return '自定义 ${sleepCustomMinutes.value} 分钟';
+    }
+    return sleepOption.value.label;
   }
 
   /// Start (or replace) the sleep timer. `off` cancels it.
+  /// `custom` replays the persisted custom minutes (the sheet writes
+  /// them first via [setSleepTimerMinutes]).
   void setSleepTimer(SleepTimerOption option) {
+    if (option == SleepTimerOption.custom) {
+      setSleepTimerMinutes(MusicStore.sleepCustomMinutes);
+      return;
+    }
     _sleepTimer.start(option);
+    _syncSleepState();
+  }
+
+  /// Start a custom-minutes sleep timer (stage 2, Beans
+  /// `SleepTimerSheet` 自定义时长: clamp 1..720, bad input 30).
+  /// The minutes are persisted so the next open remembers them.
+  /// The stop-at-fire logic is unchanged (the timer pauses playback).
+  void setSleepTimerMinutes(int minutes) {
+    final clamped = clampSleepCustomMinutes(minutes);
+    unawaited(MusicStore.setSleepCustomMinutes(clamped));
+    sleepCustomMinutes.value = clamped;
+    _sleepTimer.startCustom(clamped);
     _syncSleepState();
   }
 
@@ -1095,6 +1249,10 @@ class MusicPlayerController extends GetxController
   Future<void> _loadLyrics(Song song) async {
     final lines = await _api.lyrics(song);
     if (_disposed) return;
+    // LX (player.ts debouncePlay): every async callback drops its
+    // result when the song has moved on — never paste stale lyrics
+    // onto the new song.
+    if (currentSong?.identityKey != song.identityKey) return;
     if (lines.isEmpty) {
       lyricsFailed.value = true;
     } else {

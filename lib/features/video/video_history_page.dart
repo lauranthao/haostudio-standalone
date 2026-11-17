@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 import 'video_detail_page.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
@@ -51,22 +52,11 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
   }
 
   Future<void> _confirmClear() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清空历史记录？'),
-        content: const Text('将删除全部观看记录与续播位置，此操作无法恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
+    final confirmed = await showGlassConfirmDialog(
+      context,
+      title: '清空历史记录？',
+      content: '将删除全部观看记录与续播位置，此操作无法恢复。',
+      confirmLabel: '清空',
     );
     if (confirmed != true || !mounted) return;
     await VideoHistoryStore.clearAll();

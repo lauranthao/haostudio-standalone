@@ -27,6 +27,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/glass.dart';
+import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../live_follow_store.dart';
 import '../../live_history_store.dart';
@@ -47,11 +49,10 @@ Future<void> showRoomSwitchPanel({
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    backgroundColor: HaoTheme.of(context).surfaceStrong,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (context) => _RoomSwitchPanel(
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    builder: (context) => GlassSheetBackground(
+      child: _RoomSwitchPanel(
       currentRoom: currentRoom,
       playlist: playlist,
       onSelect: (room) {
@@ -59,6 +60,7 @@ Future<void> showRoomSwitchPanel({
         onSelect(room);
       },
       detailOf: detailOf,
+      ),
     ),
   );
 }
@@ -189,29 +191,22 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: '筛选：标题 / 主播 / 房间号',
-                hintStyle: TextStyle(color: theme.textMuted),
-                prefixIcon: Icon(Icons.search, color: theme.textMuted),
-                filled: true,
-                fillColor: theme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: theme.hairline),
+            child: GlassCard(
+              radius: 14,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: '筛选：标题 / 主播 / 房间号',
+                  hintStyle: TextStyle(color: theme.textMuted),
+                  prefixIcon: Icon(Icons.search, color: theme.textMuted),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: theme.accent),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                style: TextStyle(color: theme.textPrimary),
+                onChanged: (v) => setState(() => _query = v),
               ),
-              style: TextStyle(color: theme.textPrimary),
-              onChanged: (v) => setState(() => _query = v),
             ),
           ),
           const SizedBox(height: 8),
@@ -418,12 +413,14 @@ class _RoomRow extends StatelessWidget {
                             color: theme.textMuted,
                           ),
                         )
-                      : Image.network(
-                          room.cover,
+                      // Dio loader, not Image.network (v1.0.5 phone
+                      // bug: plain NetworkImage shows blank).
+                      : RefererImage(
+                          url: room.cover,
                           width: 96,
                           height: 54,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
+                          fallback: Container(
                             width: 96,
                             height: 54,
                             color: theme.surfaceSolid,

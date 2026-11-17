@@ -22,6 +22,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/haptics.dart';
+import '../../../core/theme/glass.dart';
+import '../../../features/video/widgets/referer_image.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
 import '../live_status.dart';
@@ -283,33 +286,29 @@ class _TabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? theme.accentSoft : theme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? theme.accent : theme.hairline,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: theme.accent.withValues(alpha: 0.22),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          '$label ($count)',
-          style: TextStyle(
-            color: selected ? theme.accent : theme.textSecondary,
-            fontSize: 14,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    // Glass capsule: selection is carried by the accent border +
+    // accent bold text (the old accentSoft fill is the glass fill now
+    // — a second fill under the glass would hide the blur).
+    return GlassCard(
+      radius: 999,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      shadow: GlassShadow.none,
+      borderColor: selected ? theme.accent : null,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            HaoHaptics.tap();
+            onTap();
+          },
+          borderRadius: BorderRadius.circular(999),
+          child: Text(
+            '$label ($count)',
+            style: TextStyle(
+              color: selected ? theme.accent : theme.textSecondary,
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
           ),
         ),
       ),
@@ -476,10 +475,12 @@ class _FollowCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (follow.cover.isNotEmpty)
-                  Image.network(
-                    follow.cover,
+                  // Dio loader, not Image.network (v1.0.5 phone bug:
+                  // plain NetworkImage shows blank).
+                  RefererImage(
+                    url: follow.cover,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => ColoredBox(
+                    fallback: ColoredBox(
                       color: theme.surfaceSolid,
                     ),
                   )

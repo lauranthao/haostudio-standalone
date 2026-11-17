@@ -13,6 +13,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassCard, GlassShadow;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
@@ -78,17 +80,30 @@ void main() {
     // Collapsed: no engine radios, current engine shown as a summary.
     expect(find.byType(RadioListTile<String>), findsNothing);
     expect(find.text('MPV'), findsOneWidget);
-    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+    // Two expandable headers share the chevron icon now (playback +
+    // engine), so scope the icon to the engine header row.
+    Finder engineChevron(IconData icon) => find.descendant(
+          of: find
+              .ancestor(
+                of: find.text('播放器引擎'),
+                matching: find.byType(Row),
+              )
+              .last,
+          matching: find.byIcon(icon),
+        );
+    expect(engineChevron(Icons.keyboard_arrow_down), findsOneWidget);
 
     // Expand: all three engines appear; the state is persisted.
-    await tester.tap(find.text('播放器引擎'));
+    // Two '播放器引擎' texts (section title + header) — the header is
+    // the last one.
+    await tester.tap(find.text('播放器引擎').last);
     await tester.pumpAndSettle();
     expect(find.byType(RadioListTile<String>), findsNWidgets(3));
-    expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
+    expect(engineChevron(Icons.keyboard_arrow_up), findsOneWidget);
     expect(HiveStore.getBool(HiveKeys.engineSectionExpanded, false), isTrue);
 
     // Collapse again: radios gone, persisted as false.
-    await tester.tap(find.text('播放器引擎'));
+    await tester.tap(find.text('播放器引擎').last);
     await tester.pumpAndSettle();
     expect(find.byType(RadioListTile<String>), findsNothing);
     expect(HiveStore.getBool(HiveKeys.engineSectionExpanded, true), isFalse);
@@ -119,5 +134,82 @@ void main() {
     expect(versionTop, greaterThan(aboutTop));
     expect(updateTop, greaterThan(versionTop));
     expect(crashTop, greaterThan(updateTop));
+  });
+
+  Future<void> expandPlayback(WidgetTester tester) async {
+    await HiveStore.box.delete(HiveKeys.playbackSectionExpanded);
+    await pumpPage(tester);
+    // Collapsed: panel rows hidden.
+    expect(find.text('与其他音频同时播放'), findsNothing);
+    // Two '播放设置' texts: the section title and the expandable
+    // header — the header is the last one.
+    await tester.tap(find.text('播放设置').last);
+    await tester.pumpAndSettle();
+    expect(HiveStore.getBool(HiveKeys.playbackSectionExpanded, false),
+        isTrue);
+  }
+
+  testWidgets('playback section shows every Beans row, no VIP row, with EQ row',
+      (tester) async {
+    await expandPlayback(tester);
+
+    expect(find.text('与其他音频同时播放'), findsOneWidget);
+    expect(find.text('120Hz 高刷新'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.text('启动时自动播放上次歌曲'), findsOneWidget);
+    expect(find.text('打开软件后自动恢复上次未播放完的歌曲'),
+        findsOneWidget);
+    // ONE quality row (chen: all songs are third-party resolves).
+    expect(find.text('播放音质'), findsOneWidget);
+    expect(find.text('触感反馈'), findsOneWidget);
+    // Stage 3: the EQ engine exists now, so the row is back (Beans
+    // `equalizerSection`): real state trailing, opens the 10-band page.
+    expect(find.text('均衡器'), findsOneWidget);
+    expect(find.text('调节低音、人声与高音'), findsOneWidget);
+    expect(find.text('已关闭'), findsOneWidget);
+    expect(find.text('第三方音源'), findsOneWidget);
+    expect(find.text('管理 / 导入音源'), findsOneWidget);
+    // Removed by chen: VIP notice (不提醒). The equalizer removal was
+    // only because no engine existed; the engine is stage 3.
+    expect(find.textContaining('会员歌提醒'), findsNothing);
+  });
+
+  testWidgets('EQ row opens the 10-band page', (tester) async {
+    await expandPlayback(tester);
+
+    await tester.tap(find.text('均衡器'));
+    await tester.pumpAndSettle();
+    // The EQ page: response preview + preamp + 8 presets + 10 bands.
+    expect(find.text('频响预览'), findsOneWidget);
+    expect(find.text('前级增益'), findsOneWidget);
+    expect(find.text('摇滚'), findsOneWidget);
+    // '16 kHz' is both a preview scale label and a band row.
+    expect(find.text('16 kHz'), findsNWidgets(2));
+    // Pop back so no pushed route leaks into the next test
+    // (Get.reset in tearDown + a leftover route breaks the next
+    // test's Get.find<ThemeController>).
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('haptics switch persists and flips the Hive flag',
+      (tester) async {
+    await HiveStore.put(HiveKeys.hapticsEnabled, true);
+    await expandPlayback(tester);
+
+    final row = find
+        .ancestor(
+          of: find.text('触感反馈'),
+          matching: find.byType(Row),
+        )
+        .last;
+    final hapticsSwitch = find.descendant(
+      of: row,
+      matching: find.byType(GlassSwitch),
+    );
+    expect(hapticsSwitch, findsOneWidget);
+    await tester.tap(hapticsSwitch);
+    await tester.pumpAndSettle();
+    expect(HiveStore.getBool(HiveKeys.hapticsEnabled, true), isFalse);
   });
 }

@@ -1,0 +1,74 @@
+// Haptic feedback — port of Beans `BeansHaptics` (Components.swift:21-58).
+//
+// Beans: four entry points over reused UIImpactFeedbackGenerator /
+// UINotificationFeedbackGenerator / UISelectionFeedbackGenerator
+// instances, all gated by one UserDefaults flag
+// (`beans.haptics.enabled`, default true).
+//
+// Flutter mapping (same four entry points, same gate, same default):
+// - tap()     -> HapticFeedback.lightImpact()   (Beans tap = light)
+// - medium()  -> HapticFeedback.mediumImpact() (Beans medium)
+// - success() -> HapticFeedback.heavyImpact()  (Beans = notification
+//   success; Flutter has no notification API — heavyImpact is the
+//   closest distinct signal, and it is only used for completed
+//   actions, exactly where Beans calls success())
+// - select()  -> HapticFeedback.selectionClick() (Beans selection)
+//
+// EVERY haptic call in the app goes through here — never call
+// HapticFeedback directly at a call site, so the settings switch
+// turns all of them off at once. Calls are fire-and-forget: a
+// failure (no native plugin, e.g. Linux tests) is swallowed, never
+// thrown into the caller's gesture handler.
+//
+// [debugEnabledOverride] is test-only: when set, it replaces the Hive
+// read so tests can assert the on/off behaviour without a Hive box.
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+import '../storage/hive_store.dart';
+
+class HaoHaptics {
+  HaoHaptics._();
+
+  /// Test-only override for [enabled]. Null = read Hive.
+  @visibleForTesting
+  static bool? debugEnabledOverride;
+
+  /// Master switch: Hive `hapticsEnabled`, default true (Beans default).
+  static bool get enabled {
+    if (debugEnabledOverride != null) return debugEnabledOverride!;
+    try {
+      return HiveStore.getBool(HiveKeys.hapticsEnabled, true);
+    } catch (_) {
+      // Hive not initialised (unit test without a box): haptics stay
+      // on — the platform call itself is still guarded by _fire.
+      return true;
+    }
+  }
+
+  /// Persist the master switch (settings page toggle).
+  static Future<void> setEnabled(bool value) =>
+      HiveStore.put(HiveKeys.hapticsEnabled, value);
+
+  /// Light tap — buttons, row taps, menu opens (Beans `tap()`).
+  static void tap() => _fire(HapticFeedback.lightImpact);
+
+  /// Confirmation — play/pause, favourites, long-press (Beans `medium()`).
+  static void medium() => _fire(HapticFeedback.mediumImpact);
+
+  /// Completed action — search finished with results, import done
+  /// (Beans `success()`).
+  static void success() => _fire(HapticFeedback.heavyImpact);
+
+  /// Selection change — tab switch, chip pick, drag crossing a tab
+  /// (Beans `select()`).
+  static void select() => _fire(HapticFeedback.selectionClick);
+
+  static void _fire(Future<void> Function() call) {
+    if (!enabled) return;
+    unawaited(call().catchError((_) {}));
+  }
+}

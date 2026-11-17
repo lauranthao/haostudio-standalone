@@ -6,9 +6,9 @@
 // black alpha (a shadow, not a surface colour) and is lighter in light
 // mode so it never muddies a light glass card.
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
+
+import '../core/theme/glass.dart';
 
 import '../core/theme/hao_themes.dart';
 
@@ -77,7 +77,8 @@ class HaoChevron extends StatelessWidget {
 }
 
 /// One frosted-glass card: theme surface + blur + hairline border +
-/// 20pt radius + a soft neutral shadow (stronger in dark mode, where
+/// 24pt radius (Beans `GlassCard` default cornerRadius, Components.swift)
+/// + a soft neutral shadow (stronger in dark mode, where
 /// a glass card over a near-black scaffold needs the lift to separate).
 class HaoGlassCard extends StatelessWidget {
   const HaoGlassCard({
@@ -93,43 +94,19 @@ class HaoGlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: margin ?? EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: theme.glassBlurSigma,
-            sigmaY: theme.glassBlurSigma,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: theme.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.hairline),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            // Transparent Material between the coloured DecoratedBox
-            // and the rows: ListTile/SwitchListTile paint their ink
-            // splashes on the nearest Material ancestor — without this
-            // Flutter asserts ("ink splashes may be invisible") and
-            // taps show no ripple. The Material is transparent, so the
-            // glass surface and blur behind it are untouched.
-            child: Material(
-              color: Colors.transparent,
-              clipBehavior: Clip.antiAlias,
-              child: Padding(padding: padding, child: child),
-            ),
-          ),
-        ),
+      child: GlassCard(
+        radius: 24,
+        shadow: GlassShadow.card,
+        padding: padding,
+        // Transparent Material inside the glass: ListTile/SwitchListTile
+        // paint their ink splashes on the nearest Material ancestor —
+        // without this Flutter asserts ("ink splashes may be invisible")
+        // and taps show no ripple. The Material is transparent, so the
+        // glass surface and blur behind it are untouched. The outer
+        // GlassCard clips, so no clipBehavior is needed here.
+        child: Material(color: Colors.transparent, child: child),
       ),
     );
   }

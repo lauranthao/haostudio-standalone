@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
@@ -58,26 +59,37 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     final list = _list;
     if (list == null) return;
     final nameController = TextEditingController(text: list.name);
-    final name = await showDialog<String>(
-      context: context,
+    final name = await showGlassDialog<String>(
+      context,
       builder: (ctx) {
         final theme = HaoTheme.of(ctx);
-        return AlertDialog(
-          backgroundColor: theme.surfaceSolid,
-          title: Text('重命名歌单', style: TextStyle(color: theme.textPrimary)),
-          content: TextField(
-            controller: nameController,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '新歌单的名字'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: Text('取消', style: TextStyle(color: theme.textSecondary)),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '重命名歌单',
+              style: TextStyle(color: theme.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()),
-              child: Text('保存', style: TextStyle(color: theme.accent)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: '新歌单的名字'),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text('取消', style: TextStyle(color: theme.textSecondary)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()),
+                  child: Text('保存', style: TextStyle(color: theme.accent)),
+                ),
+              ],
             ),
           ],
         );
@@ -96,29 +108,12 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
   Future<void> _deleteList() async {
     final list = _list;
     if (list == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final theme = HaoTheme.of(ctx);
-        return AlertDialog(
-          backgroundColor: theme.surfaceSolid,
-          title: Text('删除歌单', style: TextStyle(color: theme.textPrimary)),
-          content: Text(
-            '确定删除这个歌单吗？里面的歌也会一起删除。',
-            style: TextStyle(color: theme.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('取消', style: TextStyle(color: theme.textSecondary)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text('删除', style: TextStyle(color: theme.liveRed)),
-            ),
-          ],
-        );
-      },
+    final ok = await showGlassConfirmDialog(
+      context,
+      title: '删除歌单',
+      content: '确定删除这个歌单吗？里面的歌也会一起删除。',
+      confirmLabel: '删除',
+      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (ok != true) return;
     final lists = MusicStore.getLists()
@@ -224,40 +219,12 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                           ),
                         ),
                         confirmDismiss: (_) async {
-                          final ok = await showDialog<bool>(
-                            context: context,
-                            builder: (dctx) {
-                              final t = HaoTheme.of(dctx);
-                              return AlertDialog(
-                                backgroundColor: t.surfaceSolid,
-                                title: Text(
-                                  '删除歌曲',
-                                  style: TextStyle(color: t.textPrimary),
-                                ),
-                                content: Text(
-                                  '确定删除这首歌吗？',
-                                  style: TextStyle(color: t.textSecondary),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dctx).pop(false),
-                                    child: Text(
-                                      '取消',
-                                      style: TextStyle(color: t.textSecondary),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dctx).pop(true),
-                                    child: Text(
-                                      '删除',
-                                      style: TextStyle(color: t.liveRed),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
+                          final ok = await showGlassConfirmDialog(
+                            context,
+                            title: '删除歌曲',
+                            content: '确定删除这首歌吗？',
+                            confirmLabel: '删除',
+                            confirmColor: HaoTheme.of(context).liveRed,
                           );
                           return ok == true;
                         },
@@ -293,8 +260,8 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                               ),
                             ),
                           ),
-                          onLongPress: () =>
-                              unawaited(openTrackMoreSheet(context, song)),
+                          onLongPress: (rowCtx) =>
+                                unawaited(openSongQuickMenu(rowCtx, song)),
                         ),
                       );
                     },

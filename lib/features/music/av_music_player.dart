@@ -30,6 +30,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../services/music/music_models.dart';
@@ -42,6 +43,33 @@ class AvMusicPlayer {
   /// (iOS/macOS/Android). False on Linux/Windows/web test runs.
   static bool get isSupported =>
       Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
+
+  /// "与其他音频同时播放" — port of Beans
+  /// `PlayerManager.applyAudioMixPreference` (PlayerManager.swift:1451):
+  /// category .playback, mode .default, options [.mixWithOthers] when
+  /// on, no options when off, then setActive(true). just_audio only
+  /// activates the session, it never re-configures the category, so
+  /// this is not clobbered by playback. No-op (false) off supported
+  /// platforms and in tests, where the platform channel is absent.
+  static Future<bool> applyMixWithOthers(bool mix) async {
+    if (!isSupported) return false;
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(
+        AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionMode: AVAudioSessionMode.defaultMode,
+          avAudioSessionCategoryOptions: mix
+              ? AVAudioSessionCategoryOptions.mixWithOthers
+              : AVAudioSessionCategoryOptions.none,
+        ),
+      );
+      await session.setActive(true);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// True once a source was loaded successfully. play()/seek() are
   /// no-ops until then, so a failed open can never hang the caller

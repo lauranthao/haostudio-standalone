@@ -50,8 +50,12 @@ class _NoLoadController extends MusicPlayerController {
   @override
   Future<void> next({bool auto = false}) async {
     if (queue.length <= 1) return;
-    final n =
-        nextTrackIndex(mode, currentIndex.value, queue.length, auto: auto);
+    final n = nextTrackIndex(
+      mode,
+      currentIndex.value,
+      queue.length,
+      auto: auto,
+    );
     if (n < 0) return;
     currentIndex.value = n;
   }
@@ -63,9 +67,9 @@ void main() {
   setUp(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel(nowPlayingChannelName),
-      (call) async => null,
-    );
+          const MethodChannel(nowPlayingChannelName),
+          (call) async => null,
+        );
     Hive.init('test/.hive-music-player-layout');
     box = await Hive.openBox<dynamic>('music_player_layout');
     await box.clear();
@@ -76,16 +80,17 @@ void main() {
     Get.reset();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel(nowPlayingChannelName),
-      null,
-    );
+          const MethodChannel(nowPlayingChannelName),
+          null,
+        );
     await box.close();
     await Hive.deleteBoxFromDisk('music_player_layout');
   });
 
   group('MusicPlayerPage layout', () {
-    testWidgets('controls sit on-screen (no 100000pt title row)',
-        (tester) async {
+    testWidgets('controls sit on-screen (no 100000pt title row)', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1260, 2736);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -98,8 +103,7 @@ void main() {
           title: 'Test Song',
           artist: 'Test Artist',
           album: 'Test Album',
-          cover:
-              'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
+          cover: 'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
           platform: MusicPlatform.wy,
           dur: 200,
         ),
@@ -137,8 +141,7 @@ void main() {
     });
   });
 
-  group('AirPlay button: opens the system route picker (chen 2026-11-17)',
-      () {
+  group('AirPlay button: opens the system route picker (chen 2026-11-17)', () {
     Future<void> pumpPage(WidgetTester tester) async {
       tester.view.physicalSize = const Size(1260, 2736);
       tester.view.devicePixelRatio = 3.0;
@@ -152,8 +155,7 @@ void main() {
           title: 'Test Song',
           artist: 'Test Artist',
           album: 'Test Album',
-          cover:
-              'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
+          cover: 'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
           platform: MusicPlatform.wy,
           dur: 200,
         ),
@@ -170,8 +172,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    testWidgets('tap AirPlay with no native picker -> honest failure toast',
-        (tester) async {
+    testWidgets('tap AirPlay with no native picker -> honest failure toast', (
+      tester,
+    ) async {
       await pumpPage(tester);
       // setUp mocks the channel to reply null: native cannot open the
       // picker, so the button reports the failure instead of the old
@@ -183,13 +186,14 @@ void main() {
       expect(find.text('当前设备不支持隔空播放'), findsNothing);
     });
 
-    testWidgets('tap AirPlay when native opens the picker -> no toast',
-        (tester) async {
+    testWidgets('tap AirPlay when native opens the picker -> no toast', (
+      tester,
+    ) async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel(nowPlayingChannelName),
-        (call) async => call.method == 'showAirPlayPicker' ? true : null,
-      );
+            const MethodChannel(nowPlayingChannelName),
+            (call) async => call.method == 'showAirPlayPicker' ? true : null,
+          );
       await pumpPage(tester);
       await tester.tap(find.byIcon(Icons.airplay));
       await tester.pump();
@@ -201,16 +205,24 @@ void main() {
 
   group('musicImageReferer', () {
     test('NetEase / QQ / Kuwo hosts get their Referer', () {
-      expect(musicImageReferer('https://p1.music.126.net/x.jpg'),
-          'https://music.163.com/');
-      expect(musicImageReferer('https://p2.music.126.net/x.jpg'),
-          'https://music.163.com/');
       expect(
-          musicImageReferer(
-              'https://y.gtimg.cn/music/photo_new/T002R300x300M000x.jpg'),
-          'https://y.qq.com/');
-      expect(musicImageReferer('https://img1.kuwo.cn/star/x.jpg'),
-          'https://www.kuwo.cn/');
+        musicImageReferer('https://p1.music.126.net/x.jpg'),
+        'https://music.163.com/',
+      );
+      expect(
+        musicImageReferer('https://p2.music.126.net/x.jpg'),
+        'https://music.163.com/',
+      );
+      expect(
+        musicImageReferer(
+          'https://y.gtimg.cn/music/photo_new/T002R300x300M000x.jpg',
+        ),
+        'https://y.qq.com/',
+      );
+      expect(
+        musicImageReferer('https://img1.kuwo.cn/star/x.jpg'),
+        'https://www.kuwo.cn/',
+      );
       expect(musicImageReferer('https://example.com/x.jpg'), '');
     });
 
@@ -248,15 +260,13 @@ void main() {
     });
 
     test('garbage bytes -> null (fallback)', () async {
-      expect(
-          await dominantCoverColor(Uint8List.fromList([1, 2, 3])), isNull);
+      expect(await dominantCoverColor(Uint8List.fromList([1, 2, 3])), isNull);
       expect(await dominantCoverColor(Uint8List(0)), isNull);
     });
   });
 
   group('MusicPlayerPage background fallback', () {
-    testWidgets('empty cover -> theme gradient, no grey block',
-        (tester) async {
+    testWidgets('empty cover -> theme gradient, no grey block', (tester) async {
       tester.view.physicalSize = const Size(1260, 2736);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -305,15 +315,19 @@ void main() {
         final r = (color.r * 255).round();
         final g = (color.g * 255).round();
         final b = (color.b * 255).round();
-        final isLightGrey = color.a >= 0.8 &&
+        final isLightGrey =
+            color.a >= 0.8 &&
             r > 150 &&
             g > 150 &&
             b > 150 &&
             (r - b).abs() < 20 &&
             size.width >= 100 &&
             size.height >= 100;
-        expect(isLightGrey, isFalse,
-            reason: 'grey block painted by $e: $color size=$size');
+        expect(
+          isLightGrey,
+          isFalse,
+          reason: 'grey block painted by $e: $color size=$size',
+        );
       }
     });
   });
@@ -360,8 +374,7 @@ void main() {
     testWidgets('drag left on cover -> next song', (tester) async {
       await pumpTwoSongs(tester);
       // Cover placeholder = the note icon inside the cover square.
-      await tester.drag(
-          find.byIcon(Icons.music_note), const Offset(-200, 0));
+      await tester.drag(find.byIcon(Icons.music_note), const Offset(-200, 0));
       await tester.pump();
       expect(find.text('Song Two'), findsOneWidget);
     });
@@ -378,9 +391,9 @@ void main() {
       // Lyrics live behind the cover: flip to the lyrics side first.
       await tester.tap(find.byKey(const ValueKey('playerCover')));
       await tester.pump(const Duration(milliseconds: 300));
-      final lyricsText = find.byWidgetPredicate((w) =>
-          w is Text &&
-          (w.data == '歌词加载中…' || w.data == '暂无歌词'));
+      final lyricsText = find.byWidgetPredicate(
+        (w) => w is Text && (w.data == '歌词加载中…' || w.data == '暂无歌词'),
+      );
       expect(lyricsText, findsOneWidget);
       await tester.drag(lyricsText, const Offset(-200, 0));
       await tester.pump();
@@ -388,85 +401,122 @@ void main() {
     });
   });
 
-  group('progress bar scrub: one seek on release, none mid-drag (chen 2026-11-17)', () {
-    Future<_NoLoadController> pumpPlayer(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1260, 2736);
-      tester.view.devicePixelRatio = 3.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  group(
+    'progress bar scrub: one seek on release, none mid-drag (chen 2026-11-17)',
+    () {
+      Future<_NoLoadController> pumpPlayer(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(1260, 2736);
+        tester.view.devicePixelRatio = 3.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final c = Get.put<MusicPlayerController>(_NoLoadController())
-          as _NoLoadController;
-      c.queue.assignAll([
-        Song(
-          songId: 's1',
-          title: 'Song One',
-          artist: 'A',
-          cover: '',
-          platform: MusicPlatform.wy,
-          dur: 200,
-        ),
-      ]);
-      c.currentIndex.value = 0;
-      c.duration.value = const Duration(seconds: 200);
-      c.position.value = Duration.zero;
+        final c = Get.put<MusicPlayerController>(
+          _NoLoadController(),
+        ) as _NoLoadController;
+        c.queue.assignAll([
+          Song(
+            songId: 's1',
+            title: 'Song One',
+            artist: 'A',
+            cover: '',
+            platform: MusicPlatform.wy,
+            dur: 200,
+          ),
+        ]);
+        c.currentIndex.value = 0;
+        c.duration.value = const Duration(seconds: 200);
+        c.position.value = Duration.zero;
 
-      await tester.pumpWidget(
-        GetMaterialApp(
-          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-          home: const MusicPlayerPage(),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      return c;
-    }
+        await tester.pumpWidget(
+          GetMaterialApp(
+            theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+            home: const MusicPlayerPage(),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        return c;
+      }
 
-    testWidgets('drag across the bar seeks exactly once, on release',
+      testWidgets('drag across the bar seeks exactly once, on release', (
+        tester,
+      ) async {
+        final c = await pumpPlayer(tester);
+        final bar = find.byKey(const ValueKey('progressBar'));
+        expect(bar, findsOneWidget);
+        final rect = tester.getRect(bar);
+        // 10% -> 60% across the bar: release at 60% of 200 s = 120 s.
+        final start = Offset(rect.left + rect.width * 0.1, rect.center.dy);
+        final end = Offset(rect.left + rect.width * 0.6, rect.center.dy);
+        await tester.timedDragFrom(
+          start,
+          end - start,
+          const Duration(milliseconds: 300),
+        );
+        await tester.pump();
+        // Before the fix the drag seeked on every move event (a native
+        // seek per frame, stuttering the audio) plus the press-down
+        // tap: ~10 seeks. Now: one, on release.
+        expect(c.seeks, hasLength(1));
+        expect(c.seeks.single.inSeconds, closeTo(120, 5));
+      });
+
+      testWidgets(
+        'scrub bubble shows the preview time while dragging (Beans SeekBar)',
         (tester) async {
-      final c = await pumpPlayer(tester);
-      final bar = find.byKey(const ValueKey('progressBar'));
-      expect(bar, findsOneWidget);
-      final rect = tester.getRect(bar);
-      // 10% -> 60% across the bar: release at 60% of 200 s = 120 s.
-      final start = Offset(rect.left + rect.width * 0.1, rect.center.dy);
-      final end = Offset(rect.left + rect.width * 0.6, rect.center.dy);
-      await tester.timedDragFrom(
-        start,
-        end - start,
-        const Duration(milliseconds: 300),
+          final c = await pumpPlayer(tester);
+          final bar = find.byKey(const ValueKey('progressBar'));
+          expect(bar, findsOneWidget);
+          final rect = tester.getRect(bar);
+          // Hold at 10%, drag to 60% of 200 s: the bubble previews 2:00
+          // while the elapsed label still shows 0:00 (seek is on release).
+          final start = Offset(rect.left + rect.width * 0.1, rect.center.dy);
+          final gesture = await tester.startGesture(start);
+          await gesture.moveBy(Offset(rect.width * 0.5, 0));
+          await tester.pump();
+          // The bubble is the 11pt w600 preview above the thumb; the
+          // elapsed label (12pt) also previews while scrubbing.
+          final bubble = find.byWidgetPredicate(
+            (w) => w is Text && w.data == '2:00' && w.style?.fontSize == 11,
+          );
+          expect(bubble, findsOneWidget);
+          expect(c.seeks, isEmpty);
+          await gesture.up();
+          await tester.pump();
+          expect(bubble, findsNothing);
+          expect(c.seeks, hasLength(1));
+        },
       );
-      await tester.pump();
-      // Before the fix the drag seeked on every move event (a native
-      // seek per frame, stuttering the audio) plus the press-down
-      // tap: ~10 seeks. Now: one, on release.
-      expect(c.seeks, hasLength(1));
-      expect(c.seeks.single.inSeconds, closeTo(120, 5));
-    });
 
-    testWidgets('tap on the bar seeks immediately to the tap point',
-        (tester) async {
-      final c = await pumpPlayer(tester);
-      final bar = find.byKey(const ValueKey('progressBar'));
-      final rect = tester.getRect(bar);
-      await tester.tapAt(
-        Offset(rect.left + rect.width * 0.6, rect.center.dy),
-      );
-      await tester.pump();
-      expect(c.seeks, hasLength(1));
-      expect(c.seeks.single.inSeconds, closeTo(120, 5));
-    });
-  });
+      testWidgets('tap on the bar seeks immediately to the tap point', (
+        tester,
+      ) async {
+        final c = await pumpPlayer(tester);
+        final bar = find.byKey(const ValueKey('progressBar'));
+        final rect = tester.getRect(bar);
+        await tester.tapAt(
+          Offset(rect.left + rect.width * 0.6, rect.center.dy),
+        );
+        await tester.pump();
+        expect(c.seeks, hasLength(1));
+        expect(c.seeks.single.inSeconds, closeTo(120, 5));
+      });
+    },
+  );
 
   group('lyrics behind cover: tap cover to flip, tap line to seek (chen 2026-11-17)', () {
-    Future<_NoLoadController> pumpLyrics(WidgetTester tester) async {
+    Future<_NoLoadController> pumpLyrics(
+      WidgetTester tester, {
+      List<LyricLine>? lines,
+    }) async {
       tester.view.physicalSize = const Size(1260, 2736);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      final c = Get.put<MusicPlayerController>(_NoLoadController())
-          as _NoLoadController;
+      final c = Get.put<MusicPlayerController>(
+        _NoLoadController(),
+      ) as _NoLoadController;
       c.queue.assignAll([
         Song(
           songId: 's1',
@@ -478,11 +528,14 @@ void main() {
         ),
       ]);
       c.currentIndex.value = 0;
-      c.lyrics.assignAll([
-        LyricLine(t: 10, text: '第一句'),
-        LyricLine(t: 25.5, text: '第二句'),
-        LyricLine(t: 40, text: '第三句'),
-      ]);
+      c.lyrics.assignAll(
+        lines ??
+            [
+              LyricLine(t: 10, text: '第一句'),
+              LyricLine(t: 25.5, text: '第二句'),
+              LyricLine(t: 40, text: '第三句'),
+            ],
+      );
 
       await tester.pumpWidget(
         GetMaterialApp(
@@ -497,12 +550,15 @@ void main() {
       expect(find.byKey(const ValueKey('playerCover')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('playerCover')));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('第二句'), findsOneWidget);
+      if (lines == null) {
+        expect(find.text('第二句'), findsOneWidget);
+      }
       return c;
     }
 
-    testWidgets('tap a lyric line seeks to its timestamp, stays on lyrics',
-        (tester) async {
+    testWidgets('tap a lyric line seeks to its timestamp, stays on lyrics', (
+      tester,
+    ) async {
       final c = await pumpLyrics(tester);
       await tester.tap(find.text('第二句'));
       await tester.pump();
@@ -513,25 +569,27 @@ void main() {
     });
 
     testWidgets(
-        'tap empty lyrics padding flips back to cover; tap cover flips to lyrics again',
-        (tester) async {
-      final c = await pumpLyrics(tester);
-      // Top 12 px of the lyrics face is ListView padding (empty space).
-      final topLeft =
-          tester.getTopLeft(find.byKey(const ValueKey('playerLyrics')));
-      await tester.tapAt(topLeft + const Offset(100, 4));
-      // Flip-back fades the lyrics out (250 ms); settle so the outgoing
-      // child is actually removed before asserting it is gone.
-      await tester.pumpAndSettle();
-      expect(c.showLyrics.value, isFalse);
-      expect(find.text('第二句'), findsNothing);
-      expect(find.byKey(const ValueKey('playerCover')), findsOneWidget);
+      'tap empty lyrics padding flips back to cover; tap cover flips to lyrics again',
+      (tester) async {
+        final c = await pumpLyrics(tester);
+        // Top 12 px of the lyrics face is ListView padding (empty space).
+        final topLeft = tester.getTopLeft(
+          find.byKey(const ValueKey('playerLyrics')),
+        );
+        await tester.tapAt(topLeft + const Offset(100, 4));
+        // Flip-back fades the lyrics out (250 ms); settle so the outgoing
+        // child is actually removed before asserting it is gone.
+        await tester.pumpAndSettle();
+        expect(c.showLyrics.value, isFalse);
+        expect(find.text('第二句'), findsNothing);
+        expect(find.byKey(const ValueKey('playerCover')), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('playerCover')));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(c.showLyrics.value, isTrue);
-      expect(find.text('第二句'), findsOneWidget);
-    });
+        await tester.tap(find.byKey(const ValueKey('playerCover')));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(c.showLyrics.value, isTrue);
+        expect(find.text('第二句'), findsOneWidget);
+      },
+    );
 
     testWidgets('bottom lyrics icon toggles cover/lyrics', (tester) async {
       final c = await pumpLyrics(tester);
@@ -548,6 +606,122 @@ void main() {
       expect(c.showLyrics.value, isTrue);
       expect(find.text('第二句'), findsOneWidget);
     });
+
+    testWidgets(
+      'lyrics face: no background box, bigger text, near-full width (chen 2026-11-17)',
+      (tester) async {
+        final c = await pumpLyrics(tester);
+        final face = find.byKey(const ValueKey('playerLyrics'));
+        expect(face, findsOneWidget);
+        // No box: the face itself is a SizedBox, and no descendant
+        // Container paints any background color, gradient or decoration.
+        expect(face.evaluate().single.widget, isA<SizedBox>());
+        final painted = find.descendant(
+          of: face,
+          matching: find.byWidgetPredicate((w) {
+            if (w is Container) {
+              final d = w.decoration;
+              if (d is BoxDecoration &&
+                  (d.color != null || d.gradient != null)) {
+                return true;
+              }
+              if (w.color != null) return true;
+            }
+            return false;
+          }),
+        );
+        expect(painted, findsNothing);
+        // Width: near full screen (420pt - 32pt margins = 388); height
+        // still the cover square (420 * 0.68 = 285.6).
+        final rect = tester.getRect(face);
+        expect(rect.width, closeTo(388, 1));
+        expect(rect.height, closeTo(285.6, 1));
+        // Font sizes: move the clock to 12s so line 1 (t:10) is current.
+        c.position.value = const Duration(seconds: 12);
+        await tester.pump();
+        Text textOf(String s) => tester.widget<Text>(find.text(s));
+        expect(textOf('第一句').style?.fontSize, 20);
+        expect(textOf('第二句').style?.fontSize, 17);
+        expect(textOf('第三句').style?.fontSize, 17);
+        // Every line carries the faint readability shadow.
+        for (final s in ['第一句', '第二句', '第三句']) {
+          expect(textOf(s).style?.shadows, isNotEmpty);
+        }
+      },
+    );
+
+    testWidgets(
+      'translation shows under the current line only (Beans tlyric)',
+      (tester) async {
+        final c = await pumpLyrics(
+          tester,
+          lines: [
+            LyricLine(t: 10, text: '第一句', translation: 'First line'),
+            LyricLine(t: 25.5, text: '第二句', translation: 'Second line'),
+            LyricLine(t: 40, text: '第三句'),
+          ],
+        );
+        // Line 1 is current at 12 s: only its translation shows.
+        c.position.value = const Duration(seconds: 12);
+        await tester.pump();
+        expect(find.text('First line'), findsOneWidget);
+        expect(find.text('Second line'), findsNothing);
+        // Move to line 2: its translation replaces line 1's.
+        c.position.value = const Duration(seconds: 26);
+        await tester.pump();
+        expect(find.text('First line'), findsNothing);
+        expect(find.text('Second line'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'lyrics face has a top/bottom fade mask (Beans viewport fade)',
+      (tester) async {
+        await pumpLyrics(tester);
+        final face = find.byKey(const ValueKey('playerLyrics'));
+        expect(
+          find.descendant(of: face, matching: find.byType(ShaderMask)),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'user drag pauses auto-follow and snaps to the nearest line (Beans)',
+      (tester) async {
+        final c = await pumpLyrics(
+          tester,
+          lines: List.generate(
+            20,
+            (i) => LyricLine(t: i * 10.0, text: '第${i + 1}句'),
+          ),
+        );
+        final face = find.byKey(const ValueKey('playerLyrics'));
+        // 20 lines: content 20*32+24 = 664 pt > 285.6 pt viewport, so the
+        // list can actually scroll (3 lines cannot).
+        final scrollable = tester.state<ScrollableState>(
+          find.descendant(of: face, matching: find.byType(Scrollable)),
+        );
+        expect(scrollable.position.pixels, 0);
+        // Drag the list up 100 px: auto-follow pauses, offset ~100.
+        await tester.timedDragFrom(
+          tester.getCenter(face),
+          const Offset(0, -100),
+          const Duration(milliseconds: 300),
+        );
+        // Release snaps to the nearest row boundary in 300 ms — but the
+        // drag's ballistic tail runs first, and the deferred snap needs
+        // a frame to start ticking, so allow ~900 ms total:
+        // ((offset + 90) / 32).round() = 6 -> 6*32 - 90 = 102.
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(scrollable.position.pixels, closeTo(102, 3));
+        // Drain the 3 s resume timer so teardown sees no pending timers.
+        await tester.pump(const Duration(seconds: 4));
+        expect(c.showLyrics.value, isTrue);
+      },
+    );
   });
 
   group('song comments page (chen 2026-11-17)', () {
@@ -603,8 +777,9 @@ void main() {
       return dio;
     }
 
-    testWidgets('hot on top, latest below, load more appends the tail',
-        (tester) async {
+    testWidgets('hot on top, latest below, load more appends the tail', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1170, 2532);
       tester.view.devicePixelRatio = 3.0;
       addTearDown(tester.view.resetPhysicalSize);

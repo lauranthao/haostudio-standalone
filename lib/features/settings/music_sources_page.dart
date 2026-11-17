@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
@@ -117,6 +118,16 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   }
 
   Future<void> _removeScript(String id, String name) async {
+    // Same glass confirm as every other destructive delete in the
+    // app — a custom script is user-added work, not a toggle.
+    final ok = await showGlassConfirmDialog(
+      context,
+      title: '删除音源脚本',
+      content: '将删除「$name」，该脚本的音源不再参与搜索与播放。',
+      confirmLabel: '删除',
+      confirmColor: HaoTheme.of(context).liveRed,
+    );
+    if (ok != true || !mounted) return;
     await LxScriptEngine.instance.removeScript(id);
     if (!mounted) return;
     setState(() {

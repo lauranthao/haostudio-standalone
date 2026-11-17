@@ -17,6 +17,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../core/theme/glass.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassCard, GlassShadow;
 import '../../services/video/cms_client.dart';
 import 'video_detail_page.dart';
 import 'video_detail_service.dart';
@@ -200,47 +204,27 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-            child: TextField(
+            // Library glass search bar (SKILL.md: inputs are a control
+            // surface; the bar is a standalone top-of-page control, not
+            // a row inside a scrolling list, so `glass` is correct
+            // here, not `solid`). The built-in clear button replaces
+            // our suffixIcon clear; textInputAction.search is the
+            // library search variant's default; the cursor follows
+            // DefaultSelectionStyle -> colorScheme.primary = accent.
+            child: GlassSearchBar(
               controller: _controller,
               autofocus: true,
-              textInputAction: TextInputAction.search,
-              onSubmitted: _search,
-              decoration: InputDecoration(
-                hintText: '搜索影片、剧集…',
-                hintStyle: TextStyle(color: theme.textMuted),
-                prefixIcon: Icon(Icons.search, color: theme.textMuted),
-                suffixIcon: _controller.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: Icon(Icons.clear, color: theme.textMuted),
-                        onPressed: () {
-                          _controller.clear();
-                          setState(() {});
-                        },
-                      ),
-                filled: true,
-                fillColor: theme.surface,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(999),
-                  borderSide: BorderSide(
-                    color: theme.accent,
-                    width: 1.5,
-                  ),
-                ),
+              placeholder: '搜索影片、剧集…',
+              placeholderStyle: TextStyle(color: theme.textMuted),
+              textStyle: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 16,
               ),
-              style: TextStyle(color: theme.textPrimary, fontSize: 16),
-              cursorColor: theme.accent,
+              searchIconColor: theme.textMuted,
+              clearIconColor: theme.textMuted,
+              onSubmitted: _search,
             ),
-          ),
+        ),
           if (!_searched) ...[
             if (history.isNotEmpty)
               _ChipSection(
@@ -357,16 +341,34 @@ class _ChipSection extends StatelessWidget {
             children: chips
                 .take(8)
                 .map(
-                  (c) => ActionChip(
-                    label: Text(c),
-                    labelStyle: TextStyle(
-                      color: theme.textSecondary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                  (c) => GlassPressScale(
+                    pressedScale: 0.97,
+                    child: GlassCard(
+                      radius: 999,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      shadow: GlassShadow.none,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            HaoHaptics.tap();
+                            onTap(c);
+                          },
+                          borderRadius: BorderRadius.circular(999),
+                          child: Text(
+                            c,
+                            style: TextStyle(
+                              color: theme.textSecondary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                    backgroundColor: theme.surface,
-                    side: BorderSide(color: theme.hairline),
-                    onPressed: () => onTap(c),
                   ),
                 )
                 .toList(),

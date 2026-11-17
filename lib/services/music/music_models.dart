@@ -223,14 +223,51 @@ String coverThumb(String? url) {
 }
 
 /// HTML-entity decode for QQ/Kuwo names (directDecodeEnt).
+///
+/// Kuwo's pseudo-JSON double-escapes `\uXXXX` (raw `\\u0026`) so it
+/// survives jsonDecode as literal text, and leaves HTML entities raw
+/// (`&nbsp;` in NAME, `&amp;` in ARTIST) — measured 2026-11-17 on a
+/// real Kuwo search response ("张学友"):
+/// ARTIST `梅艳芳\\u0026张学友...` displayed literally, NAME
+/// `明天会更好-1985&nbsp;TVB...`. All of those must decode here;
+/// `&amp;` goes last so `&amp;nbsp;` stays literal.
 String decodeEntities(String? s) {
   var out = s ?? '';
+  out = out.replaceAllMapped(
+    RegExp(r'\\+u([0-9a-fA-F]{4})'),
+    (m) => String.fromCharCode(int.parse(m.group(1)!, radix: 16)),
+  );
+  out = out.replaceAllMapped(
+    RegExp(r'&#x([0-9a-fA-F]+);'),
+    (m) => String.fromCharCode(int.tryParse(m.group(1) ?? '', radix: 16) ?? 0),
+  );
   out = out.replaceAllMapped(
     RegExp(r'&#(\d+);'),
     (m) => String.fromCharCode(int.tryParse(m.group(1) ?? '') ?? 0),
   );
+  out = out
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&apos;', "'");
   return out.replaceAll('&amp;', '&');
 }
+
+/// Base title, display form: cut the version suffix after the first
+/// of `(`, `（`, `[`, `【`, `-`, `－`, `~`, `～` — live/DJ/cantonese
+/// version notes ("吻别 (DJ萧子枫版)", "明天会更好-1985 TVB...").
+/// The bare song name is what NetEase is queried/matched on; the
+/// suffix only describes the recording.
+String baseTitleRaw(String? s) {
+  final t = (s ?? '').trim();
+  final cut = t.indexOf(RegExp(r'''[\(（\[【\-－~～]'''));
+  return (cut < 0 ? t : t.substring(0, cut)).trim();
+}
+
+/// Normalised [baseTitleRaw] — the key used to match a cover-lookup
+/// candidate against the target song.
+String baseSongTitle(String? s) => normalizeName(baseTitleRaw(s));
 
 /// Normalise for title/artist matching: strip whitespace, brackets, dots,
 /// dashes; lowercase (app.js §1.1.2 / dailyNorm).
@@ -264,6 +301,7 @@ class Song {
     this.albumYear = 0,
     this.reasonKey = '',
     this.reasonArg = '',
+    this.localPath = '',
   });
 
   factory Song.fromJson(Map<String, dynamic> j) {
@@ -278,21 +316,24 @@ class Song {
       albumYear: (j['albumYear'] as num?)?.toInt() ?? 0,
       reasonKey: j['reasonKey']?.toString() ?? '',
       reasonArg: j['reasonArg']?.toString() ?? '',
+      localPath: j['localPath']?.toString() ?? '',
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'songId': songId,
-        'title': title,
-        'artist': artist,
-        'album': album,
-        'cover': cover,
-        'platform': platform.code,
-        'dur': dur,
-        'albumYear': albumYear,
-        'reasonKey': reasonKey,
-        'reasonArg': reasonArg,
-      };
+    'songId': songId,
+    'title': title,
+    'artist': artist,
+    'album': album,
+    'cover': cover,
+    'platform': platform.code,
+    'dur': dur,
+    'albumYear': albumYear,
+    'reasonKey': reasonKey,
+    'reasonArg': reasonArg,
+    // Empty for every remote song; only local-file songs carry a path.
+    if (localPath.isNotEmpty) 'localPath': localPath,
+  };
 
   /// Dedupe key for aggregated search (fix 12): platform + songId + title.
   String get dedupeKey => '${platform.code}|$songId|$title';
@@ -310,23 +351,34 @@ class Song {
 
   final int albumYear;
 
+  /// Absolute path of the local audio file (stage 2 local import).
+  /// Empty for every remote song. The player opens this file directly
+  /// (AVPlayer via just_audio, file:// URL) instead of resolving a
+  /// remote URL — no new playback chain.
+  final String localPath;
+
+  /// True for an imported local file (songId starts with 'local:'
+  /// AND a path is stored — both must hold, so a stale entry with a
+  /// deleted file never claims to be local).
+  bool get isLocal => localPath.isNotEmpty && songId.startsWith('local:');
+
   /// Daily-picks reason (becauseListen / becauseArtist / hotPick).
   final String reasonKey;
   final String reasonArg;
 
-  Song copyWith({String? reasonKey, String? reasonArg, String? cover}) =>
-      Song(
-        songId: songId,
-        title: title,
-        artist: artist,
-        album: album,
-        cover: cover ?? this.cover,
-        platform: platform,
-        dur: dur,
-        albumYear: albumYear,
-        reasonKey: reasonKey ?? this.reasonKey,
-        reasonArg: reasonArg ?? this.reasonArg,
-      );
+  Song copyWith({String? reasonKey, String? reasonArg, String? cover}) => Song(
+    songId: songId,
+    title: title,
+    artist: artist,
+    album: album,
+    cover: cover ?? this.cover,
+    platform: platform,
+    dur: dur,
+    albumYear: albumYear,
+    reasonKey: reasonKey ?? this.reasonKey,
+    reasonArg: reasonArg ?? this.reasonArg,
+    localPath: localPath,
+  );
 }
 
 class PlaylistSummary {
@@ -357,16 +409,16 @@ class PlaylistSummary {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'cover': cover,
-        'creator': creator,
-        'playCount': playCount,
-        'trackCount': trackCount,
-        'desc': desc,
-        'time': time,
-        'platform': platform.code,
-      };
+    'id': id,
+    'name': name,
+    'cover': cover,
+    'creator': creator,
+    'playCount': playCount,
+    'trackCount': trackCount,
+    'desc': desc,
+    'time': time,
+    'platform': platform.code,
+  };
 
   final String id;
   final String name;
@@ -383,25 +435,22 @@ class PlaylistSummary {
 /// `tracks.length` (audit P0-1) — never a stored count field.
 class UserPlaylist {
   UserPlaylist({required this.id, required this.name, List<Song>? tracks})
-      : tracks = tracks ?? [];
+    : tracks = tracks ?? [];
 
   factory UserPlaylist.fromJson(Map<String, dynamic> j) {
     final raw = j['tracks'] as List<dynamic>? ?? [];
     return UserPlaylist(
       id: j['id']?.toString() ?? '',
       name: j['name']?.toString() ?? '',
-      tracks: raw
-          .whereType<Map<String, dynamic>>()
-          .map(Song.fromJson)
-          .toList(),
+      tracks: raw.whereType<Map<String, dynamic>>().map(Song.fromJson).toList(),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'tracks': tracks.map((s) => s.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'tracks': tracks.map((s) => s.toJson()).toList(),
+  };
 
   /// Audit P0-1: count is derived from the track list on every render.
   int get trackCount => tracks.length;
@@ -441,6 +490,7 @@ class AlbumSummary {
     this.artist = '',
     this.publishTime = 0,
     this.songCount = 0,
+    this.platform = MusicPlatform.wy,
   });
 
   final String id;
@@ -449,6 +499,11 @@ class AlbumSummary {
   final String artist;
   final int publishTime;
   final int songCount;
+
+  /// Which platform the album came from (stage 2 album search).
+  /// Defaults to wy so existing callers (artist detail) compile
+  /// unchanged; album-search callers always set it explicitly.
+  final MusicPlatform platform;
 
   int get year {
     if (publishTime <= 0) return 0;
@@ -464,8 +519,8 @@ class ArtistDetail {
     this.albumSize = 0,
     List<Song>? songs,
     List<AlbumSummary>? albums,
-  })  : songs = songs ?? [],
-        albums = albums ?? [];
+  }) : songs = songs ?? [],
+       albums = albums ?? [];
 
   final String name;
   final String pic;
@@ -515,11 +570,15 @@ class CommentItem {
 }
 
 class LyricLine {
-  LyricLine({required this.t, required this.text});
+  LyricLine({required this.t, required this.text, this.translation});
 
   /// Time in seconds.
   final double t;
   final String text;
+
+  /// Translation line (NetEase `tlyric`, Beans shows it under the
+  /// focused line when present). Null when the source has none.
+  final String? translation;
 }
 
 /// One listen event (hao_listen). `dur` is the seconds actually
@@ -551,15 +610,15 @@ class ListenEvent {
   }
 
   Map<String, dynamic> toJson() => {
-        'songId': songId,
-        'title': title,
-        'artist': artist,
-        'platform': platform.code,
-        'cover': cover,
-        'dur': dur,
-        'totalDur': totalDur,
-        'at': at,
-      };
+    'songId': songId,
+    'title': title,
+    'artist': artist,
+    'platform': platform.code,
+    'cover': cover,
+    'dur': dur,
+    'totalDur': totalDur,
+    'at': at,
+  };
 
   final String songId;
   final String title;
@@ -632,5 +691,4 @@ class SeededRandom {
   }
 }
 
-String jsonEncodeList(List<Map<String, dynamic>> items) =>
-    jsonEncode(items);
+String jsonEncodeList(List<Map<String, dynamic>> items) => jsonEncode(items);
