@@ -34,6 +34,7 @@ import 'plaza_page.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/platform_logo.dart';
 
 enum _SearchType { song, playlist, artist, album }
 
@@ -148,15 +149,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                pf == _platform
-                                    ? Icons.check_circle
-                                    : Icons.music_note,
-                                size: 18,
-                                color: pf == _platform
-                                    ? theme.accent
-                                    : theme.textMuted,
-                              ),
+                              // Real brand logo (chen 2026-11-18), not
+                              // the generic ♪ — the checkmark stays as
+                              // the trailing selected marker.
+                              PlatformLogo(platform: pf, size: 28),
                               const SizedBox(width: 10),
                               Text(
                                 pf.displayName,
@@ -166,6 +162,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
+                              const Spacer(),
+                              if (pf == _platform)
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 18,
+                                  color: theme.accent,
+                                ),
                             ],
                           ),
                         ),
@@ -1353,7 +1356,7 @@ class _PlatformCapsule extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.music_note, size: 13, color: theme.accent),
+                PlatformLogo(platform: platform, size: 18),
                 const SizedBox(width: 6),
                 Text(
                   platform.displayName,

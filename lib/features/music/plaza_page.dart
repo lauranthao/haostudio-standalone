@@ -33,6 +33,7 @@ import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/platform_logo.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
@@ -148,7 +149,16 @@ class _PlazaPageState extends State<PlazaPage> {
                         for (final pf in kPlazaPlatforms)
                           DropdownMenuItem(
                             value: pf,
-                            child: Text(pf.displayName),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Real brand logo (chen 2026-11-18) —
+                                // the closed button shows the same row.
+                                PlatformLogo(platform: pf, size: 20),
+                                const SizedBox(width: 8),
+                                Text(pf.displayName),
+                              ],
+                            ),
                           ),
                       ],
                       onChanged: (v) {
