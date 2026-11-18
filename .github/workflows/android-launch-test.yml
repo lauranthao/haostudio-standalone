@@ -1,0 +1,50 @@
+# Android APK launch test — runs the shop-hosted APK on a GitHub-hosted
+# Android emulator (Pixel, API 33, x86_64) and captures logcat.
+# Purpose: verify the app launches, and get the REAL crash stack when it
+# doesn't (Appetize free tier can't give logcat, and its minutes ran out).
+# Trigger: Actions tab -> this workflow -> Run workflow (branch android-apk).
+# The APK URL defaults to the shop-hosted v1.1.2 APK; override to test another build.
+name: Android APK launch test
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'APK download URL'
+        required: false
+        default: 'https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.2.apk'
+
+jobs:
+  launch-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Launch APK on emulator and capture logcat
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          script: |
+            set -x
+            curl -sL -o /tmp/hao.apk "${{ inputs.apk_url }}"
+            ls -l /tmp/hao.apk
+            adb install /tmp/hao.apk
+            adb shell am start -n com.haostudio.standalone/.MainActivity
+            sleep 15
+            echo "=== pidof (empty = process dead) ==="
+            adb shell pidof com.haostudio.standalone || echo "PROCESS_NOT_RUNNING"
+            adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
+            echo "=== crash lines ==="
+            grep -iE "FATAL EXCEPTION|AndroidRuntime|com.haostudio|signal 11|libc.*fatal|UnsatisfiedLink" "$GITHUB_WORKSPACE/logcat.txt" | head -60 || true
+
+      - name: Upload logcat
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-logcat
+          path: logcat.txt
+          retention-days: 7
