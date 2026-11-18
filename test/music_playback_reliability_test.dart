@@ -24,6 +24,10 @@
 //    it: after playQueue replaces the queue, the old index still
 //    points at the new list, so the same-song shortcut must NOT
 //    compare against queue[currentIndex] (chen 2026-11-18).
+// 10. Sleep timer firing mid-resolve must silence the landing song:
+//     the old player is already stopped, so onFire's pause is a
+//     no-op and the new song would otherwise play past the deadline
+//     (peripheral audit 2026-11-18).
 //
 // Harness: controller constructed directly (no Get.put, no onInit),
 // fake players through the constructor seam (same pattern as
@@ -75,12 +79,16 @@ class _FakeApi extends MusicApi {
 
 /// Resolvers driven by a per-test script: the function receives the
 /// song id and the exclusion set for the call and returns the result
-/// (null = no source). Every call is logged for assertions.
+/// (null = no source). Every call is logged for assertions. The
+/// script may return a Future (a parked Completer) so a resolve can
+/// be held mid-flight — e.g. the sleep-timer resolve-window test.
 class _ScriptedResolvers extends MusicResolvers {
   _ScriptedResolvers(this.script);
 
-  final PlayUrlResult? Function(String songId, Set<String> excludeJobs)
-      script;
+  final FutureOr<PlayUrlResult?> Function(
+    String songId,
+    Set<String> excludeJobs,
+  ) script;
   final List<({String songId, String title, Set<String> excludeJobs})>
       calls = [];
   final List<String> evicted = [];
@@ -98,7 +106,7 @@ class _ScriptedResolvers extends MusicResolvers {
       title: title,
       excludeJobs: Set.of(excludeJobs),
     ));
-    return script(songId, excludeJobs);
+    return await script(songId, excludeJobs);
   }
 
   @override
@@ -609,6 +617,104 @@ void main() {
       expect(playerA.openedUrls, [_url('a-id'), _url('b-id')]);
       expect(c.currentSong?.title, 'B歌');
       expect(c.currentIndex.value, 0);
+    });
+
+    test('sleep timer firing mid-resolve silences the landing song',
+        () async {
+      // Peripheral audit (chen 2026-11-18): the timer fires while
+      // the next song is still resolving — the old player is already
+      // stopped, so onFire's pause is a no-op and the new song opens
+      // and plays past the deadline. The landing load must pause.
+      final bCompleter = Completer<PlayUrlResult?>();
+      var bCalls = 0;
+      resolvers = _ScriptedResolvers((songId, excludeJobs) {
+        if (songId == 'b-id') {
+          bCalls++;
+          return bCompleter.future;
+        }
+        final url = _url(songId);
+        return PlayUrlResult(
+          url: url,
+          candidates: [url],
+          quality: AudioQuality.hires,
+          via: 'test',
+        );
+      });
+      c = makeController();
+      final errors = await _runCatchingAsyncErrors(() async {
+        await c.playQueue([_wy('a-id', 'A歌'), _wy('b-id', 'B歌')], 0);
+        // A's load prefetches B: the prefetch also parks on the
+        // same future (one Completer, awaited twice). The prefetch
+        // kicks off async, so let it reach the resolve call first.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(bCalls, 1);
+        // Auto-advance to B: its load parks in the resolve.
+        final advance = c.next(auto: true);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(bCalls, 2);
+        // The timer fires while B is still resolving.
+        c.fireSleepTimerForTest();
+        // The resolve lands: B is loaded (pre-buffered on the
+        // standby, reused by the crossfade) but must not sound.
+        bCompleter.complete(PlayUrlResult(
+          url: _url('b-id'),
+          candidates: [_url('b-id')],
+          quality: AudioQuality.hires,
+          via: 'test',
+        ));
+        await advance;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      expect(errors, isEmpty);
+      expect(c.currentIndex.value, 1);
+      // The prefetch for B is correctly dropped once B becomes
+      // current (its resolve landed after the advance), so the
+      // crossfade opens B directly on the standby instead.
+      expect(playerB.openedUrls, [_url('b-id')]);
+      // The landing load was paused by the fired timer (the standby,
+      // now active, got exactly one pause from the sleep check).
+      expect(playerB.pauseCalls, 1);
+    });
+
+    test('sleep timer firing mid-resolve silences a manual tap too',
+        () async {
+      // Same gap, manual flavour: the user taps B while its resolve
+      // is still in flight and the timer fires in the window.
+      final bCompleter = Completer<PlayUrlResult?>();
+      resolvers = _ScriptedResolvers((songId, excludeJobs) {
+        if (songId == 'b-id') return bCompleter.future;
+        final url = _url(songId);
+        return PlayUrlResult(
+          url: url,
+          candidates: [url],
+          quality: AudioQuality.hires,
+          via: 'test',
+        );
+      });
+      c = makeController();
+      final errors = await _runCatchingAsyncErrors(() async {
+        await c.playQueue([_wy('a-id', 'A歌'), _wy('b-id', 'B歌')], 0);
+        final tap = c.playQueue([_wy('a-id', 'A歌'), _wy('b-id', 'B歌')], 1);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        c.fireSleepTimerForTest();
+        bCompleter.complete(PlayUrlResult(
+          url: _url('b-id'),
+          candidates: [_url('b-id')],
+          quality: AudioQuality.hires,
+          via: 'test',
+        ));
+        await tap;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      expect(errors, isEmpty);
+      expect(c.currentIndex.value, 1);
+      expect(playerA.openedUrls, contains(_url('b-id')));
+      // Three pauses on the active player: A's manual load up-front
+      // pause, B's manual load up-front pause, then the sleep check
+      // after the landing open. Without the fix the third pause is
+      // missing (pauseCalls == 2) and the song sounds past the
+      // deadline.
+      expect(playerA.pauseCalls, 3);
     });
   });
 }

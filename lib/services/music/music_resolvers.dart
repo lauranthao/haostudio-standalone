@@ -566,8 +566,11 @@ class MusicResolvers {
             if (j == null || j['song_play_url'] == null) return '';
             // QQ top tier field is `song_play_url_pq` — it is the hires
             // tier's URL source, not a separate Master tier (see
-            // music_quality.dart header).
-            final field = q == AudioQuality.hires
+            // music_quality.dart header). Master caps at the same
+            // top field: falling through to `song_play_url_standard`
+            // would serve the LOWEST tier while extraQuality labels
+            // it hires.
+            final field = q == AudioQuality.master || q == AudioQuality.hires
                 ? 'song_play_url_pq'
                 : q == AudioQuality.lossless
                     ? 'song_play_url_sq'

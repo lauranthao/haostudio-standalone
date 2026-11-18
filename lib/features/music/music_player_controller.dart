@@ -207,6 +207,13 @@ class MusicPlayerController extends GetxController
   /// with false at its start.
   var _lastLoadAuto = true;
 
+  /// Gen of the load in flight when the sleep timer fired (-1 = the
+  /// timer has not fired since the last load landed). A load that
+  /// lands after the fire must not sound — see [_pauseIfSleepFired].
+  /// Stamped with the gen (not a bool) so a NEWER load the user
+  /// starts after the fire plays normally.
+  var _sleepFiredGen = -1;
+
   /// URL of the source opened for the current song. The trial retry
   /// compares a re-resolved URL against it: the same URL string is
   /// the same content, retrying it is pointless.
@@ -409,11 +416,7 @@ class MusicPlayerController extends GetxController
     _nowPlaying = _nowPlayingOverride ?? NowPlayingService();
     _nowPlaying.onRemoteCommand = _onRemoteCommand;
     _sleepTimer = SleepTimer(
-      onFire: () {
-        // Wall-clock timer fired: STOP playback and clear the timer.
-        if (_playersReady) unawaited(_active.pause());
-        _syncSleepState();
-      },
+      onFire: _onSleepTimerFired,
       onChanged: _syncSleepState,
     );
     _syncSleepState();
@@ -627,6 +630,8 @@ class MusicPlayerController extends GetxController
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
+    // A load that lands after the sleep timer fired must not sound.
+    await _pauseIfSleepFired(player);
   }
 
   // -- queue / track loading ---------------------------------------------------
@@ -949,6 +954,9 @@ class MusicPlayerController extends GetxController
     if (!_loadFailed && currentSong?.identityKey == loadKey) {
       _loadedIdentityKey = loadKey;
     }
+    // The sleep timer may have fired while this load was resolving:
+    // the landed song must not sound past the deadline.
+    await _pauseIfSleepFired(_active);
     if (resumeSec > 5) {
       // Seek only once the duration is known.
       unawaited(
@@ -1406,6 +1414,12 @@ class MusicPlayerController extends GetxController
   /// Next index honouring the play mode; -1 = stop at the queue end.
   /// Auto-advance and a manual tap differ for single loop / single
   /// play — see nextTrackIndex in play_mode.dart.
+  ///
+  /// Deliberate divergence from [nextTrackIndex]: for a one-song
+  /// queue the pure function returns current (single loop replays),
+  /// but this method returns -1 — the failure path depends on -1
+  /// (never retry the same dead song), and single-loop replay is
+  /// handled separately in _onTrackCompleted via _replayCurrent.
   int _peekNextIndex({required bool auto}) {
     if (queue.length <= 1) {
       // A one-song queue: single loop replays on auto-advance (handled
@@ -1509,6 +1523,41 @@ class MusicPlayerController extends GetxController
   Future<void> togglePlayMode() => cyclePlayMode();
 
   // -- sleep timer (M-P0-3) -----------------------------------------------------
+
+  /// Wall-clock timer fired: STOP playback and clear the timer. A
+  /// load in flight (previous song ended, next still resolving)
+  /// must not sound when it lands: record its gen so the landing
+  /// open pauses instead (see [_pauseIfSleepFired]). The fire's own
+  /// pause covers what is sounding now; the flag covers what lands
+  /// next.
+  void _onSleepTimerFired() {
+    _sleepFiredGen = _playGen;
+    if (_playersReady) unawaited(_active.pause());
+    _syncSleepState();
+  }
+
+  /// Pause [player] if the sleep timer fired while its load was in
+  /// flight. The flag is consumed on the first check either way: a
+  /// NEWER load (gen bumped after the fire) is the user's explicit
+  /// play and is untouched. Called after every landing open on the
+  /// active player ([_openOn] and the crossfade landing in
+  /// [_loadCurrent]).
+  Future<void> _pauseIfSleepFired(AvMusicPlayer player) async {
+    if (_sleepFiredGen < 0) return;
+    final firedForCurrent = _playGen == _sleepFiredGen;
+    _sleepFiredGen = -1;
+    if (firedForCurrent && _playersReady) await player.pause();
+  }
+
+  /// Test seam: simulate the sleep timer firing while a load is in
+  /// flight. Only the flag is set here — the wall-clock timer and
+  /// the pause of the sounding player are SleepTimer's / onFire's
+  /// own paths (covered by sleep_timer_test.dart); this seam covers
+  /// the resolve-window half: what a landing load does.
+  @visibleForTesting
+  void fireSleepTimerForTest() {
+    _sleepFiredGen = _playGen;
+  }
 
   void _syncSleepState() {
     sleepOption.value = _sleepTimer.option;

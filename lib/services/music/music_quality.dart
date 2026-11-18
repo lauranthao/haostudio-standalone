@@ -21,10 +21,12 @@
 //    as of 2026-11-16 — the order-1 resolver is down (pre-existing,
 //    not caused by this change; the loop falls through to others).
 // Honesty rule: only resolvers with a real Master path may claim
-// Master (see [extraQuality]): at the master tier the resolver loop
-// drops every non-master candidate and downgrades to hires instead
-// of labelling a lesser stream as Master. The badge therefore shows
-// the tier actually played, never a Master label on a hires stream.
+// Master (see [extraQuality]). A below-target URL plays immediately
+// at its REAL tier (first-playable-wins, chen 2026-11-17): the loop
+// never drops a playable candidate to hunt for Master, and
+// [extraQuality] caps every non-master resolver's label at hires,
+// so the badge shows the tier actually played, never a Master label
+// on a hires stream.
 // i18n note: this app has NO locale system (no .arb /
 // AppLocalizations; labels are hardcoded here, as for the other
 // tiers), so there is no qMaster locale key to add — Master reuses

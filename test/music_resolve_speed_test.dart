@@ -69,6 +69,16 @@ Map<String, dynamic> _bodyFor(String route) {
       return {'url': _hiresUrl};
     case 'c.wwwweb.top':
       return {'code': 200, 'url': _hiresUrl};
+    case 'tang.api.s01s.cn':
+      // One distinct URL per tier field, so the field selection is
+      // observable (see the tang master test below).
+      return {
+        'song_play_url': 'https://example.com/tang-fallback.mp3',
+        'song_play_url_standard': 'https://example.com/tang-standard.mp3',
+        'song_play_url_hq': 'https://example.com/tang-hq.mp3',
+        'song_play_url_sq': 'https://example.com/tang-sq.flac',
+        'song_play_url_pq': 'https://example.com/tang-pq.flac',
+      };
     default:
       return <String, dynamic>{};
   }
@@ -389,5 +399,58 @@ void main() {
     expect(res!.via, 'GD Studio');
     expect(res.quality, AudioQuality.hires);
     expect(ms, lessThan(1000));
+  }, timeout: const Timeout(Duration(seconds: 120)));
+
+  test('tang master serves the top field, labelled hires (not standard)',
+      () async {
+    // Peripheral audit (chen 2026-11-18): tang's field selection
+    // fell through to `song_play_url_standard` at the Master tier
+    // while extraQuality labelled the result hires — the lowest
+    // tier served under a Hi-Res badge. tang is the only QQ
+    // resolver, so a tx resolve can only be served by it. Master
+    // must take the top field (`song_play_url_pq`, i.e. hires).
+    // Unique song ids: the play-URL cache is shared across tests.
+    const tiers = <(AudioQuality, String, AudioQuality)>[
+      (
+        AudioQuality.master,
+        'https://example.com/tang-pq.flac',
+        AudioQuality.hires,
+      ),
+      (
+        AudioQuality.hires,
+        'https://example.com/tang-pq.flac',
+        AudioQuality.hires,
+      ),
+      (
+        AudioQuality.lossless,
+        'https://example.com/tang-sq.flac',
+        AudioQuality.lossless,
+      ),
+      (
+        AudioQuality.q320k,
+        'https://example.com/tang-hq.mp3',
+        AudioQuality.q320k,
+      ),
+      (
+        AudioQuality.q128k,
+        'https://example.com/tang-standard.mp3',
+        AudioQuality.q128k,
+      ),
+    ];
+    final r = fakeResolvers(const {});
+    var n = 0;
+    for (final (q, url, labelled) in tiers) {
+      final res = await r.resolvePlayUrl(
+        'tang-$n',
+        MusicPlatform.tx,
+        q,
+        'test',
+      );
+      n++;
+      expect(res, isNotNull, reason: 'tang serves $q');
+      expect(res!.via, 'tang');
+      expect(res.url, url, reason: 'tang field for $q');
+      expect(res.quality, labelled, reason: 'tang $q labelled honestly');
+    }
   }, timeout: const Timeout(Duration(seconds: 120)));
 }
