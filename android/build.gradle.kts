@@ -42,14 +42,9 @@ subprojects {
             }
         }
     }
-    plugins.withId("com.android.application") {
-        (extensions.getByName("android") as groovy.lang.GroovyObject).withGroovyBuilder {
-            "compileOptions" {
-                setProperty("sourceCompatibility", JavaVersion.VERSION_17)
-                setProperty("targetCompatibility", JavaVersion.VERSION_17)
-            }
-        }
-    }
+    // :app 不在这里改——它自己的 app/build.gradle.kts 里已经是
+    // compileOptions 17 + Kotlin 17（Flutter 3.47 模板自带），
+    // 到这里时它的值已被 finalized，再改会直接报错（构建 #11 的教训）。
     if (state.executed) {
         tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
             sourceCompatibility = "17"
