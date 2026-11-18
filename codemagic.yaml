@@ -74,6 +74,8 @@ workflows:
     environment:
       flutter: 3.47.0
       java: 17
+      groups:
+        - haostudio
     scripts:
       - name: Get Flutter packages
         script: |
