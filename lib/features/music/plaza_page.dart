@@ -156,7 +156,18 @@ class _PlazaPageState extends State<PlazaPage> {
                                 // the closed button shows the same row.
                                 PlatformLogo(platform: pf, size: 20),
                                 const SizedBox(width: 8),
-                                Text(pf.displayName),
+                                // Flexible + ellipsis: the header row is
+                                // tight at 390pt; a 3-char name overflowed
+                                // 4.5px, 4-char names 21px (the logo added
+                                // 28px to the button). The name must shrink
+                                // instead of overflowing the button.
+                                Flexible(
+                                  child: Text(
+                                    pf.displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
