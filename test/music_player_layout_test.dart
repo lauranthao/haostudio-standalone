@@ -70,8 +70,20 @@ void main() {
           const MethodChannel(nowPlayingChannelName),
           (call) async => null,
         );
+    // In-memory box (same pattern as render_music_player_test.dart):
+    // a DISK box hangs testWidgets — Hive's disk-IO Futures never
+    // resolve inside the FakeAsync zone (put/close/clear all stall,
+    // and runAsync cannot drain a write queued behind a body-created
+    // one), so the star test never flips and the shuffle test times
+    // out in tearDown's box.close(). The memory backend has no disk
+    // IO, so puts complete via microtask and close() returns. The
+    // app code under test is unchanged (controller -> MusicStore ->
+    // HiveStore.put -> box); only the harness box is memory-backed.
     Hive.init('test/.hive-music-player-layout');
-    box = await Hive.openBox<dynamic>('music_player_layout');
+    box = await Hive.openBox<dynamic>(
+      'music_player_layout',
+      bytes: Uint8List(0),
+    );
     await box.clear();
     HiveStore.setTestBox(box);
   });
@@ -84,7 +96,6 @@ void main() {
           null,
         );
     await box.close();
-    await Hive.deleteBoxFromDisk('music_player_layout');
   });
 
   group('MusicPlayerPage layout', () {
@@ -121,7 +132,12 @@ void main() {
 
       // Title + controls all visible on one screen (912pt tall).
       expect(find.text('Test Song'), findsOneWidget);
-      expect(find.text('正在播放'), findsOneWidget);
+      // Kumone classic has no centre "正在播放" text (removed 2026-11-18);
+      // the top bar is collapse + sound-effects + lyrics-toggle circles.
+      expect(find.text('正在播放'), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.byIcon(Icons.format_quote), findsOneWidget);
+      expect(find.byIcon(Icons.tune), findsNWidgets(2));
       final screen = tester.getSize(find.byType(Scaffold).first);
       for (final icon in [
         Icons.skip_previous,
@@ -462,28 +478,31 @@ void main() {
       });
 
       testWidgets(
-        'scrub bubble shows the preview time while dragging (Beans SeekBar)',
+        'dragging previews the time in the elapsed label, no bubble (Kumone)',
         (tester) async {
           final c = await pumpPlayer(tester);
           final bar = find.byKey(const ValueKey('progressBar'));
           expect(bar, findsOneWidget);
           final rect = tester.getRect(bar);
-          // Hold at 10%, drag to 60% of 200 s: the bubble previews 2:00
-          // while the elapsed label still shows 0:00 (seek is on release).
+          // Hold at 10%, drag to 60% of 200 s: the elapsed label (10.5pt
+          // tabular) previews 2:00 while no seek has fired yet. Kumone
+          // has no drag bubble — the old black bubble above the thumb
+          // was removed 2026-11-18, so no 11pt preview text exists.
           final start = Offset(rect.left + rect.width * 0.1, rect.center.dy);
           final gesture = await tester.startGesture(start);
           await gesture.moveBy(Offset(rect.width * 0.5, 0));
           await tester.pump();
-          // The bubble is the 11pt w600 preview above the thumb; the
-          // elapsed label (12pt) also previews while scrubbing.
+          final preview = find.byWidgetPredicate(
+            (w) => w is Text && w.data == '2:00' && w.style?.fontSize == 10.5,
+          );
+          expect(preview, findsOneWidget);
           final bubble = find.byWidgetPredicate(
             (w) => w is Text && w.data == '2:00' && w.style?.fontSize == 11,
           );
-          expect(bubble, findsOneWidget);
+          expect(bubble, findsNothing);
           expect(c.seeks, isEmpty);
           await gesture.up();
           await tester.pump();
-          expect(bubble, findsNothing);
           expect(c.seeks, hasLength(1));
         },
       );
@@ -577,7 +596,7 @@ void main() {
           find.byKey(const ValueKey('playerLyrics')),
         );
         await tester.tapAt(topLeft + const Offset(100, 4));
-        // Flip-back fades the lyrics out (250 ms); settle so the outgoing
+        // Flip-back fades the lyrics out (420 ms); settle so the outgoing
         // child is actually removed before asserting it is gone.
         await tester.pumpAndSettle();
         expect(c.showLyrics.value, isFalse);
@@ -591,18 +610,22 @@ void main() {
       },
     );
 
-    testWidgets('bottom lyrics icon toggles cover/lyrics', (tester) async {
+    testWidgets('top lyrics toggle flips cover/lyrics (Kumone)', (
+      tester,
+    ) async {
       final c = await pumpLyrics(tester);
-      // On the lyrics side: tap the icon -> back to cover.
-      await tester.tap(find.byIcon(Icons.article_outlined));
-      // Flip-back fades the lyrics out (250 ms); settle so the outgoing
+      // On the lyrics side: tap the top-bar quote icon -> back to cover.
+      // (The bottom lyrics icon was removed in the Kumone redo; the
+      // toggle now lives in the top bar, next to the equalizer icon.)
+      await tester.tap(find.byIcon(Icons.format_quote));
+      // Flip-back fades the lyrics out (420 ms); settle so the outgoing
       // child is actually removed before asserting it is gone.
       await tester.pumpAndSettle();
       expect(c.showLyrics.value, isFalse);
       expect(find.text('第二句'), findsNothing);
       // On the cover side: tap the icon -> lyrics again.
-      await tester.tap(find.byIcon(Icons.article_outlined));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byIcon(Icons.format_quote));
+      await tester.pump(const Duration(milliseconds: 500));
       expect(c.showLyrics.value, isTrue);
       expect(find.text('第二句'), findsOneWidget);
     });
@@ -632,17 +655,31 @@ void main() {
         );
         expect(painted, findsNothing);
         // Width: near full screen (420pt - 32pt margins = 388); height
-        // still the cover square (420 * 0.68 = 285.6).
+        // still the cover square (Kumone classic: min(420-64, 912×0.38,
+        // 300) = 300).
         final rect = tester.getRect(face);
         expect(rect.width, closeTo(388, 1));
-        expect(rect.height, closeTo(285.6, 1));
-        // Font sizes: move the clock to 12s so line 1 (t:10) is current.
+        expect(rect.height, closeTo(300, 1));
+        // Font sizes (Kumone regular column): move the clock to 12s so
+        // line 1 (t:10) is current. The spring auto-scroll starts in a
+        // post-frame callback after the position change, and an
+        // AnimationController's FIRST ticker tick only sets the
+        // baseline — the simulation does not advance until a later
+        // tick with a nonzero delta. So: 500 ms (frame that starts
+        // the spring) + 500 ms (baseline tick) + 500 ms (the spring
+        // runs to settled ~65) + a bare pump to apply the rebuild.
+        // With fewer frames the offset stays 0 and line 3 sits just
+        // below the face viewport, where find.text skips it as
+        // offstage (the line IS built; the dump proves it).
         c.position.value = const Duration(seconds: 12);
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 500));
         await tester.pump();
         Text textOf(String s) => tester.widget<Text>(find.text(s));
-        expect(textOf('第一句').style?.fontSize, 20);
-        expect(textOf('第二句').style?.fontSize, 17);
-        expect(textOf('第三句').style?.fontSize, 17);
+        expect(textOf('第一句').style?.fontSize, 26);
+        expect(textOf('第二句').style?.fontSize, 20);
+        expect(textOf('第三句').style?.fontSize, 20);
         // Every line carries the faint readability shadow.
         for (final s in ['第一句', '第二句', '第三句']) {
           expect(textOf(s).style?.shadows, isNotEmpty);
@@ -711,14 +748,18 @@ void main() {
         );
         // Release snaps to the nearest row boundary in 300 ms — but the
         // drag's ballistic tail runs first, and the deferred snap needs
-        // a frame to start ticking, so allow ~900 ms total:
-        // ((offset + 90) / 32).round() = 6 -> 6*32 - 90 = 102.
+        // a frame to start ticking, so allow ~900 ms total. Row targets
+        // are idx*50 + 65 (Kumone 50pt stride, centre offset 65 at the
+        // 300pt cover height), so the settled offset must sit on one.
         await tester.pump(const Duration(milliseconds: 300));
         await tester.pump(const Duration(milliseconds: 300));
         await tester.pump(const Duration(milliseconds: 300));
-        expect(scrollable.position.pixels, closeTo(102, 3));
-        // Drain the 3 s resume timer so teardown sees no pending timers.
-        await tester.pump(const Duration(seconds: 4));
+        final px = scrollable.position.pixels;
+        final rel = (px - 65) / 50;
+        expect(px, greaterThan(0));
+        expect((rel - rel.round()).abs(), lessThan(0.05));
+        // Drain the 5 s resume timer so teardown sees no pending timers.
+        await tester.pump(const Duration(seconds: 6));
         expect(c.showLyrics.value, isTrue);
       },
     );
@@ -818,6 +859,262 @@ void main() {
       await tester.scrollUntilVisible(find.text('没有更多了'), 300);
       expect(find.text('没有更多了'), findsOneWidget);
       expect(find.text('u0'), findsOneWidget);
+    });
+  });
+
+  group('Kumone redo design values (2026-11-18)', () {
+    Future<MusicPlayerController> pumpPlayer(
+      WidgetTester tester, {
+      Size physicalSize = const Size(1260, 2736),
+      double devicePixelRatio = 3.0,
+    }) async {
+      tester.view.physicalSize = physicalSize;
+      tester.view.devicePixelRatio = devicePixelRatio;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put(MusicPlayerController());
+      c.queue.assignAll([
+        Song(
+          songId: 's1',
+          title: 'Song One',
+          artist: 'A',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+      c.duration.value = const Duration(seconds: 200);
+      c.position.value = const Duration(seconds: 65);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      return c;
+    }
+
+    testWidgets('time row: elapsed left, TOTAL right (was remaining)', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      expect(find.text('1:05'), findsOneWidget);
+      expect(find.text('3:20'), findsOneWidget);
+      expect(find.text('-1:55'), findsNothing);
+      expect(find.text('-0:00'), findsNothing);
+      // 10.5pt tabular figures, white 0.55.
+      final style = tester.widget<Text>(find.text('3:20')).style!;
+      expect(style.fontSize, 10.5);
+      expect(style.fontFeatures, contains(FontFeature.tabularFigures()));
+      expect((style.color!.a * 255).round(), closeTo(0.55 * 255, 2));
+    });
+
+    testWidgets('title centred, 21 bold / artist 13.5 white 0.65', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      final title = tester.widget<Text>(find.text('Song One'));
+      expect(title.style?.fontSize, 21);
+      expect(title.style?.fontWeight, FontWeight.w700);
+      expect(title.textAlign, TextAlign.center);
+      final artist = tester.widget<Text>(find.text('A'));
+      expect(artist.style?.fontSize, 13.5);
+      expect((artist.style!.color!.a * 255).round(), closeTo(0.65 * 255, 2));
+    });
+
+    testWidgets('cover is the Kumone classic square (300 at 420x912)', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      final rect = tester.getRect(find.byKey(const ValueKey('playerCover')));
+      expect(rect.width, closeTo(300, 1));
+      expect(rect.height, closeTo(300, 1));
+    });
+
+    testWidgets('play button is a solid white 58 circle', (tester) async {
+      await pumpPlayer(tester);
+      final play = find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.constraints?.maxWidth == 58 &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).color == Colors.white &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle,
+      );
+      expect(play, findsOneWidget);
+      final icon = tester.widget<Icon>(find.byIcon(Icons.play_arrow));
+      expect(icon.size, 21);
+      expect((icon.color!.a * 255).round(), closeTo(0.85 * 255, 2));
+    });
+
+    testWidgets('star in the transport row really toggles favourite', (
+      tester,
+    ) async {
+      final c = await pumpPlayer(tester);
+      expect(find.byIcon(Icons.star_border), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.star_border));
+      // toggleFav is an async Hive write + setState. The box is
+      // in-memory (see setUp), so the put completes via microtask and
+      // two pumps are enough for setState to land.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byIcon(Icons.star), findsOneWidget);
+      expect(c.isFav(c.currentSong!), isTrue);
+    });
+
+    testWidgets('shuffle button really toggles shuffle on/off', (
+      tester,
+    ) async {
+      final c = await pumpPlayer(tester);
+      expect(c.mode, PlayMode.sequential);
+      await tester.tap(find.byIcon(Icons.shuffle));
+      await tester.pump();
+      expect(c.mode, PlayMode.shuffle);
+      await tester.tap(find.byIcon(Icons.shuffle));
+      await tester.pump();
+      expect(c.mode, PlayMode.sequential);
+    });
+
+    testWidgets('quality badge opens the quality sheet (GlassContainer)', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      expect(find.text('Hi-Res'), findsOneWidget);
+      await tester.tap(find.text('Hi-Res'));
+      await tester.pump();
+      // Entry animation (~300 ms): the sheet slides up; at 100 ms its
+      // 取消 button is still below the viewport and the tap misses.
+      // Pump 500 ms so the sheet is fully on-screen first.
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('音质'), findsOneWidget);
+      expect(find.text('Master'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      // Exit transition: pop() restarts the route animation's ticker,
+      // whose FIRST tick only sets the baseline — the animation does
+      // not advance until a later tick with a nonzero delta. So one
+      // pump is never enough: 500 ms (baseline tick) + 500 ms (the
+      // animation runs to dismissed) + a bare pump for the removal
+      // frame that takes the route out of the tree.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.text('音质'), findsNothing);
+    });
+
+    // Regression (chen 2026-11-18, same bug as glass_dialog 18b03fe):
+    // the dialog route has no Material ancestor, so Text fell back to
+    // the framework debug style (double yellow underline). The sheet
+    // now wraps its content in Material(transparency); the title and
+    // a row label must carry no underline.
+    testWidgets('quality sheet text has no fallback underline', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await tester.tap(find.text('Hi-Res'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      for (final label in <String>['音质', 'Master']) {
+        final rich = tester.widget<RichText>(
+          find.descendant(
+            of: find.text(label),
+            matching: find.byType(RichText),
+          ),
+        );
+        expect(
+          rich.text.style?.decoration?.contains(TextDecoration.underline),
+          isNot(true),
+          reason: '$label must not inherit the fallback underline',
+        );
+      }
+    });
+
+    testWidgets('sleep timer icon opens the sleep sheet (GlassContainer)', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await tester.tap(find.byIcon(Icons.timer));
+      await tester.pump();
+      // Entry animation (~300 ms): pump 500 ms so the sheet is fully
+      // on-screen and its 取消 button is hittable.
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('睡眠定时'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      // Exit transition: first tick only sets the animation baseline,
+      // so it needs 500 ms + 500 ms + a bare removal-frame pump.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.text('睡眠定时'), findsNothing);
+    });
+
+    // Regression (chen 2026-11-18, same bug as glass_dialog 18b03fe):
+    // the dialog route has no Material ancestor, so Text fell back to
+    // the framework debug style (double yellow underline). The sheet
+    // now wraps its content in Material(transparency); the title must
+    // carry no underline.
+    testWidgets('sleep sheet text has no fallback underline', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await tester.tap(find.byIcon(Icons.timer));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final rich = tester.widget<RichText>(
+        find.descendant(
+          of: find.text('睡眠定时'),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(
+        rich.text.style?.decoration?.contains(TextDecoration.underline),
+        isNot(true),
+        reason: '睡眠定时 must not inherit the fallback underline',
+      );
+    });
+
+    testWidgets('more icon opens the track sheet (GlassContainer)', (
+      tester,
+    ) async {
+      await pumpPlayer(tester);
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pump();
+      // Entry animation (~300 ms): the track sheet is the tallest of
+      // the three — at 100 ms its 取消 sits below the viewport (hit
+      // test misses at y≈1076). Pump 500 ms so it is fully on-screen.
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('下一首播放'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      // Exit transition: first tick only sets the animation baseline,
+      // so it needs 500 ms + 500 ms + a bare removal-frame pump.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.text('下一首播放'), findsNothing);
+    });
+
+    testWidgets('transport row does not overflow at 320pt wide (SE 1st gen)',
+        (tester) async {
+      // 7 fixed children total 6x40 + 58 = 298pt; at 320pt wide the
+      // page leaves 288pt, so the row shrinks its buttons (36/52)
+      // instead of overflowing.
+      await pumpPlayer(tester, physicalSize: const Size(960, 1704));
+      final play52 = find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.constraints?.maxWidth == 52 &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).color == Colors.white &&
+            (w.decoration as BoxDecoration).shape == BoxShape.circle,
+      );
+      expect(play52, findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      // A RenderFlex overflow raises a FlutterError during pump.
+      expect(tester.takeException(), isNull);
     });
   });
 }

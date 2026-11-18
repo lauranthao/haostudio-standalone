@@ -10,8 +10,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../services/music/play_mode.dart';
@@ -37,9 +37,13 @@ class PlayQueuePanel extends StatelessWidget {
           ),
         ),
         Center(
-          child: GlassCard(
-            radius: 24,
-            shadow: GlassShadow.panel,
+          // Kumone redo: library glass (standard — the queue is a
+          // dense reorderable list, never premium shader) instead of
+          // the self-made GlassCard. Rows inside stay solid.
+          child: GlassContainer(
+            shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+            quality: GlassQuality.standard,
+            useOwnLayer: true,
             padding: EdgeInsets.zero,
             child: SizedBox(
               width: MediaQuery.of(context).size.width * 0.86,

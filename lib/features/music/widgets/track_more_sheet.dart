@@ -19,9 +19,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_themes.dart';
-import '../../../core/theme/glass.dart';
 import '../../../widgets/glass_dialog.dart';
 import '../../../services/music/music_downloads.dart';
 import '../../../services/music/music_models.dart';
@@ -315,10 +315,23 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    builder: (ctx) => GlassSheetBackground(
-      radius: 20,
-      child: SafeArea(
-        child: SingleChildScrollView(
+    builder: (ctx) => GlassContainer(
+      // Kumone redo: library glass (standard — dense action list,
+      // never premium shader) instead of the self-made
+      // GlassSheetBackground. Top corners 20, bottom square: the
+      // sheet sits on the screen edge. The transparent Material
+      // keeps ListTile ink ripples working above the glass fill
+      // (same reason GlassSheetBackground had one).
+      shape: const LiquidVerticalRoundedSuperellipse(
+        topRadius: 20,
+        bottomRadius: 0,
+      ),
+      quality: GlassQuality.standard,
+      useOwnLayer: true,
+      child: Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -546,6 +559,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
           ],
         ),
       ),
+    ),
     ),
     ),
   );

@@ -13,8 +13,8 @@
 // whatever really played) — a hires stream is never labelled Master.
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../services/music/music_quality.dart';
 
@@ -26,39 +26,53 @@ Future<AudioQuality?> showQualitySheet(
   return showDialog<AudioQuality>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    builder: (ctx) => Center(
-      child: GlassCard(
-        radius: 24,
-        shadow: GlassShadow.panel,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: SizedBox(
-          width: MediaQuery.of(ctx).size.width * 0.78,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(
-                  '音质',
-                  style: TextStyle(
-                    color: theme.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+    // Material ancestor is required: the dialog route has none, and
+    // without it Text falls back to the framework's debug style
+    // (red monospace + double yellow underline). Transparent so the
+    // glass panel's own surface stays visible (same fix as
+    // glass_dialog.dart, commit 18b03fe).
+    builder: (ctx) => Material(
+      type: MaterialType.transparency,
+      child: Center(
+        // Kumone redo: library glass (standard — the rows are a dense
+        // list, never premium shader) instead of the self-made GlassCard.
+        child: GlassContainer(
+          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+          quality: GlassQuality.standard,
+          useOwnLayer: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(
+            width: MediaQuery.of(ctx).size.width * 0.78,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    '音质',
+                    style: TextStyle(
+                      color: theme.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              for (final q in kQualityChain)
-                _QualityRow(
-                  quality: q,
-                  selected: q == current,
-                  onTap: () => Navigator.of(ctx).pop(q),
+                for (final q in kQualityChain)
+                  _QualityRow(
+                    quality: q,
+                    selected: q == current,
+                    onTap: () => Navigator.of(ctx).pop(q),
+                  ),
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
                 ),
-              const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('取消', style: TextStyle(color: theme.textSecondary)),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

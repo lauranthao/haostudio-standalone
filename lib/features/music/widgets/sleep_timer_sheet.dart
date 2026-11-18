@@ -15,8 +15,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_store.dart';
@@ -34,107 +34,121 @@ Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
   final result = showDialog<SleepTimerOption>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    builder: (ctx) => Center(
-      child: GlassCard(
-        radius: 24,
-        shadow: GlassShadow.panel,
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: SizedBox(
-          width: MediaQuery.of(ctx).size.width * 0.78,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Obx(() {
-                  final remaining = controller.sleepRemaining.value;
-                  final title = remaining != null
-                      ? '睡眠定时（剩余 ${SleepTimer.formatRemaining(remaining)}）'
-                      : '睡眠定时';
-                  return Text(
-                    title,
-                    style: TextStyle(
-                      color: theme.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  );
-                }),
-              ),
-              for (final option in SleepTimerOptionX.all)
-                Obx(() {
-                  final selected = controller.sleepOption.value == option;
-                  // The custom row shows the remembered minutes so the
-                  // selection reads honestly ("自定义 45 分钟").
-                  final label = option == SleepTimerOption.custom
-                      ? '自定义 ${controller.sleepCustomMinutes.value} 分钟'
-                      : option.label;
-                  return _SleepRow(
-                    option: option,
-                    label: label,
-                    selected: selected,
-                    onTap: () => Navigator.of(ctx).pop(option),
-                  );
-                }),
-              // Custom minutes (Beans "自定义时长" section).
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                child: Row(
-                  children: [
-                    Text(
-                      '分钟',
+    // Material ancestor is required: the dialog route has none, and
+    // without it Text falls back to the framework's debug style
+    // (red monospace + double yellow underline). Transparent so the
+    // glass panel's own surface stays visible (same fix as
+    // glass_dialog.dart, commit 18b03fe).
+    builder: (ctx) => Material(
+      type: MaterialType.transparency,
+      child: Center(
+        // Kumone redo: library glass (standard — dense option list,
+        // never premium shader) instead of the self-made GlassCard.
+        child: GlassContainer(
+          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+          quality: GlassQuality.standard,
+          useOwnLayer: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(
+            width: MediaQuery.of(ctx).size.width * 0.78,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Obx(() {
+                    final remaining = controller.sleepRemaining.value;
+                    final title = remaining != null
+                        ? '睡眠定时（剩余 ${SleepTimer.formatRemaining(remaining)}）'
+                        : '睡眠定时';
+                    return Text(
+                      title,
                       style: TextStyle(
                         color: theme.textPrimary,
                         fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      width: 90,
-                      child: TextField(
-                        controller: customController,
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.right,
+                    );
+                  }),
+                ),
+                for (final option in SleepTimerOptionX.all)
+                  Obx(() {
+                    final selected = controller.sleepOption.value == option;
+                    // The custom row shows the remembered minutes so the
+                    // selection reads honestly ("自定义 45 分钟").
+                    final label = option == SleepTimerOption.custom
+                        ? '自定义 ${controller.sleepCustomMinutes.value} 分钟'
+                        : option.label;
+                    return _SleepRow(
+                      option: option,
+                      label: label,
+                      selected: selected,
+                      onTap: () => Navigator.of(ctx).pop(option),
+                    );
+                  }),
+                // Custom minutes (Beans "自定义时长" section).
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        '分钟',
                         style: TextStyle(
                           color: theme.textPrimary,
                           fontSize: 16,
                         ),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: customController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: theme.textPrimary,
+                            fontSize: 16,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: _SleepRow(
-                  option: SleepTimerOption.custom,
-                  label: '开始自定义定时',
-                  selected: false,
-                  icon: Icons.timer,
-                  onTap: () async {
-                    final minutes = clampSleepCustomMinutes(
-                      int.tryParse(customController.text.trim()),
-                    );
-                    await MusicStore.setSleepCustomMinutes(minutes);
-                    if (ctx.mounted) {
-                      Navigator.of(ctx).pop(SleepTimerOption.custom);
-                    }
-                  },
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _SleepRow(
+                    option: SleepTimerOption.custom,
+                    label: '开始自定义定时',
+                    selected: false,
+                    icon: Icons.timer,
+                    onTap: () async {
+                      final minutes = clampSleepCustomMinutes(
+                        int.tryParse(customController.text.trim()),
+                      );
+                      await MusicStore.setSleepCustomMinutes(minutes);
+                      if (ctx.mounted) {
+                        Navigator.of(ctx).pop(SleepTimerOption.custom);
+                      }
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('取消', style: TextStyle(color: theme.textSecondary)),
-              ),
-            ],
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(color: theme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
