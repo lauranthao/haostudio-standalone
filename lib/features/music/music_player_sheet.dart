@@ -24,6 +24,7 @@
 // 仓库 2026-11-18 现状；设计值汇总见 research/kumone-player-study.md)。
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -1092,7 +1093,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     // 7 fixed children total 6x40 + 58 = 298pt; at 320pt wide the
     // page leaves 288pt, so shrink the buttons instead of
     // overflowing (iPhone SE 1st gen). 375pt and up keep Kumone's
-    // 40 / 58.
+    // 40 / 58. On Android the AirPlay button is hidden (B5), leaving
+    // 6 children; the Row is spaceEvenly, so spacing stays even.
     return LayoutBuilder(
       // NOTE: the builder's context parameter is intentionally `_` so
       // it does not shadow State.context — the onTap closures below
@@ -1210,26 +1212,31 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 _c.next();
               },
             ),
-            _circleBtn(
-              icon: Icons.airplay,
-              iconSize: 15,
-              size: side,
-              onTap: () async {
-                // Real AirPlay: ask iOS to open the system route picker
-                // (AVRoutePickerView). The picker itself shows the
-                // available routes — or just this iPhone when none are
-                // around — so no device-availability message is invented
-                // here. A toast appears only when the picker genuinely
-                // could not be opened at all.
-                HaoHaptics.tap();
-                final opened = await _c.showAirPlayPicker();
-                if (!opened && mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('无法打开隔空播放选择器')));
-                }
-              },
-            ),
+            // AirPlay is iOS-only (AVRoutePickerView). Off iOS the
+            // channel call always fails and every tap shows an error
+            // toast, so the button is hidden there (B5) instead of
+            // left as an orphan control that can only error.
+            if (Platform.isIOS)
+              _circleBtn(
+                icon: Icons.airplay,
+                iconSize: 15,
+                size: side,
+                onTap: () async {
+                  // Real AirPlay: ask iOS to open the system route picker
+                  // (AVRoutePickerView). The picker itself shows the
+                  // available routes — or just this iPhone when none are
+                  // around — so no device-availability message is invented
+                  // here. A toast appears only when the picker genuinely
+                  // could not be opened at all.
+                  HaoHaptics.tap();
+                  final opened = await _c.showAirPlayPicker();
+                  if (!opened && mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('无法打开隔空播放选择器')));
+                  }
+                },
+              ),
             _circleBtn(
               icon: Icons.tune,
               iconSize: 15,

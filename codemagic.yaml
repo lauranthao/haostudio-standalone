@@ -59,3 +59,48 @@ workflows:
           ls -lh HAoStudio-simulator.zip
     artifacts:
       - build/ios/iphonesimulator/HAoStudio-simulator.zip
+  # Android APK (v1.1.2+13, android-apk branch) — first Android build.
+  # Fat release APK (all ABIs incl. x86_64 for the Appetize emulator;
+  # NEVER add --split-per-abi, see B8). Signing: the release keystore
+  # (PKCS12) is restored at build time from the Codemagic-encrypted
+  # environment variable ANDROID_KEYSTORE_BASE64; passwords/alias come
+  # from ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
+  # ANDROID_KEY_PASSWORD. Only variable NAMES appear here — never
+  # values. Set all four in Codemagic (web UI) before the first build.
+  android-apk:
+    name: Android APK
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: 3.47.0
+      java: 17
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Ensure NDK 28.2.13676358 (Flutter 3.47 default)
+        script: |
+          if [ ! -d "$ANDROID_HOME/ndk/28.2.13676358" ]; then
+            echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"
+          fi
+          ls "$ANDROID_HOME/ndk"
+      - name: Restore release keystore
+        script: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is not set in Codemagic environment variables"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > $CM_BUILD_DIR/android/keystore.p12
+          cat > $CM_BUILD_DIR/android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=../keystore.p12
+          EOF
+          ls -l $CM_BUILD_DIR/android/keystore.p12
+      - name: Build release APK
+        script: |
+          flutter build apk --release
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk

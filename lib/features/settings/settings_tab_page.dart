@@ -486,13 +486,18 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             title: '版本',
             subtitle: '$kAppVersion (build $kAppBuild)',
           ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.system_update,
-            title: '检查更新',
-            subtitle: 'GitHub raw version.json，数字版本号比较',
-            onTap: () => _checkUpdate(context),
-          ),
+          // Android v1 has no update channel (version.json is iOS-only):
+          // hide the row entirely instead of leaving a button that can
+          // only fail (B3). iOS keeps the row.
+          if (!Platform.isAndroid) ...[
+            const SizedBox(height: 12),
+            _BeansRow(
+              icon: Icons.system_update,
+              title: '检查更新',
+              subtitle: 'GitHub raw version.json，数字版本号比较',
+              onTap: () => _checkUpdate(context),
+            ),
+          ],
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.bug_report_outlined,

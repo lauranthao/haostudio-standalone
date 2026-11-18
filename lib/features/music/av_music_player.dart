@@ -51,6 +51,14 @@ class AvMusicPlayer {
   /// activates the session, it never re-configures the category, so
   /// this is not clobbered by playback. No-op (false) off supported
   /// platforms and in tests, where the platform channel is absent.
+  ///
+  /// Android (B6): the AVAudioSession fields above are ignored on
+  /// Android, so mix also passes the Android-side fields — music
+  /// attributes (contentType music, usage media) plus a transient
+  /// focus that lets other audio duck instead of stopping
+  /// (gainTransientMayDuck) when mix is on, exclusive gain when off.
+  /// The iOS fields are ignored on Android and vice versa, so one
+  /// configure() call serves both platforms.
   static Future<bool> applyMixWithOthers(bool mix) async {
     if (!isSupported) return false;
     try {
@@ -62,6 +70,13 @@ class AvMusicPlayer {
           avAudioSessionCategoryOptions: mix
               ? AVAudioSessionCategoryOptions.mixWithOthers
               : AVAudioSessionCategoryOptions.none,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.music,
+            usage: AndroidAudioUsage.media,
+          ),
+          androidAudioFocusGainType: mix
+              ? AndroidAudioFocusGainType.gainTransientMayDuck
+              : AndroidAudioFocusGainType.gain,
         ),
       );
       await session.setActive(true);

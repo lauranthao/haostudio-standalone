@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the Swift AppIcon ground (#F2F2F2) so the foreground seam
+         is invisible. -->
+    <color name="ic_launcher_background">#F2F2F2</color>
+</resources>

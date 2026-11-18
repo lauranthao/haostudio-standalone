@@ -11,6 +11,7 @@
 // different message per failure kind. See [UpdateFetchError].
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 
@@ -185,7 +186,14 @@ class UpdateService {
 
   /// Manual check (Settings → About → 检查更新). Always reports a result.
   /// Failure detail is exposed via [lastFetchError]/[lastHttpStatus].
+  ///
+  /// Android v1: disabled — version.json only carries an .ipa
+  /// (ipaUrl + minOs 15.0) and the store adds the APK file without
+  /// changing version.json, so there is no Android update channel
+  /// yet. The Settings row is hidden on Android too, so this is
+  /// unreachable there; the guard is the backstop. iOS is unchanged.
   Future<(UpdateCheckResult, UpdateInfo?)> checkManual() async {
+    if (Platform.isAndroid) return (UpdateCheckResult.unavailable, null);
     final (info, _, _) = await fetchRemote();
     if (info == null) return (UpdateCheckResult.unavailable, null);
     return (_classify(info), info);
@@ -193,7 +201,11 @@ class UpdateService {
 
   /// Automatic check. Returns null when it should stay silent (throttled,
   /// up to date, or fetch failed).
+  ///
+  /// Android v1: disabled, same reason as [checkManual] — the manifest
+  /// only describes an iOS build. iOS is unchanged.
   Future<UpdateInfo?> checkAuto() async {
+    if (Platform.isAndroid) return null;
     final last = HiveStore.getInt(HiveKeys.lastUpdateCheckAt, 0);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - last < autoCheckInterval.inMilliseconds) return null;
