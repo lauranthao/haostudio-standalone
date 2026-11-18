@@ -70,7 +70,10 @@ workflows:
   android-apk:
     name: Android APK
     max_build_duration: 60
-    instance_type: linux_x2
+    # 免费套餐没有 Linux 实例（linux_x2 两次构建都在分配阶段直接失败），
+    # 用 iOS 工作流同款免费实例 mac_mini_m1；Android 构建在 macOS 实例上一样跑
+    #（Android SDK、sdkmanager 都预装）。
+    instance_type: mac_mini_m1
     environment:
       flutter: 3.47.0
       java: 17
