@@ -16,15 +16,23 @@
 // the app documents directory (seeded from assets on first launch)
 // and any script — bundled or custom — can be deleted here; a deleted
 // bundled script is never re-seeded or loaded again. Custom scripts
-// are added by URL — the add flow downloads AND validates the script
-// (it must evaluate and send `inited`) and only saves it on success;
-// a failed add shows the reason and saves nothing. There are no dead
-// buttons on this page.
+// are added by URL or by uploading a .js file — the add flow
+// validates the script (it must evaluate and send `inited`) and only
+// saves it on success; a failed add shows the reason and saves
+// nothing. The script list is draggable: the saved order decides
+// which LX script is tried first when two scripts could serve the
+// same song (script vs built-in is still by measured speed).
+// There are no dead buttons on this page.
 
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
 import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/lx_script_engine.dart';
@@ -117,6 +125,53 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     }
   }
 
+  Future<void> _addCustomFromFile() async {
+    HaoHaptics.tap();
+    final picked = await FilePicker.pickFiles(
+      dialogTitle: '选择 LX 脚本文件',
+      type: FileType.custom,
+      allowedExtensions: ['js'],
+    );
+    if (picked.isEmpty) return; // user cancelled
+    final file = picked.first;
+    String? code;
+    try {
+      // file_picker 13 has no withData flag: path is set for local
+      // files; otherwise read the bytes via the XFile-backed handle.
+      final path = file.path;
+      if (path != null) {
+        code = await File(path).readAsString();
+      } else {
+        code = utf8.decode(await file.readAsBytes(), allowMalformed: true);
+      }
+    } catch (_) {
+      code = null;
+    }
+    if (code == null || code.isEmpty) {
+      Get.snackbar('读取失败', '无法读取该文件');
+      return;
+    }
+    setState(() => _adding = true);
+    try {
+      final info = await LxScriptEngine.instance.addCustomScriptFromFile(
+        fileName: file.name,
+        code: code,
+      );
+      if (!mounted) return;
+      setState(() {
+        _scriptInfos = LxScriptEngine.instance.scripts;
+        _custom = LxScriptSourcesStore.customScripts();
+      });
+      Get.snackbar('已添加', '${info.name} · ${info.sources.length} 个音源');
+    } on LxScriptException catch (e) {
+      Get.snackbar('添加失败', e.message);
+    } catch (e) {
+      Get.snackbar('添加失败', e.toString());
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
   Future<void> _removeScript(String id, String name) async {
     // Same glass confirm as every other destructive delete in the
     // app — a custom script is user-added work, not a toggle.
@@ -134,7 +189,43 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       _scriptInfos = LxScriptEngine.instance.scripts;
       _custom = LxScriptSourcesStore.customScripts();
     });
+    // Prune the deleted id from the saved manual order so a stale
+    // id never lingers (readers ignore it anyway).
+    final remaining = _scriptInfos.map((s) => s.id).toSet();
+    final order = LxScriptSourcesStore.scriptOrder();
+    final pruned = order.where(remaining.contains).toList();
+    if (pruned.length != order.length) {
+      await LxScriptSourcesStore.saveScriptOrder(pruned);
+    }
     Get.snackbar('已删除', name);
+  }
+
+  /// Scripts in the user's manual order: saved ids first, then any
+  /// id not in the saved list (newly added scripts) last, keeping
+  /// engine order. Deleted ids in the saved list are ignored.
+  List<LxScriptInfo> _orderedScriptInfos() {
+    final saved = LxScriptSourcesStore.scriptOrder();
+    final byId = {for (final s in _scriptInfos) s.id: s};
+    final out = <LxScriptInfo>[];
+    for (final id in saved) {
+      final s = byId.remove(id);
+      if (s != null) out.add(s);
+    }
+    out.addAll(byId.values);
+    return out;
+  }
+
+  Future<void> _reorderScripts(int oldIndex, int newIndex) async {
+    // onReorderItem already adjusts newIndex for the removed item.
+    final ordered = _orderedScriptInfos();
+    final moved = ordered.removeAt(oldIndex);
+    ordered.insert(newIndex, moved);
+    await LxScriptSourcesStore.saveScriptOrder(
+      ordered.map((s) => s.id).toList(),
+    );
+    HaoHaptics.select();
+    if (!mounted) return;
+    setState(() {});
   }
 
   LxScriptInfo? _infoFor(String id) {
@@ -168,11 +259,20 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     required String id,
     required String title,
     required String subtitle,
+    required int dragIndex,
     VoidCallback? onDelete,
   }) {
     final theme = HaoTheme.of(context);
     final on = LxScriptSourcesStore.isEnabled(id);
     return ListTile(
+      leading: ReorderableDragStartListener(
+        index: dragIndex,
+        child: Icon(
+          Icons.drag_handle,
+          size: 20,
+          color: theme.textSecondary,
+        ),
+      ),
       title: Text(title, style: TextStyle(color: theme.textPrimary)),
       subtitle: Text(
         subtitle,
@@ -240,7 +340,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            '内置 LX 音乐源脚本，在播放解析与搜索时作为附加音源；关闭后该脚本不再参与解析。每个脚本只提供它自己声明的能力。点删除可移除脚本，删除后不再加载（可通过下方的链接重新添加）。',
+            '内置 LX 音乐源脚本，在播放解析与搜索时作为附加音源；关闭后该脚本不再参与解析。每个脚本只提供它自己声明的能力。点删除可移除脚本，删除后不再加载（可通过下方链接或文件重新添加）。拖动左侧手柄可调整顺序，排在前面的脚本优先解析。',
             style: TextStyle(color: theme.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 8),
@@ -252,32 +352,11 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
                 style: TextStyle(color: theme.textSecondary, fontSize: 13),
               ),
             ),
-          // Bundled tiles are driven by the loaded scripts, not the
-          // static bundled list — a deleted script is gone from here.
-          SettingsGroup(
-            children: [
-              ..._scriptInfos
-                  .where((s) => !s.isCustom)
-                  .map(
-                    (info) => _scriptTile(
-                      id: info.id,
-                      title: info.name,
-                      subtitle:
-                          '${_bundledBlurb(info.id)}\n${_statusLineFor(info)}',
-                      onDelete: () => _removeScript(info.id, info.name),
-                    ),
-                  ),
-              ..._custom.map(
-                (s) => _scriptTile(
-                  id: s.id,
-                  title: s.name,
-                  subtitle:
-                      '自定义脚本 · ${s.url}\n${_infoFor(s.id)?.loaded == true ? '已加载 · ${_infoFor(s.id)!.sources.map((e) => e.platform).join(' / ')}' : '未加载'}',
-                  onDelete: () => _removeScript(s.id, s.name),
-                ),
-              ),
-            ],
-          ),
+          // Tiles are driven by the loaded scripts, not the static
+          // bundled list — a deleted script is gone from here. One
+          // draggable list (bundled + custom together) in the user's
+          // saved manual order.
+          _scriptList(),
           const SizedBox(height: 20),
           Text(
             '添加自定义脚本',
@@ -289,7 +368,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            '粘贴 LX 音乐源脚本链接；添加时会下载并验证脚本，通过后才会保存。仅支持 LX 格式脚本。',
+            '粘贴 LX 音乐源脚本链接，或直接上传 .js 文件；添加时会验证脚本，通过后才会保存。仅支持 LX 格式脚本。',
             style: TextStyle(color: theme.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 8),
@@ -312,8 +391,73 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             onPressed: _adding ? null : _addCustom,
             child: Text(_adding ? '验证中…' : '添加'),
           ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: _adding ? null : _addCustomFromFile,
+            icon: const Icon(Icons.upload_file, size: 20),
+            label: Text(_adding ? '验证中…' : '上传 .js 文件'),
+          ),
         ],
       ),
     );
+  }
+
+  /// The draggable script list: bundled + custom in the user's saved
+  /// manual order, in the same glass card as the old SettingsGroup.
+  Widget _scriptList() {
+    final ordered = _orderedScriptInfos();
+    return HaoGlassCard(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ReorderableListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        onReorderItem: _reorderScripts,
+        children: [
+          for (var i = 0; i < ordered.length; i++)
+            _scriptRow(ordered[i], i, i == ordered.length - 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _scriptRow(LxScriptInfo info, int index, bool isLast) {
+    return Column(
+      key: ValueKey(info.id),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _tileFor(info, index),
+        if (!isLast) const Divider(height: 1, indent: 16, endIndent: 16),
+      ],
+    );
+  }
+
+  Widget _tileFor(LxScriptInfo info, int index) {
+    if (info.isCustom) {
+      final saved = _customFor(info.id);
+      final loadedInfo = _infoFor(info.id);
+      return _scriptTile(
+        id: info.id,
+        title: info.name,
+        subtitle:
+            '自定义脚本 · ${saved?.url ?? info.origin}\n${loadedInfo?.loaded == true ? '已加载 · ${loadedInfo!.sources.map((e) => e.platform).join(' / ')}' : '未加载'}',
+        dragIndex: index,
+        onDelete: () => _removeScript(info.id, info.name),
+      );
+    }
+    return _scriptTile(
+      id: info.id,
+      title: info.name,
+      subtitle: '${_bundledBlurb(info.id)}\n${_statusLineFor(info)}',
+      dragIndex: index,
+      onDelete: () => _removeScript(info.id, info.name),
+    );
+  }
+
+  LxCustomScript? _customFor(String id) {
+    for (final s in _custom) {
+      if (s.id == id) return s;
+    }
+    return null;
   }
 }

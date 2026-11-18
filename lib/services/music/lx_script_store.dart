@@ -135,6 +135,38 @@ class LxScriptSourcesStore {
     );
   }
 
+  /// Manual script order (chen 2026-11-18: drag to reorder in
+  /// 音源管理). JSON list of script ids, first = tried first among
+  /// LX script jobs. Ids absent from the list (newly added scripts)
+  /// sort after all listed ones; stale ids (deleted scripts) are
+  /// ignored by readers and pruned when a script is deleted.
+  static List<String> scriptOrder({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    if (b == null) return const [];
+    final raw = b.get(HiveKeys.lxScriptOrder);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList();
+        }
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  static Future<void> saveScriptOrder(
+    List<String> ids, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.lxScriptOrder, jsonEncode(ids));
+  }
+
   /// Bundled scripts the user deleted. A deleted bundled id is never
   /// re-seeded from assets and never loaded again — including after an
   /// app restart. Re-adding is possible via its URL (addCustomScript).

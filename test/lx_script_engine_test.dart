@@ -795,4 +795,83 @@ void main() {
       expect(engine.scripts.where((s) => s.isCustom), isEmpty);
     });
   });
+
+  // File upload (chen 2026-11-18): import from picked .js contents.
+  // Fake runtime, so it runs on the Linux host too. getMusicUrl is
+  // NOT asserted here — the fake runtime cannot answer dispatches
+  // (the URL-path group covers it end to end on iOS with the real
+  // runtime); the file path shares _loadScript with the URL path.
+  group('custom scripts from file', () {
+    LxScriptEngine fileEngine() => LxScriptEngine(
+          runtimeFactory: () => _FakeJsRuntime(
+            initedDelay: const Duration(milliseconds: 150),
+          ),
+        );
+
+    test('valid file script imports and registers sources', () async {
+      final engine = fileEngine();
+      addTearDown(engine.dispose);
+      final info = await engine.addCustomScriptFromFile(
+        fileName: 'my-source.js',
+        code: _tinyScript,
+      );
+      expect(info.loaded, isTrue);
+      expect(info.name, 'TestScript');
+      expect(info.isCustom, isTrue);
+      expect(info.id, startsWith('custom:file:'));
+      expect(info.origin, 'file://my-source.js');
+      expect(info.sources.map((s) => s.platform), ['wy']);
+      expect(info.sourceFor('wy')!.actions, ['musicUrl']);
+      expect(engine.script(info.id), isNotNull);
+    });
+
+    test('script without globalThis.lx throws and is not registered',
+        () async {
+      final engine = fileEngine();
+      addTearDown(engine.dispose);
+      await expectLater(
+        engine.addCustomScriptFromFile(
+          fileName: 'bad.js',
+          code: 'console.log("hello");',
+        ),
+        throwsA(isA<LxScriptException>()),
+      );
+      expect(engine.scripts.where((s) => s.isCustom), isEmpty);
+    });
+
+    test('same file twice does not duplicate', () async {
+      final engine = fileEngine();
+      addTearDown(engine.dispose);
+      final first = await engine.addCustomScriptFromFile(
+        fileName: 'my-source.js',
+        code: _tinyScript,
+      );
+      final second = await engine.addCustomScriptFromFile(
+        fileName: 'my-source.js',
+        code: _tinyScript,
+      );
+      expect(second.id, first.id);
+      expect(engine.scripts.where((s) => s.isCustom).length, 1);
+    });
+
+    test('name falls back to the file name without @name', () async {
+      final engine = fileEngine();
+      addTearDown(engine.dispose);
+      final info = await engine.addCustomScriptFromFile(
+        fileName: 'cool-source.js',
+        code: _noNameScript,
+      );
+      expect(info.name, 'cool-source');
+      expect(info.origin, 'file://cool-source.js');
+    });
+  });
 }
+
+/// Script without an `@name` header (name must fall back to the file
+/// name). The fake runtime delivers `inited` for any non-prelude
+/// evaluate, so the body only needs `globalThis.lx`.
+const String _noNameScript = '''
+// @version 1.0.0
+const { EVENT_NAMES, send } = globalThis.lx;
+send(EVENT_NAMES.inited, { status: true, sources: { wy: { name: 'wy', type: 'music', actions: ['musicUrl'], qualitys: ['128k', '320k'] } } });
+''';

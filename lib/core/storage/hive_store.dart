@@ -289,14 +289,18 @@ class HiveKeys {
 
   /// LX script sources (M-P0-6): disabled script ids (`hao_lx_disabled`,
   /// JSON list; absent = all enabled), user-added custom scripts
-  /// (`hao_lx_custom`, JSON list of {id, name, url, code, addedAt}) and
-  /// deleted bundled script ids (`hao_lx_deleted_bundled`, JSON list).
+  /// (`hao_lx_custom`, JSON list of {id, name, url, code, addedAt}),
+  /// deleted bundled script ids (`hao_lx_deleted_bundled`, JSON list)
+  /// and the manual script order (`hao_lx_order`, JSON list of script
+  /// ids in the user's drag order, first = tried first among LX
+  /// script jobs; chen 2026-11-18).
   /// A deleted bundled script is never re-seeded or loaded again.
   /// Scripts are additive to the built-in resolvers — no "at least one"
   /// guard, unlike the platform source groups.
   static const String lxScriptDisabled = 'hao_lx_disabled';
   static const String lxCustomScripts = 'hao_lx_custom';
   static const String lxDeletedBundledScripts = 'hao_lx_deleted_bundled';
+  static const String lxScriptOrder = 'hao_lx_order';
 
   /// Danmaku list text opacity (double, 0.3..1.0, default 1.0).
   static const String danmakuOpacity = 'hao_danmaku_opacity';

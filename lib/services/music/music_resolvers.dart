@@ -222,6 +222,9 @@ class MusicResolvers {
 
   static const _speedHiveKey = 'hao_resolver_speed';
   static const _unknownSpeedMs = 500;
+  // LX script jobs with no saved manual position sort after every
+  // listed one (newly added scripts go last among scripts).
+  static const _unlistedScriptIndex = 1 << 30;
   static const _coolAfterFails = 3;
   static const _coolFor = Duration(minutes: 5);
   // A single timeout cools the job right away (see _recordAttempt).
@@ -313,7 +316,9 @@ class MusicResolvers {
 
   /// Jobs for this platform in fastest-first order: cooled-down jobs
   /// last, then by measured latency (unknown = middle), then by
-  /// declared order.
+  /// declared order — except between two LX script jobs, where the
+  /// user's manual drag order (音源管理, chen 2026-11-18) wins over
+  /// measured speed. Script vs built-in is still by speed.
   List<_Job> _rankedJobs(
     MusicPlatform pf,
     AudioQuality q,
@@ -329,10 +334,22 @@ class MusicResolvers {
         (key: s.key, name: s.name, order: 2, fn: (_, _, _, _) => s.fn()),
     ];
     final now = DateTime.now();
+    // Manual script order, read fresh per resolve so a drag in
+    // settings takes effect without restart. Script ids are stored
+    // bare; job keys are `lx:<id>`.
+    final manualOrder = LxScriptSourcesStore.scriptOrder();
+    final manualIndex = <String, int>{
+      for (var i = 0; i < manualOrder.length; i++) manualOrder[i]: i,
+    };
     jobs.sort((a, b) {
       final aCool = _isCooled(a.key, now);
       final bCool = _isCooled(b.key, now);
       if (aCool != bCool) return aCool ? 1 : -1;
+      if (a.key.startsWith('lx:') && b.key.startsWith('lx:')) {
+        final ai = manualIndex[a.key.substring(3)] ?? _unlistedScriptIndex;
+        final bi = manualIndex[b.key.substring(3)] ?? _unlistedScriptIndex;
+        if (ai != bi) return ai.compareTo(bi);
+      }
       final aMs = _speedAvg[a.key] ?? _unknownSpeedMs;
       final bMs = _speedAvg[b.key] ?? _unknownSpeedMs;
       if (aMs != bMs) return aMs.compareTo(bMs);

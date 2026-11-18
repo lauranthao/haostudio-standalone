@@ -728,6 +728,59 @@ class LxScriptEngine {
     return info;
   }
 
+  /// Import a script from picked-file contents (a .js file chosen in
+  /// 音源管理), validating + evaluating it exactly like
+  /// [addCustomScript]: the code must contain `globalThis.lx` and
+  /// send `inited`, and it is persisted only after it loads. The id
+  /// derives from the file CONTENT (not the name), so re-importing
+  /// the same file replaces the old record instead of duplicating
+  /// it; the name falls back to the file name when the script has
+  /// no `@name`. Throws [LxScriptException] with a user-facing
+  /// reason on any failure; nothing is saved then.
+  ///
+  /// Same ~1s `inited` wait as [_loadScript] — a slow script that
+  /// defers `inited` (e.g. 原版念心 waits 4–5s for its update check)
+  /// cannot be imported this way; use the fixed -lx variant whose
+  /// `inited` fires immediately.
+  Future<LxScriptInfo> addCustomScriptFromFile({
+    required String fileName,
+    required String code,
+  }) async {
+    // Same check as addCustomScript (kept inline on purpose: the
+    // task forbids touching addCustomScript's logic).
+    if (!code.contains('globalThis.lx') &&
+        !code.contains("globalThis['lx']") &&
+        !code.contains('globalThis["lx"]')) {
+      throw LxScriptException('不是 LX 音乐源脚本 (缺少 globalThis.lx)');
+    }
+    final baseName = fileName.replaceFirst(
+      RegExp(r'\.js$', caseSensitive: false),
+      '',
+    );
+    final name = _parseMeta(code, 'name') ??
+        (baseName.isNotEmpty ? baseName : '自定义脚本');
+    final digest = sha1.convert(utf8.encode(code)).toString();
+    final id = 'custom:file:${digest.substring(0, 12)}';
+    final url = 'file://$fileName';
+    final info = await _loadScript(
+      id: id,
+      name: name,
+      code: code,
+      origin: url,
+      isCustom: true,
+    );
+    await LxScriptSourcesStore.saveCustomScript(
+      LxCustomScript(
+        id: id,
+        name: name,
+        url: url,
+        code: code,
+        addedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    return info;
+  }
+
   /// Remove any script (bundled or custom) by id: dispose its runtime,
   /// drop it from the registry, and persist the removal so it never
   /// comes back. Bundled: deletes the file copy and records the id in
