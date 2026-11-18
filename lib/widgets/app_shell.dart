@@ -29,10 +29,10 @@
 //   already-selected tab calls onReselect (Kumone) — ours is a no-op
 //   (no reselect action exists)
 //
-// The glass itself is `liquid_glass_widgets` (ios26 preset, premium,
-// own layer) — the Flutter equivalent of Kumone's iOS 26 native
-// liquid glass + low-version simulated fallback (the library degrades
-// via adaptiveQuality). It is NOT the library's `GlassTabBar.bottom`:
+// The glass itself is `liquid_glass_widgets` (ios27 preset — the
+// demo's `GlassTabBar.bottom` passes no settings, so it renders the
+// ambient ios27 defaults — premium, own layer). It is NOT the
+// library's `GlassTabBar.bottom`:
 // that widget has no drag API and its indicator only follows
 // selectedIndex through its internal spring, so using it would
 // replace the finger-tracking pill with a cell-chasing one and its
@@ -158,9 +158,17 @@ class _AppShellState extends State<AppShell> {
             right: 0,
             // Kumone FloatingChrome.bottomMargin = 6.
             bottom: 6 + bottomPadding,
-            child: GlassTabBar(
-              currentIndex: _currentIndex,
-              onTap: _onTabTapped,
+            // Quality floor: the adaptive scope may demote the app to
+            // standard/minimal (minimal is literally frosted
+            // BackdropFilter glass); the bar is a small capsule and
+            // must stay premium so it never reads as frosted glass
+            // on a busy phone.
+            child: GlassAdaptiveScope(
+              minQuality: GlassQuality.premium,
+              child: GlassTabBar(
+                currentIndex: _currentIndex,
+                onTap: _onTabTapped,
+              ),
             ),
           ),
         ],
@@ -289,11 +297,15 @@ class GlassTabBarState extends State<GlassTabBar>
               // Capsule: radius far above half the height.
               shape: const LiquidRoundedSuperellipse(borderRadius: 999),
               padding: const EdgeInsets.all(_innerInset),
-              // Kumone's iOS 26 native glass, as a per-widget preset
+              // The demo's glass, copied verbatim:
+              // `GlassTabBar.bottom` passes no settings, so the demo
+              // bar renders the ambient ios27 defaults — light
+              // glassColor 0.53 / frost 0.73 / rimShade 1, dark
+              // rimLight 1.15 / rimShade 1 / bodyShade 0.28.
               // (useOwnLayer: true — per-widget settings are ignored
               // in grouped mode without it). Premium: floating chrome
               // (SKILL.md Rule 5).
-              settings: HaoLiquidGlass.ios26Settings(context),
+              settings: HaoLiquidGlass.ios27Settings(context),
               useOwnLayer: true,
               quality: GlassQuality.premium,
               child: LayoutBuilder(

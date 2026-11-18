@@ -22,10 +22,15 @@
 //   exposes it (e.g. `GlassSwitch.activeColor: theme.accent`). Our
 //   accent is black/grey/gold/teal per theme/mode — never the
 //   library's blue.
-// - iOS 26 optics (Kumone tab bar): per-widget
-//   `LiquidGlassSettings.ios26(context)` + `useOwnLayer: true`
-//   (per-widget settings are ignored in grouped mode without it —
-//   GlassContainer docs). The rest of the app keeps ios27 defaults.
+// - Tab bar optics follow the library demo (`GlassTabBar.bottom`
+//   passes no settings, so it renders the ambient ios27 defaults):
+//   per-widget `LiquidGlassSettings.ios27(context)` +
+//   `useOwnLayer: true` (per-widget settings are ignored in grouped
+//   mode without it — GlassContainer docs) + `GlassQuality.premium`,
+//   wrapped in a `GlassAdaptiveScope(minQuality: premium)` floor so
+//   the adaptive monitor can never demote the chrome to frosted
+//   standard/minimal on a busy phone. The rest of the app keeps
+//   ios27 defaults.
 //
 // Our own GlassCard (BackdropFilter + hairline + highlight) stays
 // for content rows (chen: search-result rows are glass; SKILL.md
@@ -39,13 +44,19 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 class HaoLiquidGlass {
   HaoLiquidGlass._();
 
-  /// Wrap-level theme: library ios27 defaults. Deliberately NOT
-  /// `GlassThemeData.ios26()` — ios26 optics are a per-widget
-  /// override for the Kumone tab bar only (see [ios26Settings]).
+  /// Wrap-level theme: library ios27 defaults.
   static const GlassThemeData themeData = GlassThemeData();
 
-  /// iOS 26 preset for the tab bar shell (Kumone reference).
+  /// iOS 27 preset for the tab bar shell — the demo's glass, copied
+  /// verbatim: the demo's `GlassTabBar.bottom` passes no `settings`,
+  /// so it renders the ambient ios27 defaults (`GlassThemeData()`).
+  /// Light: glassColor 0x87 (0.53), frostOpacity 0.73, rimShade 1;
+  /// dark: glassColor 0x1F (0.12), frostOpacity 0.85, rimLight 1.15,
+  /// rimShade 1, bodyShade 0.28. (The old ios26 preset was whiter
+  /// and more frosted in light — 0x9E/0.62, frost 0.82, rimShade 0 —
+  /// and dimmer-rimmed in dark — rimLight 0.22 — which is why the
+  /// bar read as frosted glass instead of clear Apple glass.)
   /// Resolves light/dark from the ambient glass brightness.
-  static LiquidGlassSettings ios26Settings(BuildContext context) =>
-      LiquidGlassSettings.ios26(context);
+  static LiquidGlassSettings ios27Settings(BuildContext context) =>
+      LiquidGlassSettings.ios27(context);
 }
