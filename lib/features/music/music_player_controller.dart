@@ -28,7 +28,6 @@
 // - Next/previous advance exactly one track (fix 14 Dart-side rule).
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -37,6 +36,7 @@ import 'av_music_player.dart';
 
 import '../../core/native/now_playing.dart';
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
@@ -849,7 +849,7 @@ class MusicPlayerController extends GetxController
     List<String> candidates;
     AudioQuality quality;
     final localPath = song.isLocal
-        ? (File(song.localPath).existsSync() ? song.localPath : null)
+        ? await LocalPaths.resolve(song.localPath, 'local_music')
         : downloads.localPathFor(song);
     // Local entry whose file is gone: never resolve the bogus
     // 'local:' id remotely — go straight to alt/next.

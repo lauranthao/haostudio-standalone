@@ -26,9 +26,9 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/storage/hive_store.dart';
+import '../core/storage/local_paths.dart';
 
 class CustomFontService {
   CustomFontService({
@@ -41,6 +41,9 @@ class CustomFontService {
   static const String family = 'HaoCustomFont';
 
   static const Set<String> kFontExtensions = {'ttf', 'otf', 'ttc'};
+
+  /// Subdirectory under Documents holding the installed font file.
+  static const String kCustomFontSubdir = 'fonts';
 
   final Directory? _documentsOverride;
   final Future<void> Function(String family, Uint8List bytes) _register;
@@ -55,8 +58,10 @@ class CustomFontService {
   }
 
   Future<Directory> get _fontsDir async {
-    final base = _documentsOverride ?? await getApplicationDocumentsDirectory();
-    final dir = Directory('${base.path}/fonts');
+    final basePath = _documentsOverride == null
+        ? await LocalPaths.ensureDocumentsPath()
+        : _documentsOverride.path;
+    final dir = Directory('$basePath/$kCustomFontSubdir');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -118,7 +123,13 @@ class CustomFontService {
     try {
       await HiveStore.put(HiveKeys.customFontFamily, family);
       await HiveStore.put(HiveKeys.customFontName, baseName);
-      await HiveStore.put(HiveKeys.customFontPath, target.path);
+      // Relative name only (`fonts/<file>`): an absolute path dies
+      // with the old container UUID on reinstall (same bug class as
+      // local files / downloads / wallpapers, chen 2026-11-18).
+      await HiveStore.put(
+        HiveKeys.customFontPath,
+        LocalPaths.storedName(kCustomFontSubdir, target.path.split('/').last),
+      );
     } catch (_) {
       return null;
     }
@@ -127,18 +138,37 @@ class CustomFontService {
 
   /// Re-register the stored font (call once at startup, before
   /// runApp — Beans `reinstallIfNeeded`). Returns false when nothing
-  /// is stored or the file is gone.
+  /// is stored or the file is gone. An old absolute stored path is
+  /// resolved through the current container and repaired to the
+  /// relative form in place.
   Future<bool> loadPersisted() async {
-    String path = '';
+    String stored = '';
     String storedFamily = '';
     try {
       storedFamily = HiveStore.getString(HiveKeys.customFontFamily, '');
-      path = HiveStore.getString(HiveKeys.customFontPath, '');
+      stored = HiveStore.getString(HiveKeys.customFontPath, '');
     } catch (_) {
       return false;
     }
-    if (storedFamily.isEmpty || path.isEmpty) return false;
-    final file = File(path);
+    if (storedFamily.isEmpty || stored.isEmpty) return false;
+    final resolved = await LocalPaths.resolve(
+      stored,
+      kCustomFontSubdir,
+      directoryOverride: _documentsOverride == null
+          ? null
+          : Directory('${_documentsOverride.path}/$kCustomFontSubdir'),
+    );
+    if (resolved == null) return false;
+    final relative = LocalPaths.storedName(
+      kCustomFontSubdir,
+      LocalPaths.baseName(stored),
+    );
+    if (relative != stored) {
+      try {
+        await HiveStore.put(HiveKeys.customFontPath, relative);
+      } catch (_) {}
+    }
+    final file = File(resolved);
     if (!await file.exists()) return false;
     try {
       await _register(storedFamily, await file.readAsBytes());

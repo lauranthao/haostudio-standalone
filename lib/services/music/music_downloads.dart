@@ -16,22 +16,29 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
 import 'music_resolvers.dart';
+import 'music_store.dart';
+
+/// Subdirectory under Documents holding the downloaded files.
+const String kMusicDownloadsSubdir = 'music_downloads';
 
 enum DownloadStatus { notDownloaded, downloading, downloaded, failed }
 
-/// One downloaded song: the full Song JSON + the absolute local file
-/// path. The absolute path is stored (not just the file name) so
-/// [MusicDownloadService.localPathFor] is a purely synchronous Hive +
-/// File.existsSync lookup — no async directory resolution on the
-/// playback hot path. The documents directory is stable per install,
-/// and the Hive box lives in the same sandbox, so the two cannot drift
-/// apart across reinstalls.
+/// One downloaded song: the full Song JSON + the local file name.
+/// [filePath] is a RELATIVE name (`music_downloads/<file>`), never an
+/// absolute path: iOS changes the app container UUID on every
+/// (re)install, so an absolute path stored in Hive dies with the old
+/// container — and the old code then pruned the index entry itself
+/// (1.1.0 -> 1.1.1 upgrade lost every download, chen 2026-11-18).
+/// The absolute path is rebuilt from the CURRENT Documents directory
+/// on every read ([LocalPaths]); old absolute entries are repaired
+/// in place by [MusicDownloadService.refresh], and the directory is
+/// rescanned before anything is pruned.
 class DownloadedSong {
   DownloadedSong({
     required this.song,
@@ -168,8 +175,8 @@ class MusicDownloadService {
       }
       return _directoryOverride;
     }
-    final base = await getApplicationDocumentsDirectory();
-    final dir = Directory('${base.path}/music_downloads');
+    final basePath = await LocalPaths.ensureDocumentsPath();
+    final dir = Directory('$basePath/$kMusicDownloadsSubdir');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -229,6 +236,18 @@ class MusicDownloadService {
         : DownloadStatus.notDownloaded;
   }
 
+  /// Resolve a stored file value to an existing absolute path:
+  /// the stored value as-is when it is absolute and still valid,
+  /// else `<current Documents>/music_downloads/<basename>`.
+  /// Synchronous so the playback hot path stays synchronous; the
+  /// Documents cache is warmed at startup (main.dart) and every
+  /// [_dir] call, and tests pass a directory override.
+  String? _resolveStored(String stored) => LocalPaths.resolveSync(
+    stored,
+    kMusicDownloadsSubdir,
+    directoryOverride: _directoryOverride,
+  );
+
   /// Local file path for [song], or null when it is not downloaded.
   /// A stale index entry (file gone) returns null. Purely synchronous
   /// so the player can check it on the playback hot path.
@@ -237,24 +256,147 @@ class MusicDownloadService {
       (e) => e.key == song.identityKey,
     );
     if (entry.isEmpty || entry.first.filePath.isEmpty) return null;
-    final file = File(entry.first.filePath);
-    return file.existsSync() ? file.path : null;
+    return _resolveStored(entry.first.filePath);
   }
 
-  /// Re-read the index, drop entries whose file is gone, and publish
-  /// the surviving list to [downloaded]. Returns the surviving list.
-  Future<List<DownloadedSong>> refresh() async {
-    final entries = _readIndex();
-    final kept = <DownloadedSong>[];
-    var pruned = false;
-    for (final e in entries) {
-      if (e.filePath.isNotEmpty && await File(e.filePath).exists()) {
-        kept.add(e);
-      } else {
-        pruned = true;
+  /// Rebuild an index entry for a file found on disk with no index
+  /// entry (its index was destroyed by the 1.1.1 prune). The file
+  /// name carries the identity (`<platform>_<songId>.<ext>`); the
+  /// title/artist are recovered from the recent list / play queue
+  /// when the song is still there, and fall back to the song id —
+  /// never invented. Returns null when the name does not parse.
+  DownloadedSong? _rebuildFromFile(File file) {
+    final name = file.path.split('/').last;
+    final dot = name.lastIndexOf('.');
+    if (dot <= 0) return null;
+    final ext = name.substring(dot + 1).toLowerCase();
+    if (!_kAudioExtensions.contains(ext)) return null;
+    final stem = name.substring(0, dot);
+    final us = stem.indexOf('_');
+    if (us <= 0) return null;
+    final code = stem.substring(0, us);
+    final songId = stem.substring(us + 1);
+    if (songId.isEmpty) return null;
+    MusicPlatform? platform;
+    for (final p in MusicPlatform.values) {
+      if (p.code == code) {
+        platform = p;
+        break;
       }
     }
-    if (pruned) await _writeIndex(kept);
+    if (platform == null) return null;
+    final key = '${platform.code}|$songId';
+    var song = _recoverSong(key);
+    song ??= Song(songId: songId, title: songId, platform: platform);
+    var size = 0;
+    var modified = 0;
+    try {
+      size = file.lengthSync();
+      modified = file.statSync().modified.millisecondsSinceEpoch;
+    } catch (_) {}
+    return DownloadedSong(
+      song: song,
+      filePath: LocalPaths.storedName(kMusicDownloadsSubdir, name),
+      sizeBytes: size,
+      downloadedAt: modified,
+    );
+  }
+
+  /// A song the user has played / queued, by identity key — used to
+  /// restore the title of a rescan-rebuilt download. Null when the
+  /// song is nowhere on record (the caller then falls back to the
+  /// song id as the title).
+  Song? _recoverSong(String key) {
+    try {
+      for (final s in MusicStore.getRecent()) {
+        if (s.identityKey == key) return s;
+      }
+      for (final s in MusicStore.getQueue().songs) {
+        if (s.identityKey == key) return s;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Re-read the index, repair old absolute entries to the relative
+  /// form, rescan the directory for files with no index entry, and
+  /// publish the surviving list to [downloaded]. Returns the
+  /// surviving list.
+  ///
+  /// Repair + rescan run BEFORE any pruning: an entry is dropped
+  /// only when its file is missing in all three places (stored path,
+  /// current-dir basename, directory rescan).
+  Future<List<DownloadedSong>> refresh() async {
+    final dir = await _dir;
+    final entries = _readIndex();
+    final kept = <DownloadedSong>[];
+    final seenNames = <String>{};
+    var changed = false;
+    for (final e in entries) {
+      if (e.filePath.isEmpty) continue;
+      final resolved = _resolveStored(e.filePath);
+      if (resolved == null) continue;
+      final stored = LocalPaths.storedName(
+        kMusicDownloadsSubdir,
+        LocalPaths.baseName(e.filePath),
+      );
+      final fixed = e.filePath == stored
+          ? e
+          : DownloadedSong(
+              song: e.song,
+              filePath: stored,
+              sizeBytes: e.sizeBytes,
+              downloadedAt: e.downloadedAt,
+            );
+      if (fixed.filePath != e.filePath) changed = true;
+      kept.add(fixed);
+      seenNames.add(LocalPaths.baseName(e.filePath));
+    }
+    // Rescan the directory: re-add audio files with no index entry
+    // (in-flight `.$safeKey.tmp` files are skipped — they are not
+    // downloads yet).
+    final rescanned = <DownloadedSong>[];
+    try {
+      final files = <File>[];
+      for (final entity in dir.listSync()) {
+        if (entity is! File) continue;
+        final name = entity.path.split('/').last;
+        if (name.startsWith('.')) continue;
+        if (seenNames.contains(name)) continue;
+        files.add(entity);
+      }
+      files.sort((a, b) {
+        DateTime ma;
+        DateTime mb;
+        try {
+          ma = a.statSync().modified;
+        } catch (_) {
+          ma = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+        try {
+          mb = b.statSync().modified;
+        } catch (_) {
+          mb = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+        return mb.compareTo(ma);
+      });
+      for (final f in files) {
+        final rebuilt = _rebuildFromFile(f);
+        if (rebuilt == null) continue;
+        rescanned.add(rebuilt);
+        seenNames.add(f.path.split('/').last);
+      }
+    } catch (_) {
+      // A directory that cannot be listed rescans to nothing — the
+      // index entries above still stand on their own.
+    }
+    if (rescanned.isNotEmpty) {
+      kept.insertAll(0, rescanned);
+      changed = true;
+    }
+    if (changed || kept.length != entries.length) {
+      await _writeIndex(kept);
+    }
     downloaded.assignAll(kept);
     return kept;
   }
@@ -351,7 +493,7 @@ class MusicDownloadService {
         0,
         DownloadedSong(
           song: song,
-          filePath: file.path,
+          filePath: LocalPaths.storedName(kMusicDownloadsSubdir, fileName),
           sizeBytes: size,
           downloadedAt: DateTime.now().millisecondsSinceEpoch,
         ),
@@ -380,9 +522,9 @@ class MusicDownloadService {
     final entries = _readIndex();
     final entry = entries.where((e) => e.key == key);
     if (entry.isEmpty) return false;
-    final file = File(entry.first.filePath);
+    final resolved = _resolveStored(entry.first.filePath);
     try {
-      if (await file.exists()) await file.delete();
+      if (resolved != null) await File(resolved).delete();
     } catch (_) {}
     final kept = entries.where((e) => e.key != key).toList();
     await _writeIndex(kept);
@@ -397,7 +539,9 @@ class MusicDownloadService {
   Future<int> totalBytes() async {
     var total = 0;
     for (final e in _readIndex()) {
-      final file = File(e.filePath);
+      final resolved = _resolveStored(e.filePath);
+      if (resolved == null) continue;
+      final file = File(resolved);
       try {
         if (await file.exists()) total += await file.length();
       } catch (_) {}
@@ -409,8 +553,10 @@ class MusicDownloadService {
   Future<int> clearAll() async {
     final freed = await totalBytes();
     for (final e in _readIndex()) {
+      final resolved = _resolveStored(e.filePath);
+      if (resolved == null) continue;
       try {
-        final file = File(e.filePath);
+        final file = File(resolved);
         if (await file.exists()) await file.delete();
       } catch (_) {}
     }

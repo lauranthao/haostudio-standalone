@@ -378,7 +378,12 @@ class Song {
   final String reasonKey;
   final String reasonArg;
 
-  Song copyWith({String? reasonKey, String? reasonArg, String? cover}) => Song(
+  Song copyWith({
+    String? reasonKey,
+    String? reasonArg,
+    String? cover,
+    String? localPath,
+  }) => Song(
     songId: songId,
     title: title,
     artist: artist,
@@ -389,7 +394,7 @@ class Song {
     albumYear: albumYear,
     reasonKey: reasonKey ?? this.reasonKey,
     reasonArg: reasonArg ?? this.reasonArg,
-    localPath: localPath,
+    localPath: localPath ?? this.localPath,
   );
 }
 

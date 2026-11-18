@@ -125,13 +125,15 @@ class HiveKeys {
   /// 'kw', default 'wy'. No 'all' option — one platform at a time.
   static const String musicSearchPlatform = 'musicSearchPlatform';
 
-  /// Local audio files (stage 2): JSON list of Song (with localPath),
-  /// newest first. Files live in app docs `local_music/`.
+  /// Local audio files (stage 2): JSON list of Song (with localPath
+  /// as a RELATIVE name `local_music/<file>`), newest first. Files
+  /// live in app docs `local_music/`.
   static const String musicLocalFiles = 'hao_local_music';
 
   /// Wallpaper (stage 2, Beans `ThemeStore` wallpaperPaths /
-  /// backgroundImagePath): enabled flag, JSON list of absolute paths,
-  /// current path. Files live in app docs `wallpapers/`.
+  /// backgroundImagePath): enabled flag, JSON list of RELATIVE names
+  /// (`wallpapers/<file>`), current path (relative). Files live in
+  /// app docs `wallpapers/`.
   static const String wallpaperEnabled = 'hao_wallpaper_enabled';
   static const String wallpaperPaths = 'hao_wallpaper_paths';
   static const String wallpaperCurrent = 'hao_wallpaper_current';
@@ -143,8 +145,9 @@ class HiveKeys {
   static const String bgColorHex = 'hao_bgcolor_hex';
 
   /// Custom font (stage 2, Beans `FontManager`): registered family
-  /// name ('HaoCustomFont' when installed, '' = system default) and
-  /// the installed file's display name.
+  /// name ('HaoCustomFont' when installed, '' = system default),
+  /// the installed file's display name, and its RELATIVE path
+  /// (`fonts/<file>`).
   static const String customFontFamily = 'hao_custom_font_family';
   static const String customFontName = 'hao_custom_font_name';
   static const String customFontPath = 'hao_custom_font_path';

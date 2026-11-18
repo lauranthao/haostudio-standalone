@@ -19,6 +19,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/storage/hive_store.dart';
+import 'core/storage/local_paths.dart';
 import 'core/theme/appearance_store.dart';
 import 'core/theme/liquid_glass_theme.dart';
 import 'core/theme/theme_controller.dart';
@@ -48,6 +49,12 @@ Future<void> main() async {
 
   // Crash breadcrumb: read before anything else (fix 1).
   await HiveStore.init();
+  // Warm the Documents-directory cache so every synchronous
+  // LocalPaths.resolveSync on the playback hot path (downloads /
+  // wallpapers) has a current container to resolve against. Without
+  // this, a stale absolute index entry could not be repaired until
+  // the first async directory call.
+  await LocalPaths.ensureDocumentsPath();
   final lastCrashStage = LiveBreadcrumb.current;
   if (lastCrashStage.isNotEmpty) {
     debugPrint('[HAo] last live stage before crash/close: $lastCrashStage');

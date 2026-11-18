@@ -14,8 +14,10 @@
 //
 // Files live in app documents (`wallpapers/`); the Hive index is the
 // source of truth for the list (same pattern as the download index).
-// A list entry whose file is gone is pruned on read, never shown as
-// a phantom tile.
+// Stored values are relative names (`wallpapers/<file>`); old
+// absolute entries are repaired on read and the directory is
+// rescanned before anything is pruned, so a container move never
+// loses a wallpaper (see [LocalPaths]).
 //
 // Every Hive read is guarded (try/catch -> default) so a call before
 // Hive is initialised — e.g. a tab page building in a test — never
@@ -27,9 +29,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import 'hao_themes.dart';
 
 /// Image extensions accepted as wallpaper.
@@ -41,6 +43,9 @@ const Set<String> kWallpaperExtensions = {
   'gif',
 };
 
+/// Subdirectory under Documents holding the wallpaper copies.
+const String kWallpaperSubdir = 'wallpapers';
+
 class AppearanceStore {
   AppearanceStore({Directory? documentsDir})
       : _documentsOverride = documentsDir;
@@ -48,12 +53,38 @@ class AppearanceStore {
   final Directory? _documentsOverride;
 
   Future<Directory> get _wallpaperDir async {
-    final base = _documentsOverride ?? await getApplicationDocumentsDirectory();
-    final dir = Directory('${base.path}/wallpapers');
+    final basePath = _documentsOverride == null
+        ? await LocalPaths.ensureDocumentsPath()
+        : _documentsOverride.path;
+    final dir = Directory('$basePath/$kWallpaperSubdir');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
 
+  /// The wallpapers directory for synchronous reads, or null when
+  /// neither an override nor a warmed Documents cache is available.
+  Directory? get _wallpaperDirSync {
+    final override = _documentsOverride;
+    if (override != null) {
+      return Directory('${override.path}/$kWallpaperSubdir');
+    }
+    final docs = LocalPaths.documentsPathSync;
+    if (docs == null) return null;
+    return Directory('$docs/$kWallpaperSubdir');
+  }
+
+  /// Stored values are RELATIVE names (`wallpapers/<file>`), never
+  /// absolute paths: iOS changes the app container UUID on every
+  /// (re)install, so an absolute path stored in Hive dies with the
+  /// old container — and the old code then pruned the list itself
+  /// (same bug class as local files / downloads, chen 2026-11-18).
+  /// The absolute path is rebuilt from the CURRENT Documents
+  /// directory on every read; old absolute entries are repaired in
+  /// place, and the directory is rescanned before anything is pruned.
+  ///
+  /// The public getters below return RESOLVED absolute paths, so the
+  /// UI (thumbnails, background layer) works unchanged; only the
+  /// Hive values are relative.
   List<String> _readPaths() {
     try {
       final raw = HiveStore.box.get(HiveKeys.wallpaperPaths) as String?;
@@ -88,24 +119,106 @@ class AppearanceStore {
     } catch (_) {}
   }
 
-  /// Stored wallpaper list, pruned to files that still exist.
-  List<String> get wallpaperPaths {
-    final paths = _readPaths();
-    final kept = paths.where((p) => File(p).existsSync()).toList();
-    if (kept.length != paths.length) unawaited(_writePaths(kept));
-    return kept;
+  /// Normalize any incoming path (absolute or relative) to the
+  /// stored form `wallpapers/<basename>`.
+  String _toStored(String path) =>
+      LocalPaths.storedName(kWallpaperSubdir, LocalPaths.baseName(path));
+
+  /// Resolve a stored value to an existing absolute path, or null.
+  String? _resolveStored(String stored) {
+    return LocalPaths.resolveSync(
+      stored,
+      kWallpaperSubdir,
+      directoryOverride: _wallpaperDirSync,
+    );
   }
 
+  /// Repair the stored list (old absolute values -> relative form),
+  /// rescan the directory for images with no index entry, and drop
+  /// entries whose file is missing in all three places (stored path,
+  /// current-dir basename, directory rescan). Returns the stored
+  /// (relative) list; writes back when anything changed.
+  List<String> _repairAndRescan() {
+    final stored = _readPaths();
+    // No directory to resolve against (cold Documents cache, no
+    // override): do NOT prune — relative entries cannot be verified
+    // yet. In production main() warms the cache before runApp, so
+    // this only triggers in tests that read before any write.
+    if (_wallpaperDirSync == null) return stored;
+    final keptStored = <String>[];
+    final seenNames = <String>{};
+    var changed = false;
+    for (final p in stored) {
+      if (p.isEmpty) continue;
+      final resolved = _resolveStored(p);
+      if (resolved == null) continue;
+      final rel = _toStored(p);
+      if (rel != p) changed = true;
+      keptStored.add(rel);
+      seenNames.add(LocalPaths.baseName(p));
+    }
+    final dir = _wallpaperDirSync!;
+    try {
+      final names = <String>[];
+      for (final e in dir.listSync()) {
+        if (e is! File) continue;
+        final name = e.path.split('/').last;
+        if (name.startsWith('.')) continue;
+        final ext = name.contains('.')
+            ? name.split('.').last.toLowerCase()
+            : '';
+        if (!kWallpaperExtensions.contains(ext)) continue;
+        if (seenNames.contains(name)) continue;
+        names.add(name);
+      }
+      names.sort();
+      for (final name in names) {
+        keptStored.add(_toStored(name));
+        seenNames.add(name);
+        changed = true;
+      }
+    } catch (_) {
+      // A directory that cannot be listed rescans to nothing.
+    }
+    if (changed || keptStored.length != stored.length) {
+      unawaited(_writePaths(keptStored));
+    }
+    return keptStored;
+  }
+
+  /// Stored wallpaper list as RESOLVED absolute paths (the UI
+  /// consumes these directly), repaired + rescanned + pruned to
+  /// files that still exist.
+  List<String> get wallpaperPaths {
+    final resolved = <String>[];
+    for (final stored in _repairAndRescan()) {
+      final abs = _resolveStored(stored);
+      if (abs != null) resolved.add(abs);
+    }
+    return resolved;
+  }
+
+  /// Current wallpaper as a RESOLVED absolute path ('' = none).
+  /// An old absolute stored value is repaired to the relative form.
   String get currentWallpaper {
     try {
-      return HiveStore.getString(HiveKeys.wallpaperCurrent, '');
+      final stored = HiveStore.getString(HiveKeys.wallpaperCurrent, '');
+      if (stored.isEmpty) return '';
+      final resolved = _resolveStored(stored);
+      if (resolved == null) return '';
+      final rel = _toStored(stored);
+      if (rel != stored) {
+        unawaited(HiveStore.put(HiveKeys.wallpaperCurrent, rel));
+      }
+      return resolved;
     } catch (_) {
       return '';
     }
   }
 
   /// Copy [source] into the app wallpapers directory and add it to
-  /// the list. Returns the stored path, or null for a non-image file.
+  /// the list. Returns the resolved absolute path, or null for a
+  /// non-image file. The stored index value is the relative name.
   Future<String?> addWallpaper(File source) async {
     final ext = source.path.split('.').last.toLowerCase();
     if (!kWallpaperExtensions.contains(ext)) return null;
@@ -116,17 +229,20 @@ class AppearanceStore {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final target = File('${dir.path}/${stamp}_$safeName');
     await source.copy(target.path);
-    final paths = _readPaths()..add(target.path);
+    final paths = _readPaths()..add(_toStored(target.path));
     await _writePaths(paths);
     return target.path;
   }
 
   /// Apply [path] as the current wallpaper (and turn wallpapers on).
-  /// No-op when the path is not in the list.
+  /// No-op when the path is not in the list. [path] may be the
+  /// resolved absolute path (as the UI passes it) or a stored
+  /// relative name — it is normalized before the membership check.
   Future<void> applyWallpaper(String path) async {
-    if (!_readPaths().contains(path)) return;
+    final stored = _toStored(path);
+    if (!_repairAndRescan().contains(stored)) return;
     try {
-      await HiveStore.put(HiveKeys.wallpaperCurrent, path);
+      await HiveStore.put(HiveKeys.wallpaperCurrent, stored);
       await HiveStore.put(HiveKeys.wallpaperEnabled, true);
     } catch (_) {}
   }
@@ -136,16 +252,20 @@ class AppearanceStore {
   /// background falls back to colour / theme default — never a
   /// dangling path).
   Future<void> deleteWallpaper(String path) async {
-    final paths = _readPaths()..remove(path);
+    final stored = _toStored(path);
+    final paths = _repairAndRescan()..remove(stored);
     await _writePaths(paths);
     try {
-      await File(path).delete();
+      final resolved = _resolveStored(stored);
+      if (resolved != null) await File(resolved).delete();
     } catch (_) {}
-    if (currentWallpaper == path) {
-      try {
+    try {
+      final currentStored =
+          HiveStore.getString(HiveKeys.wallpaperCurrent, '');
+      if (currentStored.isNotEmpty && _toStored(currentStored) == stored) {
         await HiveStore.put(HiveKeys.wallpaperCurrent, '');
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
   }
 
   // ---- background colour ----

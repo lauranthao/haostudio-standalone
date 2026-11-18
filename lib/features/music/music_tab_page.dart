@@ -856,12 +856,19 @@ class _MusicTabPageState extends State<MusicTabPage> {
             borderRadius: BorderRadius.circular(999),
             boxShadow: glassMiniPlayerShadow(context),
           ),
-          child: GlassContainer(
-            shape: const LiquidRoundedSuperellipse(borderRadius: 999),
-            padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
-            useOwnLayer: true,
-            quality: GlassQuality.premium,
-            child: Material(
+          child: GlassAdaptiveScope(
+            // Same premium floor as the tab bar (app_shell.dart): the
+            // adaptive scope may demote premium to frosted glass on a
+            // busy phone; the mini player is floating chrome and must
+            // stay premium. Glass parameters themselves are already
+            // the demo's (ios27 preset + premium).
+            minQuality: GlassQuality.premium,
+            child: GlassContainer(
+              shape: const LiquidRoundedSuperellipse(borderRadius: 999),
+              padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+              useOwnLayer: true,
+              quality: GlassQuality.premium,
+              child: Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: () {
@@ -1004,6 +1011,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                   ],
                 ),
               ),
+            ),
             ),
           ),
         ),

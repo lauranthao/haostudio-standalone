@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:standalone/core/storage/hive_store.dart';
+import 'package:standalone/core/storage/local_paths.dart';
 import 'package:standalone/services/music/local_music_store.dart';
 
 void main() {
@@ -48,9 +49,19 @@ void main() {
     expect(song.artist, '周杰伦');
     expect(song.isLocal, isTrue);
     expect(song.songId.startsWith('local:'), isTrue);
-    // The copy lives in the app directory, not the picked location.
-    expect(song.localPath.startsWith(dir.path), isTrue);
-    expect(await File(song.localPath).exists(), isTrue);
+    // The copy lives in the app directory, not the picked location;
+    // the index stores only the relative name (`local_music/<file>`)
+    // — an absolute path would die with the old container UUID on
+    // reinstall (1.1.0 -> 1.1.1 data loss, chen 2026-11-18).
+    expect(song.localPath.startsWith('local_music/'), isTrue);
+    expect(song.localPath.contains('/var/'), isFalse);
+    final resolvedPath = LocalPaths.resolveSync(
+      song.localPath,
+      'local_music',
+      directoryOverride: dir,
+    );
+    expect(resolvedPath, isNotNull);
+    expect(await File(resolvedPath!).exists(), isTrue);
     // The original can disappear afterwards — the copy still plays.
     await src.delete();
     final listed = await store.list();
@@ -84,7 +95,13 @@ void main() {
   test('list prunes entries whose file was deleted outside the app', () async {
     final song = await store.importFile(await srcFile('gone.mp3', 'x'));
     expect(song, isNotNull);
-    await File(song!.localPath).delete();
+    final resolvedPath = LocalPaths.resolveSync(
+      song!.localPath,
+      'local_music',
+      directoryOverride: dir,
+    );
+    expect(resolvedPath, isNotNull);
+    await File(resolvedPath!).delete();
     expect(await store.list(), isEmpty);
     // The pruned index is written back — a fresh read stays empty.
     expect(await store.list(), isEmpty);
@@ -94,7 +111,14 @@ void main() {
     final song = await store.importFile(await srcFile('del.mp3', 'x'));
     expect(song, isNotNull);
     expect(await store.remove(song!), isTrue);
-    expect(await File(song.localPath).exists(), isFalse);
+    expect(
+      LocalPaths.resolveSync(
+        song.localPath,
+        'local_music',
+        directoryOverride: dir,
+      ),
+      isNull,
+    );
     expect(await store.list(), isEmpty);
     expect(await store.remove(song), isFalse);
   });

@@ -66,8 +66,12 @@ void main() {
     expect(service.currentName, 'MyFont.ttf');
     expect(service.hasCustomFont, isTrue);
     final storedPath = HiveStore.getString(HiveKeys.customFontPath, '');
-    expect(storedPath, isNotEmpty);
-    expect(await File(storedPath).exists(), isTrue);
+    // Stored as a relative name only (`fonts/<stamp>_<file>`): an
+    // absolute path would die with the old container UUID on
+    // reinstall (1.1.0 -> 1.1.1 data loss, chen 2026-11-18).
+    expect(storedPath.startsWith('fonts/'), isTrue);
+    expect(storedPath.endsWith('_MyFont.ttf'), isTrue);
+    expect(await File('${docs.path}/$storedPath').exists(), isTrue);
   });
 
   test('non-font files are refused and nothing is stored', () async {
@@ -92,7 +96,7 @@ void main() {
     // Old font still installed (name + file intact).
     expect(service.currentName, 'Good.ttf');
     expect(HiveStore.getString(HiveKeys.customFontPath, ''), firstPath);
-    expect(await File(firstPath).exists(), isTrue);
+    expect(await File('${docs.path}/$firstPath').exists(), isTrue);
   });
 
   test('installing a second font replaces the first', () async {
@@ -130,7 +134,7 @@ void main() {
     expect(await service.loadPersisted(), isFalse);
     await service.install(await srcFile('Gone.ttf'));
     final path = HiveStore.getString(HiveKeys.customFontPath, '');
-    await File(path).delete();
+    await File('${docs.path}/$path').delete();
     expect(await service.loadPersisted(), isFalse);
   });
 

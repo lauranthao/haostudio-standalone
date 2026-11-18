@@ -34,11 +34,13 @@
 // music_crossfade_lost_error_test.dart), scripted resolvers.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:just_audio/just_audio.dart' show ProcessingState;
 import 'package:standalone/core/storage/hive_store.dart';
+import 'package:standalone/core/storage/local_paths.dart';
 import 'package:standalone/features/music/av_music_player.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/services/music/music_api.dart';
@@ -250,6 +252,7 @@ void main() {
     });
 
     tearDown(() async {
+      LocalPaths.resetForTest();
       await box.close();
       await Hive.deleteBoxFromDisk('playback_reliability_test');
     });
@@ -715,6 +718,45 @@ void main() {
       // missing (pauseCalls == 2) and the song sounds past the
       // deadline.
       expect(playerA.pauseCalls, 3);
+    });
+    test('local song with a stale container path plays from the new '
+        'container', () async {
+      // 1.1.0 -> 1.1.1 data loss (chen 2026-11-18): the index stored
+      // the absolute path under the OLD container UUID; the new
+      // container holds the same file under a different UUID. The
+      // controller must resolve through the current Documents dir —
+      // never feed the stale absolute path to the player, and never
+      // ask the resolvers for a local song.
+      final docsB = await Directory.systemTemp.createTemp('hao_docs_b_');
+      final localDir = Directory('${docsB.path}/local_music');
+      await localDir.create(recursive: true);
+      final file = File('${localDir.path}/123_周杰伦 - 晴天.mp3');
+      await file.writeAsString('fake-audio-bytes');
+      const oldPath =
+          '/var/mobile/Containers/Data/Application/OLD-UUID/Documents/local_music/123_周杰伦 - 晴天.mp3';
+      final song = Song(
+        songId: 'local:123_周杰伦 - 晴天.mp3',
+        title: '晴天',
+        artist: '周杰伦',
+        platform: MusicPlatform.wy,
+        localPath: oldPath,
+      );
+      resolvers = _ScriptedResolvers((songId, excludeJobs) async => null);
+      c = makeController();
+      LocalPaths.setDocumentsPathForTest(docsB.path);
+      try {
+        final errors = await _runCatchingAsyncErrors(() async {
+          await c.playQueue([song], 0);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        });
+        expect(errors, isEmpty);
+        expect(resolvers.calls, isEmpty);
+        expect(playerA.openedUrls.length, 1);
+        expect(Uri.decodeFull(playerA.openedUrls.single), 'file://${file.path}');
+      } finally {
+        LocalPaths.resetForTest();
+        if (await docsB.exists()) await docsB.delete(recursive: true);
+      }
     });
   });
 }

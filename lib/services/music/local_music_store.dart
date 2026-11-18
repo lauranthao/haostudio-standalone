@@ -9,6 +9,17 @@
 // (ProfileView.swift `FontDocumentPicker`: UIDocumentPicker with
 // asCopy) and the download service's app-documents pattern.
 //
+// The stored `localPath` is a RELATIVE name (`local_music/<file>`),
+// never an absolute path: iOS changes the app container UUID on
+// every (re)install, so an absolute path stored in Hive dies with
+// the old container — and the old code then pruned the index entry
+// itself (1.1.0 -> 1.1.1 upgrade lost every imported file, chen
+// 2026-11-18). The absolute path is rebuilt from the CURRENT
+// Documents directory on every read ([LocalPaths]); old absolute
+// entries are repaired in place on first sight, and the directory is
+// rescanned before anything is pruned, so files whose index was
+// already destroyed by 1.1.1 come back.
+//
 // Playback reuses the existing chain: [Song.isLocal] makes
 // MusicPlayerController._loadCurrent open the file directly through
 // the AVPlayer (just_audio) player — no new playback path, no
@@ -25,9 +36,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
-
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import 'music_models.dart';
 
 /// Audio extensions accepted for import (same set as the download
@@ -41,6 +51,9 @@ const Set<String> kLocalAudioExtensions = {
   'aac',
 };
 
+/// Subdirectory under Documents holding the imported copies.
+const String kLocalMusicSubdir = 'local_music';
+
 class LocalMusicStore {
   LocalMusicStore({Directory? directory}) : _directoryOverride = directory;
 
@@ -53,8 +66,8 @@ class LocalMusicStore {
       }
       return _directoryOverride;
     }
-    final base = await getApplicationDocumentsDirectory();
-    final dir = Directory('${base.path}/local_music');
+    final basePath = await LocalPaths.ensureDocumentsPath();
+    final dir = Directory('$basePath/$kLocalMusicSubdir');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -80,21 +93,96 @@ class LocalMusicStore {
     jsonEncode(songs.map((s) => s.toJson()).toList()),
   );
 
-  /// Imported files, newest first. Entries whose file is gone are
-  /// pruned (and the pruned index written back) — never shown as
-  /// phantom rows.
+  /// Resolve an index entry's stored path to an existing absolute
+  /// path: the stored value as-is when it is absolute and still
+  /// valid, else `<current Documents>/local_music/<basename>`.
+  Future<String?> _resolve(String stored) => LocalPaths.resolve(
+    stored,
+    kLocalMusicSubdir,
+    directoryOverride: _directoryOverride,
+  );
+
+  /// Imported files, newest first.
+  ///
+  /// Repair + rescan run BEFORE any pruning:
+  /// - an entry whose stored value is an old absolute path is
+  ///   resolved through the current container and rewritten to the
+  ///   relative form in place;
+  /// - files on disk that have no index entry (their index was
+  ///   destroyed by the 1.1.1 prune) are rebuilt and added back.
+  /// An entry is dropped only when its file is missing in all three
+  /// places (stored path, current-dir basename, directory rescan).
   Future<List<Song>> list() async {
+    final dir = await _dir;
     final songs = _readIndex();
     final kept = <Song>[];
-    var pruned = false;
+    final seenNames = <String>{};
+    var changed = false;
     for (final s in songs) {
-      if (await File(s.localPath).exists()) {
-        kept.add(s);
-      } else {
-        pruned = true;
-      }
+      final resolved = await _resolve(s.localPath);
+      if (resolved == null) continue;
+      final stored = LocalPaths.storedName(
+        kLocalMusicSubdir,
+        LocalPaths.baseName(s.localPath),
+      );
+      final fixed = s.localPath == stored
+          ? s
+          : s.copyWith(localPath: stored);
+      if (fixed.localPath != s.localPath) changed = true;
+      kept.add(fixed);
+      seenNames.add(LocalPaths.baseName(s.localPath));
     }
-    if (pruned) await _writeIndex(kept);
+    // Rescan the directory: re-add audio files with no index entry.
+    final rescanned = <Song>[];
+    try {
+      final entries = await dir.list().toList();
+      final files = <File>[];
+      for (final e in entries) {
+        if (e is! File) continue;
+        final name = e.path.split('/').last;
+        if (name.startsWith('.')) continue;
+        final ext = name.contains('.')
+            ? name.split('.').last.toLowerCase()
+            : '';
+        if (!kLocalAudioExtensions.contains(ext)) continue;
+        if (seenNames.contains(name)) continue;
+        files.add(e);
+      }
+      // Newest first (imports are stamped `<epoch>_<name>`; modified
+      // time is the same order without trusting the name).
+      files.sort((a, b) {
+        DateTime ma;
+        DateTime mb;
+        try {
+          ma = a.statSync().modified;
+        } catch (_) {
+          ma = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+        try {
+          mb = b.statSync().modified;
+        } catch (_) {
+          mb = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+        return mb.compareTo(ma);
+      });
+      for (final f in files) {
+        final name = f.path.split('/').last;
+        rescanned.add(
+          songForFile(LocalPaths.storedName(kLocalMusicSubdir, name)),
+        );
+        seenNames.add(name);
+      }
+    } catch (_) {
+      // A directory that cannot be listed rescans to nothing — the
+      // index entries above still stand on their own.
+    }
+    if (rescanned.isNotEmpty) {
+      kept.insertAll(0, rescanned);
+      changed = true;
+    }
+    if (changed || kept.length != songs.length) {
+      await _writeIndex(kept);
+    }
     return kept;
   }
 
@@ -118,10 +206,27 @@ class LocalMusicStore {
     );
     final size = await source.length();
     // Dedup: same file name + same size already indexed.
-    for (final s in _readIndex()) {
-      if (s.localPath.split('/').last.endsWith(safeName)) {
-        final f = File(s.localPath);
-        if (await f.exists() && await f.length() == size) return s;
+    final indexed = _readIndex();
+    for (var i = 0; i < indexed.length; i++) {
+      final s = indexed[i];
+      if (!LocalPaths.baseName(s.localPath).endsWith(safeName)) {
+        continue;
+      }
+      final resolved = await _resolve(s.localPath);
+      if (resolved == null) continue;
+      final f = File(resolved);
+      if (await f.exists() && await f.length() == size) {
+        // Repair the stored form while we are here.
+        final stored = LocalPaths.storedName(
+          kLocalMusicSubdir,
+          LocalPaths.baseName(s.localPath),
+        );
+        if (s.localPath != stored) {
+          indexed[i] = s.copyWith(localPath: stored);
+          await _writeIndex(indexed);
+          return indexed[i];
+        }
+        return s;
       }
     }
     final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -143,20 +248,24 @@ class LocalMusicStore {
     if (songs.length == before) return false;
     await _writeIndex(songs);
     try {
-      await File(song.localPath).delete();
+      final resolved = await _resolve(song.localPath);
+      if (resolved != null) await File(resolved).delete();
     } catch (_) {
       // File already gone — the index removal is what matters.
     }
     return true;
   }
 
-  /// Song for an imported file path. Title/artist come from the file
-  /// name ("Artist - Title.ext" splits; otherwise the whole name is
+  /// Song for an imported file. [path] may be the absolute copy path
+  /// (import) or the stored relative name (directory rescan). The
+  /// stored [Song.localPath] is always the relative form
+  /// (`local_music/<file>`). Title/artist come from the file name
+  /// ("Artist - Title.ext" splits; otherwise the whole name is
   /// the title and the artist is empty — never guessed from metadata
   /// we did not read). The id is `local:` + the stored file name,
   /// stable across restarts because the copy's name never changes.
   static Song songForFile(String path) {
-    final fileName = path.split('/').last;
+    final fileName = LocalPaths.baseName(path);
     final withoutStamp = fileName.replaceFirst(
       RegExp(r'^\d+_'),
       '',
@@ -174,7 +283,7 @@ class LocalMusicStore {
       title: title.isEmpty ? fileName : title,
       artist: artist,
       platform: MusicPlatform.wy,
-      localPath: path,
+      localPath: LocalPaths.storedName(kLocalMusicSubdir, fileName),
     );
   }
 }
