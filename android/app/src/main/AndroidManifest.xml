@@ -29,14 +29,6 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <!-- 启动闪退修复（2026-11-18）：Android 上 Impeller/Vulkan 在液态玻璃
-                 fragment shader 预热/首帧渲染时崩（"HAo Studio keeps stopping"，
-                 首页都没出来）。强制回 Skia；FragmentProgram 在 Skia 下照样跑
-                 （编译成 SkSL runtime effect），玻璃退化成简单渲染，App 能正常用。 -->
-            <meta-data
-              android:name="io.flutter.embedding.android.EnableImpeller"
-              android:value="false"
-              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -47,6 +39,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 启动闪退修复（2026-11-18）：Android 上 Impeller/Vulkan 在液态玻璃
+             fragment shader 预热/首帧渲染时崩（"HAo Studio keeps stopping"，
+             首页都没出来）。强制回 Skia；FragmentProgram 在 Skia 下照样跑
+             （编译成 SkSL runtime effect），玻璃退化成简单渲染，App 能正常用。
+             注意：按 Flutter 官方文档，这个开关必须放在 <application> 下，
+             放在 <activity> 里引擎读不到（构建 #18 就是这么白打的）。 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
