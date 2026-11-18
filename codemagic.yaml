@@ -89,20 +89,19 @@ workflows:
             echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"
           fi
           ls "$ANDROID_HOME/ndk"
-      - name: Restore release keystore
+      - name: Write release key.properties from Codemagic code signing
         script: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "ANDROID_KEYSTORE_BASE64 is not set in Codemagic environment variables"
+          if [ -z "$CM_KEYSTORE_PATH" ]; then
+            echo "CM_KEYSTORE_PATH is not set — upload the release keystore in Codemagic code signing settings"
             exit 1
           fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > $CM_BUILD_DIR/android/keystore.p12
           cat > $CM_BUILD_DIR/android/key.properties <<EOF
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyPassword=$ANDROID_KEY_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          storeFile=../keystore.p12
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
           EOF
-          ls -l $CM_BUILD_DIR/android/keystore.p12
+          ls -l "$CM_KEYSTORE_PATH"
       - name: Build release APK
         script: |
           flutter build apk --release
