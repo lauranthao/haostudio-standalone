@@ -45,6 +45,23 @@ subprojects {
     // :app 不在这里改——它自己的 app/build.gradle.kts 里已经是
     // compileOptions 17 + Kotlin 17（Flutter 3.47 模板自带），
     // 到这里时它的值已被 finalized，再改会直接报错（构建 #11 的教训）。
+    // 有的插件在自己的构建文件里后写 compileOptions（screen_brightness_android
+    // 写死 1.8），会盖掉上面 withId 时设的值，所以这里在配置完成后再设一次
+    // compileOptions——此时各插件自己的脚本已跑完，而构建工具还没读这个值去配
+    // Java 编译任务（构建 #12 的教训）。:app 在执行到这里时已被评估过，跳过
+    // 它（它自己的文件里已是 17/17）。
+    if (!state.executed) {
+        afterEvaluate {
+            (extensions.findByName("android") as? groovy.lang.GroovyObject)?.let { androidExt ->
+                androidExt.withGroovyBuilder {
+                    "compileOptions" {
+                        setProperty("sourceCompatibility", JavaVersion.VERSION_17)
+                        setProperty("targetCompatibility", JavaVersion.VERSION_17)
+                    }
+                }
+            }
+        }
+    }
     if (state.executed) {
         tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
             sourceCompatibility = "17"
