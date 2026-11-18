@@ -20,14 +20,21 @@ Future<T?> showGlassDialog<T>(
     context: context,
     barrierDismissible: barrierDismissible,
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    builder: (ctx) => Center(
-      child: GlassCard(
-        radius: 24,
-        shadow: GlassShadow.panel,
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-        child: SizedBox(
-          width: MediaQuery.of(ctx).size.width * 0.82,
-          child: builder(ctx),
+    // Material ancestor is required: the dialog route has none, and
+    // without it Text falls back to the framework's debug style
+    // (red monospace + double yellow underline). Transparent so the
+    // glass card's own surface stays visible.
+    builder: (ctx) => Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: GlassCard(
+          radius: 24,
+          shadow: GlassShadow.panel,
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: SizedBox(
+            width: MediaQuery.of(ctx).size.width * 0.82,
+            child: builder(ctx),
+          ),
         ),
       ),
     ),

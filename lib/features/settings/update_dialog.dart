@@ -55,106 +55,116 @@ Future<UpdateDialogAction?> showUpdateDialog(
     context: context,
     barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    builder: (ctx) => Center(
-      child: GlassCard(
-        radius: 24,
-        shadow: GlassShadow.panel,
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 480),
-          child: SizedBox(
-            width: MediaQuery.of(ctx).size.width * 0.82,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '发现新版本 v${info.version}',
-                  style: TextStyle(
-                    color: theme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
+    // Material ancestor is required: the dialog route has none, and
+    // without it Text falls back to the framework's debug style
+    // (red monospace + double yellow underline). Transparent so the
+    // glass card's own surface stays visible.
+    builder: (ctx) => Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: GlassCard(
+          radius: 24,
+          shadow: GlassShadow.panel,
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 480),
+            child: SizedBox(
+              width: MediaQuery.of(ctx).size.width * 0.82,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '发现新版本 v${info.version}',
+                    style: TextStyle(
+                      color: theme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Text(
-                      (info.changelog == null || info.changelog!.isEmpty)
-                          ? '新版本已发布，点击下载在浏览器中获取安装包。'
-                          : info.changelog!,
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        (info.changelog == null || info.changelog!.isEmpty)
+                            ? '新版本已发布，点击下载在浏览器中获取安装包。'
+                            : info.changelog!,
+                        style: TextStyle(
+                          color: theme.textSecondary,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () async {
+                      final uri = Uri.tryParse(info.ipaUrl);
+                      if (uri == null) {
+                        Get.snackbar('下载失败', '下载链接无效');
+                        return;
+                      }
+                      final opened = await urlOpener(uri);
+                      if (!ctx.mounted) return;
+                      if (opened) {
+                        Navigator.of(ctx).pop(UpdateDialogAction.download);
+                      } else {
+                        Get.snackbar('下载失败', '无法打开下载链接，请检查网络后重试');
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.accent,
+                      // Theme-derived (light: white, dark: near-black) so
+                      // the label stays readable on every accent, incl. gold.
+                      foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      '下载',
                       style: TextStyle(
-                        color: theme.textSecondary,
-                        fontSize: 14,
-                        height: 1.5,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () async {
-                    final uri = Uri.tryParse(info.ipaUrl);
-                    if (uri == null) {
-                      Get.snackbar('下载失败', '下载链接无效');
-                      return;
-                    }
-                    final opened = await urlOpener(uri);
-                    if (!ctx.mounted) return;
-                    if (opened) {
-                      Navigator.of(ctx).pop(UpdateDialogAction.download);
-                    } else {
-                      Get.snackbar('下载失败', '无法打开下载链接，请检查网络后重试');
-                    }
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.accent,
-                    // Theme-derived (light: white, dark: near-black) so
-                    // the label stays readable on every accent, incl. gold.
-                    foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    '下载',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        // Pop first so the dialog dismisses instantly;
-                        // record the skip in the background. Awaiting
-                        // the Hive disk write before popping held the
-                        // dialog open on a slow write (and made the
-                        // dismiss timing depend on disk I/O).
-                        onPressed: () {
-                          Navigator.of(ctx).pop(UpdateDialogAction.skipped);
-                          unawaited(service.skipVersion(info.version));
-                        },
-                        child: Text(
-                          '跳过此版本',
-                          style: TextStyle(color: theme.textSecondary),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          // Pop first so the dialog dismisses instantly;
+                          // record the skip in the background. Awaiting
+                          // the Hive disk write before popping held the
+                          // dialog open on a slow write (and made the
+                          // dismiss timing depend on disk I/O).
+                          onPressed: () {
+                            Navigator.of(ctx).pop(UpdateDialogAction.skipped);
+                            unawaited(service.skipVersion(info.version));
+                          },
+                          child: Text(
+                            '跳过此版本',
+                            style: TextStyle(color: theme.textSecondary),
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () =>
-                            Navigator.of(ctx).pop(UpdateDialogAction.later),
-                        child: Text(
-                          '稍后',
-                          style: TextStyle(color: theme.textSecondary),
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () =>
+                              Navigator.of(ctx).pop(UpdateDialogAction.later),
+                          child: Text(
+                            '稍后',
+                            style: TextStyle(color: theme.textSecondary),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
