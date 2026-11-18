@@ -432,34 +432,55 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                         children: [
                           _topBar(),
                           Expanded(
-                            child: SingleChildScrollView(
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: Column(
-                                  children: [
-                                    // Two-sided cover box: front = cover,
-                                    // back = lyrics (chen 2026-11-17).
-                                    // Swipe-to-switch lives ONLY on the
-                                    // cover side; title / progress /
-                                    // lyrics / blank areas do not switch
-                                    // songs.
-                                    _coverOrLyrics(song, lyricIdx),
-                                    const SizedBox(height: 14),
-                                    _qualityBadge(),
-                                    const SizedBox(height: 18),
-                                    _titleRow(song),
-                                    const SizedBox(height: 16),
-                                    _progressBar(),
-                                    const SizedBox(height: 20),
-                                    _transportRow(song),
-                                    const SizedBox(height: 12),
-                                    _bottomIconRow(song),
-                                  ],
-                                ),
-                              ),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final gap = _flexGap(
+                                  constraints.maxHeight,
+                                  MediaQuery.of(context).size,
+                                );
+                                return SingleChildScrollView(
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        // Leftover height spread over
+                                        // three equal flexible gaps:
+                                        // Kumone classic absorbs it all
+                                        // in its lyrics preview
+                                        // (NowPlayingView.swift
+                                        // classicCompactLayout), which our
+                                        // cover face doesn't have — so the
+                                        // free height is shared instead of
+                                        // pooling at the bottom (that
+                                        // empty band was the bug).
+                                        // Controls stay pinned near the
+                                        // bottom, 24pt up, like Kumone.
+                                        // On short screens the gaps shrink
+                                        // to 0 and the scroll view clips
+                                        // exactly as before — no overflow.
+                                        SizedBox(height: gap),
+                                        _coverOrLyrics(song, lyricIdx),
+                                        const SizedBox(height: 14),
+                                        _qualityBadge(),
+                                        const SizedBox(height: 18),
+                                        _titleRow(song),
+                                        const SizedBox(height: 16),
+                                        SizedBox(height: gap),
+                                        _progressBar(),
+                                        SizedBox(height: gap),
+                                        _transportRow(song),
+                                        const SizedBox(height: 12),
+                                        _bottomIconRow(song),
+                                        const SizedBox(height: 24),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -551,12 +572,31 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// timingCurve(0.16, 1, 0.3, 1, 0.42) (NowPlayingView.swift:1730-1738).
   /// `showLyrics` false => cover, true => lyrics; the flag is the user's
   /// last choice and is NOT reset on song change.
+  /// Kumone classic cover size (NowPlayingView.swift:663):
+  /// min(width - 64, height * 0.38, 300). Single source of truth —
+  /// the layout math in [_flexGap] must use the same number.
+  static double _coverSizeFor(Size size) =>
+      math.min(math.min(size.width - 64, size.height * 0.38), 300.0);
+
+  /// One of the three flexible gaps in the player column. The other
+  /// sections have (near-)fixed heights: badge ~20 (6 padding +
+  /// 12pt text), title ~46 (21pt + 5 + 13.5pt), progress ~43 (24
+  /// bar + 5 + ~14 times row), bottom row 44, transport 58 wide /
+  /// 52 narrow (same <360 rule as _transportRow's LayoutBuilder,
+  /// measured on screen width - 32 outer padding); fixed gaps
+  /// 14/18/16/12 + 24 bottom padding. A few pt of estimate error
+  /// only leaves a hair of space or clips a hair — the scroll view
+  /// absorbs it, and the render goldens show the real result.
+  double _flexGap(double available, Size size) {
+    final transportH = size.width - 32 < 360 ? 52.0 : 58.0;
+    const rest = 14.0 + 20 + 18 + 46 + 16 + 43 + 12 + 44 + 24;
+    final slack = available - _coverSizeFor(size) - transportH - rest;
+    return slack > 0 ? slack / 3 : 0;
+  }
+
   Widget _coverOrLyrics(Song song, int lyricIdx) {
     final size = MediaQuery.of(context).size;
-    final coverSize = math.min(
-      math.min(size.width - 64, size.height * 0.38),
-      300.0,
-    );
+    final coverSize = _coverSizeFor(size);
     _lyricsViewportHeight = coverSize;
     // Lyrics use near-full width (16pt margins each side, capped so
     // a tablet line never gets absurdly long); the cover stays a
