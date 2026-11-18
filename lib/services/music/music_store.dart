@@ -350,9 +350,16 @@ class MusicStore {
             .map(Song.fromJson)
             .toList();
         final index = (decoded['index'] as num?)?.toInt() ?? -1;
+        // An out-of-range / missing index with a non-empty queue
+        // recovers to the first song: onInit copies this index into
+        // currentIndex, and -1 with songs present leaves the player
+        // with a queue but no current song (nothing selected, nothing
+        // resumes). -1 is only meaningful for an empty queue.
         return (
           songs: songs,
-          index: (index >= 0 && index < songs.length) ? index : -1,
+          index: songs.isEmpty
+              ? -1
+              : (index >= 0 && index < songs.length ? index : 0),
         );
       }
     } catch (_) {}
@@ -390,6 +397,11 @@ class MusicStore {
   static Future<void> saveResume(String identityKey, int seconds) async {
     if (seconds <= 0) return;
     final map = getResumeMap();
+    // Re-saving refreshes recency: a plain map assignment keeps the
+    // original insertion position, so a song resumed every day would
+    // still be evicted first as "oldest". Remove-then-set moves it to
+    // the end, and the cap below drops the truly-oldest entries.
+    map.remove(identityKey);
     map[identityKey] = seconds;
     if (map.length > 200) {
       // Drop oldest entries (insertion order is preserved by the map).

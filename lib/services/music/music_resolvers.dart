@@ -862,14 +862,20 @@ class MusicResolvers {
   /// serve the song (e.g. zddyr has hires but no master).
   static const _perJobTimeout = Duration(seconds: 2);
 
+  /// [excludeNames]: job NAMES ([PlayUrlResult.via] values) to skip
+  /// entirely in this pass — the trial-clip retry (controller
+  /// `_handleTrial`) excludes the job that served the trial URL so the
+  /// next-fastest job gets its chance. Excluded jobs are NOT recorded
+  /// as failures (no cooldown, no speed penalty): they were not tried.
   Future<PlayUrlResult?> _resolvePass(
     AudioQuality q,
     String songId,
     MusicPlatform pf,
     String title,
     Duration budget,
-    Set<String> skipTimedOut,
-  ) async {
+    Set<String> skipTimedOut, [
+    Set<String> excludeNames = const <String>{},
+  ]) async {
     // LX script jobs (M-P0-6): kick off engine load on first use; jobs
     // appear once the engine has loaded, so the first resolve after
     // launch may predate them — later resolves include them.
@@ -878,6 +884,7 @@ class MusicResolvers {
     if (jobs.isEmpty) return null;
     final deadline = DateTime.now().add(budget);
     for (final job in jobs) {
+      if (excludeNames.contains(job.name)) continue;
       if (skipTimedOut.contains(job.key)) continue;
       final remaining = deadline.difference(DateTime.now());
       if (remaining <= Duration.zero) break;
@@ -925,15 +932,21 @@ class MusicResolvers {
   /// Main entry. Returns null when no resolver yields a URL at any
   /// tier. The caller always passes the user's chosen tier for every
   /// new song (downgrade never persists — rule "fi").
+  /// [excludeJobs]: job NAMES ([PlayUrlResult.via] values) to skip in
+  /// every tier pass — the trial-clip retry excludes the job that
+  /// served the trial URL. When non-empty the URL cache is bypassed
+  /// for the read (the previous answer is exactly what is being
+  /// excluded), but the new result is still cached.
   Future<PlayUrlResult?> resolvePlayUrl(
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async {
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async {
     if (songId.isEmpty) return null;
     final cacheKey = '$songId|${platform.code}|${quality.code}';
-    final cached = _cache.get(cacheKey);
+    final cached = excludeJobs.isEmpty ? _cache.get(cacheKey) : null;
     if (cached != null) return cached;
     // Warm the xinghai token in parallel: its first fetch can take
     // seconds, and the sequential pass must not stall on it.
@@ -959,6 +972,7 @@ class MusicResolvers {
         title,
         budget,
         skipTimedOut,
+        excludeJobs,
       );
       first = false;
       // First playable URL wins, at any tier (chen 2026-11-17 铁律):

@@ -64,6 +64,29 @@ just_audio exposes no handle to it (see below).
    factory is the canonical documented constructor (Apple sample code
    and every ObjC tutorial use it). Build #10's log had no other error,
    so `audioTapProcessor` resolves fine once the type is right.
+7. **Forward-buffer default (2026-11-18, playback audit): `UriAudioSource.m`
+   `createPlayerItem` sets `item.preferredForwardBufferDuration = 10.0`
+   for REMOTE http(s) items when no value was configured.** The app
+   constructs `AudioPlayer()` with no `audioLoadConfiguration`, so
+   `LoadControl.preferredForwardBufferDuration` arrives as `NSNull` and
+   upstream leaves the property at 0 (system chooses — small on
+   progressive download); network songs stalled mid-track and at
+   crossfade start. This is the upstream mechanism
+   (`DarwinLoadControl.preferredForwardBufferDuration`, Dart `Duration`
+   -> microseconds over the channel -> `/1000/1000.0` seconds), not a
+   per-song method channel: the value is set once at item creation,
+   the only place just_audio makes an `AVPlayerItem`, so it covers
+   both A/B crossfade players and gapless `playerItem2`. An explicit
+   `DarwinLoadControl` value still wins (including an explicit 0);
+   `file://` items are untouched. 10 s basis: ~400 KB at 320 kbps,
+   ~1.25 MB at lossless ~1 Mbps per item; covers multi-second CDN
+   hiccups without the start delay / skipped-bytes waste of 30-60 s.
+   Constant: `HaoDefaultForwardBufferDurationSeconds` at the top of
+   `UriAudioSource.m`. If the app ever passes an explicit
+   `AudioLoadConfiguration(darwinLoadControl:
+   DarwinLoadControl(preferredForwardBufferDuration: ...))` at
+   `AudioPlayer()` construction, that value takes over and this
+   default becomes inert.
 
 ## Behaviour contract (what Dart relies on)
 

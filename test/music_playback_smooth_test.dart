@@ -58,8 +58,9 @@ class _DeferredResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) =>
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) =>
       completer.future;
 }
 
@@ -72,8 +73,9 @@ class _NullResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async =>
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async =>
       null;
 }
 
@@ -86,8 +88,9 @@ class _UrlResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async =>
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async =>
       PlayUrlResult(
         url: 'https://example.com/a.flac',
         candidates: const ['https://example.com/a.flac'],

@@ -86,6 +86,11 @@ void main() {
     c.isPlaying.value = true;
     c.position.value = const Duration(seconds: 90); // 1:30 into B
     c.duration.value = const Duration(seconds: 200);
+    // The loaded identity is the fourth piece of the simulated
+    // "B is loaded and playing" state (the controller records it
+    // when a real load opens; this harness loads nothing, so the
+    // seam sets it directly).
+    c.loadedIdentityKeyForTest = _song('2', 'B').identityKey;
   });
 
   tearDown(() async {

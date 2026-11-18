@@ -87,8 +87,9 @@ class _FakeResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async {
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async {
     return altResult;
   }
 }

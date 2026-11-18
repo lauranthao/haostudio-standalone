@@ -5,6 +5,22 @@
 #import "HaoEqualizer.h"
 #import <AVFoundation/AVFoundation.h>
 
+// HAo fork default (see HAO_PATCH.md §7): seconds of audio AVPlayer
+// should keep buffered ahead of the playhead for REMOTE http(s) items
+// when the app did not configure DarwinLoadControl
+// .preferredForwardBufferDuration. Upstream just_audio leaves the
+// property at its default (0 = system chooses, small on progressive
+// download), and the app constructs AudioPlayer() with no
+// audioLoadConfiguration, so network songs stalled mid-track and at
+// crossfade start. 10 s: ~400 KB at 320 kbps, ~1.25 MB at lossless
+// ~1 Mbps per item — negligible — while covering a multi-second CDN
+// hiccup / network handover. Larger (30-60 s) would delay first audio
+// more on slow networks and waste bandwidth on skips; smaller (3-5 s)
+// would not cover the stalls chen reported. An explicit
+// DarwinLoadControl value always wins over this default, and file://
+// items never get it (local disk needs no forward buffer).
+static const double HaoDefaultForwardBufferDurationSeconds = 10.0;
+
 @implementation UriAudioSource {
     NSString *_uri;
     IndexedPlayerItem *_playerItem;
@@ -34,15 +50,16 @@
 - (IndexedPlayerItem *)createPlayerItem:(NSString *)uri {
     IndexedPlayerItem *item;
     NSMutableDictionary *assetOptions = [[NSMutableDictionary alloc] init];
-    
+    BOOL isRemote = ![uri hasPrefix:@"file://"];
+
     if (_options != (id)[NSNull null]) {
         NSDictionary *darwinOptions = _options[@"darwinAssetOptions"];
         if (darwinOptions != (id)[NSNull null]) {
             assetOptions[AVURLAssetPreferPreciseDurationAndTimingKey] = darwinOptions[@"preferPreciseDurationAndTiming"];
         }
     }
-    
-    if ([uri hasPrefix:@"file://"]) {
+
+    if (!isRemote) {
         NSURL *fileURL = [NSURL fileURLWithPath:[[uri stringByRemovingPercentEncoding] substringFromIndex:7]];
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:fileURL options:assetOptions];
         item = [[IndexedPlayerItem alloc] initWithAsset:asset];
@@ -78,8 +95,18 @@
         item.audioTimePitchAlgorithm = AVAudioTimePitchAlgorithmTimeDomain;
     }
     if (@available(macOS 10.12, iOS 10.0, *)) {
-        if (_loadControl.preferredForwardBufferDuration != (id)[NSNull null]) {
-            item.preferredForwardBufferDuration = (double)([_loadControl.preferredForwardBufferDuration longLongValue]/1000) / 1000.0;
+        NSNumber *configured = _loadControl.preferredForwardBufferDuration;
+        if (configured != nil && configured != (id)[NSNull null]) {
+            // Upstream 0.10.6 path, unchanged: Dart Duration arrives as
+            // microseconds (DarwinLoadControlMessage encodes
+            // inMicroseconds), so /1000 (ms, integer) then /1000.0 (s).
+            // An explicit value always wins, including an explicit 0.
+            item.preferredForwardBufferDuration = (double)([configured longLongValue]/1000) / 1000.0;
+        } else if (isRemote) {
+            // HAo fork default (see top of file): no configured value
+            // (the app passes no audioLoadConfiguration) -> 10 s.
+            // file:// items keep the system default (0).
+            item.preferredForwardBufferDuration = HaoDefaultForwardBufferDurationSeconds;
         }
     }
     if (@available(iOS 9.0, macOS 10.11, *)) {

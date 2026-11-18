@@ -79,6 +79,46 @@ class AvMusicPlayer {
 
   AvMusicPlayerStreams get stream => AvMusicPlayerStreams(_player);
 
+  /// Pre-buffer [url] without playing it: the standby player loads
+  /// the next track's audio while the current track is still sounding,
+  /// so a track change starts from buffered audio instead of a cold
+  /// open (chen 2026-11-18: playback not smooth — the old prefetch
+  /// only resolved the URL). Returns true when the source loaded.
+  /// A later [open] on this player supersedes the preload. A failed
+  /// preload leaves nothing behind ([isPreloadedFor] stays false).
+  var _preloadedUrl = '';
+
+  Future<bool> preload(String url) async {
+    // No native audio on this platform (Linux tests): never touch
+    // just_audio's platform channel — its setUrl throws
+    // MissingPluginException from an unawaited internal future, which
+    // surfaces as an unhandled async error in tests.
+    if (!isSupported) return false;
+    _preloadedUrl = '';
+    if (!isPlayableUrl(url)) return false;
+    try {
+      if (url.startsWith('file://')) {
+        await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
+      } else {
+        await _player.setUrl(url);
+      }
+      // The preloaded source IS loaded: play()/seek() must work on
+      // this player once the crossfade swaps it in as active.
+      _hasSource = true;
+      _preloadedUrl = url;
+      return true;
+    } on PlayerException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// True when this player already holds [url] buffered from
+  /// [preload] (and nothing else was opened since).
+  bool isPreloadedFor(String url) =>
+      _preloadedUrl.isNotEmpty && _preloadedUrl == url;
+
   /// Open [url] (http(s) stream or file:// local download) and start
   /// playing when [play] is true.
   ///
@@ -90,6 +130,7 @@ class AvMusicPlayer {
   /// that failure IS reported on [stream.error], exactly as before.
   Future<bool> open(String url, {bool play = true}) async {
     _hasSource = false;
+    _preloadedUrl = '';
     // Never let a URL NSURL rejects reach AVURLAsset: it throws
     // NSInvalidArgumentException and kills the process (see
     // isPlayableUrl). Refuse it here instead.

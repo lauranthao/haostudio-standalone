@@ -266,8 +266,9 @@ class _ThrowingResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async {
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async {
     throw StateError('boom');
   }
 }

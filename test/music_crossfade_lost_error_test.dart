@@ -101,8 +101,9 @@ class _UrlResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async {
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async {
     resolvedIds.add(songId);
     return PlayUrlResult(
       url: _url(songId),
@@ -164,13 +165,17 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 2600));
 
       // The failure path advanced past the failed song (twice), to
-      // the end of the queue — it did not sit silent on song B.
+      // the end of the queue — it did not sit silent on song B. And
+      // the give-up PAUSES the previous song (chen 2026-11-18: a
+      // failed song must not leave the previous song playing — the
+      // old crossfade fallback left it sounding).
       expect(c.currentIndex.value, 2);
       expect(resolvers.resolvedIds, ['2', '3']);
       // Both crossfade opens were attempted (B, then C after the
       // failure path advanced); neither started a fade.
       expect(playerB.openedUrls, [_url('2'), _url('3')]);
-      expect(playerA.pauseCalls, 0);
+      expect(playerA.pauseCalls, 1);
+      expect(c.lastNotice.value, contains('已是最后一首'));
       expect(c.isResolving.value, isFalse);
     });
 

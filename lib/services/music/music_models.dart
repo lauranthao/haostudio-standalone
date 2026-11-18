@@ -339,7 +339,19 @@ class Song {
   String get dedupeKey => '${platform.code}|$songId|$title';
 
   /// Identity key for favourites / recent / listen log.
-  String get identityKey => '${platform.code}|$songId';
+  /// Identity for queue / favourites / history / resume keys.
+  ///
+  /// A song with an empty songId MUST NOT share a key with every
+  /// other empty-id song on the same platform (the old
+  /// `'platform|'` key did exactly that: tapping a second empty-id
+  /// song was treated as "the first song already loaded" and resumed
+  /// the previous song). Empty ids fall back to title+artist+album,
+  /// which is stable for the same song and distinct across songs.
+  /// Non-empty ids keep the exact old key, so every persisted key
+  /// (favourites, history, resume map) stays valid.
+  String get identityKey => songId.isNotEmpty
+      ? '${platform.code}|$songId'
+      : '${platform.code}|$title|$artist|$album';
 
   final String songId;
   final String title;

@@ -127,8 +127,9 @@ class _ControlledResolvers extends MusicResolvers {
     String songId,
     MusicPlatform platform,
     AudioQuality quality,
-    String title,
-  ) async {
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+  }) async {
     resolvedTitles.add(title);
     final c = pending[title];
     if (c != null) return c.future;
