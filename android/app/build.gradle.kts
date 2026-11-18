@@ -7,6 +7,16 @@ plugins {
 import java.io.FileInputStream
 import java.util.Properties
 
+// fplayer-core (IJK)：flv_lzc 把 AAR 放在自己的 android/libs/ 里，但 Gradle 解析
+// :app 的 releaseRuntimeClasspath 时只用 :app 自己的仓库，不会去看插件的仓库，
+// 所以构建找不到 io.github.flutterplayer:fplayer-core:1.0.4-purelive16k。
+// AAR 和 .pom 已放到仓库内的 android/maven-repo，这里声明成本地 Maven 仓库。
+repositories {
+    maven {
+        url = uri("../maven-repo")
+    }
+}
+
 // Release signing: values come from android/key.properties, which is
 // generated on the build machine from Codemagic environment variables
 // (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD /
