@@ -8,10 +8,10 @@
 // or a cache-buster.
 
 /// Current app version (CFBundleShortVersionString).
-const String kAppVersion = '1.1.0';
+const String kAppVersion = '1.1.1';
 
 /// Current build number (CFBundleVersion).
-const int kAppBuild = 11;
+const int kAppBuild = 12;
 
 /// Online-update manifest (primary). Served from the shop server, which
 /// is reachable from mainland China. The published version.json in the
