@@ -79,6 +79,8 @@ workflows:
       java: 17
       groups:
         - haostudio
+      android_signing:
+        - haostudio
     scripts:
       - name: Get Flutter packages
         script: |
