@@ -19,12 +19,16 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// flutter_js（0.8.7）等插件在自己的 android/build.gradle 里把 Kotlin 编译目标
-// 写死成 1.8，而工程的 Java 编译目标是 11；AGP 9 要求 Kotlin 目标不低于 Java
-// 目标，否则打包失败。这里统一把所有子工程的 Kotlin 编译目标提到 17：
-// 既盖住 Java 11 的插件，也不动本身就是 17 的插件（android_file_picker）。
+// 各插件的 Java/Kotlin 编译目标各不相同：flutter_js 是 Java 11/Kotlin 1.8，
+// android_file_picker 是 Java 17/Kotlin 17。AGP 9 要求同一模块的 Java 与
+// Kotlin 目标必须完全相等（三次构建验证：11/1.8、17/11、11/17 全失败），
+// 所以不能只统 Kotlin——这里把所有子工程的 Java 和 Kotlin 目标一起提到 17。
 // 注意：kotlinOptions 在 KGP 2.4 下是报错级废弃，必须用 compilerOptions DSL。
 subprojects {
+    tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
+    }
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
