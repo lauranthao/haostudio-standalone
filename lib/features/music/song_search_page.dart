@@ -58,6 +58,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   // capsule in here; the service is already hotSearch(platform)).
   List<String> _hotWords = [];
   StreamSubscription<SearchStreamUpdate>? _searchSub;
+  StreamSubscription<PlaylistSearchUpdate>? _playlistSub;
+  StreamSubscription<ArtistSearchUpdate>? _artistSub;
   // Prewarm: resolve the first few visible songs' URLs while the
   // user is still looking, so tapping one plays from the cache.
   final _prewarm = SearchPrewarm();
@@ -208,6 +210,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   @override
   void dispose() {
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     _queryController.dispose();
@@ -242,6 +246,16 @@ class _SongSearchPageState extends State<SongSearchPage> {
       _searchSongs(q);
       return;
     }
+    if (_type == _SearchType.playlist) {
+      _searchPlaylists(q);
+      return;
+    }
+    if (_type == _SearchType.artist) {
+      _searchArtists(q);
+      return;
+    }
+    // Album only (stage 2): one platform, its own album endpoint —
+    // still a single await, not streamed (no multi-leg fan-out).
     setState(() {
       _loading = true;
       _searched = true;
@@ -249,59 +263,108 @@ class _SongSearchPageState extends State<SongSearchPage> {
       _shown = kSearchPageSize;
     });
     try {
-      if (_type == _SearchType.playlist) {
-        // Playlist search exists only for wy + kw (QQ's playlist API
-        // rejects the call — see music_api.dart). The other platforms
-        // honestly return nothing instead of another platform's lists.
-        final result = await switch (_platform) {
-          MusicPlatform.wy => _api
-              .searchWyPlaylists(q, 1)
-              .catchError((_) => (items: <PlaylistSummary>[], total: 0)),
-          MusicPlatform.kw => _api
-              .searchKwPlaylists(q, 1)
-              .catchError((_) => (items: <PlaylistSummary>[], total: 0)),
-          _ => Future.value((items: <PlaylistSummary>[], total: 0)),
-        };
-        if (!mounted) return;
-        setState(() {
-          _playlists = result.items;
-          if (_playlists.isEmpty) _error = '没搜到相关歌单';
-        });
-      } else if (_type == _SearchType.artist) {
-        // Artist search: wy / tx / kw have endpoints; Kugou has none
-        // (its artist search was never ported) — empty, not borrowed.
-        final artists = await switch (_platform) {
-          MusicPlatform.wy => _api
-              .searchWyArtists(q)
-              .catchError((_) => <ArtistSummary>[]),
-          MusicPlatform.tx => _api
-              .searchTxArtists(q, 1)
-              .catchError((_) => <ArtistSummary>[]),
-          MusicPlatform.kw => _api
-              .searchKwArtists(q)
-              .catchError((_) => <ArtistSummary>[]),
-          _ => Future.value(<ArtistSummary>[]),
-        };
-        if (!mounted) return;
-        setState(() {
-          _artists = artists;
-          if (_artists.isEmpty) _error = '没搜到相关歌手';
-        });
-      } else {
-        // _SearchType.album (stage 2): one platform, its own album
-        // endpoint — see MusicApi.searchAlbums.
-        final albums = await _api
-            .searchAlbums(_platform, q)
-            .catchError((_) => <AlbumSummary>[]);
-        if (!mounted) return;
-        setState(() {
-          _albums = albums;
-          if (_albums.isEmpty) _error = '没搜到相关专辑';
-        });
-      }
+      // _SearchType.album (stage 2): one platform, its own album
+      // endpoint — see MusicApi.searchAlbums.
+      final albums = await _api
+          .searchAlbums(_platform, q)
+          .catchError((_) => <AlbumSummary>[]);
+      if (!mounted) return;
+      setState(() {
+        _albums = albums;
+        if (_albums.isEmpty) _error = '没搜到相关专辑';
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Streaming playlist search: results appear as each platform leg
+  /// returns (wy + kw, or just the capsule platform when set), the
+  /// rest append after it — same generation guard and pending footer
+  /// as [_searchSongs]. A leg that fails or times out contributes
+  /// nothing and never blocks the others.
+  void _searchPlaylists(String q) {
+    final gen = ++_pageGen;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() {
+      _loading = true;
+      _searched = true;
+      _error = '';
+      _shown = kSearchPageSize;
+      _playlists = [];
+      _pendingPlatforms = {};
+    });
+    _playlistSub = _searchService
+        .searchPlaylistsStream(q, onlyPlatform: _platform)
+        .listen(
+          (update) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _playlists = update.items;
+              _pendingPlatforms = update.pending;
+            });
+          },
+          onError: (_) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              _error = '搜索失败，请重试';
+            });
+          },
+          onDone: () {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              if (_playlists.isEmpty) _error = '没搜到相关歌单';
+            });
+          },
+          cancelOnError: false,
+        );
+  }
+
+  /// Streaming artist search: same convention as [_searchPlaylists]
+  /// (legs wy + tx + kw, or just the capsule platform).
+  void _searchArtists(String q) {
+    final gen = ++_pageGen;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() {
+      _loading = true;
+      _searched = true;
+      _error = '';
+      _shown = kSearchPageSize;
+      _artists = [];
+      _pendingPlatforms = {};
+    });
+    _artistSub = _searchService
+        .searchArtistsStream(q, onlyPlatform: _platform)
+        .listen(
+          (update) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _artists = update.items;
+              _pendingPlatforms = update.pending;
+            });
+          },
+          onError: (_) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              _error = '搜索失败，请重试';
+            });
+          },
+          onDone: () {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              if (_artists.isEmpty) _error = '没搜到相关歌手';
+            });
+          },
+          cancelOnError: false,
+        );
   }
 
   /// Streaming song search: results appear as each platform leg
@@ -311,6 +374,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _searchSongs(String q) {
     final gen = ++_pageGen;
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     setState(() {
@@ -379,6 +444,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _clearSearch() {
     _pageGen++;
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     _queryController.clear();
@@ -401,6 +468,27 @@ class _SongSearchPageState extends State<SongSearchPage> {
     if (_pendingPlatforms.isEmpty) return '正在搜索…';
     final names = _pendingPlatforms.map((p) => p.badgeName).join('、');
     return '正在搜索 $names…';
+  }
+
+  /// Bottom "still searching…" row while legs are pending (same as the
+  /// song list's footer). Only rendered when the list already has rows
+  /// — with no rows yet the full-screen spinner shows instead.
+  Widget _pendingFooter(HaoTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text(_pendingLabel, style: TextStyle(color: theme.textMuted)),
+        ],
+      ),
+    );
   }
 
   void _playSong(Song song, List<Song> queue) {
@@ -574,10 +662,15 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Widget _results(HaoTheme theme) {
     // Streaming: show the list as soon as the first leg returns, even
     // while other legs are still pending. The full-screen spinner is
-    // only for "nothing yet" (song search with no results so far);
-    // playlist/artist searches are not streamed, so they keep the
-    // plain `_loading` spinner.
-    if (_loading && (_type != _SearchType.song || _songs.isEmpty)) {
+    // only for "nothing yet" (the current type's list is still empty);
+    // once rows exist, the pending legs show as a footer row instead.
+    final listEmpty = switch (_type) {
+      _SearchType.song => _songs.isEmpty,
+      _SearchType.playlist => _playlists.isEmpty,
+      _SearchType.artist => _artists.isEmpty,
+      _SearchType.album => _albums.isEmpty,
+    };
+    if (_loading && listEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (!_searched) {
@@ -764,8 +857,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _playlists.length,
+                itemCount: _playlists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
+                  if (i >= _playlists.length) return _pendingFooter(theme);
                   final p = _playlists[i];
                   return GlassCard(
                     radius: 16,
@@ -855,8 +949,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _artists.length,
+                itemCount: _artists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
+                  if (i >= _artists.length) return _pendingFooter(theme);
                   final a = _artists[i];
                   return GlassCard(
                     radius: 16,
