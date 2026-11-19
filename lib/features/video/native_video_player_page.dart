@@ -32,6 +32,7 @@ import '../music/music_player_controller.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
 import '../player/screen_brightness.dart';
+import '../../core/native/system_volume.dart';
 import 'cms_sources.dart';
 import 'video_detail_service.dart';
 import 'video_history_store.dart';
@@ -177,6 +178,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // persisted _rate is never touched, so release always restores it.
   bool _longPressSpeeding = false;
   double _volume = 1.0;
+  // System volume for the right-half vertical drag: _volume is only
+  // the cached level (seed for the sync drag start); the drag itself
+  // writes through SystemVolume, never the player gain.
+  final SystemVolume _systemVolume = SystemVolume();
   double _brightness = 0.5;
   bool _closing = false;
   // Seek drag (horizontal swipe): preview the target, seek once on
@@ -195,6 +200,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<PlaybackStatus>? _statusSub;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<double>? _volumeSub;
   var _openEpoch = 0;
 
   PlayEpisode get _episode => _detail.lines[_lineIdx].episodes[_epIdx];
@@ -229,6 +235,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         _brightness = v;
       }),
     );
+    // System volume for the right-half vertical drag (best-effort;
+    // falls back to the cached _volume when the native channel is
+    // unavailable, e.g. unit tests). Hardware-key / Control Center
+    // changes push back through volumeChanges -> _onExternalVolume.
+    unawaited(
+      _systemVolume.getVolume().then((v) {
+        _volume = v;
+      }),
+    );
+    _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
     _statusSub = _session.onStatus.listen((status) {
       if (!mounted) return;
       if (status == PlaybackStatus.completed) {
@@ -426,12 +442,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       });
       return;
     }
-    // Re-apply the user's volume after a backend swap (episode
-    // change / ladder rebuild resets the backend to full volume).
-    // Speed is re-applied by the session's _swapBackend instead.
-    if (_volume != 1.0) {
-      unawaited(_session.setVolume(_volume));
-    }
+    // Speed is re-applied by the session's _swapBackend after a
+    // backend swap; volume needs nothing — it is the system volume
+    // now, not a per-backend gain.
     // Resume seek, once per episode: open() already verified the first
     // frame, so seeking now lands on a playing stream. Only for the
     // episode the detail page launched with a saved position (> 10 s
@@ -708,6 +721,23 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // re-arms the timer.
   }
 
+  /// Hardware keys / Control Center moved the system volume outside
+  /// the app: show the real value in the drag HUD (same 800 ms linger
+  /// as _onSystemDragEnd). Ignored while a brightness drag is showing.
+  void _onExternalVolume(double volume) {
+    if (!mounted) return;
+    if (_dragSide == _PlayerDragSide.brightness) return;
+    setState(() {
+      _dragSide = _PlayerDragSide.volume;
+      _dragSystemValue = volume;
+      _volume = volume;
+    });
+    _dragHintTimer?.cancel();
+    _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _dragSide = null);
+    });
+  }
+
   // -- Vertical drag: left half brightness, right half volume. --
 
   void _onSystemDragStart(DragStartDetails details) {
@@ -738,7 +768,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       unawaited(ScreenBrightness.setBrightness(_dragSystemValue));
     } else {
       _volume = _dragSystemValue;
-      unawaited(_session.setVolume(_dragSystemValue));
+      unawaited(_systemVolume.setVolume(_dragSystemValue));
     }
   }
 
@@ -937,6 +967,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _durationSub?.cancel();
     _statusSub?.cancel();
     _errorSub?.cancel();
+    _volumeSub?.cancel();
+    _systemVolume.dispose();
     unawaited(_saveProgress());
     unawaited(_session.dispose());
     try {
