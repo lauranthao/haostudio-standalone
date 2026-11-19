@@ -156,11 +156,25 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _applyDetail(VideoDetail detail, dynamic sourceId, String vodId) {
-    final resume = VideoHistoryStore.loadResume(sourceId, vodId, detail.lines);
+    // P1-15: the winning source's own resume key first; when the
+    // detail race switched sources, that key does not exist yet, so
+    // fall back to the film-level row (title + year, any source)
+    // mapped onto THESE lines by episode name.
+    final resume =
+        VideoHistoryStore.loadResume(sourceId, vodId, detail.lines) ??
+        VideoHistoryStore.loadResumeForFilm(
+          title: detail.meta.name,
+          year: detail.meta.year,
+          lines: detail.lines,
+        );
     // Film-level lookup: the same film watched on another source still
     // resumes at its latest episode (history dedups by film, not by
-    // source+vodId).
-    final hist = VideoHistoryStore.findByTitle(detail.meta.name);
+    // source+vodId). Year-qualified so a remake never resumes into
+    // the original's episode.
+    final hist = VideoHistoryStore.findByTitle(
+      detail.meta.name,
+      year: detail.meta.year,
+    );
     final favItem = VideoItem(
       source: sourceId,
       sourceName: detail.meta.name,
@@ -222,7 +236,14 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   String get _playButtonLabel {
-    if (_resume != null) {
+    // P2-2: the resume text is only true for the episode the resume
+    // points at. Switching line / tapping another episode card moves
+    // _lineIdx/_epIdx without clearing _resume, so an unguarded label
+    // would show the old episode's time next to the new episode's
+    // name. No match -> plain episode name, never a stale time.
+    if (_resume != null &&
+        _resume!.lineIdx == _lineIdx &&
+        _resume!.epIdx == _epIdx) {
       return '继续播放 · $_currentEpName · ${formatMmSs(_resume!.position)}';
     }
     return _currentEpName;
@@ -293,8 +314,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _showWatchedInfo() {
-    final hist =
-        VideoHistoryStore.findByTitle(_detail?.meta.name ?? '');
+    final hist = VideoHistoryStore.findByTitle(
+      _detail?.meta.name ?? '',
+      year: _detail?.meta.year ?? '',
+    );
     final theme = HaoTheme.of(context);
     if (!_watched || hist == null) {
       ScaffoldMessenger.of(context).showSnackBar(

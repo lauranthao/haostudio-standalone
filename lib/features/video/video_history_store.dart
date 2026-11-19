@@ -109,13 +109,93 @@ class VideoHistoryStore {
   /// source it was last watched on. The detail page uses this (not
   /// [find]) so a film watched on another source still resumes at its
   /// latest episode instead of starting over at episode 1.
-  static WatchHistoryEntry? findByTitle(String title) {
+  ///
+  /// When [year] is given, only a row with that year — or a legacy
+  /// year-less row (unknown year, pre-P1-16) — matches; a row with a
+  /// DIFFERENT known year never matches, so a remake does not resume
+  /// into the original's position. With no year, any same-title row
+  /// matches (most recent first), as before.
+  static WatchHistoryEntry? findByTitle(String title, {String year = ''}) {
     final key = videoNormTitle(title);
     if (key.isEmpty) return null;
-    for (final e in getAll()) {
-      if (filmKey(e) == key) return e;
+    final y = year.trim();
+    final all = getAll();
+    if (y.isNotEmpty) {
+      for (final e in all) {
+        if (videoNormTitle(e.title) == key && e.year.trim() == y) {
+          return e;
+        }
+      }
+      for (final e in all) {
+        if (videoNormTitle(e.title) == key && e.year.trim().isEmpty) {
+          return e;
+        }
+      }
+      return null;
+    }
+    for (final e in all) {
+      if (filmKey(e).isNotEmpty && videoNormTitle(e.title) == key) {
+        return e;
+      }
     }
     return null;
+  }
+
+  /// Film-level resume (P1-15): the latest history row for this film
+  /// (title + year, any source), mapped onto the CURRENT detail's
+  /// lines by episode NAME. The winning source's own resume key
+  /// ([loadResume]) is tried first by the caller; this is the
+  /// fallback for a source switch, where the new source+vodId has no
+  /// resume key of its own yet.
+  ///
+  /// Only the SAME episode resumes: the stored episode name must
+  /// appear in these lines (searched across ALL lines — the new
+  /// source may order its lines differently). When the name is not
+  /// there the episode list does not line up, so this returns null
+  /// instead of guessing by index and reporting a time for the wrong
+  /// episode. The saved position must also pass the vodLocalLoad rule
+  /// (> 10 s in, >= 30 s from the end, against the STORED duration).
+  static ResumeInfo? loadResumeForFilm({
+    required String title,
+    required String year,
+    required List<PlayLine> lines,
+  }) {
+    if (lines.isEmpty) return null;
+    final hist = findByTitle(title, year: year);
+    if (hist == null) return null;
+    if (hist.position <= 10) return null;
+    if (hist.duration > 0 && hist.position >= hist.duration - 30) {
+      return null;
+    }
+    if (hist.epName.isNotEmpty) {
+      for (var li = 0; li < lines.length; li++) {
+        final eps = lines[li].episodes;
+        for (var ei = 0; ei < eps.length; ei++) {
+          if (eps[ei].name == hist.epName) {
+            return ResumeInfo(
+              lineIdx: li,
+              epIdx: ei,
+              epName: hist.epName,
+              position: hist.position,
+              duration: hist.duration,
+            );
+          }
+        }
+      }
+      return null;
+    }
+    // No episode name recorded: index only, validated + clamped by
+    // the same rule as a stored resume key.
+    return ResumeInfo.fromStored(
+      {
+        'lineIdx': hist.lineIdx,
+        'epIdx': hist.epIdx,
+        'epName': hist.epName,
+        'position': hist.position,
+        'duration': hist.duration,
+      },
+      lines,
+    );
   }
 
   static Future<void> remove(dynamic source, String vodId) async {
