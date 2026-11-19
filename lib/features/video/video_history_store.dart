@@ -362,6 +362,14 @@ class VideoSourcesStore {
   /// - Matched defaults get their `sort` refreshed from the current
   ///   defaults, so a re-prioritisation (fast first, slow last)
   ///   applies; the user's `enabled` toggle is never touched.
+  /// - A stored http:// URL whose default twin is now https:// is
+  ///   upgraded IN PLACE (rev 3: 金鹰/非凡/非凡主站): only the scheme
+  ///   changes — the stored `sort` and `enabled` are kept exactly as
+  ///   the user has them, so a manual reorder / toggle survives the
+  ///   upgrade and no duplicate (http twin + https twin) appears.
+  ///   The upgrade is matched by scheme-insensitive URL, and a
+  ///   stored http twin counts as "present" so the https default is
+  ///   not appended a second time.
   /// - The revision guard means a source the user deliberately
   ///   deleted is never resurrected by a later load: the merge runs
   ///   once per revision, then the stored revision is bumped.
@@ -376,26 +384,44 @@ class VideoSourcesStore {
       }
     } catch (_) {}
     if (seenRev >= kVideoSourcesRevision) return stored;
-    final byUrl = <String, VideoSource>{
-      for (final s in stored) s.apiUrl: s,
+    // A stored url counts as present under both its own scheme and
+    // its https form, so an http twin is not "missing" its https
+    // default (which would append a duplicate).
+    final storedUrls = <String>{
+      for (final s in stored) s.apiUrl,
+      for (final s in stored) toHttps(s.apiUrl),
     };
     var changed = false;
     final merged = stored.map((s) {
       VideoSource? def;
       for (final d in kDefaultVideoSources) {
-        if (d.apiUrl == s.apiUrl) {
+        if (d.apiUrl == s.apiUrl || d.apiUrl == toHttps(s.apiUrl)) {
           def = d;
           break;
         }
       }
-      if (def != null && def.sort != s.sort) {
+      if (def == null) return s;
+      if (def.apiUrl != s.apiUrl) {
+        // Scheme-only upgrade (http→https twin): keep the user's
+        // sort and enabled untouched; only the scheme changes.
+        changed = true;
+        return VideoSource(
+          id: s.id,
+          name: s.name,
+          apiUrl: def.apiUrl,
+          kind: s.kind,
+          enabled: s.enabled,
+          sort: s.sort,
+        );
+      }
+      if (def.sort != s.sort) {
         changed = true;
         return s.copyWith(sort: def.sort);
       }
       return s;
     }).toList();
     for (final def in kDefaultVideoSources) {
-      if (!byUrl.containsKey(def.apiUrl)) {
+      if (!storedUrls.contains(def.apiUrl)) {
         merged.add(def);
         changed = true;
       }

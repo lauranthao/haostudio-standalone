@@ -31,8 +31,13 @@
 import 'video_models.dart';
 
 /// Defaults revision for the merge in VideoSourcesStore.getAll().
-/// 1 = the original 17 sources; 2 = +非凡主站, speed re-prioritised.
-const int kVideoSourcesRevision = 2;
+/// 1 = the original 17 sources; 2 = +非凡主站, speed re-prioritised;
+/// 3 = 金鹰/非凡/非凡主站 apiUrl http→https (verified 2026-11-19:
+/// all three hosts answer real CMS requests over https — see the
+/// header note on the three sources). The merge upgrades a stored
+/// http twin to its https twin in place (same id, sort and enabled —
+/// a user's reorder / toggle is never touched by the upgrade).
+const int kVideoSourcesRevision = 3;
 
 /// UA for CMS video + Douban search-page fallback (must be verbatim —
 /// several upstreams key behaviour off it).
@@ -51,7 +56,9 @@ const List<VideoSource> kDefaultVideoSources = [
   VideoSource(
     id: 12,
     name: '金鹰资源',
-    apiUrl: 'http://jyzyapi.com/api.php/provide/vod',
+    // https verified 2026-11-19 (was http): `?ac=list` over https
+    // returns 200 + the same CMS JSON as http (code 1, total 118675).
+    apiUrl: 'https://jyzyapi.com/api.php/provide/vod',
     kind: 'play',
     enabled: true,
     sort: 5,
@@ -59,7 +66,9 @@ const List<VideoSource> kDefaultVideoSources = [
   VideoSource(
     id: 13,
     name: '非凡资源',
-    apiUrl: 'http://ffzy5.tv/api.php/provide/vod',
+    // https verified 2026-11-19 (was http): `?ac=list` and a real
+    // `?ac=videolist&wd=` search both return 200 over https.
+    apiUrl: 'https://ffzy5.tv/api.php/provide/vod',
     kind: 'search',
     enabled: true,
     sort: 6,
@@ -67,7 +76,9 @@ const List<VideoSource> kDefaultVideoSources = [
   VideoSource(
     id: 18,
     name: '非凡主站',
-    apiUrl: 'http://cj.ffzyapi.com/api.php/provide/vod',
+    // https verified 2026-11-19 (was http): same as 非凡资源 — list
+    // and search both 200 over https.
+    apiUrl: 'https://cj.ffzyapi.com/api.php/provide/vod',
     kind: 'search',
     enabled: true,
     sort: 7,
@@ -310,3 +321,10 @@ const List<String> kKnownVideoAreas = [
 /// Force http:// → https:// (all upstream URLs must be https).
 String toHttps(String url) =>
     url.startsWith('http://') ? 'https://${url.substring(7)}' : url;
+
+/// True when a user-typed source URL would send API requests in the
+/// clear (plain http://). Used by the source settings page to warn
+/// before adding — never to block: the user's own sources are their
+/// call.
+bool isPlainHttpVideoSourceUrl(String url) =>
+    url.trim().toLowerCase().startsWith('http://');

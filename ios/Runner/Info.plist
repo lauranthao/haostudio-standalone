@@ -8,8 +8,17 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- No arbitrary loads since v1.1.3 (P1-10): all 18 default CMS
+		     sources are https, and every other http:// call in lib/ goes
+		     through Dart Dio (raw sockets — ATS does not govern it).
+		     No NSExceptionDomains: no http host is allow-listed.
+		     Residual risk (needs real-device confirmation): an AVPlayer
+		     backend playing a live URL that a platform returns as
+		     plain http would be blocked; no such URL is constructed
+		     anywhere in lib/ (live play URLs are runtime data), and
+		     the default MPV engine is unaffected (own network stack). -->
 		<key>NSAllowsArbitraryLoads</key>
-		<true/>
+		<false/>
 	</dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
