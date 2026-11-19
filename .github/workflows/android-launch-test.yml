@@ -86,8 +86,8 @@ jobs:
             adb exec-out screencap -p > $GITHUB_WORKSPACE/player.png
             adb shell cmd statusbar expand-notifications
             sleep 2
-            adb shell uiautomator dump /sdcard/ui-notif.xml
-            adb pull /sdcard/ui-notif.xml $GITHUB_WORKSPACE/ui-notif.xml
+            adb shell uiautomator dump /sdcard/ui-notif.xml || true
+            adb pull /sdcard/ui-notif.xml $GITHUB_WORKSPACE/ui-notif.xml || true
             adb exec-out screencap -p > $GITHUB_WORKSPACE/notif-shade.png
             adb shell dumpsys notification | grep -i "hao_music_playback" | head -5 || true
             adb shell dumpsys media_session | head -50
