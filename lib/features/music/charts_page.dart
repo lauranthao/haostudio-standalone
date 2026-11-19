@@ -165,7 +165,17 @@ class _ChartsPageState extends State<ChartsPage> {
                           settings: const RouteSettings(
                             name: musicSubPageRouteName,
                           ),
-                          builder: (_) => PlazaDetailPage(playlist: c),
+                          // isChart: the detail page writes this
+                          // chart's first song cover to the charts
+                          // feature-cover cache on load, so the home's
+                          // 排行榜 card stays fresh (see
+                          // PlazaDetailPage). The fake-Dio api is
+                          // passed through for tests.
+                          builder: (_) => PlazaDetailPage(
+                            playlist: c,
+                            api: widget.api,
+                            isChart: true,
+                          ),
                         ),
                       );
                     },

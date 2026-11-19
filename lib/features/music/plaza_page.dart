@@ -371,16 +371,33 @@ class _PlazaPageState extends State<PlazaPage> {
 
 /// Plaza playlist detail: track list + 一键导入 to my playlists.
 class PlazaDetailPage extends StatefulWidget {
-  const PlazaDetailPage({super.key, required this.playlist});
+  const PlazaDetailPage({
+    super.key,
+    required this.playlist,
+    this.api,
+    this.isChart = false,
+  });
 
   final PlaylistSummary playlist;
+
+  /// Test seam (same pattern as ChartsPage.api): a fake-Dio api.
+  /// Defaults to a real [MusicApi].
+  final MusicApi? api;
+
+  /// True when opened from the charts list: the chart's first song
+  /// cover is written to the charts feature-cover cache on load, so
+  /// the home's 排行榜 card stays fresh (a chart's #1 song changes
+  /// weekly; the cache used to refresh only when empty, so the card
+  /// went stale). False for plaza / search playlists (their covers
+  /// have their own cache key, written by PlazaPage._load).
+  final bool isChart;
 
   @override
   State<PlazaDetailPage> createState() => _PlazaDetailPageState();
 }
 
 class _PlazaDetailPageState extends State<PlazaDetailPage> {
-  final _api = MusicApi();
+  late final _api = widget.api ?? MusicApi();
   List<Song>? _tracks;
   var _loading = true;
   var _failed = false;
@@ -405,6 +422,24 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
         _loading = false;
         _failed = r.tracks.isEmpty;
       });
+      // Charts: keep the home's 排行榜 card fresh — copy the
+      // PlazaPage._load pattern (first cover -> cache). The #1 song
+      // changes weekly, so the cache is refreshed on every chart
+      // open, not only when empty. Empty covers never overwrite a
+      // good cached cover (setFeatureCover ignores them).
+      if (widget.isChart) {
+        for (final song in r.tracks) {
+          if (song.cover.isNotEmpty) {
+            unawaited(
+              MusicStore.setFeatureCover(
+                HiveKeys.featureCoverCharts,
+                song.cover,
+              ),
+            );
+            break;
+          }
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
