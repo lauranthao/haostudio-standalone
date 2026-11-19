@@ -89,6 +89,16 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-notif.xml || true
             adb pull /sdcard/ui-notif.xml $GITHUB_WORKSPACE/ui-notif.xml || true
             adb exec-out screencap -p > $GITHUB_WORKSPACE/notif-shade.png
+            # Phase 2: tap notification pause button (from notif-shade.png: pause icon center ~ (250,945) on the 1080x1920 screen)
+            adb shell input tap 250 945
+            sleep 3
+            adb shell uiautomator dump /sdcard/ui-player-paused.xml || true
+            adb pull /sdcard/ui-player-paused.xml $GITHUB_WORKSPACE/ui-player-paused.xml || true
+            adb exec-out screencap -p > $GITHUB_WORKSPACE/player-paused.png
+            adb shell cmd statusbar expand-notifications
+            sleep 2
+            adb exec-out screencap -p > $GITHUB_WORKSPACE/notif-shade-paused.png
+            adb shell cmd statusbar collapse || adb shell input keyevent 4 || true
             adb shell dumpsys notification | grep -i "hao_music_playback" | head -5 || true
             adb shell dumpsys media_session | head -50
             adb shell input keyevent 4
@@ -129,4 +139,7 @@ jobs:
             video-detail.png
             ui-notif.xml
             notif-shade.png
+            ui-player-paused.xml
+            player-paused.png
+            notif-shade-paused.png
           retention-days: 7
