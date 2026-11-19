@@ -27,6 +27,10 @@ class AvPlayerBackend implements PlayerBackend {
   Timer? _pollTimer;
   bool _disposed = false;
   bool _opened = false;
+  // P1-1: BetterPlayer posts `finished` once per natural end (and
+  // once when seeking past the duration); guard so completedStream
+  // fires exactly once per open, never twice for one ending.
+  bool _completedFired = false;
   Duration _lastPosition = Duration.zero;
   Duration _lastDuration = Duration.zero;
   bool _lastPlaying = false;
@@ -84,6 +88,15 @@ class AvPlayerBackend implements PlayerBackend {
       betterPlayerDataSource: dataSource,
     );
     _opened = true;
+    _completedFired = false;
+    // P1-1: the completed signal is the SDK's own finished event —
+    // BetterPlayer posts BetterPlayerEventType.finished when the
+    // underlying AVPlayer emits VideoEventType.completed (native end
+    // of stream), the same class of signal MPV
+    // (`_player.stream.completed`) and IJK (`FijkState.completed`)
+    // already use. No position==duration polling: the poll timer
+    // below keeps doing position/duration/playing only.
+    _controller?.addEventsListener(_onBetterPlayerEvent);
     _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (_disposed) return;
       final vc = _controller?.videoPlayerController;
@@ -109,6 +122,22 @@ class AvPlayerBackend implements PlayerBackend {
         _playingController.add(value.isPlaying);
       }
     });
+  }
+
+  /// P1-1: forward the SDK's finished event to [completedStream].
+  /// Only `finished` completes: play/pause/buffering events never do.
+  /// The once-per-open guard also covers BetterPlayer posting
+  /// `finished` for a seek past the duration (controller.dart
+  /// `seekTo`): our seeks are always clamped to <= duration, and a
+  /// second post for the same ending is dropped either way.
+  void _onBetterPlayerEvent(BetterPlayerEvent event) {
+    if (_disposed) return;
+    if (event.betterPlayerEventType != BetterPlayerEventType.finished) {
+      return;
+    }
+    if (_completedFired) return;
+    _completedFired = true;
+    _completedController.add(null);
   }
 
   @override
@@ -176,6 +205,12 @@ class AvPlayerBackend implements PlayerBackend {
   @override
   Stream<String> get errorStream => _errorController.stream;
 
+  /// Test seam: the SDK controller this backend opened, so a test
+  /// can assert the finished listener is registered on the real
+  /// controller and drive it with a synthetic finished event.
+  @visibleForTesting
+  BetterPlayerController? get debugController => _controller;
+
   @override
   Stream<void> get completedStream => _completedController.stream;
 
@@ -187,6 +222,7 @@ class AvPlayerBackend implements PlayerBackend {
     // BetterPlayerController.dispose is sync void (not a Future).
     _pollTimer?.cancel();
     _pollTimer = null;
+    _controller?.removeEventsListener(_onBetterPlayerEvent);
     _controller?.dispose();
     _controller = null;
     await _errorController.close();
