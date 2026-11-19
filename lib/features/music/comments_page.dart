@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
 /// Relative time for a comment timestamp (epoch ms, NetEase style).
@@ -158,6 +159,9 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                   ),
                 )
               : ListView.builder(
+                  padding: EdgeInsets.only(
+                    bottom: MiniPlayerBar.bottomClearanceFor(context),
+                  ),
                   itemCount: _itemCount,
                   itemBuilder: (context, index) => _buildItem(index),
                 ),

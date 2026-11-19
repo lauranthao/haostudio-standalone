@@ -15,7 +15,7 @@
 ## 平台与安装
 
 - **iOS**：已发布，IPA：https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.2.ipa（需自签名安装，如 LCSign / TrollStore）。
-- **Android**：APK 进行中（分支 `android-apk`），发布后链接放这里。
+- **Android**：已发布，APK：https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.2.apk（v1.1.2，与 iOS 同版）。
 
 ## 构建
 
@@ -31,7 +31,7 @@ flutter build apk --release                 # Android APK
 
 - `iOS Flutter Unsigned IPA`：iOS 正式包，分支 main。
 - `iOS Simulator App (Appetize)`：模拟器包（Appetize 测试用）。
-- `Android APK`：进行中。
+- `Android APK`：已发布 v1.1.2，分支 android-apk。
 
 ## 分支
 

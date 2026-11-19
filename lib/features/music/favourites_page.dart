@@ -14,8 +14,10 @@ import '../../core/theme/hao_themes.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 
@@ -82,6 +84,9 @@ class _FavouritesPageState extends State<FavouritesPage> {
                 ),
                 Expanded(
                   child: ListView.builder(
+                    padding: EdgeInsets.only(
+                      bottom: MiniPlayerBar.bottomClearanceFor(context),
+                    ),
                     itemCount: _songs.length,
                     itemBuilder: (ctx, i) {
                       final song = _songs[i];
@@ -96,6 +101,8 @@ class _FavouritesPageState extends State<FavouritesPage> {
                         onOpenArtist: () => unawaited(
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(
                                 platform: song.platform,
                                 artistId: '',

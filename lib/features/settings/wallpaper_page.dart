@@ -2,7 +2,8 @@
 // section, ProfileView.swift:1790-1872: "上传壁纸（可多张）" + a
 // wallpaper grid where tapping applies, the in-use one shows a
 // theme-coloured border + checkmark, and each cell has a delete
-// button; "当前：默认背景 / 已应用壁纸" state line).
+// button. No "当前：" state line (removed 2026-11-19 clean pass —
+// the accent border + check badge already say which one is in use).
 //
 // Beans splits wallpapers by light/dark appearance; this port keeps
 // one list for both modes (see AppearanceStore) — the grid is the
@@ -69,11 +70,6 @@ class WallpaperPage extends StatelessWidget {
               children: [
                 Icon(Icons.wallpaper, size: 48, color: theme.textMuted),
                 const SizedBox(height: 12),
-                Text(
-                  '还没有壁纸，上传后会显示在这里',
-                  style: TextStyle(color: theme.textSecondary, fontSize: 15),
-                ),
-                const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () => unawaited(_upload(context)),
                   icon: const Icon(Icons.add, size: 18),
@@ -86,13 +82,6 @@ class WallpaperPage extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Text(
-                enabled && current.isNotEmpty ? '当前：已应用壁纸' : '当前：默认背景',
-                style: TextStyle(color: theme.textSecondary, fontSize: 13),
-              ),
-            ),
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.all(16),

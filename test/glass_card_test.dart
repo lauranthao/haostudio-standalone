@@ -13,6 +13,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassCard, GlassShadow;
 import 'package:standalone/core/theme/glass.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 
@@ -21,6 +23,8 @@ void main() {
     WidgetTester tester, {
     double radius = 20,
     GlassShadow shadow = GlassShadow.card,
+    GlassCardQuality quality = GlassCardQuality.frosted,
+    LinearGradient? tint,
   }) async {
     await tester.pumpWidget(
       GetMaterialApp(
@@ -30,6 +34,8 @@ void main() {
             child: GlassCard(
               radius: radius,
               shadow: shadow,
+              quality: quality,
+              tint: tint,
               child: const Text('glass'),
             ),
           ),
@@ -122,6 +128,85 @@ void main() {
             .first,
       );
       expect((decorated.decoration as BoxDecoration).boxShadow, isNull);
+    });
+
+    testWidgets('standard renders library glass, no BackdropFilter', (
+      tester,
+    ) async {
+      await pumpCard(tester, quality: GlassCardQuality.standard);
+      // Library branch: a GlassContainer (ios27 preset, own layer),
+      // and no hand-rolled BackdropFilter anywhere under the card.
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      // Same Beans card shadow as the frosted branch.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('premium renders library glass with premium floor', (
+      tester,
+    ) async {
+      await pumpCard(tester, quality: GlassCardQuality.premium);
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      expect(find.byType(GlassAdaptiveScope), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('frosted is the default (no quality arg)', (tester) async {
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const Scaffold(
+            body: Center(
+              child: GlassCard(child: Text('glass')),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(GlassContainer), findsNothing);
+    });
+
+    testWidgets('standard + tint paints the wash, still library glass', (
+      tester,
+    ) async {
+      const wash = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0x241D4ED8), Color(0x0F1D4ED8)],
+      );
+      await pumpCard(
+        tester,
+        quality: GlassCardQuality.standard,
+        tint: wash,
+      );
+      // Library branch: GlassContainer, no hand-rolled BackdropFilter.
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      // The wash is the child background: one Container whose
+      // BoxDecoration gradient is exactly the tint passed in.
+      final washBox = find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).gradient == wash,
+      );
+      expect(washBox, findsOneWidget);
+      expect(find.text('glass'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tint with frosted asserts (frosted owns its surface)', (
+      tester,
+    ) async {
+      expect(
+        () => GlassCard(
+          tint: const LinearGradient(colors: [Colors.blue, Colors.blue]),
+          child: const Text('glass'),
+        ),
+        throwsAssertionError,
+      );
     });
   });
 

@@ -519,7 +519,6 @@ void main() {
       expect(
         masterJobs.map((j) => j.key).toSet(),
         {
-          'lx:ikun',
           'lx:luoxue',
           'lx:helloworld',
           'lx:aya',
@@ -538,7 +537,6 @@ void main() {
       expect(
         hiresJobs.map((j) => j.key).toSet(),
         {
-          'lx:ikun',
           'lx:suyin',
           'lx:luoxue',
           'lx:fish',
@@ -567,7 +565,6 @@ void main() {
       expect(
         q320Jobs.map((j) => j.key).toSet(),
         {
-          'lx:ikun',
           'lx:xinlan',
           'lx:suyin',
           'lx:luoxue',
@@ -786,6 +783,9 @@ void main() {
       final engine = LxScriptEngine(
         dio: buildFakeDio(respond: _respond, log: log),
         runtimeFactory: () => _FakeJsRuntime(initedDelay: null),
+        // Default inited wait is 10s (slow scripts); inject 1s here
+        // so this failure case stays fast.
+        initedTimeout: const Duration(seconds: 1),
       );
       addTearDown(engine.dispose);
       await expectLater(

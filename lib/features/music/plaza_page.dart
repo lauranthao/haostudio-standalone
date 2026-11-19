@@ -22,30 +22,38 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/storage/hive_store.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/glass.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import '../../services/music/search_platform_store.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 import '../../widgets/platform_logo.dart';
+import '../../widgets/play_count_badge.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
 class PlazaPage extends StatefulWidget {
-  const PlazaPage({super.key});
+  const PlazaPage({super.key, this.api});
+
+  /// Test seam only: an injected [MusicApi] (fake Dio in render
+  /// tests). Null in production — the page owns a fresh one.
+  final MusicApi? api;
 
   @override
   State<PlazaPage> createState() => _PlazaPageState();
 }
 
 class _PlazaPageState extends State<PlazaPage> {
-  final _api = MusicApi();
+  late final MusicApi _api = widget.api ?? MusicApi();
   final _cache = <MusicPlatform, List<PlaylistSummary>>{};
   late MusicPlatform _platform;
   var _sort = _PlazaSort.rec;
@@ -89,6 +97,16 @@ class _PlazaPageState extends State<PlazaPage> {
     // never overwrite the newly selected platform.
     if (seq != _seq || !mounted) return;
     _cache[pf] = items;
+    // Keep the home's 歌单广场 card fresh: the first playlist's
+    // cover is cached for the home to read (no fetch from the home).
+    if (items.isNotEmpty && items.first.cover.isNotEmpty) {
+      unawaited(
+        MusicStore.setFeatureCover(
+          HiveKeys.featureCoverPlaza,
+          items.first.cover,
+        ),
+      );
+    }
     setState(() {
       _loading = false;
       _failed = items.isEmpty;
@@ -218,6 +236,10 @@ class _PlazaPageState extends State<PlazaPage> {
                             ),
                           )
                         : ListView.builder(
+                            padding: EdgeInsets.only(
+                              bottom:
+                                  MiniPlayerBar.bottomClearanceFor(context),
+                            ),
                             itemCount: items.length,
                             itemBuilder: (ctx, i) {
                               final p = items[i];
@@ -261,8 +283,15 @@ class _PlazaPageState extends State<PlazaPage> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                // 播放量只在角标里出现一次（Kumone
+                                // PlayCountBadge）：副标题不再重复 raw
+                                // 数字，避免“12.3万”和“123456次播放”
+                                // 两处打架；playCount 为 0 时角标不
+                                // 显示，副标题也不画“0次播放”。
                                 subtitle: Text(
-                                  '${p.creator.isEmpty ? p.platform.displayName : p.creator} · ${p.playCount}次播放',
+                                  p.creator.isEmpty
+                                      ? p.platform.displayName
+                                      : p.creator,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -270,12 +299,27 @@ class _PlazaPageState extends State<PlazaPage> {
                                     fontSize: 13,
                                   ),
                                 ),
-                                trailing: Icon(
-                                  Icons.chevron_right,
-                                  color: theme.textMuted,
+                                // Kumone 把角标放封面右上角（Cards.swift:28-30），
+                                // 但本页卡片是 ListTile 行、封面只有 52px，
+                                // 角标最窄约 47px，6px 内嵌会溢出封面左缘，
+                                // 所以落点改为行尾（badge + chevron）。
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (p.playCount > 0)
+                                      PlayCountBadge(count: p.playCount),
+                                    if (p.playCount > 0)
+                                      const SizedBox(width: 8),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: theme.textMuted,
+                                    ),
+                                  ],
                                 ),
                                 onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute<void>(
+                                    settings: const RouteSettings(
+                                        name: musicSubPageRouteName),
                                     builder: (_) =>
                                         PlazaDetailPage(playlist: p),
                                   ),
@@ -327,16 +371,33 @@ class _PlazaPageState extends State<PlazaPage> {
 
 /// Plaza playlist detail: track list + 一键导入 to my playlists.
 class PlazaDetailPage extends StatefulWidget {
-  const PlazaDetailPage({super.key, required this.playlist});
+  const PlazaDetailPage({
+    super.key,
+    required this.playlist,
+    this.api,
+    this.isChart = false,
+  });
 
   final PlaylistSummary playlist;
+
+  /// Test seam (same pattern as ChartsPage.api): a fake-Dio api.
+  /// Defaults to a real [MusicApi].
+  final MusicApi? api;
+
+  /// True when opened from the charts list: the chart's first song
+  /// cover is written to the charts feature-cover cache on load, so
+  /// the home's 排行榜 card stays fresh (a chart's #1 song changes
+  /// weekly; the cache used to refresh only when empty, so the card
+  /// went stale). False for plaza / search playlists (their covers
+  /// have their own cache key, written by PlazaPage._load).
+  final bool isChart;
 
   @override
   State<PlazaDetailPage> createState() => _PlazaDetailPageState();
 }
 
 class _PlazaDetailPageState extends State<PlazaDetailPage> {
-  final _api = MusicApi();
+  late final _api = widget.api ?? MusicApi();
   List<Song>? _tracks;
   var _loading = true;
   var _failed = false;
@@ -361,6 +422,24 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
         _loading = false;
         _failed = r.tracks.isEmpty;
       });
+      // Charts: keep the home's 排行榜 card fresh — copy the
+      // PlazaPage._load pattern (first cover -> cache). The #1 song
+      // changes weekly, so the cache is refreshed on every chart
+      // open, not only when empty. Empty covers never overwrite a
+      // good cached cover (setFeatureCover ignores them).
+      if (widget.isChart) {
+        for (final song in r.tracks) {
+          if (song.cover.isNotEmpty) {
+            unawaited(
+              MusicStore.setFeatureCover(
+                HiveKeys.featureCoverCharts,
+                song.cover,
+              ),
+            );
+            break;
+          }
+        }
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -545,6 +624,9 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                     const SizedBox(height: 8),
                     Expanded(
                       child: ListView.builder(
+                        padding: EdgeInsets.only(
+                          bottom: MiniPlayerBar.bottomClearanceFor(context),
+                        ),
                         itemCount: _tracks?.length ?? 0,
                         itemBuilder: (ctx, i) {
                           final song = _tracks![i];

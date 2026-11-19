@@ -118,13 +118,13 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('empty history: placeholder only, no history section', (
+    testWidgets('empty history: no history section', (
       tester,
     ) async {
       await pumpPage(tester);
       expect(find.text('搜索历史'), findsNothing);
       expect(find.text('清除'), findsNothing);
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
     });
 
     testWidgets('seeded history renders as chips with a clear entry', (
@@ -147,7 +147,7 @@ void main() {
       await tester.pump();
       expect(find.text('搜索历史'), findsNothing);
       expect(find.text('周杰伦'), findsNothing);
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
       expect(MusicStore.getSearchHistory(), isEmpty);
     });
 
@@ -194,7 +194,7 @@ void main() {
       await tester.pump();
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.controller?.text, isEmpty);
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
     });
 
     testWidgets('per-chip × deletes just that term (Beans)', (tester) async {

@@ -12,9 +12,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
+import '../video/cms_sources.dart';
 import '../video/video_history_store.dart';
 import '../video/video_models.dart';
 
@@ -156,6 +158,19 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       Get.snackbar('添加失败', '接口地址必须以 http:// 或 https:// 开头');
       return;
     }
+    if (isPlainHttpVideoSourceUrl(url)) {
+      // Plain-http custom source: warn clearly (requests go in the
+      // clear), but do NOT block — the user's own sources are their
+      // call. Same glass confirm shell as delete / reset.
+      final keep = await showGlassConfirmDialog(
+        context,
+        title: '该接口使用明文 http',
+        content:
+            '“$name”的接口地址是 http://，搜索与播放请求将以明文传输，同一网络下可能被窃听或篡改。建议改用支持 https 的接口地址。',
+        confirmLabel: '仍要添加',
+      );
+      if (!keep || !mounted) return;
+    }
     final maxSort = _sources.fold<int>(0, (m, s) => s.sort > m ? s.sort : m);
     _sources = [
       ..._sources,
@@ -213,6 +228,7 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
           Expanded(
             child: HaoGlassCard(
               margin: const EdgeInsets.symmetric(horizontal: 8),
+              quality: GlassCardQuality.standard,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: ReorderableListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

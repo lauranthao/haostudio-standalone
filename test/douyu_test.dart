@@ -858,12 +858,25 @@ void main() {
       expect(resolution.streamFacts.map((f) => f.format), ['flv', 'flv']);
       expect(resolution.issuedAt, isNotNull);
       // The stub's ws lines carry expire=300&fcdn=ws, patched to
-      // expire=0 -> no short lease.
-      expect(resolution.refreshAt, isNull);
-      expect(resolution.invalidAt, isNull);
+      // expire=0 -> first-wins (duplicate-expire fix): the
+      // server-issued 300 is the lease, so refreshAt/invalidAt are
+      // real (issued+255s / +300s; the 45s lead is exact by
+      // construction, the 300s one has a ms-wide tolerance because the
+      // grouped resolution stamps issuedAt just before the per-CDN
+      // resolves stamp theirs).
+      expect(resolution.refreshAt, isNotNull);
+      expect(resolution.invalidAt, isNotNull);
+      expect(
+        resolution.invalidAt!.difference(resolution.refreshAt!),
+        const Duration(seconds: 45),
+      );
+      expect(
+        resolution.invalidAt!.difference(resolution.issuedAt!).inSeconds,
+        inInclusiveRange(300, 301),
+      );
       for (final url in resolution.urls) {
         expect(url, contains('expire=0'));
-        expect(site.getPlayUrlRefreshAt(url), isNull);
+        expect(site.getPlayUrlRefreshAt(url), isNotNull);
       }
 
       // getPlayUrls with no quality resolves the first quality.

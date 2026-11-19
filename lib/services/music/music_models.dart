@@ -650,14 +650,6 @@ class ListenEvent {
   final int at;
 }
 
-/// Greeting for the music home (greetMorning/Afternoon/Evening).
-String greetingFor(DateTime now) {
-  final h = now.hour;
-  if (h < 12) return '早上好';
-  if (h < 18) return '下午好';
-  return '晚上好';
-}
-
 /// `M月d日 星期X` date line for the music home.
 String homeDateText(DateTime now) {
   const weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];

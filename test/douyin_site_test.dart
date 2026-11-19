@@ -648,18 +648,13 @@ void main() {
       expect(await site.getPlayUrls(liveRoom: room), isEmpty);
     });
 
-    test('searchAnchors throws the documented message', () async {
+    test('searchAnchors no longer throws (P1-19)', () async {
       final site = DouyinSite(dio: stubDio);
-      await expectLater(
-        site.searchAnchors('test'),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            contains('抖音暂不支持搜索主播'),
-          ),
-        ),
-      );
+      // Empty keyword short-circuits in DouyinSearch without any
+      // network; the full reuse behaviour (anchors == rooms, anchor
+      // fields populated, all-stages-fail -> []) is pinned in
+      // test/douyin_search_anchors_test.dart.
+      expect(await site.searchAnchors(''), isEmpty);
     });
 
     test('recommend feed parses through the stub', () async {

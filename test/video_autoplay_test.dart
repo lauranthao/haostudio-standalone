@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:standalone/core/native/system_volume.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
 import 'package:standalone/core/storage/hive_store.dart';
@@ -318,7 +319,17 @@ void main() {
 
     testWidgets('toggle OFF stops at the end of the episode',
         (tester) async {
-      await VideoPlaybackSettings.setAutoNext(false);
+      // Fire-and-forget, NOT awaited and NOT runAsync: the value
+      // lands in the box synchronously (the getter reads it right
+      // away), which is all this test needs before pumpPlayer.
+      // Awaiting the put hangs in the FULL file run (it passes
+      // alone): the earlier widget test leaves fire-and-forget Hive
+      // writes queued ahead of it, and their futures never resolve
+      // in the fake-async zone, so an awaited put behind them never
+      // resolves either — even inside runAsync. This is the same
+      // pattern the file's tearDown (unawaited deletes) and the
+      // production in-player toggle already use for Hive writes.
+      unawaited(VideoPlaybackSettings.setAutoNext(false));
       await pumpPlayer(tester);
 
       currentBackend().emitCompleted();
@@ -493,30 +504,50 @@ void main() {
       await unmountPlayer(tester);
     });
 
-    testWidgets('vertical drag on the right half adjusts volume',
+    testWidgets('vertical drag on the right half adjusts SYSTEM volume',
         (tester) async {
-      await pumpPlayer(tester);
+      // v1.1.3: the drag writes the SYSTEM volume channel, never the
+      // player gain — the old assertion (backend volumes) is the bug
+      // chen reported (system volume bar never moved).
+      const sysChannel = MethodChannel(systemVolumeChannelName);
+      final systemSets = <double>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(sysChannel, (call) async {
+        if (call.method == 'getVolume') return 1.0;
+        if (call.method == 'setVolume') {
+          systemSets.add((call.arguments as Map)['volume'] as double);
+        }
+        return null;
+      });
+      try {
+        await pumpPlayer(tester);
 
-      // timedDrag (not raw startGesture+moveBy): a bare moveBy
-      // dispatches the move without a frame in between, so the
-      // vertical-drag recogniser never gets its update before the
-      // pointer goes up (proven by tmp_diag_vdrag: hint appears only
-      // after up, volumes stays []). timedDrag pumps frames during
-      // the drag, like a real finger.
-      // 150 px down over a 300 px full range from 1.0 — the drag
-      // recogniser only counts movement past the touch slop, so the
-      // effective drop is ~125-130 px, not the full 150: expect a
-      // range around 0.57, not exactly 0.5.
-      await tester.timedDragFrom(
-        const Offset(600, 300),
-        const Offset(0, 150),
-        const Duration(milliseconds: 300),
-      );
-      await tester.pump();
+        // timedDrag (not raw startGesture+moveBy): a bare moveBy
+        // dispatches the move without a frame in between, so the
+        // vertical-drag recogniser never gets its update before the
+        // pointer goes up (proven by tmp_diag_vdrag: hint appears only
+        // after up, volumes stays []). timedDrag pumps frames during
+        // the drag, like a real finger.
+        // 150 px down over a 300 px full range from 1.0 — the drag
+        // recogniser only counts movement past the touch slop, so the
+        // effective drop is ~125-130 px, not the full 150: expect a
+        // range around 0.57, not exactly 0.5.
+        await tester.timedDragFrom(
+          const Offset(600, 300),
+          const Offset(0, 150),
+          const Duration(milliseconds: 300),
+        );
+        await tester.pump();
 
-      expect(volumes(), isNotEmpty);
-      expect(volumes().last, inInclusiveRange(0.45, 0.65));
-      await unmountPlayer(tester);
+        expect(systemSets, isNotEmpty);
+        expect(systemSets.last, inInclusiveRange(0.45, 0.65));
+        // The player session is never touched by the drag.
+        expect(volumes(), isEmpty);
+        await unmountPlayer(tester);
+      } finally {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(sysChannel, null);
+      }
     });
 
     testWidgets('vertical drag on the left half adjusts brightness',

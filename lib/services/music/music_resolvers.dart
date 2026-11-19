@@ -124,7 +124,18 @@ class _PlayUrlCache {
 
   final _map = <String, (PlayUrlResult, DateTime)>{};
 
+  /// A key with an empty songId segment ('|platform|quality') is
+  /// shared by every id-less song: never read, write, or evict it —
+  /// two different songs would otherwise share one cached URL (the
+  /// same collision Song.identityKey avoids with its
+  /// title|artist|album fallback). The resolver entry already
+  /// returns null for an empty songId, so this is the backstop: the
+  /// cache itself can never serve song A's URL to song B, whatever
+  /// a future caller passes in.
+  static bool _isEmptyIdKey(String key) => key.startsWith('|');
+
   PlayUrlResult? get(String key) {
+    if (_isEmptyIdKey(key)) return null;
     final hit = _map[key];
     if (hit != null) {
       if (DateTime.now().difference(hit.$2) > _ttl) {
@@ -164,6 +175,7 @@ class _PlayUrlCache {
   }
 
   void put(String key, PlayUrlResult value) {
+    if (_isEmptyIdKey(key)) return;
     if (_map.length >= 200) {
       _map.remove(_map.keys.first);
     }
@@ -189,6 +201,7 @@ class _PlayUrlCache {
   /// playback): the next resolve for this song re-asks the sources
   /// instead of replaying the cached bad URL.
   void evict(String key) {
+    if (_isEmptyIdKey(key)) return;
     _map.remove(key);
     try {
       unawaited(HiveStore.delete('$_prefix$key').catchError((_) {}));
@@ -524,17 +537,21 @@ class MusicResolvers {
           key: 'ikun',
           name: 'ikun',
           platforms: const [MusicPlatform.wy],
-          enabled: true,
+          // DISABLED 2026-11-19: api.ikunshare.com is DEAD — curl
+          // from this VM fails http + https (DNS resolves to
+          // 198.18.52.211 but connect fails, code 000), matching the
+          // logcat `Failed host lookup: 'api.ikunshare.com'` and the
+          // 2026-11-16 note below. Same precedent as huibq / hyw:
+          // disabled here, not deleted — re-enable only if the API
+          // revives. Master does not depend on it: zddyr/xinghai
+          // serve master live (see music_quality.dart).
+          enabled: false,
           order: 2,
           fn: (id, pf, q, title) async {
             // Master only: the ikun API is the only direct resolver
             // with a distinct master tier (quality=master). Other
             // tiers already have many resolvers; asking ikun for them
             // would only add load on a fragile API.
-            // STATUS 2026-11-16: api.ikunshare.com is DEAD from this
-            // VM (empty replies, http+https) — this resolver returns ''
-            // until the API revives. Master does not depend on it:
-            // zddyr/xinghai serve master live (see music_quality.dart).
             // iOS note: plain http:// — blocked by ATS unless an
             // exception is added; zddyr/xinghai are https.
             if (q != AudioQuality.master) return '';
@@ -847,6 +864,19 @@ class MusicResolvers {
 
   // -- fastest-first sequential resolution + main entry --------------------
 
+  /// True when the most recent [resolvePlayUrl] that returned null
+  /// ran out of budget with jobs still untried, so "no source"
+  /// would be a lie: some available source was never asked (the
+  /// 8 s global / 6 s first-pass budget can die while jobs remain —
+  /// e.g. three 2 s hangs eat the whole first pass). False when
+  /// every available job was tried and answered empty, when a URL
+  /// was found, or when the song had no id (nothing was attempted).
+  /// Read immediately after a null result; the next resolve
+  /// overwrites it. Cooled / disabled jobs do not count as untried:
+  /// cooled jobs are only sorted last (still tried when reached),
+  /// disabled ones are not applicable at all.
+  bool lastResolveTruncated = false;
+
   /// One pass at a single quality: try jobs in measured-speed order,
   /// one at a time, until a playable URL is found (换源 — chen
   /// 2026-11-17: 每次解析都用最快的, 没有想要的资源就换源继续找,
@@ -857,8 +887,10 @@ class MusicResolvers {
   /// 要是没有就下一个源, 不要把全部源问一遍). A below-target URL
   /// plays now as a per-song downgrade (the preference is untouched;
   /// the next song still aims for the highest quality), labelled
-  /// with its REAL tier, never mislabelled. Returns null when no job
-  /// yields any URL within [budget]. Jobs that time out are added to
+  /// with its REAL tier, never mislabelled. Returns (null, false)
+  /// when no job yields any URL within [budget] AND every available
+  /// job was tried; (null, true) when the budget died with jobs
+  /// still untried. Jobs that time out are added to
   /// [skipTimedOut] so later tiers in the same resolve don't waste
   /// their budget re-asking a source that doesn't answer; a
   /// definitive empty answer is retried at lower tiers, which may
@@ -870,7 +902,7 @@ class MusicResolvers {
   /// `_handleTrial`) excludes the job that served the trial URL so the
   /// next-fastest job gets its chance. Excluded jobs are NOT recorded
   /// as failures (no cooldown, no speed penalty): they were not tried.
-  Future<PlayUrlResult?> _resolvePass(
+  Future<({PlayUrlResult? result, bool incomplete})> _resolvePass(
     AudioQuality q,
     String songId,
     MusicPlatform pf,
@@ -884,13 +916,26 @@ class MusicResolvers {
     // launch may predate them — later resolves include them.
     unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
     final jobs = _rankedJobs(pf, q, songId, title);
-    if (jobs.isEmpty) return null;
+    if (jobs.isEmpty) return (result: null, incomplete: false);
     final deadline = DateTime.now().add(budget);
-    for (final job in jobs) {
+    for (var i = 0; i < jobs.length; i++) {
+      final job = jobs[i];
       if (excludeNames.contains(job.name)) continue;
       if (skipTimedOut.contains(job.key)) continue;
       final remaining = deadline.difference(DateTime.now());
-      if (remaining <= Duration.zero) break;
+      if (remaining <= Duration.zero) {
+        // Budget gone with this job (and any after it) still
+        // untried: the caller must not report "no source" — some
+        // available source was never asked. Skipped jobs (timed out
+        // earlier in this resolve, or excluded by name) do not
+        // count: they were attempted, or deliberately not asked.
+        final untried = jobs.skip(i).any(
+              (j) =>
+                  !skipTimedOut.contains(j.key) &&
+                  !excludeNames.contains(j.name),
+            );
+        return (result: null, incomplete: untried);
+      }
       final timeout =
           remaining < _perJobTimeout ? remaining : _perJobTimeout;
       final sw = Stopwatch()..start();
@@ -922,14 +967,17 @@ class MusicResolvers {
       // First playable URL wins immediately. No hunting: even a
       // below-target URL plays now (per-song downgrade); the caller
       // still passes the user's chosen tier for the next song.
-      return PlayUrlResult(
-        url: https,
-        candidates: [https],
-        quality: extraQuality(job.key, q, pf.code),
-        via: job.name,
+      return (
+        result: PlayUrlResult(
+          url: https,
+          candidates: [https],
+          quality: extraQuality(job.key, q, pf.code),
+          via: job.name,
+        ),
+        incomplete: false,
       );
     }
-    return null;
+    return (result: null, incomplete: false);
   }
 
   /// Main entry. Returns null when no resolver yields a URL at any
@@ -947,7 +995,10 @@ class MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
   }) async {
-    if (songId.isEmpty) return null;
+    if (songId.isEmpty) {
+      lastResolveTruncated = false;
+      return null;
+    }
     final cacheKey = '$songId|${platform.code}|${quality.code}';
     final cached = excludeJobs.isEmpty ? _cache.get(cacheKey) : null;
     if (cached != null) return cached;
@@ -962,13 +1013,18 @@ class MusicResolvers {
     final skipTimedOut = <String>{};
     final deadline = DateTime.now().add(const Duration(seconds: 8));
     var first = true;
+    // OR across tiers: if ANY tier ran out of budget with jobs
+    // still untried, the resolve did not exhaust the sources — a
+    // later tier re-asking the same jobs at a lower quality does not
+    // make up for the untried jobs at the requested tier.
+    var truncated = false;
     for (final tier in qualityChainFrom(quality)) {
       final remaining = deadline.difference(DateTime.now());
       if (remaining <= Duration.zero) break;
       final cap =
           first ? const Duration(seconds: 6) : const Duration(seconds: 2);
       final budget = remaining < cap ? remaining : cap;
-      final r = await _resolvePass(
+      final pass = await _resolvePass(
         tier,
         songId,
         platform,
@@ -977,6 +1033,7 @@ class MusicResolvers {
         skipTimedOut,
         excludeJobs,
       );
+      truncated = truncated || pass.incomplete;
       first = false;
       // First playable URL wins, at any tier (chen 2026-11-17 铁律):
       // a below-target URL plays now as a per-song downgrade — the
@@ -985,11 +1042,14 @@ class MusicResolvers {
       // "keep the best and walk on at master" is gone: a hires URL
       // from the master pass plays now, it does not wait for the
       // hires pass to maybe find a better one).
+      final r = pass.result;
       if (r == null) continue;
+      lastResolveTruncated = false;
       _saveSpeeds();
       _cache.put(cacheKey, r);
       return r;
     }
+    lastResolveTruncated = truncated;
     _saveSpeeds();
     return null;
   }

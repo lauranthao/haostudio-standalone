@@ -153,6 +153,16 @@ class MusicPlayerController extends GetxController
   var _playGen = 0;
   var _disposed = false;
 
+  /// Gen of the load whose audio is currently open in [_active]
+  /// (-1 = no load has opened yet). The error stream carries no URL
+  /// and no gen, so [_onStreamError] stamps the error with this: an
+  /// error that arrives while a NEWER load is still resolving belongs
+  /// to the old song — its gen no longer matches [_playGen], and
+  /// [_onPlayError] drops it instead of failing the new song. Set
+  /// whenever an open is issued on [_active] (see [_openOn]) and when
+  /// a crossfade swaps the standby in (see [_crossfadeTo]).
+  var _activeGen = -1;
+
   // Current-track resolve state.
   List<String> _candidates = [];
   var _candidateIdx = 0;
@@ -618,6 +628,11 @@ class MusicPlayerController extends GetxController
     bool auto = false,
     int gen = -1,
   }) async {
+    // The open attempt belongs to this gen: a native error that
+    // arrives during/after it is this load's error (see [_activeGen]).
+    // gen -1 (trial retry) leaves the stamp alone — the retry opens
+    // for the current load, whose gen is already stamped.
+    if (gen >= 0) _activeGen = gen;
     // open() returns false only when the URL was refused before any
     // native call, so no error will arrive on the error stream: fall
     // back to the next candidate here, the same path the error stream
@@ -911,7 +926,16 @@ class MusicPlayerController extends GetxController
       if (r == null || r.url.isEmpty) {
         // _tryAltOrNext keeps the flag (same gen) while it looks for
         // an alt platform, then clears it.
-        await _tryAltOrNext(song, gen, auto: auto, reason: '无可用音源');
+        // A null resolve is only "no source" when every available
+        // job was actually tried: if the 8 s budget ran out with
+        // jobs still untried, say so instead of claiming no source
+        // exists — the retry really does re-try them (a cooled job
+        // is only sorted last, never skipped, and the trial
+        // exclusion was cleared at the top of this load).
+        final reason = _resolvers.lastResolveTruncated
+            ? '解析超时，未试完所有音源'
+            : '无可用音源';
+        await _tryAltOrNext(song, gen, auto: auto, reason: reason);
         return;
       }
       url = r.url;
@@ -1027,6 +1051,7 @@ class MusicPlayerController extends GetxController
     // that pauses the newer song's player.
     if (gen != _playGen || _disposed) return;
     _active = incoming;
+    _activeGen = gen;
     _attach(incoming);
     position.value = Duration.zero;
     duration.value = Duration.zero;
@@ -1168,10 +1193,20 @@ class MusicPlayerController extends GetxController
   /// is ignored. Direct `_onPlayError` calls (open() refusing a URL
   /// before any native call) bypass this — there the current track
   /// genuinely cannot play.
+  ///
+  /// The idle check alone has a hole: while a newer load is still
+  /// RESOLVING, the active player is still the old one — idle after
+  /// its failure — so a stale error passes the check and, with no
+  /// gen, [_onPlayError] used to fail the NEW song (alt-swap or
+  /// give-up on a song that never failed). The error is therefore
+  /// also stamped with [_activeGen]: when the stamp no longer
+  /// matches [_playGen] the error belongs to a superseded load and
+  /// is dropped. A genuine error of the current load still matches
+  /// (its open stamped this gen before awaiting).
   void _onStreamError() {
     if (!_playersReady) return;
     if (_active.processingState != ProcessingState.idle) return;
-    unawaited(_onPlayError(auto: _lastLoadAuto));
+    unawaited(_onPlayError(auto: _lastLoadAuto, gen: _activeGen));
   }
 
   /// A load/open failed for the current track. [auto] is the auto-ness

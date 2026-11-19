@@ -49,10 +49,22 @@ import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/features/player/fullscreen_controller.dart';
 import 'package:standalone/features/video/video_history_page.dart';
 import 'package:standalone/features/video/widgets/referer_image.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 import 'package:standalone/widgets/glass_dialog.dart';
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
+}
 
 /// No-load player double (copied from music_home_kumone_test.dart):
 /// playQueue / prev / next / togglePlayPause / cyclePlayMode are
@@ -197,7 +209,7 @@ void main() {
       GetMaterialApp(
         debugShowCheckedModeBanner: false,
         theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: const MusicTabPage(),
+        home: MusicTabPage(api: _EmptyCoverApi()),
       ),
     );
     await tester.pump();
@@ -220,13 +232,13 @@ void main() {
       // is in the tree (established by music_home_kumone_test: every
       // tap is followed by pump() + pump(300ms)).
       await tester.pump(const Duration(milliseconds: 300));
-      // Search page opened (its idle placeholder), home behind it.
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+      // Search page opened (its field hint), home behind it.
+      expect(find.text('搜索歌曲 / 歌手…'), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsNothing);
+      expect(find.text('搜索歌曲 / 歌手…'), findsNothing);
       expect(find.text('搜歌'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

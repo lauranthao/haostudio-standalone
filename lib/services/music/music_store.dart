@@ -133,7 +133,11 @@ class MusicStore {
           artist: e.artist,
           platform: e.platform,
           cover: e.cover,
-          dur: e.dur,
+          // Full song length, NOT the listened seconds (e.dur):
+          // Song.dur is displayed as the song's duration, so
+          // passing the heard seconds here showed a wrong length
+          // on favourite rows resolved from listen history.
+          dur: e.totalDur,
         ),
       );
     }
@@ -293,6 +297,29 @@ class MusicStore {
     } catch (_) {
       return false;
     }
+  }
+
+  // ---- Feature-card first covers (hao_feature_cover_*) ----
+  /// Cached first-cover URL for a music-home feature card (plaza /
+  /// charts). Null when nothing is cached yet or the stored value
+  /// is empty — the card falls back to its gradient.
+  static String? getFeatureCover(String key) {
+    try {
+      final raw = HiveStore.box.get(key) as String?;
+      if (raw == null || raw.isEmpty) return null;
+      return raw;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cache a feature-card first-cover URL. Empty URLs are ignored
+  /// (an empty value must never overwrite a good cached cover).
+  static Future<void> setFeatureCover(String key, String url) async {
+    if (url.isEmpty) return;
+    try {
+      await HiveStore.put(key, url);
+    } catch (_) {}
   }
 
   static Future<void> saveDaily(String dayKey, List<Song> tracks, bool cold) =>

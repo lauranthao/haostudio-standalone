@@ -834,7 +834,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           final ok = await _c.setQuality(picked);
           if (!ok && mounted) {
             ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('这首歌播不了，换一首试试')));
+                .showSnackBar(const SnackBar(content: Text('这首歌播不了')));
           }
         }
       },

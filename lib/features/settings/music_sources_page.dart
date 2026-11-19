@@ -31,6 +31,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../widgets/glass_dialog.dart';
@@ -307,8 +308,6 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const HaoHint('歌曲搜索仅查询已开启的平台；关闭后该平台的歌曲不再出现在搜索结果中。'),
-          const SizedBox(height: 16),
           SettingsGroup(
             children: [
               ...kSearchPlatforms.map((pf) {
@@ -339,11 +338,6 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            '内置 LX 音乐源脚本，在播放解析与搜索时作为附加音源；关闭后该脚本不再参与解析。每个脚本只提供它自己声明的能力。点删除可移除脚本，删除后不再加载（可通过下方链接或文件重新添加）。拖动左侧手柄可调整顺序，排在前面的脚本优先解析。',
-            style: TextStyle(color: theme.textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 8),
           if (_scriptsLoading)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -368,7 +362,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            '粘贴 LX 音乐源脚本链接，或直接上传 .js 文件；添加时会验证脚本，通过后才会保存。仅支持 LX 格式脚本。',
+            '粘贴 LX 音乐源脚本链接，或直接上传 .js 文件。',
             style: TextStyle(color: theme.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 8),
@@ -408,6 +402,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     final ordered = _orderedScriptInfos();
     return HaoGlassCard(
       padding: const EdgeInsets.symmetric(vertical: 4),
+      quality: GlassCardQuality.standard,
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),

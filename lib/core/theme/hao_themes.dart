@@ -448,7 +448,10 @@ class HaoThemes {
             hairline: Colors.black.withValues(alpha: 0.08),
             textPrimary: const Color(0xFF1C1C1E),
             textSecondary: const Color(0xFF3A3A3C),
-            textMuted: const Color(0xFF8E8E93),
+            // Light-mode contrast (WCAG, on scaffold #F2F2F7): 4.75:1
+            // (was 2.92:1 — below even the 3:1 large-text bar). Dark
+            // mode is untouched (7.31:1 already).
+            textMuted: const Color(0xFF6B6B70),
             glassBlurSigma: 24,
           ),
           dark: _buildThemeData(
@@ -481,7 +484,10 @@ class HaoThemes {
             hairline: const Color(0xFF9A7B1E).withValues(alpha: 0.18),
             textPrimary: const Color(0xFF2A2113),
             textSecondary: const Color(0xFF5C4F33),
-            textMuted: const Color(0xFF9A8B6B),
+            // Light-mode contrast (WCAG, on scaffold #FAF6EC): 4.77:1
+            // (was 3.10:1). Same warm-tan hue, only darker. Dark mode
+            // untouched (5.88:1 already).
+            textMuted: const Color(0xFF7A6C4E),
             glassBlurSigma: 24,
           ),
           dark: _buildThemeData(
@@ -514,7 +520,10 @@ class HaoThemes {
             hairline: const Color(0xFF00897B).withValues(alpha: 0.14),
             textPrimary: const Color(0xFF122E29),
             textSecondary: const Color(0xFF3D5A54),
-            textMuted: const Color(0xFF7FA39B),
+            // Light-mode contrast (WCAG, on scaffold #EFFAF6): 4.76:1
+            // (was 2.58:1). Same muted-teal hue, only darker. Dark
+            // mode untouched (6.95:1 already).
+            textMuted: const Color(0xFF58746D),
             glassBlurSigma: 24,
           ),
           dark: _buildThemeData(
@@ -547,7 +556,10 @@ class HaoThemes {
             hairline: Colors.black.withValues(alpha: 0.14),
             textPrimary: const Color(0xFF0F2436),
             textSecondary: const Color(0xFF3A5568),
-            textMuted: const Color(0xFF7D9BB0),
+            // Light-mode contrast (WCAG, on scaffold #EEF6FB): 4.93:1
+            // (was 2.67:1). Same steel-blue hue, only darker. Dark
+            // mode untouched (6.76:1 already).
+            textMuted: const Color(0xFF4F6E84),
             glassBlurSigma: 24,
           ),
           dark: _buildThemeData(

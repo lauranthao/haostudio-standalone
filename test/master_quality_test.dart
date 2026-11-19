@@ -270,7 +270,13 @@ void main() {
       expect(r.via, 'zddyr');
     });
 
-    test('ikun direct resolver returns master when zddyr is down', () async {
+    test('ikun direct resolver is disabled: never requested (2026-11-19)', () async {
+      // api.ikunshare.com is dead (curl-verified 2026-11-19, logcat
+      // Failed host lookup) — the ikun resolver is disabled, so even
+      // with a fake ikun API answering, it must never be asked and
+      // the resolve returns null here (every other resolver 404s in
+      // this fake dio). Master still comes from zddyr/xinghai when
+      // they answer (see the test above).
       final log = <String>[];
       final dio = buildFakeDio(
         log: log,
@@ -301,16 +307,10 @@ void main() {
         AudioQuality.master,
         'Test',
       );
-      expect(r, isNotNull);
-      expect(r!.quality, AudioQuality.master);
-      expect(r.via, 'ikun');
+      expect(r, isNull);
       expect(
-        log.any(
-          (u) =>
-              u.contains('api.ikunshare.com') &&
-              u.contains('quality=master'),
-        ),
-        isTrue,
+        log.any((u) => u.contains('api.ikunshare.com')),
+        isFalse,
       );
     });
 

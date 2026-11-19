@@ -30,6 +30,7 @@ Future<T?> showGlassDialog<T>(
         child: GlassCard(
           radius: 24,
           shadow: GlassShadow.panel,
+          quality: GlassCardQuality.premium,
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: SizedBox(
             width: MediaQuery.of(ctx).size.width * 0.82,

@@ -29,6 +29,7 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
 import 'package:standalone/widgets/app_shell.dart';
@@ -65,6 +66,18 @@ ThemeData _cjkTheme(ThemeData base) {
       ),
     ),
   );
+}
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient, so the goldens are
+/// unchanged.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
 }
 
 List<Song> _sampleSongs() => [
@@ -170,7 +183,7 @@ void main() {
         // full-height so its content scrolls under the bar.
         home: Stack(
           children: [
-            const MusicTabPage(),
+            MusicTabPage(api: _EmptyCoverApi()),
             Positioned(
               left: 0,
               right: 0,
@@ -226,9 +239,10 @@ void main() {
     );
   });
 
-  // Top-of-page shot (no scroll): the greeting large title (P0-4)
-  // and the feature shelf (P0-1) are above the fold and invisible in
-  // the scrolled shots above, so they get their own goldens.
+  // Top-of-page shot (no scroll): the feature shelf (P0-1) is above
+  // the fold and invisible in the scrolled shots above, so it gets
+  // its own goldens. (The greeting large title used to be here too —
+  // removed 2026-11-19 clean pass; the shelf is the anchor now.)
   Future<void> pumpHomeTop(WidgetTester tester, ThemeData theme) async {
     await pumpHome(tester, theme);
     // pumpHome scrolled to the bottom; scroll back to the top.

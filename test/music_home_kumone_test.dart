@@ -28,8 +28,20 @@ import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_player_sheet.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
+}
 
 class _NoLoadController extends MusicPlayerController {
   final List<(List<Song>, int)> playQueueCalls = [];
@@ -176,7 +188,7 @@ void main() {
       GetMaterialApp(
         debugShowCheckedModeBanner: false,
         theme: theme ?? HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: const MusicTabPage(),
+        home: MusicTabPage(api: _EmptyCoverApi()),
       ),
     );
     await tester.pump();
@@ -185,29 +197,24 @@ void main() {
     return controller;
   }
 
-  testWidgets('sections default expanded, no AppBar, greeting is 34 bold', (
+  testWidgets('sections default expanded, no AppBar, no greeting', (
     tester,
   ) async {
     await pumpHome(tester);
     expect(find.byType(AppBar), findsNothing);
-    // Greeting is the one large title (Kumone iOS large title 34 bold).
-    // The greeting depends on the time of day — compute it like the page.
-    final hour = DateTime.now().hour;
-    final greetingText = hour < 12
-        ? '早上好'
-        : hour < 18
-        ? '下午好'
-        : '晚上好';
-    final greeting = tester.widget<Text>(find.text(greetingText).first);
-    expect(greeting.style?.fontSize, 34);
-    expect(greeting.style?.fontWeight, FontWeight.w700);
+    // Greeting/date header removed (clean pass 2026-11-19): no
+    // time-of-day greeting anywhere on the page; the feature shelf
+    // is the page's visual anchor.
+    expect(find.text('早上好'), findsNothing);
+    expect(find.text('下午好'), findsNothing);
+    expect(find.text('晚上好'), findsNothing);
     // Both sections open without any tap: rows, import box, 新建 button.
     expect(find.text('我喜欢的音乐'), findsOneWidget);
     expect(find.text('粤语经典'), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
     expect(find.text('已下载'), findsOneWidget);
     expect(find.text('本地文件'), findsOneWidget);
-    expect(find.text('一键导入'), findsOneWidget);
+    expect(find.text('导入'), findsOneWidget);
     expect(find.text('新建歌单'), findsOneWidget);
     expect(find.text('富士山下'), findsOneWidget);
     expect(find.text('播放全部'), findsOneWidget);
@@ -227,7 +234,7 @@ void main() {
     // 0), so plain find.text still matches it — hitTestable() is the
     // assertion that the rows are really gone from the screen.
     expect(find.text('我喜欢的音乐').hitTestable(), findsNothing);
-    expect(find.text('一键导入').hitTestable(), findsNothing);
+    expect(find.text('导入').hitTestable(), findsNothing);
     // The other section is independent.
     expect(find.text('富士山下').hitTestable(), findsOneWidget);
     await tester.tap(find.text('我的歌单'));
@@ -247,7 +254,9 @@ void main() {
       seedRecents: false,
       seedQueue: true,
     );
-    // All four controls present: mode (tooltip), prev, play, next.
+    // All four controls present: mode (keyed — the bar has no tooltips:
+    // Tooltip needs an Overlay ancestor and the overlay placement sits
+    // above the root Navigator), prev, play, next.
     // The 「播放全部」 capsule also uses a play_arrow (size 13), so
     // the mini player's play button is identified by its size 15.
     // getRect on an icon/tooltip measures the glyph, not the button:
@@ -257,7 +266,7 @@ void main() {
     );
     Finder controlButton(Finder inner) =>
         find.ancestor(of: inner, matching: find.byType(IconButton));
-    final modeButton = controlButton(find.byTooltip('播放模式'));
+    final modeButton = find.byKey(const ValueKey('mini-mode'));
     final prevButton = controlButton(find.byIcon(Icons.skip_previous));
     final playButton = controlButton(miniPlay);
     final nextButton = controlButton(find.byIcon(Icons.skip_next));
@@ -325,9 +334,10 @@ void main() {
   ) async {
     await pumpHome(tester, seedLists: false, seedRecents: false);
     expect(find.text('还没有歌单'), findsOneWidget);
-    expect(find.text('搜一首歌加进来吧'), findsOneWidget);
     expect(find.text('暂无播放记录'), findsOneWidget);
-    expect(find.text('搜首歌播一下吧'), findsOneWidget);
+    // Subtitles removed (clean pass 2026-11-19): icon + title only.
+    expect(find.text('搜一首歌加进来吧'), findsNothing);
+    expect(find.text('搜首歌播一下吧'), findsNothing);
     // Play-all capsule is present but disabled with nothing to play.
     expect(find.text('播放全部'), findsOneWidget);
     expect(tester.takeException(), isNull);

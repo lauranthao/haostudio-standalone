@@ -15,8 +15,10 @@ import '../../core/theme/haptics.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/search_platform_store.dart';
+import 'music_navigation.dart';
 import 'plaza_page.dart';
 import 'song_search_page.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
 class ChartsPage extends StatefulWidget {
@@ -95,6 +97,9 @@ class _ChartsPageState extends State<ChartsPage> {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
+                          settings: const RouteSettings(
+                            name: musicSubPageRouteName,
+                          ),
                           builder: (_) => const SongSearchPage(),
                         ),
                       );
@@ -136,7 +141,12 @@ class _ChartsPageState extends State<ChartsPage> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                8 + MiniPlayerBar.bottomClearanceFor(context),
+              ),
               itemCount: _charts!.length,
               itemBuilder: (context, i) {
                 final c = _charts![i];
@@ -152,7 +162,20 @@ class _ChartsPageState extends State<ChartsPage> {
                       HaoHaptics.tap();
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => PlazaDetailPage(playlist: c),
+                          settings: const RouteSettings(
+                            name: musicSubPageRouteName,
+                          ),
+                          // isChart: the detail page writes this
+                          // chart's first song cover to the charts
+                          // feature-cover cache on load, so the home's
+                          // 排行榜 card stays fresh (see
+                          // PlazaDetailPage). The fake-Dio api is
+                          // passed through for tests.
+                          builder: (_) => PlazaDetailPage(
+                            playlist: c,
+                            api: widget.api,
+                            isChart: true,
+                          ),
                         ),
                       );
                     },

@@ -32,6 +32,7 @@ import '../music/music_player_controller.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
 import '../player/screen_brightness.dart';
+import '../../core/native/system_volume.dart';
 import 'cms_sources.dart';
 import 'video_detail_service.dart';
 import 'video_history_store.dart';
@@ -51,6 +52,56 @@ int? autoNextEpisodeIndex({
   if (!autoNext) return null;
   final next = current + 1;
   return next < total ? next : null;
+}
+
+/// Resolve the line/episode to play on a switch-target detail
+/// (P1-17, pure — unit-tested):
+/// - Same episode by NAME first, searched across ALL of the target's
+///   lines (the target may put the episode on its 2nd/3rd line while
+///   the current source has it on the 1st) — `matchedByName` true.
+/// - No same-name episode: keep the CURRENT line number (clamped to
+///   the target's line count) and clamp the episode index into that
+///   line — never "always line 1". `matchedByName` false, and the
+///   caller must NOT resume a saved position into the clamped
+///   episode: the clamp is a best-effort neighbour, not the same
+///   episode (P1-15 rule: only the same episode resumes).
+/// - No episodes anywhere: (0, 0, false); the caller skips the target.
+({int lineIdx, int epIdx, bool matchedByName}) resolveSwitchTarget({
+  required List<PlayLine> lines,
+  required String epName,
+  required int lineIdx,
+  required int epIdx,
+}) {
+  if (lines.isEmpty) return (lineIdx: 0, epIdx: 0, matchedByName: false);
+  for (var li = 0; li < lines.length; li++) {
+    final eps = lines[li].episodes;
+    for (var ei = 0; ei < eps.length; ei++) {
+      if (eps[ei].name == epName) {
+        return (lineIdx: li, epIdx: ei, matchedByName: true);
+      }
+    }
+  }
+  final li = lineIdx.clamp(0, lines.length - 1);
+  var eps = lines[li].episodes;
+  var targetLine = li;
+  if (eps.isEmpty) {
+    // The corresponding line is empty: first non-empty line wins.
+    var found = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].episodes.isNotEmpty) {
+        found = i;
+        break;
+      }
+    }
+    if (found < 0) return (lineIdx: 0, epIdx: 0, matchedByName: false);
+    targetLine = found;
+    eps = lines[found].episodes;
+  }
+  return (
+    lineIdx: targetLine,
+    epIdx: epIdx.clamp(0, eps.length - 1),
+    matchedByName: false,
+  );
 }
 
 /// Opens [detail] at [initialLineIndex]/[initialEpisodeIndex] in
@@ -127,6 +178,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // persisted _rate is never touched, so release always restores it.
   bool _longPressSpeeding = false;
   double _volume = 1.0;
+  // System volume for the right-half vertical drag: _volume is only
+  // the cached level (seed for the sync drag start); the drag itself
+  // writes through SystemVolume, never the player gain.
+  final SystemVolume _systemVolume = SystemVolume();
   double _brightness = 0.5;
   bool _closing = false;
   // Seek drag (horizontal swipe): preview the target, seek once on
@@ -145,6 +200,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<PlaybackStatus>? _statusSub;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<double>? _volumeSub;
   var _openEpoch = 0;
 
   PlayEpisode get _episode => _detail.lines[_lineIdx].episodes[_epIdx];
@@ -179,6 +235,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         _brightness = v;
       }),
     );
+    // System volume for the right-half vertical drag (best-effort;
+    // falls back to the cached _volume when the native channel is
+    // unavailable, e.g. unit tests). Hardware-key / Control Center
+    // changes push back through volumeChanges -> _onExternalVolume.
+    unawaited(
+      _systemVolume.getVolume().then((v) {
+        _volume = v;
+      }),
+    );
+    _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
     _statusSub = _session.onStatus.listen((status) {
       if (!mounted) return;
       if (status == PlaybackStatus.completed) {
@@ -281,9 +347,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     if (meta.name.isEmpty) return false;
     // Capture before the loop: a failed switch attempt already
     // replaced _detail, so later matches must still use the ORIGINAL
-    // episode name/index.
+    // episode name/index/line.
     final epName = _episode.name;
     final epIndex = _epIdx;
+    final lineIndex = _lineIdx;
     var attempts = 0;
     try {
       await for (final alt in _detailService.findAlts(
@@ -302,20 +369,33 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           continue;
         }
         if (!altDetail.usable) continue;
-        final eps = altDetail.lines.first.episodes;
-        if (eps.isEmpty) continue;
-        // Same episode: same name first (e.g. 第21集）, else same
-        // index clamped to the new line's length.
-        var epIdx = eps.indexWhere((e) => e.name == epName);
-        if (epIdx < 0) epIdx = epIndex.clamp(0, eps.length - 1);
+        if (!altDetail.lines.any((l) => l.episodes.isNotEmpty)) continue;
+        // P1-17: same episode by name across ALL lines first; else
+        // keep the current line number and clamp the episode index
+        // into that line — never forced to the target's line 1.
+        final target = resolveSwitchTarget(
+          lines: altDetail.lines,
+          epName: epName,
+          lineIdx: lineIndex,
+          epIdx: epIndex,
+        );
         if (!mounted) return false;
         setState(() {
           _detail = altDetail;
-          _lineIdx = 0;
-          _epIdx = epIdx;
+          _lineIdx = target.lineIdx;
+          _epIdx = target.epIdx;
           _resumeSought = false;
         });
         if (await _openEpisodeUrl()) {
+          // P1-15: only the SAME episode resumes. A name-matched
+          // switch keeps the saved position (the resume seek in
+          // _openCurrent runs after this returns); a clamped switch
+          // landed on a neighbour episode, so the old position must
+          // not follow it there.
+          if (!target.matchedByName) {
+            _resumePosition = 0;
+            _resumeSought = true;
+          }
           if (mounted) {
             ScaffoldMessenger.maybeOf(context)
                 ?.showSnackBar(const SnackBar(content: Text('已切换片源，继续播放')));
@@ -362,12 +442,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       });
       return;
     }
-    // Re-apply the user's volume after a backend swap (episode
-    // change / ladder rebuild resets the backend to full volume).
-    // Speed is re-applied by the session's _swapBackend instead.
-    if (_volume != 1.0) {
-      unawaited(_session.setVolume(_volume));
-    }
+    // Speed is re-applied by the session's _swapBackend after a
+    // backend swap; volume needs nothing — it is the system volume
+    // now, not a per-backend gain.
     // Resume seek, once per episode: open() already verified the first
     // frame, so seeking now lands on a playing stream. Only for the
     // episode the detail page launched with a saved position (> 10 s
@@ -392,6 +469,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           title: m.name,
           pic: m.pic,
           picAlt: m.picAlt,
+          // Year feeds the film key (P1-16): without it, a remake
+          // would merge into the original's history row.
+          year: m.year,
           lineIdx: _lineIdx,
           epIdx: _epIdx,
           epName: _episode.name,
@@ -641,6 +721,23 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // re-arms the timer.
   }
 
+  /// Hardware keys / Control Center moved the system volume outside
+  /// the app: show the real value in the drag HUD (same 800 ms linger
+  /// as _onSystemDragEnd). Ignored while a brightness drag is showing.
+  void _onExternalVolume(double volume) {
+    if (!mounted) return;
+    if (_dragSide == _PlayerDragSide.brightness) return;
+    setState(() {
+      _dragSide = _PlayerDragSide.volume;
+      _dragSystemValue = volume;
+      _volume = volume;
+    });
+    _dragHintTimer?.cancel();
+    _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _dragSide = null);
+    });
+  }
+
   // -- Vertical drag: left half brightness, right half volume. --
 
   void _onSystemDragStart(DragStartDetails details) {
@@ -671,7 +768,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       unawaited(ScreenBrightness.setBrightness(_dragSystemValue));
     } else {
       _volume = _dragSystemValue;
-      unawaited(_session.setVolume(_dragSystemValue));
+      unawaited(_systemVolume.setVolume(_dragSystemValue));
     }
   }
 
@@ -870,6 +967,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _durationSub?.cancel();
     _statusSub?.cancel();
     _errorSub?.cancel();
+    _volumeSub?.cancel();
+    _systemVolume.dispose();
     unawaited(_saveProgress());
     unawaited(_session.dispose());
     try {

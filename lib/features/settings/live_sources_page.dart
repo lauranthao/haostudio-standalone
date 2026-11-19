@@ -48,8 +48,6 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const HaoHint('下次打开直播页时仅显示已开启的平台；关闭后该平台的直播间不再出现在直播页。'),
-          const SizedBox(height: 16),
           SettingsGroup(
             children: [
               ...Sites.supportedSiteIds.map((id) {

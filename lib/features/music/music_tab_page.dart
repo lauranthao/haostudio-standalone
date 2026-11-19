@@ -7,9 +7,9 @@ import 'dart:async';
 // this closed-source app). Sources per item:
 // - P0-1 feature shelf: HomeView.swift:238-276 (shelf spacing 16,
 //   vertical padding 6), FeatureCard :400-457 (230x132, radius 12,
-//   white 0.12 stroke 0.5pt, padding 14, icon 22, title 15 bold,
-//   subtitle 11 white 0.75, text shadow black 0.4 r2 y1, cover +
-//   black 0.1->0.68 gradient). C1/C2 (REVISED 2026-11-18 — chen: the
+//   white 0.12 stroke 0.5pt, padding 14, icon 22, title 15 bold
+//   (subtitle removed 2026-11-19 clean pass), text shadow black 0.4
+//   r2 y1, cover + black 0.1->0.68 gradient). C1/C2 (REVISED 2026-11-18 — chen: the
 //   all-black cards are ugly): NO theme-accent gradient — the accent
 //   is black after the blue->black rule, so all five cards read black.
 //   Each card gets its own Kumone gradient (topLeading->
@@ -39,10 +39,9 @@ import 'dart:async';
 //   list.cover is already the first-track cover
 //   (music_models.dart:458); a truly coverless list gets a neutral
 //   accent gradient tile + note, not a grey block.
-// - P0-4: no AppBar (the tab bar already says 音乐); the greeting is
-//   the page's one large title, 34 bold (Kumone HomeView
-//   .navigationTitle, iOS large title 34 bold), date 13 secondary,
-//   top padding 4 (Theme.Layout.pageTopPadding).
+// - P0-4: no AppBar (the tab bar already says 音乐). The greeting/
+//   date header was removed 2026-11-19 (clean pass); the feature
+//   shelf is the page's visual anchor now.
 // - P1-5: page inset 24 (Theme.Layout.contentInset), shelf spacing 16.
 // - P1-6: mini player capsule (IOSMainWindow.swift:472-620
 //   IOSMiniPlayerBar legacyOverlay): capsule shape, cover 32 radius 6
@@ -78,18 +77,23 @@ import 'dart:async';
 //   subtitle, spacing 12); full-page recents empty state minHeight 300
 //   (LibraryPages.swift:52-55).
 //
-// Order, top to bottom: greeting/date, feature shelf (search / daily /
-// plaza / charts / listen report), then 我的歌单, then 最近播放. Both
+// Order, top to bottom: feature shelf (search / daily /
+// plaza / charts / listen report), then 我的歌单, then 私人漫游 /
+// 心动模式 (two cards side by side), then 最近播放. Both
 // sections start EXPANDED; collapse is kept (tap the head) but the
-// default is open. Collapse state is per-section, kept for the session.
+// default is open. Collapse state is per-section and persisted in
+// Hive (musicPlaylistsExpanded / musicRecentExpanded): the bottom tab
+// is a PageView with no AutomaticKeepAlive, so switching 2 tabs away
+// disposes this State — without persistence the sections reopened by
+// themselves (reported 2026-11-19).
 //
 // Playlist card count = tracks.length (audit P0-1) — never a stored
 // count field. The import box lives inside the 我的歌单 section.
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' hide GlassCard;
 
+import '../../core/storage/hive_store.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
@@ -98,50 +102,76 @@ import '../../core/theme/haptics.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/search_platform_store.dart';
 import '../../services/music/local_music_store.dart';
 import 'artist_detail_page.dart';
 import 'charts_page.dart';
 import 'daily_page.dart';
 import 'downloads_page.dart';
 import 'favourites_page.dart';
+import 'fm_service.dart';
 import 'listen_report_page.dart';
 import 'local_music_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
 import 'song_search_page.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/empty_state.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 
 class MusicTabPage extends StatefulWidget {
-  const MusicTabPage({super.key});
+  const MusicTabPage({super.key, this.api});
+
+  /// Test seam only: an injected [MusicApi] (fake Dio in render /
+  /// widget tests). Null in production — the page owns a fresh one.
+  /// The seam also keeps the lazy first-cover fetch offline in
+  /// tests (a real api would hit the network from the test VM).
+  final MusicApi? api;
 
   @override
   State<MusicTabPage> createState() => _MusicTabPageState();
 }
 
-/// One feature-shelf card: icon, title, subtitle, destination, its own
+/// One feature-shelf card: icon, title, destination, its own
 /// Kumone gradient (see the file header — one distinct gradient per
-/// card, never black/grey), and an optional real cover (daily card
-/// only — the cover replaces the gradient, with the black scrim).
+/// card, never black/grey), and an optional real cover — when set,
+/// the cover replaces the gradient, with the black scrim (top 0.1 ->
+/// bottom 0.68) keeping the white title readable. 搜歌 has no cover;
+/// the other four shelf cards show their first item's cover
+/// (daily / plaza / charts / report — see [_featureShelf]).
+/// No subtitle (removed 2026-11-19 clean pass — title sits at the
+/// bottom of the card, 15 bold, unchanged).
+///
+/// [glass] (FM / heartbeat only, 2026-11-19 — chen approved the
+/// preview): the card renders as real liquid glass instead of the
+/// solid gradient — GlassCard standard + a tint wash built from the
+/// tile's own gradient colour (see [_FeatureCard] for the values).
+/// The four shelf cards keep [glass] false and their gradients.
 class _FeatureTile {
   const _FeatureTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.gradient,
     required this.onTap,
     this.showsDate = false,
     this.cover,
-  });
+    this.glass = false,
+    this.glassTint,
+    this.glassTintDark,
+  }) : assert(
+         !glass || glassTint != null,
+         'a glass tile needs its tint wash base colour',
+       );
 
   final IconData icon;
   final String title;
-  final String subtitle;
 
   /// Two-stop gradient, topLeading -> bottomTrailing (Kumone
   /// FeatureCard, HomeView.swift:415).
@@ -149,10 +179,25 @@ class _FeatureTile {
   final VoidCallback onTap;
   final bool showsDate;
   final String? cover;
+
+  /// Glass switch (default false — the shelf cards stay gradient).
+  final bool glass;
+
+  /// Tint-wash base colour for the glass card: light mode. Always
+  /// the tile's own gradient bright end (FM #1D4ED8, heartbeat
+  /// #F43F5E — preview ~/workspace/preview/fm-glass-preview.html).
+  final Color? glassTint;
+
+  /// Tint-wash base colour for the glass card: dark mode. Null =
+  /// same as [glassTint]. FM needs a lighter blue here (#3B82F6 —
+  /// preview) so the wash stays visible on the dark background;
+  /// heartbeat reuses #F43F5E.
+  final Color? glassTintDark;
 }
 
 class _MusicTabPageState extends State<MusicTabPage> {
   final _importController = TextEditingController();
+  late final MusicApi _api = widget.api ?? MusicApi();
   var _playlistsExpanded = true;
   var _recentExpanded = true;
   List<UserPlaylist> _lists = [];
@@ -169,7 +214,29 @@ class _MusicTabPageState extends State<MusicTabPage> {
   @override
   void initState() {
     super.initState();
+    _playlistsExpanded =
+        HiveStore.getBool(HiveKeys.musicPlaylistsExpanded, true);
+    _recentExpanded = HiveStore.getBool(HiveKeys.musicRecentExpanded, true);
     _refresh();
+    // Lazy first-cover fill (plaza / charts): after the first frame,
+    // so the home renders its gradients first and swaps a cover in
+    // when it arrives. The fetch runs once per home lifetime and
+    // only for the cards whose cached URL is missing.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _fetchMissingCovers(),
+    );
+  }
+
+  void _togglePlaylists() {
+    final next = !_playlistsExpanded;
+    setState(() => _playlistsExpanded = next);
+    unawaited(HiveStore.put(HiveKeys.musicPlaylistsExpanded, next));
+  }
+
+  void _toggleRecent() {
+    final next = !_recentExpanded;
+    setState(() => _recentExpanded = next);
+    unawaited(HiveStore.put(HiveKeys.musicRecentExpanded, next));
   }
 
   @override
@@ -187,8 +254,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
   }
 
   Future<void> _push(Widget page) async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => page));
+    await pushMusicSubPage<void>(context, page);
     _refresh();
   }
 
@@ -214,7 +280,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
             TextField(
               controller: nameController,
               autofocus: true,
-              decoration: const InputDecoration(hintText: '歌单名'),
+              decoration: const InputDecoration(),
             ),
             const SizedBox(height: 16),
             Row(
@@ -316,6 +382,86 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
+  /// Open the player from the embedded mini player bar: the page
+  /// EXPANDS from the bar's rect (NetEase). Song-row / FM / heartbeat
+  /// taps keep using [_openPlayer] (plain slide) — there is no bar
+  /// to expand from there.
+  void _openPlayerFromBar(Rect? barRect) {
+    unawaited(openPlayerPage<void>(context, fromRect: barRect));
+  }
+
+  /// Start personal FM, then open the full player. When there are no
+  /// local seeds at all the service returns false and a real prompt
+  /// is shown instead of failing silently.
+  Future<void> _startFM() async {
+    final started = await FmService.ensure().startFM();
+    if (!mounted) return;
+    if (!started) {
+      await _showFmEmptyPrompt(
+        title: '私人漫游',
+        body: '还没有收藏和最近播放的歌曲。先收藏几首喜欢的歌，或者听几首歌，私人漫游会从这些歌出发，为你找相似的歌。',
+      );
+      return;
+    }
+    _openPlayer();
+  }
+
+  /// Start heartbeat mode, then open the full player. With no liked
+  /// songs the service returns false and a real prompt is shown.
+  Future<void> _startHeartbeat() async {
+    final started = await FmService.ensure().startHeartbeat();
+    if (!mounted) return;
+    if (!started) {
+      await _showFmEmptyPrompt(
+        title: '心动模式',
+        body: '还没有收藏的歌曲。先去收藏几首喜欢的歌，心动模式会以其中一首为种子，为你找相似的歌。',
+      );
+      return;
+    }
+    _openPlayer();
+  }
+
+  Future<void> _showFmEmptyPrompt({
+    required String title,
+    required String body,
+  }) async {
+    await showGlassDialog<void>(
+      context,
+      builder: (ctx) {
+        final theme = HaoTheme.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('知道了'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// Daily first cover for the 每日推荐 feature card: sync read of the
   /// cached daily list only. If the user has never opened Daily today
   /// there is no cached list and the card falls back to the theme
@@ -328,14 +474,99 @@ class _MusicTabPageState extends State<MusicTabPage> {
     return cover.isEmpty ? null : cover;
   }
 
+  /// Plaza first cover for the 歌单广场 card: sync read of the
+  /// cached URL only (see [_fetchMissingCovers] for the fill).
+  String? _plazaFirstCover() =>
+      MusicStore.getFeatureCover(HiveKeys.featureCoverPlaza);
+
+  /// Charts first cover for the 排行榜 card: sync read of the
+  /// cached URL only (see [_fetchMissingCovers] for the fill).
+  String? _chartsFirstCover() =>
+      MusicStore.getFeatureCover(HiveKeys.featureCoverCharts);
+
+  /// Report first cover for the 听歌报告 card: computed live from
+  /// the local listen log on every build — same range ('week') and
+  /// live-event merge as ListenReportPage, so the card's #1 song
+  /// always agrees with the report page. No cache, no network.
+  String? _reportFirstCover() {
+    final live = _player.liveListenEvent;
+    final log = MusicStore.getListenLog();
+    final report = ListenReport.compute(
+      live == null ? log : [live, ...log],
+      'week',
+    );
+    if (report.topSongs.isEmpty) return null;
+    final cover = report.topSongs.first.song.cover;
+    return cover.isEmpty ? null : cover;
+  }
+
+  /// Lazy fill for the plaza / charts first covers: one background
+  /// fetch per missing card, reusing each page's own fetch
+  /// (PlazaPage._load / ChartsPage._load + importPlaylist). A
+  /// failed fetch leaves the gradient — never an error, never a
+  /// blank card. The URL is cached, so later home opens read it
+  /// synchronously and never re-fetch.
+  Future<void> _fetchMissingCovers() async {
+    if (!mounted) return;
+    if (_plazaFirstCover() == null) {
+      unawaited(_fetchPlazaCover());
+    }
+    if (_chartsFirstCover() == null) {
+      unawaited(_fetchChartsCover());
+    }
+  }
+
+  Future<void> _fetchPlazaCover() async {
+    try {
+      final items = await _api.plaza(SearchPlatformStore.current());
+      if (!mounted) return;
+      for (final item in items) {
+        if (item.cover.isNotEmpty) {
+          await MusicStore.setFeatureCover(
+            HiveKeys.featureCoverPlaza,
+            item.cover,
+          );
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    } catch (_) {
+      // Offline / API down: keep the gradient.
+    }
+  }
+
+  Future<void> _fetchChartsCover() async {
+    try {
+      final charts = await _api.neteaseCharts();
+      if (!mounted || charts.isEmpty) return;
+      final tracks = await _api.importPlaylist(
+        MusicPlatform.wy,
+        charts.first.id,
+      );
+      if (!mounted) return;
+      for (final song in tracks.tracks) {
+        if (song.cover.isNotEmpty) {
+          await MusicStore.setFeatureCover(
+            HiveKeys.featureCoverCharts,
+            song.cover,
+          );
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    } catch (_) {
+      // Offline / API down: keep the gradient.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Obx(
       () => Scaffold(
         backgroundColor: tabScaffoldBackground(context),
-        // P0-4: no AppBar — the tab bar already says 音乐; the greeting
-        // below is the page's one large title.
+        // P0-4: no AppBar — the tab bar already says 音乐; the feature
+        // shelf below is the page's visual anchor.
         body: SafeArea(
           top: true,
           bottom: false,
@@ -344,17 +575,18 @@ class _MusicTabPageState extends State<MusicTabPage> {
               Expanded(
                 child: ListView(
                   children: [
-                    _greeting(theme),
                     _featureShelf(theme),
                     // Gap arithmetic (Kumone sectionSpacing 20):
                     // shelf bottom padding 6 + 4 + head top padding 10.
+                    // The shelf is the page's visual anchor now — the
+                    // greeting/date header was removed 2026-11-19
+                    // (clean pass); homeDateText itself stays, it is
+                    // still used by daily_page.dart:159.
                     const SizedBox(height: 4),
                     CollapsibleSection(
                       title: '我的歌单',
                       expanded: _playlistsExpanded,
-                      onToggle: () => setState(
-                        () => _playlistsExpanded = !_playlistsExpanded,
-                      ),
+                      onToggle: _togglePlaylists,
                       showLeadingChevron: false,
                       horizontalPadding: 24,
                       verticalPadding: 10,
@@ -368,11 +600,13 @@ class _MusicTabPageState extends State<MusicTabPage> {
                     // Gap arithmetic: body bottom (no trailing spacer) +
                     // 10 + next head top padding 10 = sectionSpacing 20.
                     const SizedBox(height: 10),
+                    _fmRow(theme),
+                    // Same 10 + 10 arithmetic before the next section.
+                    const SizedBox(height: 10),
                     CollapsibleSection(
                       title: '最近播放',
                       expanded: _recentExpanded,
-                      onToggle: () =>
-                          setState(() => _recentExpanded = !_recentExpanded),
+                      onToggle: _toggleRecent,
                       showLeadingChevron: false,
                       horizontalPadding: 24,
                       verticalPadding: 10,
@@ -394,35 +628,13 @@ class _MusicTabPageState extends State<MusicTabPage> {
                   ],
                 ),
               ),
-              _miniPlayer(theme),
+              MiniPlayerBar(
+                key: const ValueKey('homeMiniPlayer'),
+                onOpenPlayer: _openPlayerFromBar,
+              ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _greeting(HaoTheme theme) {
-    final now = DateTime.now();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            greetingFor(now),
-            style: TextStyle(
-              color: theme.textPrimary,
-              fontSize: 34,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            homeDateText(now),
-            style: TextStyle(color: theme.textSecondary, fontSize: 13),
-          ),
-        ],
       ),
     );
   }
@@ -433,7 +645,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.search,
         title: '搜歌',
-        subtitle: '全网音乐一键搜',
         gradient: const [Color(0xFFF85B5B), Color(0xFFC92929)],
         onTap: () => _push(const SongSearchPage()),
       ),
@@ -442,36 +653,40 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.calendar_today,
         title: '每日推荐',
-        subtitle: '根据你的口味生成',
         gradient: const [Color(0xFFBF2938), Color(0xFFF25947)],
         showsDate: true,
         cover: _dailyFirstCover(),
         onTap: () => _push(const DailyPage()),
       ),
       // Kumone HomeView.swift:268-269 心动模式.
+      // Cover: the first playlist's cover (cached, lazily filled).
       _FeatureTile(
         icon: Icons.grid_view,
         title: '歌单广场',
-        subtitle: '发现大家的好歌单',
         gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
+        cover: _plazaFirstCover(),
         onTap: () => _push(const PlazaPage()),
       ),
       // Kumone HomeView.swift:262-263 私人漫游 indigo, shifted blue
       // (purple end banned — see the file header).
+      // Cover: the #1 song of the first chart (cached, lazily
+      // filled via neteaseCharts + importPlaylist).
       _FeatureTile(
         icon: Icons.leaderboard,
         title: '排行榜',
-        subtitle: '热门歌曲榜单',
         gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
+        cover: _chartsFirstCover(),
         onTap: () => _push(const ChartsPage()),
       ),
       // Derived from HomeView.swift:268-269 pink-orange, hue shifted
       // rose -> amber (see the file header).
+      // Cover: the #1 song of this week's report (computed live
+      // from the local listen log — no cache, no network).
       _FeatureTile(
         icon: Icons.bar_chart,
         title: '听歌报告',
-        subtitle: '回顾你的听歌足迹',
         gradient: const [Color(0xFFD96114), Color(0xFFFA9433)],
+        cover: _reportFirstCover(),
         onTap: () => _push(const ListenReportPage()),
       ),
     ];
@@ -488,6 +703,75 @@ class _MusicTabPageState extends State<MusicTabPage> {
               child: _FeatureCard(tile: tiles[i]),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Personal FM + heartbeat cards, side by side between 我的歌单 and
+  /// 最近播放. Same _FeatureCard rendering as the shelf (radius 12,
+  /// white 0.12 stroke, icon 22 top-left, title 15 bold bottom-left,
+  /// no subtitle); half width each (16 gap) at 96 high to keep the
+  /// shelf's 230:132 ratio. Gradients are Kumone's: FM indigo shifted
+  /// blue like the 排行榜 card (purple end banned), heartbeat red-pink.
+  /// NOTE: the two gradients intentionally match the 排行榜 / 歌单广场
+  /// cards (the brief says to copy Kumone's values); if that reads as
+  /// duplicated, shift one of them.
+  Widget _fmRow(HaoTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StaggerIn(
+              index: 5,
+              id: 'home-fm',
+              child: _FeatureCard(
+                width: double.infinity,
+                height: 96,
+                tile: _FeatureTile(
+                  icon: Icons.waves,
+                  title: '私人漫游',
+                  // NOTE: Kumone 私人漫游 indigo shifted blue is #1A408C->#2959D9,
+                  // but 排行榜 already uses it — file rule: no two cards share a
+                  // gradient. Same indigo-blue family, darker so the two read apart.
+                  gradient: const [Color(0xFF0F2A5C), Color(0xFF1D4ED8)],
+                  onTap: _startFM,
+                  // Glass (chen-approved preview): wash base is the
+                  // gradient bright end; dark mode gets the lighter
+                  // #3B82F6 so the wash stays visible on dark.
+                  glass: true,
+                  glassTint: const Color(0xFF1D4ED8),
+                  glassTintDark: const Color(0xFF3B82F6),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _StaggerIn(
+              index: 6,
+              id: 'home-heartbeat',
+              child: _FeatureCard(
+                width: double.infinity,
+                height: 96,
+                tile: _FeatureTile(
+                  icon: Icons.favorite,
+                  title: '心动模式',
+                  // NOTE: Kumone 心动模式 red-pink is #D93069->#FA6B57,
+                  // but 歌单广场 already uses it — file rule: no two cards share a
+                  // gradient. Same red-pink family, rose end instead of orange.
+                  gradient: const [Color(0xFFBE123C), Color(0xFFF43F5E)],
+                  onTap: _startHeartbeat,
+                  // Glass (chen-approved preview): wash base is the
+                  // gradient bright end, same colour both modes.
+                  glass: true,
+                  glassTint: const Color(0xFFF43F5E),
+                  glassTintDark: const Color(0xFFF43F5E),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -515,7 +799,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
           icon: Icons.download,
           title: '已下载',
           subtitle: _player.downloads.downloadedCount == 0
-              ? '离线听歌，还没有下载'
+              ? '还没有下载'
               : '${_player.downloads.downloadedCount} 首歌曲',
           onTap: () => _push(const DownloadsPage()),
         ),
@@ -530,6 +814,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         children: [
           GlassCard(
             radius: 20,
+            quality: GlassCardQuality.standard,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             // Transparent Material so the rows' InkWells can paint
             // ripples (GlassCard itself carries no Material).
@@ -553,7 +838,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
                       child: HaoEmptyState(
                         icon: Icons.music_note,
                         title: '还没有歌单',
-                        subtitle: '搜一首歌加进来吧',
                       ),
                     ),
                   ],
@@ -561,7 +845,9 @@ class _MusicTabPageState extends State<MusicTabPage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          // Empty state lost its subtitle line (clean pass) — give the
+          // card 12 below it instead of 8 so it still breathes.
+          SizedBox(height: _lists.isEmpty ? 12 : 8),
           _importRow(theme),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -754,7 +1040,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         ),
         const SizedBox(width: 8),
         _CapsuleButton(
-          label: _importing ? '导入中…' : '一键导入',
+          label: _importing ? '导入中…' : '导入',
           enabled: !_importing,
           onTap: _importLink,
         ),
@@ -769,7 +1055,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
         child: HaoEmptyState(
           icon: Icons.access_time,
           title: '暂无播放记录',
-          subtitle: '搜首歌播一下吧',
           minHeight: 300,
         ),
       );
@@ -820,226 +1105,39 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
-  /// Floating glass capsule mini player — Kumone `IOSMiniPlayerBar`
-  /// (IOSMainWindow.swift:472-620, legacyOverlay branch), values
-  /// copied, not Beans':
-  /// capsule shape, cover 32 radius 6 + shadow black 0.15 r4 y1,
-  /// title 13 semibold, subtitle (live lyric line, falling back to
-  /// artist) 10, text spacing 3, padding leading 12 / trailing 6 /
-  /// vertical 4, buttons 44x44 (prev/next icon 14 semibold secondary,
-  /// play 15 bold primary), shadow black 0.12 r10 y4, horizontal
-  /// margin 12, 8pt gap above the tab bar. It floats above the tab
-  /// bar, not attached to it; it renders only when a song is playing
-  /// (Kumone :235-247, #35 — no empty platter when idle).
-  ///
-  /// Differences from Kumone, with reasons:
-  /// - Buttons are mode / prev / play / next (Kumone: prev / play /
-  ///   next). The mode button is our existing feature — removing it
-  ///   to match Kumone would delete functionality. Mode takes the
-  ///   prev/next treatment (14 secondary); there is no Kumone value
-  ///   for a mode button, so 14 secondary is the judgement call.
-  /// - The shell is `liquid_glass_widgets` premium glass (floating
-  ///   chrome) instead of `.regularMaterial` — same radius/padding/
-  ///   shadow/margin, real shader refraction instead of plain blur.
-  ///   The 0.5pt primary-0.08 stroke is mapped to theme.hairline
-  ///   (black 0.08 light / white 0.12 dark). Buttons inside stay plain
-  ///   IconButtons (no glass buttons inside a glass container).
-  Widget _miniPlayer(HaoTheme theme) {
-    return Obx(() {
-      final song = _player.currentSong;
-      if (song == null) return const SizedBox.shrink();
-      return GlassPressScale(
-        pressedScale: 0.97,
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: glassMiniPlayerShadow(context),
-          ),
-          child: GlassAdaptiveScope(
-            // Same premium floor as the tab bar (app_shell.dart): the
-            // adaptive scope may demote premium to frosted glass on a
-            // busy phone; the mini player is floating chrome and must
-            // stay premium. Glass parameters themselves are already
-            // the demo's (ios27 preset + premium).
-            minQuality: GlassQuality.premium,
-            child: GlassContainer(
-              shape: const LiquidRoundedSuperellipse(borderRadius: 999),
-              padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
-              useOwnLayer: true,
-              quality: GlassQuality.premium,
-              child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  HaoHaptics.tap();
-                  _openPlayer();
-                },
-                borderRadius: BorderRadius.circular(999),
-                child: Row(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color.fromRGBO(0, 0, 0, 0.15),
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: song.cover.isEmpty
-                            ? Container(
-                                width: 32,
-                                height: 32,
-                                color: theme.accentSoft,
-                                child: Icon(
-                                  Icons.music_note,
-                                  color: theme.textMuted,
-                                ),
-                              )
-                            : Image(
-                                image: MusicImageProvider(song.cover),
-                                width: 32,
-                                height: 32,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Container(
-                                  width: 32,
-                                  height: 32,
-                                  color: theme.accentSoft,
-                                  child: Icon(
-                                    Icons.music_note,
-                                    color: theme.textMuted,
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            song.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: theme.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          // Live lyric line (Beans `MiniPlayerView`): the
-                          // second line shows the current lyric line while
-                          // one is playing, falling back to the artist.
-                          // The inner Obx only rebuilds this subtitle when
-                          // the position/lyrics change.
-                          Obx(() {
-                            final idx = _player.lyricIndexFor(
-                              _player.position.value,
-                            );
-                            final lines = _player.lyrics;
-                            final line = (idx >= 0 && idx < lines.length)
-                                ? lines[idx].text
-                                : null;
-                            return AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 250),
-                              child: Text(
-                                line ?? song.artist,
-                                key: ValueKey(line ?? song.artist),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: theme.textSecondary,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    _MiniControl(
-                      icon: playModeIcon(_player.mode),
-                      size: 14,
-                      color: theme.textSecondary,
-                      tooltip: '播放模式',
-                      onPressed: () {
-                        HaoHaptics.tap();
-                        _player.cyclePlayMode();
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    _MiniControl(
-                      icon: Icons.skip_previous,
-                      size: 14,
-                      color: theme.textSecondary,
-                      onPressed: () {
-                        HaoHaptics.tap();
-                        unawaited(_player.prev());
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    _MiniControl(
-                      icon: _player.isPlaying.value
-                          ? Icons.pause
-                          : Icons.play_arrow,
-                      size: 15,
-                      color: theme.textPrimary,
-                      onPressed: () {
-                        HaoHaptics.tap();
-                        _player.togglePlayPause();
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    _MiniControl(
-                      icon: Icons.skip_next,
-                      size: 14,
-                      color: theme.textSecondary,
-                      onPressed: () {
-                        HaoHaptics.tap();
-                        _player.next();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
 }
 
 /// Kumone `FeatureCard` (HomeView.swift:400-457): 230x132, radius 12
 /// (Theme.Radius.large), white 0.12 stroke 0.5pt, padding 14, icon 22
-/// top-left, title 15 bold + subtitle 11 white 0.75 bottom-left, text
-/// shadow black 0.4 r2 y1; background is the cover + black 0.1->0.68
+/// top-left, title 15 bold bottom-left (no subtitle — removed
+/// 2026-11-19 clean pass), text shadow black 0.4 r2 y1; background is
 /// gradient, or (no cover) the tile's own Kumone gradient + white 0.18
 /// radial highlight (top-leading, endRadius 220). The gradient comes
 /// from the tile (one distinct Kumone gradient per card — see the file
 /// header); the theme accent is never used here, so the cards stay
 /// coloured in all 4 themes x light/dark.
 class _FeatureCard extends StatelessWidget {
-  const _FeatureCard({required this.tile});
+  const _FeatureCard({required this.tile, this.width = 230, this.height = 132});
 
   final _FeatureTile tile;
 
+  /// Card width (the shelf uses the Kumone 230; the FM / heartbeat
+  /// row passes double.infinity inside its Expanded cells).
+  final double width;
+
+  /// Card height (the shelf uses the Kumone 132; the FM / heartbeat
+  /// row uses 96 to keep the 230:132 ratio at half width).
+  final double height;
+
   @override
   Widget build(BuildContext context) {
+    if (tile.glass) {
+      return _buildGlass(context);
+    }
     final cover = tile.cover;
     return Container(
-      width: 230,
-      height: 132,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
@@ -1089,7 +1187,7 @@ class _FeatureCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _featureIcon(),
+                        _featureIcon(Colors.white),
                         const Spacer(),
                         Text(
                           tile.title,
@@ -1108,28 +1206,80 @@ class _FeatureCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          tile.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color.fromRGBO(255, 255, 255, 0.75),
-                            fontSize: 11,
-                            shadows: [
-                              Shadow(
-                                color: Color.fromRGBO(0, 0, 0, 0.4),
-                                blurRadius: 2,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Glass FM / heartbeat card (chen-approved preview
+  /// ~/workspace/preview/fm-glass-preview.html): real liquid glass
+  /// — GlassCard standard, because the cards sit in the scrolling
+  /// music home (the library warns premium "may not render correctly
+  /// in scrollable contexts"); radius 12, padding zero; tint wash
+  /// from the tile's own gradient colour, 135° (topLeft ->
+  /// bottomRight), light 0.14 -> 0.06 / dark 0.22 -> 0.10. Icon +
+  /// title use theme.textPrimary (dark text in light mode, white in
+  /// dark mode); the title shadow is dropped here — it only exists
+  /// to lift white text off the solid gradient, and it muddies text
+  /// on glass. Tap + haptics are the same InkWell as the gradient
+  /// branch; layout (96 high, icon 22 top-left, title 15 bold
+  /// bottom-left, 14 padding) is unchanged.
+  Widget _buildGlass(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tintBase =
+        isDark ? (tile.glassTintDark ?? tile.glassTint!) : tile.glassTint!;
+    final wash = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        tintBase.withValues(alpha: isDark ? 0.22 : 0.14),
+        tintBase.withValues(alpha: isDark ? 0.10 : 0.06),
+      ],
+    );
+    final foreground = theme.textPrimary;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: GlassCard(
+        radius: 12,
+        padding: EdgeInsets.zero,
+        quality: GlassCardQuality.standard,
+        tint: wash,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HaoHaptics.tap();
+              tile.onTap();
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _featureIcon(foreground),
+                  const Spacer(),
+                  Text(
+                    tile.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1171,12 +1321,13 @@ class _FeatureCard extends StatelessWidget {
     );
   }
 
-  /// 22 medium white icon; the daily card overlays today's day number
+  /// 22 medium icon; the daily card overlays today's day number
   /// (10 bold, offset y+3) like Kumone's showsDate (HomeView.swift
-  /// :427-435).
-  Widget _featureIcon() {
+  /// :427-435). [color] is white on the gradient cards and
+  /// theme.textPrimary on the glass cards.
+  Widget _featureIcon(Color color) {
     if (!tile.showsDate) {
-      return Icon(tile.icon, size: 22, color: Colors.white);
+      return Icon(tile.icon, size: 22, color: color);
     }
     return SizedBox(
       width: 22,
@@ -1184,7 +1335,7 @@ class _FeatureCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(tile.icon, size: 22, color: Colors.white),
+          Icon(tile.icon, size: 22, color: color),
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Text(
@@ -1341,36 +1492,3 @@ class _StaggerInState extends State<_StaggerIn>
   }
 }
 
-/// One 44x44 mini-player control (Kumone `IOSMiniPlayerBar`:
-/// 44x44 frame; prev/next icon 14 semibold secondary, play 15 bold
-/// primary). The mode button takes the prev/next treatment — there is
-/// no Kumone value for a mode button.
-class _MiniControl extends StatelessWidget {
-  const _MiniControl({
-    required this.icon,
-    required this.size,
-    required this.color,
-    required this.onPressed,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final double size;
-  final Color color;
-  final VoidCallback onPressed;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: IconButton(
-        icon: Icon(icon, size: size, color: color),
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
-      ),
-    );
-  }
-}

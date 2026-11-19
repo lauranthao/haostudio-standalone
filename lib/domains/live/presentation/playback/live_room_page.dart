@@ -18,8 +18,8 @@
 // - Same quality+line = no-op. Epoch guard stops stale responses
 //   overwriting a new room/selection.
 // - Server ack differs from request -> UI corrects to the acked quality +
-//   toast "清晰度已限制为…". URLs identical after a quality change -> toast
-//   "清晰度流未变化" and abort.
+//   toast "清晰度已限制为…". URLs identical after a quality change -> silent
+//   abort (no toast: nothing changed).
 // - Line buttons show only "线路 N", never CDN names.
 // - Only the PREFERRED quality is persisted (preferResolution /
 //   preferResolutionCellular); current quality+line live in memory per
@@ -38,11 +38,13 @@ import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../../../core/models/live_models.dart';
+import '../../../../core/native/system_volume.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../core/theme/glass.dart';
 import '../../../../features/settings/source_stores.dart';
+import '../../../../features/settings/danmaku_settings_page.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../data/playback_header_resolver.dart';
@@ -69,6 +71,22 @@ import 'room_switch_panel.dart';
 /// only: production passes neither and gets Sites.of(platform) + the
 /// real native backends.
 class LiveRoomPage extends StatefulWidget {
+  /// P1-8: auto-recovery budget for one episode of consecutive session
+  /// errors — how many recovery attempts run before the failure card.
+  /// Multi-line rooms keep the old bound (one attempt per extra line:
+  /// `lineCount - 1`). A single-line room (Kuaishou by design, Douyin
+  /// often 1-2 lines) gets the session ladder's fresh budget
+  /// (`freshRounds = 2`, playback_session.dart): held plan first, then
+  /// a live re-parse. The old bound was 0 for `lineCount == 1`, so the
+  /// FIRST error showed the failure card and `_recoverWithFreshUrls`
+  /// never ran — a mid-playback stall (12 s watchdog) in a single-line
+  /// room could only be fixed by a manual retry.
+  @visibleForTesting
+  static int autoRecoveryBudget(int lineCount) {
+    if (lineCount == 1) return 2; // == PlaybackSession.open freshRounds
+    return lineCount - 1;
+  }
+
   const LiveRoomPage({
     super.key,
     required this.room,
@@ -132,7 +150,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // only — the transport keeps running; hides the portrait list and
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
-  double _volume = 1.0;
+  // System volume (MethodChannel): the vertical drag drives the
+  // device volume, not the player gain; the channel is the source
+  // of truth — there is no local level cache.
+  final SystemVolume _systemVolume = SystemVolume();
+  StreamSubscription<double>? _volumeSub;
   // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
   // the surface maps to a quarter of the level range per half-height
   // (see _applyDrag); the card hides 1 s after the last drag.
@@ -244,6 +266,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(LiveBreadcrumb.write('live-msg'));
     unawaited(LiveBreadcrumb.write('live-present'));
     unawaited(_loadRoom());
+    // Keep the HUD on the real level when hardware keys / Control
+    // Center move it. The drag itself reads the level live.
+    _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
   }
 
   Future<void> _loadRoom() async {
@@ -283,7 +308,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         setState(() {
           _loading = false;
           _failed = true;
-          _errorMessage = '加载直播间失败，请检查网络后重试';
+          _errorMessage = '加载失败';
         });
       }
     }
@@ -552,14 +577,18 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   void _onSessionError(String message) {
     if (!mounted) return;
     // Order: next line first (no request), then fresh re-parse.
-    // BOUND: after every line has failed once in this episode, stop
+    // BOUND: after the recovery budget for this episode is spent, stop
     // and show the failure card. advanceLine() wraps around, so
     // without this the room retries lines forever — the retry storm
     // saturates the UI isolate and the whole app looks frozen
     // (spinner stuck, taps ignored, failure card never reachable).
     // The initial open already tried one line, so lines.length - 1
-    // further advances cover every line exactly once.
-    if (_consecutiveAutoFailures >= _recovery.lines.length - 1) {
+    // further advances cover every line exactly once; a single-line
+    // room gets the ladder's fresh budget instead (P1-8 — see
+    // LiveRoomPage.autoRecoveryBudget). Healthy playback resets the
+    // counter, so this bounds one episode of consecutive failures.
+    if (_consecutiveAutoFailures >=
+        LiveRoomPage.autoRecoveryBudget(_recovery.lines.length)) {
       // Lines exhausted at this quality: show the failure card.
       // Pure Live never auto-downgrades — recovery is re-parse +
       // sweep at the same quality, and when the sweep is exhausted
@@ -646,8 +675,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     });
   }
 
-  /// Switch quality: re-parse. Identical URLs after the switch -> toast
-  /// "清晰度流未变化" and abort.
+  /// Switch quality: re-parse. Identical URLs after the switch ->
+  /// silent abort (no toast: nothing changed).
   ///
   /// [persist] false skips saving the preference. There is NO
   /// automatic downgrade (Pure Live has none either): a stall recovers
@@ -659,11 +688,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// selection follows the CONFIRMED quality — same rule as entry —
   /// so the UI shows the quality actually playing, never the requested
   /// label. When the confirmed stream is identical to the one already
-  /// playing, say the cap plainly ("清晰度已限制为蓝光4M") instead of
-  /// the cryptic "清晰度流未变化". A resolve that throws (all CDNs
-  /// failed) is a toast, not a silent no-op: the throw used to escape
-  /// uncaught through unawaited(), leaving the room on the old quality
-  /// with no feedback at all.
+  /// playing, the cap is said plainly ("清晰度已限制为蓝光4M"); with
+  /// no cap and identical URLs the switch is a silent abort. A resolve
+  /// that throws (all CDNs failed) is a toast, not a silent no-op: the
+  /// throw used to escape uncaught through unawaited(), leaving the
+  /// room on the old quality with no feedback at all.
   Future<void> _switchQuality(int index, {bool persist = true}) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
@@ -698,9 +727,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           '提示',
           '清晰度已限制为${_qualities[ackedIndex].quality}',
         );
-      } else {
-        Get.snackbar('提示', '清晰度流未变化');
       }
+      // Identical URLs and no cap: nothing changed, nothing to say —
+      // no toast, just abort.
       return;
     }
     setState(() {
@@ -1056,11 +1085,22 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         _startsInSystemHomeGestureZone(details.localPosition, size);
   }
 
+  /// Hardware keys / Control Center changed the system volume:
+  /// keep the cached level and the drag HUD on the same value. A
+  /// brightness HUD already on screen is left alone.
+  void _onExternalVolume(double volume) {
+    if (!mounted) return;
+    if (_dragHudVisible && _dragIsBrightness) return;
+    setState(() {
+      _dragIsBrightness = false;
+      _dragValue = volume;
+    });
+    _keepDragHudVisible();
+  }
+
   /// Vertical drag: left half brightness, right half volume (Pure Live
   /// PlayerGestureLayer._apply, verbatim formula). Volume is the
-  /// PLAYER volume (`session.setVolume`) — Pure Live also drives the
-  /// system volume via VolumeController, which this app does not
-  /// depend on; the player volume is the part that changes loudness.
+  /// SYSTEM volume (SystemVolume channel).
   Future<void> _onVerticalDragUpdate(DragUpdateDetails details) async {
     if (_dragInSystemZone || _controlsLocked) return;
     final size = _videoSurfaceKey.currentContext?.size;
@@ -1072,7 +1112,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _dragIsBrightness = isBrightness;
       final observed = isBrightness
           ? await ScreenBrightness.getBrightness()
-          : _volume;
+          : await _systemVolume.getVolume();
       if (!mounted) return;
       setState(() => _dragValue = observed.clamp(0.0, 1.0));
     }
@@ -1089,8 +1129,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (isBrightness) {
       unawaited(ScreenBrightness.setBrightness(target));
     } else {
-      _volume = target;
-      unawaited(_session.setVolume(target));
+      unawaited(_systemVolume.setVolume(target));
     }
   }
 
@@ -1251,6 +1290,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
     _dragHudTimer?.cancel();
+    _volumeSub?.cancel();
+    _systemVolume.dispose();
     _barrageController.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
@@ -1639,7 +1680,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
             ),
           if (_failed)
             _FailureCard(
-              message: _errorMessage ?? '播放失败，请检查网络后点 ▶ 重试',
+              message: _errorMessage ?? '播放失败',
               onRetry: _manualRetry,
             ),
           if (_showingStallNotice && !_failed)
@@ -1827,14 +1868,6 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             ),
                           ),
                         const SizedBox(width: 8),
-                        Text(
-                          '详情',
-                          style: TextStyle(
-                            color: theme.accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                         Icon(
                           Icons.chevron_right,
                           size: 18,
@@ -1946,40 +1979,46 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               if (!fullscreen)
                 Expanded(
                   child: !_danmakuEnabled
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: theme.accentSoft,
-                                  shape: BoxShape.circle,
+                      ? InkWell(
+                          // Tap opens danmaku settings directly — the
+                          // empty state is the shortcut, not a signpost.
+                          onTap: () =>
+                              Get.to(() => const DanmakuSettingsPage()),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: theme.accentSoft,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 32,
+                                    color: theme.accent,
+                                  ),
                                 ),
-                                child: Icon(
-                                  Icons.chat_bubble_outline,
-                                  size: 32,
-                                  color: theme.accent,
+                                const SizedBox(height: 14),
+                                Text(
+                                  '弹幕已关闭',
+                                  style: TextStyle(
+                                    color: theme.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                '弹幕已关闭',
-                                style: TextStyle(
-                                  color: theme.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                const SizedBox(height: 4),
+                                Text(
+                                  '点按打开弹幕设置',
+                                  style: TextStyle(
+                                    color: theme.textMuted,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '可在「设置 → 弹幕设置」中开启',
-                                style: TextStyle(
-                                  color: theme.textMuted,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         )
                       : _danmaku.isEmpty

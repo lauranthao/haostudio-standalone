@@ -28,9 +28,11 @@ import '../../services/music/search_prewarm.dart';
 import '../../services/music/song_search_service.dart';
 import 'album_detail_page.dart';
 import 'artist_detail_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'plaza_page.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
@@ -39,7 +41,12 @@ import '../../widgets/platform_logo.dart';
 enum _SearchType { song, playlist, artist, album }
 
 class SongSearchPage extends StatefulWidget {
-  const SongSearchPage({super.key});
+  const SongSearchPage({super.key, this.searchService, this.api});
+
+  /// Test seam: the page builds its own service/api by default.
+  /// Widget tests inject fakes here so a search runs without network.
+  final SongSearchService? searchService;
+  final MusicApi? api;
 
   @override
   State<SongSearchPage> createState() => _SongSearchPageState();
@@ -48,8 +55,9 @@ class SongSearchPage extends StatefulWidget {
 class _SongSearchPageState extends State<SongSearchPage> {
   final _queryController = TextEditingController();
   final _scrollController = ScrollController();
-  final _searchService = SongSearchService();
-  final _api = MusicApi();
+  late final SongSearchService _searchService =
+      widget.searchService ?? SongSearchService();
+  late final MusicApi _api = widget.api ?? MusicApi();
   final _hotService = HotSearchService();
   // Current search platform (stage 2 capsule, Beans `SearchView`
   // provider): one platform at a time, persisted, no "全部".
@@ -58,6 +66,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   // capsule in here; the service is already hotSearch(platform)).
   List<String> _hotWords = [];
   StreamSubscription<SearchStreamUpdate>? _searchSub;
+  StreamSubscription<PlaylistSearchUpdate>? _playlistSub;
+  StreamSubscription<ArtistSearchUpdate>? _artistSub;
   // Prewarm: resolve the first few visible songs' URLs while the
   // user is still looking, so tapping one plays from the cache.
   final _prewarm = SearchPrewarm();
@@ -82,6 +92,14 @@ class _SongSearchPageState extends State<SongSearchPage> {
   List<ArtistSummary> _artists = [];
   List<AlbumSummary> _albums = [];
   String _error = '';
+
+  // Results-cache identity: every cached list (_songs / _playlists /
+  // _artists / _albums) belongs to one (query, platform) pair. A
+  // search for a different pair clears all four lists first (see
+  // _search), so switching types can show the cache only when the
+  // pair matches — never another query's or platform's rows.
+  String _cacheQuery = '';
+  MusicPlatform? _cachePlatform;
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
 
@@ -115,6 +133,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
         return GlassCard(
           radius: 24,
           shadow: GlassShadow.panel,
+          quality: GlassCardQuality.premium,
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: Column(
@@ -208,6 +227,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   @override
   void dispose() {
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     _queryController.dispose();
@@ -230,6 +251,57 @@ class _SongSearchPageState extends State<SongSearchPage> {
     }
   }
 
+  int _resultCountFor(_SearchType t) => switch (t) {
+    _SearchType.song => _songs.length,
+    _SearchType.playlist => _playlists.length,
+    _SearchType.artist => _artists.length,
+    _SearchType.album => _albums.length,
+  };
+
+  void _clearResultsFor(_SearchType t) {
+    switch (t) {
+      case _SearchType.song:
+        _songs = [];
+        _prewarm.cancel();
+        _coverBackfill.cancel();
+      case _SearchType.playlist:
+        _playlists = [];
+      case _SearchType.artist:
+        _artists = [];
+      case _SearchType.album:
+        _albums = [];
+    }
+  }
+
+  /// Switching the type tabs re-runs the current query for the new
+  /// type — the old code only flipped _type, so the new type's list
+  /// stayed empty until the user tapped search again (reported
+  /// 2026-11-19). Cached results for the same query + platform are
+  /// shown as-is, no re-search; an empty cache (never searched, or a
+  /// new query) triggers one search. The old type's in-flight request
+  /// is cancelled first so two types never run at once (they share
+  /// _loading); if it was still loading, its partial list is dropped
+  /// so switching back re-searches full results instead of presenting
+  /// a partial list as complete.
+  void _onTypeChanged(_SearchType next) {
+    if (next == _type) return;
+    if (_loading) _clearResultsFor(_type);
+    _pageGen++;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() => _type = next);
+    if (!_searched) return;
+    final q = _queryController.text.trim();
+    if (q.isEmpty) return;
+    if (_cacheQuery == q &&
+        _cachePlatform == _platform &&
+        _resultCountFor(next) > 0) {
+      return;
+    }
+    unawaited(_search());
+  }
+
   Future<void> _search() async {
     final q = _queryController.text.trim();
     if (q.isEmpty) return;
@@ -238,10 +310,44 @@ class _SongSearchPageState extends State<SongSearchPage> {
     // fire-and-forget: the Hive write must not sit on the critical
     // path to the first result (the search starts immediately).
     unawaited(MusicStore.saveSearchQuery(q).catchError((_) {}));
+    // A search for a new (query, platform) invalidates every cached
+    // list, not just the current type's — otherwise switching types
+    // would show another query's / platform's rows.
+    if (q != _cacheQuery || _platform != _cachePlatform) {
+      _cacheQuery = q;
+      _cachePlatform = _platform;
+      _songs = [];
+      _playlists = [];
+      _artists = [];
+      _albums = [];
+    }
+    // Cancel any in-flight search and bump the generation before
+    // dispatching, so the album branch (a single await, no stream)
+    // also drops a stale run instead of letting it land behind the
+    // new search. The per-type branches repeat this (their own
+    // convention) — double cancel / double bump is harmless.
+    _pageGen++;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     if (_type == _SearchType.song) {
       _searchSongs(q);
       return;
     }
+    if (_type == _SearchType.playlist) {
+      _searchPlaylists(q);
+      return;
+    }
+    if (_type == _SearchType.artist) {
+      _searchArtists(q);
+      return;
+    }
+    // Album only (stage 2): one platform, its own album endpoint —
+    // still a single await, not streamed (no multi-leg fan-out).
+    // Generation-guarded like the streams: a newer search (or a type
+    // switch, which bumps _pageGen) makes this late completion a
+    // no-op instead of clearing _loading under the new search.
+    final gen = _pageGen;
     setState(() {
       _loading = true;
       _searched = true;
@@ -249,59 +355,108 @@ class _SongSearchPageState extends State<SongSearchPage> {
       _shown = kSearchPageSize;
     });
     try {
-      if (_type == _SearchType.playlist) {
-        // Playlist search exists only for wy + kw (QQ's playlist API
-        // rejects the call — see music_api.dart). The other platforms
-        // honestly return nothing instead of another platform's lists.
-        final result = await switch (_platform) {
-          MusicPlatform.wy => _api
-              .searchWyPlaylists(q, 1)
-              .catchError((_) => (items: <PlaylistSummary>[], total: 0)),
-          MusicPlatform.kw => _api
-              .searchKwPlaylists(q, 1)
-              .catchError((_) => (items: <PlaylistSummary>[], total: 0)),
-          _ => Future.value((items: <PlaylistSummary>[], total: 0)),
-        };
-        if (!mounted) return;
-        setState(() {
-          _playlists = result.items;
-          if (_playlists.isEmpty) _error = '没搜到相关歌单';
-        });
-      } else if (_type == _SearchType.artist) {
-        // Artist search: wy / tx / kw have endpoints; Kugou has none
-        // (its artist search was never ported) — empty, not borrowed.
-        final artists = await switch (_platform) {
-          MusicPlatform.wy => _api
-              .searchWyArtists(q)
-              .catchError((_) => <ArtistSummary>[]),
-          MusicPlatform.tx => _api
-              .searchTxArtists(q, 1)
-              .catchError((_) => <ArtistSummary>[]),
-          MusicPlatform.kw => _api
-              .searchKwArtists(q)
-              .catchError((_) => <ArtistSummary>[]),
-          _ => Future.value(<ArtistSummary>[]),
-        };
-        if (!mounted) return;
-        setState(() {
-          _artists = artists;
-          if (_artists.isEmpty) _error = '没搜到相关歌手';
-        });
-      } else {
-        // _SearchType.album (stage 2): one platform, its own album
-        // endpoint — see MusicApi.searchAlbums.
-        final albums = await _api
-            .searchAlbums(_platform, q)
-            .catchError((_) => <AlbumSummary>[]);
-        if (!mounted) return;
-        setState(() {
-          _albums = albums;
-          if (_albums.isEmpty) _error = '没搜到相关专辑';
-        });
-      }
+      // _SearchType.album (stage 2): one platform, its own album
+      // endpoint — see MusicApi.searchAlbums.
+      final albums = await _api
+          .searchAlbums(_platform, q)
+          .catchError((_) => <AlbumSummary>[]);
+      if (!mounted || gen != _pageGen) return;
+      setState(() {
+        _albums = albums;
+        if (_albums.isEmpty) _error = '没搜到相关专辑';
+      });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && gen == _pageGen) setState(() => _loading = false);
     }
+  }
+
+  /// Streaming playlist search: results appear as each platform leg
+  /// returns (wy + kw, or just the capsule platform when set), the
+  /// rest append after it — same generation guard and pending footer
+  /// as [_searchSongs]. A leg that fails or times out contributes
+  /// nothing and never blocks the others.
+  void _searchPlaylists(String q) {
+    final gen = ++_pageGen;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() {
+      _loading = true;
+      _searched = true;
+      _error = '';
+      _shown = kSearchPageSize;
+      _playlists = [];
+      _pendingPlatforms = {};
+    });
+    _playlistSub = _searchService
+        .searchPlaylistsStream(q, onlyPlatform: _platform)
+        .listen(
+          (update) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _playlists = update.items;
+              _pendingPlatforms = update.pending;
+            });
+          },
+          onError: (_) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              _error = '搜索失败，请重试';
+            });
+          },
+          onDone: () {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              if (_playlists.isEmpty) _error = '没搜到相关歌单';
+            });
+          },
+          cancelOnError: false,
+        );
+  }
+
+  /// Streaming artist search: same convention as [_searchPlaylists]
+  /// (legs wy + tx + kw, or just the capsule platform).
+  void _searchArtists(String q) {
+    final gen = ++_pageGen;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() {
+      _loading = true;
+      _searched = true;
+      _error = '';
+      _shown = kSearchPageSize;
+      _artists = [];
+      _pendingPlatforms = {};
+    });
+    _artistSub = _searchService
+        .searchArtistsStream(q, onlyPlatform: _platform)
+        .listen(
+          (update) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _artists = update.items;
+              _pendingPlatforms = update.pending;
+            });
+          },
+          onError: (_) {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              _error = '搜索失败，请重试';
+            });
+          },
+          onDone: () {
+            if (!mounted || gen != _pageGen) return;
+            setState(() {
+              _loading = false;
+              if (_artists.isEmpty) _error = '没搜到相关歌手';
+            });
+          },
+          cancelOnError: false,
+        );
   }
 
   /// Streaming song search: results appear as each platform leg
@@ -311,6 +466,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _searchSongs(String q) {
     final gen = ++_pageGen;
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     setState(() {
@@ -350,7 +507,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             if (!mounted || gen != _pageGen) return;
             setState(() {
               _loading = false;
-              if (_songs.isEmpty) _error = '没搜到，换个歌名试试';
+              if (_songs.isEmpty) _error = '没搜到';
             });
           },
           cancelOnError: false,
@@ -379,9 +536,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _clearSearch() {
     _pageGen++;
     unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     _prewarm.cancel();
     _coverBackfill.cancel();
     _queryController.clear();
+    _cacheQuery = '';
+    _cachePlatform = null;
     setState(() {
       _loading = false;
       _searched = false;
@@ -401,6 +562,27 @@ class _SongSearchPageState extends State<SongSearchPage> {
     if (_pendingPlatforms.isEmpty) return '正在搜索…';
     final names = _pendingPlatforms.map((p) => p.badgeName).join('、');
     return '正在搜索 $names…';
+  }
+
+  /// Bottom "still searching…" row while legs are pending (same as the
+  /// song list's footer). Only rendered when the list already has rows
+  /// — with no rows yet the full-screen spinner shows instead.
+  Widget _pendingFooter(HaoTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text(_pendingLabel, style: TextStyle(color: theme.textMuted)),
+        ],
+      ),
+    );
   }
 
   void _playSong(Song song, List<Song> queue) {
@@ -492,6 +674,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       radius: 999,
                       padding: EdgeInsets.zero,
                       shadow: GlassShadow.none,
+                      quality: GlassCardQuality.premium,
                       child: SizedBox(
                         width: 54,
                         height: 30,
@@ -549,8 +732,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     ],
                     selected: {_type},
                     showSelectedIcon: false,
-                    onSelectionChanged: (s) =>
-                        setState(() => _type = s.first),
+                    onSelectionChanged: (s) => _onTypeChanged(s.first),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -574,16 +756,26 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Widget _results(HaoTheme theme) {
     // Streaming: show the list as soon as the first leg returns, even
     // while other legs are still pending. The full-screen spinner is
-    // only for "nothing yet" (song search with no results so far);
-    // playlist/artist searches are not streamed, so they keep the
-    // plain `_loading` spinner.
-    if (_loading && (_type != _SearchType.song || _songs.isEmpty)) {
+    // only for "nothing yet" (the current type's list is still empty);
+    // once rows exist, the pending legs show as a footer row instead.
+    final listEmpty = switch (_type) {
+      _SearchType.song => _songs.isEmpty,
+      _SearchType.playlist => _playlists.isEmpty,
+      _SearchType.artist => _artists.isEmpty,
+      _SearchType.album => _albums.isEmpty,
+    };
+    if (_loading && listEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (!_searched) {
       final history = MusicStore.getSearchHistory();
       return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          4,
+          16,
+          16 + MiniPlayerBar.bottomClearanceFor(context),
+        ),
         children: [
           if (history.isNotEmpty)
             _SearchHistory(
@@ -620,20 +812,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
               },
             ),
           ],
-          const SizedBox(height: 28),
-          Center(
-            child: Text(
-              '搜一首歌、歌单、歌手或专辑',
-              style: TextStyle(color: theme.textMuted, fontSize: 15),
-            ),
-          ),
         ],
       );
     }
     if (_error.isNotEmpty) {
       // Beans `ErrorStateView`: icon + message + retry (re-runs the
-      // same query — the "没搜到，换个歌名试试" empty case lands here
-      // too, and retry is harmless there).
+      // same query — the "没搜到" empty case lands here too, and retry
+      // is harmless there).
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -668,9 +853,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    // Beans `SearchView` song header (SearchView.swift:
-                    // 551): "找到 N 首 · {provider}".
-                    '找到 ${_songs.length} 首 · ${_platform.displayName}',
+                    // Count only — the platform is already in the
+                    // switch capsule above, so no "找到 N 首 · 平台" echo.
+                    '${_songs.length} 首',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                   const Spacer(),
@@ -691,6 +876,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 controller: _scrollController,
                 itemCount: shown.length + 1,
                 itemBuilder: (ctx, i) {
@@ -718,10 +906,14 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       );
                     }
                     final hasMore = _songs.length > _shown;
+                    // More rows are already in hand — scrolling reveals
+                    // them, so nothing is shown while there are more.
+                    // Only the end of the list gets a footer.
+                    if (hasMore) return const SizedBox.shrink();
                     return Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        hasMore ? '加载中…' : '已加载全部',
+                        '已加载全部',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: theme.textMuted),
                       ),
@@ -756,7 +948,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    '找到 ${_playlists.length} 个 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_playlists.length} 个',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -764,8 +957,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _playlists.length,
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
+                itemCount: _playlists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
+                  if (i >= _playlists.length) return _pendingFooter(theme);
                   final p = _playlists[i];
                   return GlassCard(
                     radius: 16,
@@ -845,9 +1042,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    // Beans `SearchView` artist header
-                    // (SearchView.swift:617): "找到 N 位 · {provider}".
-                    '找到 ${_artists.length} 位 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_artists.length} 位',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -855,8 +1051,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _artists.length,
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
+                itemCount: _artists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
+                  if (i >= _artists.length) return _pendingFooter(theme);
                   final a = _artists[i];
                   return GlassCard(
                     radius: 16,
@@ -897,6 +1097,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(
                                 platform: a.platform,
                                 artistId: a.id,
@@ -915,10 +1117,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
         );
       case _SearchType.album:
         // Stage 2 album results (Beans `SearchView.albumResultsArea`,
-        // SearchView.swift:678-730): header "找到 N 张 · {provider}",
-        // rows cover 46/radius 10 + name + artist, tap opens the
-        // existing AlbumDetailPage. GlassCard rows match the other
-        // search types on this page.
+        // SearchView.swift:678-730): count-only header, rows cover
+        // 46/radius 10 + name + artist, tap opens the existing
+        // AlbumDetailPage. GlassCard rows match the other search types
+        // on this page.
         return Column(
           children: [
             Padding(
@@ -926,7 +1128,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    '找到 ${_albums.length} 张 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_albums.length} 张',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -934,6 +1137,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _albums.length,
                 itemBuilder: (ctx, i) {
                   final a = _albums[i];
@@ -1002,6 +1208,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => AlbumDetailPage(
                                 platform: a.platform,
                                 albumId: a.id,
@@ -1027,6 +1235,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openArtist(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => ArtistDetailPage(
           platform: song.platform,
           artistId: '',
@@ -1039,6 +1248,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openAlbum(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => AlbumDetailPage(
           platform: song.platform,
           albumId: '',
@@ -1051,7 +1261,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openPlazaDetail(PlaylistSummary p) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => PlazaDetailPage(playlist: p)),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
+        builder: (_) => PlazaDetailPage(playlist: p),
+      ),
     );
   }
 }

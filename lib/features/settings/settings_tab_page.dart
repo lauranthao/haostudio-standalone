@@ -74,6 +74,7 @@ import '../../services/music/music_store.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
+import 'accent_color_sheet.dart';
 import '../live/live_breadcrumb.dart';
 import '../music/av_music_player.dart';
 import '../music/equalizer_page.dart';
@@ -171,12 +172,19 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
-      appBar: AppBar(title: const Text('设置')),
+      // Unified page (chen 2026-11-19): the top bar IS the page
+      // background, not a separate surface-coloured slab — see the
+      // live tab AppBar for the reasoning.
+      appBar: AppBar(
+        title: const Text('设置'),
+        backgroundColor: tabScaffoldBackground(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
           const _SectionTitle('主题'),
           HaoGlassCard(
+            quality: GlassCardQuality.standard,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,7 +235,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansSwitchRow(
             icon: Icons.wallpaper,
             title: '壁纸',
-            subtitle: _wallpaperOn ? '已开启自定义壁纸' : '关闭后回到主题默认背景',
             value: _wallpaperOn,
             onChanged: (value) async {
               HaoHaptics.select();
@@ -239,11 +246,20 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansRow(
             icon: Icons.photo_library,
             title: '壁纸管理',
-            subtitle: '上传多张壁纸、切换与删除',
             onTap: () async {
               await Get.to(() => const WallpaperPage());
               setState(() => _loadAppearance());
             },
+          ),
+          const SizedBox(height: 12),
+          // Tab-bar selected colour (icon + label): the ring shows
+          // the current colour live; tapping opens the colour sheet.
+          // The colour controls only the tab-bar selected state.
+          _BeansRow(
+            icon: Icons.colorize,
+            title: '自定义强调色',
+            trailing: const AccentRingButton(),
+            onTap: () => showAccentColorSheet(context),
           ),
           const SizedBox(height: 12),
           _BeansSwitchRow(
@@ -259,32 +275,41 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           ),
           if (_bgOn) ...[
             const SizedBox(height: 12),
-            _BackgroundSwatches(
-              selectedHex: _bgHex,
-              onSelect: (hex) async {
-                HaoHaptics.select();
-                await AppearanceController.ensure().setBackgroundColor(hex);
-                setState(() => _loadAppearance());
-              },
-              onReset: () async {
-                HaoHaptics.select();
-                await AppearanceController.ensure().clearBackgroundColor();
-                setState(() => _loadAppearance());
-              },
+            // Wallpaper beats the background colour — shown by
+            // disabling, not by a sentence (clean pass 2026-11-19):
+            // while wallpaper is on, the swatch row is greyed out
+            // and untappable.
+            Opacity(
+              opacity: _wallpaperOn ? 0.4 : 1,
+              child: IgnorePointer(
+                ignoring: _wallpaperOn,
+                child: _BackgroundSwatches(
+                  selectedHex: _bgHex,
+                  onSelect: (hex) async {
+                    HaoHaptics.select();
+                    await AppearanceController.ensure().setBackgroundColor(hex);
+                    setState(() => _loadAppearance());
+                  },
+                  onReset: () async {
+                    HaoHaptics.select();
+                    await AppearanceController.ensure().clearBackgroundColor();
+                    setState(() => _loadAppearance());
+                  },
+                ),
+              ),
             ),
           ],
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.font_download,
             title: '自定义字体',
-            subtitle: _fontName.isEmpty ? '未安装，使用系统默认字体' : '已安装：$_fontName',
+            subtitle: _fontName.isEmpty ? '未安装' : '已安装：$_fontName',
             onTap: () => _importFont(context),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.restore,
             title: '恢复默认字体',
-            subtitle: '恢复为系统默认字体',
             onTap: () => _resetFont(context),
           ),
           const SizedBox(height: 20),
@@ -357,6 +382,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           if (_engineExpanded) ...[
             const SizedBox(height: 12),
             HaoGlassCard(
+              quality: GlassCardQuality.standard,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: RadioGroup<String>(
                 groupValue: _engineKey,
@@ -389,14 +415,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansRow(
             icon: Icons.upload,
             title: '导出备份',
-            subtitle: '导出全部本地数据为 JSON 文件，用系统分享发送',
+            subtitle: '导出全部本地数据',
             onTap: () => _exportBackup(context),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.download,
             title: '导入备份',
-            subtitle: '选择备份 JSON 文件恢复（先校验，无效文件不写入）',
+            subtitle: '选择备份文件恢复',
             onTap: () => _importBackup(context),
           ),
           const SizedBox(height: 20),
@@ -404,21 +430,18 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansRow(
             icon: Icons.music_note,
             title: '音源管理',
-            subtitle: '歌曲搜索平台开关',
             onTap: () => Get.to(() => const MusicSourcesPage()),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.movie,
             title: '影视源管理',
-            subtitle: '影视采集源开关、排序、添加与删除',
             onTap: () => Get.to(() => const VideoSourcesPage()),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.live_tv,
             title: '直播源管理',
-            subtitle: '直播平台开关',
             onTap: () => Get.to(() => const LiveSourcesPage()),
           ),
           const SizedBox(height: 20),
@@ -426,7 +449,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansSwitchRow(
             icon: Icons.skip_next,
             title: '自动连播下一集',
-            subtitle: '播完一集后自动播放下一集；关闭则播完停在片尾',
             value: _autoNext,
             onChanged: (value) async {
               HaoHaptics.select();
@@ -441,7 +463,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansRow(
             icon: Icons.aspect_ratio,
             title: '视频画面比例',
-            subtitle: '当前：${_videoFit.label}（点按切换，仅影视播放）',
+            subtitle: '当前：${_videoFit.label}（仅影视播放）',
             onTap: () async {
               HaoHaptics.select();
               final next = _videoFit.next;
@@ -457,7 +479,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             icon: Icons.data_saver_on,
             title: '低内存模式',
             subtitle:
-                '${_lowMemoryMode.statusDescription()}（点按切换，下次打开生效）',
+                '${_lowMemoryMode.statusDescription()}（下次打开生效）',
             onTap: () async {
               HaoHaptics.select();
               final next = _lowMemoryMode.next;
@@ -469,14 +491,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansRow(
             icon: Icons.chat_bubble_outline,
             title: '弹幕设置',
-            subtitle: '各平台弹幕开关、字号与不透明度',
             onTap: () => Get.to(() => const DanmakuSettingsPage()),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.cleaning_services,
             title: '缓存管理',
-            subtitle: '查看各缓存大小并清除',
             onTap: () => Get.to(() => const CacheSettingsPage()),
           ),
           const SizedBox(height: 20),
@@ -486,18 +506,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             title: '版本',
             subtitle: '$kAppVersion (build $kAppBuild)',
           ),
-          // Android v1 has no update channel (version.json is iOS-only):
-          // hide the row entirely instead of leaving a button that can
-          // only fail (B3). iOS keeps the row.
-          if (!Platform.isAndroid) ...[
-            const SizedBox(height: 12),
-            _BeansRow(
-              icon: Icons.system_update,
-              title: '检查更新',
-              subtitle: 'GitHub raw version.json，数字版本号比较',
-              onTap: () => _checkUpdate(context),
-            ),
-          ],
+          const SizedBox(height: 12),
+          _BeansRow(
+            icon: Icons.system_update,
+            title: '检查更新',
+            onTap: () => _checkUpdate(context),
+          ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.bug_report_outlined,
@@ -706,6 +720,7 @@ class _BackgroundSwatches extends StatelessWidget {
       pressedScale: 0.98,
       child: GlassCard(
         radius: 18,
+        quality: GlassCardQuality.standard,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -760,11 +775,6 @@ class _BackgroundSwatches extends StatelessWidget {
                   ),
                 );
               }).toList(),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '设了壁纸时优先用壁纸；没设壁纸时用背景色；都没设用主题默认。',
-              style: TextStyle(color: theme.textSecondary, fontSize: 12),
             ),
           ],
         ),
@@ -1072,14 +1082,13 @@ class _PlaybackPanel extends StatelessWidget {
           _PanelSwitch(
             icon: Icons.play_circle_outline,
             title: '启动时自动播放上次歌曲',
-            subtitle: '打开软件后自动恢复上次未播放完的歌曲',
             value: autoResume,
             onChanged: onAutoResumeChanged,
           ),
           const _PanelDivider(),
           _QualityChips(
             title: '播放音质',
-            hint: '按列表选择，无法使用时会由平台自动降级。',
+            hint: '无法使用时会由平台自动降级。',
             selected: quality,
             onSelected: onQualityChanged,
           ),
@@ -1114,14 +1123,6 @@ class _PlaybackPanel extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text('均衡器', style: TextStyle(fontSize: 15)),
-                        const SizedBox(height: 2),
-                        Text(
-                          '调节低音、人声与高音',
-                          style: TextStyle(
-                            color: theme.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -1194,14 +1195,12 @@ class _PanelSwitch extends StatelessWidget {
   const _PanelSwitch({
     required this.icon,
     required this.title,
-    this.subtitle,
     required this.value,
     required this.onChanged,
   });
 
   final IconData icon;
   final String title;
-  final String? subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
 
@@ -1216,23 +1215,7 @@ class _PanelSwitch extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 15)),
-              if (subtitle != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  subtitle!,
-                  style: TextStyle(
-                    color: theme.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ],
-          ),
+          child: Text(title, style: const TextStyle(fontSize: 15)),
         ),
         GlassSwitch(
           value: value,

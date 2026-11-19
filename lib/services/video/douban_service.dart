@@ -14,9 +14,11 @@
 // - After 3 consecutive suggest failures, suggest is disabled
 //   permanently (persisted flag).
 //
-// Caches (200-entry cap, oldest evicted): detail by id + title→id map,
-// permanent. [DoubanCache] is Hive-backed in production and in-memory
-// in tests.
+// Caches (200-entry cap, oldest evicted): detail by id (permanent —
+// keyed by Douban id, so a correct id's detail stays correct) +
+// title→id map with a TTL ([kDoubanIdMapTtl]; see below). A wrong
+// title→id link used to be permanent — see P1-14. [DoubanCache] is
+// Hive-backed in production and in-memory in tests.
 
 import 'dart:async';
 import 'dart:convert';
@@ -69,12 +71,29 @@ const Map<String, String> kDoubanBuiltinIds = {
   '泰坦尼克号': '1292722',
 };
 
+/// Title→id mapping TTL (P1-14).
+///
+/// Why 7 days: a film's Douban id never changes, so the mapping is
+/// essentially stable data — the TTL is NOT about freshness, it only
+/// bounds how long a wrong mapping can hurt. 7 days means even a
+/// mismatch that slips past every year check (e.g. no year info
+/// anywhere) self-heals within a week, while a correct mapping costs
+/// at most one cheap re-suggest per title per week (suggest is
+/// already serialised ≥ 1 s apart with a 60 s 403 backoff, so the
+/// extra traffic is negligible). Entries written before this TTL
+/// existed carry no timestamp and are treated as expired on first
+/// read — that is the self-healing path for already-cached wrong
+/// mappings: the next open re-suggests instead of trusting them.
+const Duration kDoubanIdMapTtl = Duration(days: 7);
+
 /// Cache backend for Douban detail + id map.
 abstract class DoubanCache {
   DoubanDetail? detail(String id);
   void setDetail(String id, DoubanDetail detail);
+  void removeDetail(String id);
   String? idForTitle(String key);
   void setIdForTitle(String key, String id);
+  void removeIdForTitle(String key);
   bool get suggestDisabled;
   void disableSuggest();
 }
@@ -111,10 +130,7 @@ class HiveDoubanCache implements DoubanCache {
   @override
   void setDetail(String id, DoubanDetail detail) {
     final map = _readMap(HiveKeys.doubanDetail);
-    map[id] = {
-      ...detail.toJson(),
-      'at': DateTime.now().millisecondsSinceEpoch,
-    };
+    map[id] = {...detail.toJson(), 'at': DateTime.now().millisecondsSinceEpoch};
     if (map.length > maxEntries) {
       final keys = map.keys.toList()
         ..sort((a, b) {
@@ -130,23 +146,55 @@ class HiveDoubanCache implements DoubanCache {
   }
 
   @override
+  void removeDetail(String id) {
+    final map = _readMap(HiveKeys.doubanDetail);
+    if (map.remove(id) != null) _writeMap(HiveKeys.doubanDetail, map);
+  }
+
+  /// A title→id entry is `{id, at}`. Pre-TTL entries stored a bare
+  /// String id with no timestamp — treated as expired (see
+  /// [kDoubanIdMapTtl]): the caller re-resolves instead of trusting a
+  /// mapping that may be one of the permanent P1-14 mismatches.
+  @override
   String? idForTitle(String key) {
     final map = _readMap(HiveKeys.doubanIdmap);
     final v = map[key];
-    return v is String ? v : null;
+    if (v is String) return null; // legacy, no timestamp → expired
+    if (v is Map) {
+      final id = v['id'];
+      final at = v['at'];
+      if (id is String && id.isNotEmpty && at is num) {
+        final age = DateTime.now().millisecondsSinceEpoch - at.toInt();
+        if (age >= 0 && age < kDoubanIdMapTtl.inMilliseconds) return id;
+      }
+    }
+    return null;
   }
 
   @override
   void setIdForTitle(String key, String id) {
     final map = _readMap(HiveKeys.doubanIdmap);
-    map[key] = id;
+    map[key] = {'id': id, 'at': DateTime.now().millisecondsSinceEpoch};
     if (map.length > maxEntries) {
-      final keys = map.keys.toList();
+      // Oldest first; legacy bare-String entries (at unknown) evict
+      // before stamped ones.
+      final keys = map.keys.toList()
+        ..sort((a, b) {
+          final atA = (map[a] as Map?)?['at'] as num? ?? 0;
+          final atB = (map[b] as Map?)?['at'] as num? ?? 0;
+          return atA.compareTo(atB);
+        });
       for (var i = 0; i < map.length - maxEntries; i++) {
         map.remove(keys[i]);
       }
     }
     _writeMap(HiveKeys.doubanIdmap, map);
+  }
+
+  @override
+  void removeIdForTitle(String key) {
+    final map = _readMap(HiveKeys.doubanIdmap);
+    if (map.remove(key) != null) _writeMap(HiveKeys.doubanIdmap, map);
   }
 
   @override
@@ -163,6 +211,11 @@ class HiveDoubanCache implements DoubanCache {
 class MemoryDoubanCache implements DoubanCache {
   final Map<String, DoubanDetail> details = {};
   final Map<String, String> ids = {};
+
+  /// Write time per title→id entry (same TTL rule as Hive; the
+  /// in-memory box only lives for one process run, so entries written
+  /// here always carry a stamp).
+  final Map<String, DateTime> idTimes = {};
   bool _suggestDisabled = false;
 
   @override
@@ -174,11 +227,32 @@ class MemoryDoubanCache implements DoubanCache {
   }
 
   @override
-  String? idForTitle(String key) => ids[key];
+  void removeDetail(String id) {
+    details.remove(id);
+  }
+
+  @override
+  String? idForTitle(String key) {
+    final at = idTimes[key];
+    if (at == null) return null;
+    if (DateTime.now().difference(at) >= kDoubanIdMapTtl) {
+      ids.remove(key);
+      idTimes.remove(key);
+      return null;
+    }
+    return ids[key];
+  }
 
   @override
   void setIdForTitle(String key, String id) {
     ids[key] = id;
+    idTimes[key] = DateTime.now();
+  }
+
+  @override
+  void removeIdForTitle(String key) {
+    ids.remove(key);
+    idTimes.remove(key);
   }
 
   @override
@@ -218,6 +292,101 @@ Future<String> defaultCastPhotoFetcher(String name) async {
   } catch (_) {
     return '';
   }
+}
+
+/// First (19|20)xx year in [s], or 0 when there is none.
+int _parseYear(String? s) {
+  if (s == null || s.isEmpty) return 0;
+  final m = RegExp(r'(19|20)\d{2}').firstMatch(s);
+  return m == null ? 0 : int.tryParse(m.group(0)!) ?? 0;
+}
+
+/// True when [gotYear] (Douban's year) and [wantYear] (the CMS year)
+/// are both known and more than 1 year apart. A 1-year gap is
+/// tolerated (release-year vs first-air-year drift between sources).
+bool _yearsMismatch(String? gotYear, bool useYear, int wantYear) {
+  if (!useYear || wantYear == 0) return false;
+  final got = _parseYear(gotYear);
+  if (got == 0) return false;
+  return (got - wantYear).abs() > 1;
+}
+
+/// A cached detail whose cast has names but NO photos is stale: it
+/// was saved when the photo fetch failed, and the cache is
+/// permanent — without this, photos never appear again on an
+/// installed phone. Re-fetch instead of returning it.
+bool _photosMissing(DoubanDetail? cached) =>
+    cached != null &&
+    cached.castNames.isNotEmpty &&
+    (cached.castPhotos.length < cached.castNames.length ||
+        cached.castPhotos.every((p) => p.isEmpty));
+
+/// One suggest hit. Douban's `j/subject_suggest` returns
+/// `{id, title, year, type, ...}` per hit (`year` verified live
+/// 2026-11-19); `year` is 0 when the hit carries none.
+typedef _SuggestHit = ({String id, String title, int year});
+
+List<_SuggestHit> _parseSuggestHits(dynamic json) {
+  final out = <_SuggestHit>[];
+  if (json is! List) return out;
+  for (final e in json) {
+    if (e is! Map) continue;
+    final id = e['id']?.toString() ?? '';
+    if (id.isEmpty) continue;
+    final rawYear = e['year'];
+    final year = rawYear is num
+        ? rawYear.toInt()
+        : int.tryParse(rawYear?.toString() ?? '') ?? 0;
+    out.add((id: id, title: e['title']?.toString() ?? '', year: year));
+  }
+  return out;
+}
+
+/// Pick the best suggest hit for [title] (+ [year] when known).
+///
+/// P1-14: the old code took `arr[0].id` blind. Now every hit is
+/// scored on normalised title first, then year closeness; a hit is
+/// only eligible when its title matches (exact / starts-with /
+/// contains, either direction — suggest titles carry suffixes) and,
+/// when both years are known, the years are within 1. Returns null
+/// when nothing is eligible — the caller then falls through to the
+/// desktop search page / builtin map instead of caching a wrong id.
+String? _pickSuggestId(List<_SuggestHit> hits, String title, int year) {
+  final qn = videoNormTitle(title);
+  if (qn.isEmpty) return null;
+  _SuggestHit? best;
+  var bestTitleScore = 1 << 30;
+  var bestYearDiff = 1 << 30;
+  for (final hit in hits) {
+    final cn = videoNormTitle(hit.title);
+    if (cn.isEmpty || qn.length < 2 || cn.length < 2) {
+      if (cn != qn) continue;
+    }
+    final int titleScore;
+    if (cn == qn) {
+      titleScore = 0;
+    } else if (cn.startsWith(qn) || qn.startsWith(cn)) {
+      titleScore = 1;
+    } else if (cn.contains(qn) || qn.contains(cn)) {
+      titleScore = 2;
+    } else {
+      continue;
+    }
+    // Unknown year sorts after a known-year match.
+    var yearDiff = 1 << 30;
+    if (year != 0 && hit.year != 0) {
+      final d = (hit.year - year).abs();
+      if (d > 1) continue;
+      yearDiff = d;
+    }
+    if (titleScore < bestTitleScore ||
+        (titleScore == bestTitleScore && yearDiff < bestYearDiff)) {
+      best = hit;
+      bestTitleScore = titleScore;
+      bestYearDiff = yearDiff;
+    }
+  }
+  return best?.id;
 }
 
 class DoubanService {
@@ -296,7 +465,7 @@ class DoubanService {
     return res.body;
   }
 
-  Future<String?> _suggestId(String title) async {
+  Future<String?> _suggestId(String title, {int year = 0}) async {
     try {
       final res = await _call(
         () => _fetcher(
@@ -310,13 +479,21 @@ class DoubanService {
         return null;
       }
       if (res.status < 200 || res.status >= 300) return null;
-      final id = parseDoubanSuggestId(jsonDecode(res.body));
+      final decoded = jsonDecode(res.body);
+      if (decoded is! List) {
+        // Unusable reply (not a hit list) — a real suggest failure.
+        _suggestFails++;
+        if (_suggestFails >= 3) _cache.disableSuggest();
+        return null;
+      }
+      final id = _pickSuggestId(_parseSuggestHits(decoded), title, year);
       if (id != null && id.isNotEmpty) {
         _suggestFails = 0;
         return id;
       }
-      _suggestFails++;
-      if (_suggestFails >= 3) _cache.disableSuggest();
+      // A valid suggest reply with no eligible hit is NOT a suggest
+      // failure (the service answered fine — the title just has no
+      // good match): do not count it towards the 3-strike disable.
       return null;
     } catch (_) {
       return null;
@@ -340,14 +517,19 @@ class DoubanService {
   }
 
   /// Title → Douban id (suggest → desktop search → builtin map).
-  /// Cached by title key permanently.
-  Future<String?> resolveId(String title) async {
+  /// Cached by title key for [kDoubanIdMapTtl] (not permanently —
+  /// P1-14). [year] (0 = unknown) is passed to suggest so a
+  /// same-name remake / sequel resolves to the right year; the
+  /// desktop-search and builtin fallbacks carry no year, so a wrong
+  /// id from them is still caught later by detail()'s abstract-year
+  /// check, which evicts the cached link.
+  Future<String?> resolveId(String title, {int year = 0}) async {
     final key = doubanTitleKey(title);
     final cached = _cache.idForTitle(key);
     if (cached != null) return cached;
     String? id;
     if (!_cache.suggestDisabled) {
-      id = await _suggestId(title);
+      id = await _suggestId(title, year: year);
     }
     id ??= await _searchPageId(title);
     if (id == null || id.isEmpty) {
@@ -363,19 +545,43 @@ class DoubanService {
   Future<DoubanDetail?> detail(String title, String year) async {
     Future<DoubanDetail?> run() async {
       if (blocked) return null;
-      final base = vodStripSeasonSuffix(title).base;
-      final id = await resolveId(base);
+      final strip = vodStripSeasonSuffix(title);
+      final base = strip.base;
+      final wantYear = _parseYear(year);
+      // The CMS year belongs to the full title (a specific season),
+      // not to the stripped base series — e.g. 庆余年第二季 (2024)
+      // resolves to the 庆余年 series entry (2019). Enforce the year
+      // only when no season suffix was stripped.
+      final useYear = !strip.stripped && wantYear != 0;
+      var id = await resolveId(base, year: useYear ? wantYear : 0);
       if (id == null || id.isEmpty) return null;
       final cached = _cache.detail(id);
-      // A cached detail whose cast has names but NO photos is stale:
-      // it was saved when the photo fetch failed (see below), and the
-      // cache is permanent — without this, photos never appear again
-      // on an installed phone. Re-fetch instead of returning it.
-      final photosMissing = cached != null &&
-          cached.castNames.isNotEmpty &&
-          (cached.castPhotos.length < cached.castNames.length ||
-              cached.castPhotos.every((p) => p.isEmpty));
-      if (cached != null && !photosMissing) return cached;
+      if (cached != null) {
+        if (_yearsMismatch(cached.year, useYear, wantYear)) {
+          // The cached title→id link points at the wrong film: drop
+          // the link AND the wrong detail, then resolve once more —
+          // the year-aware suggest now excludes the bad id. If the
+          // second resolve lands on the same id (suggest disabled /
+          // search-page fallback), fall through: the abstract year
+          // check below still guards what gets shown.
+          _cache.removeIdForTitle(doubanTitleKey(base));
+          _cache.removeDetail(id);
+          final id2 = await resolveId(base, year: useYear ? wantYear : 0);
+          if (id2 == null || id2.isEmpty) return null;
+          if (id2 != id) {
+            id = id2;
+            final cached2 = _cache.detail(id);
+            if (cached2 != null &&
+                !_yearsMismatch(cached2.year, useYear, wantYear) &&
+                !_photosMissing(cached2)) {
+              return cached2;
+            }
+          }
+        } else if (!_photosMissing(cached)) {
+          return cached;
+        }
+        // Year OK but photos missing: fall through to a fresh fetch.
+      }
       DoubanDetail? ab;
       try {
         ab = parseDoubanAbstract(
@@ -387,6 +593,14 @@ class DoubanService {
         ab = null;
       }
       if (ab == null) return null;
+      if (_yearsMismatch(ab.year, useYear, wantYear)) {
+        // Wrong film confirmed by its own year: never cache it, never
+        // show its score / poster / overview — and drop the title→id
+        // link so the next open re-resolves instead of repeating the
+        // mismatch.
+        _cache.removeIdForTitle(doubanTitleKey(base));
+        return null;
+      }
       var mp = (poster: '', overview: '', score: null as String?);
       try {
         final html = await _text(

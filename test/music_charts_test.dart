@@ -21,6 +21,7 @@ import 'package:standalone/features/music/charts_page.dart';
 import 'package:standalone/features/music/plaza_page.dart';
 import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
+import 'package:standalone/services/music/music_store.dart';
 
 Map<String, dynamic> _toplistJson({bool withCovers = true}) => {
   'code': 200,
@@ -77,6 +78,60 @@ MusicApi _fakeApi({int failTimes = 0, bool withCovers = true}) {
             DioException(
               requestOptions: options,
               type: DioExceptionType.unknown,
+            ),
+          );
+          return;
+        }
+        final path = options.uri.path;
+        if (path.contains('v6/playlist/detail')) {
+          // Chart detail: the v6 shape importWyPlaylist expects.
+          // Empty covers here: the tap-navigation test must not
+          // start MusicImageProvider fetches (their 8s timeout
+          // timer would still be pending at test end).
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'playlist': {
+                  'name': '飙升榜',
+                  'trackIds': [
+                    {'id': 111},
+                    {'id': 222},
+                  ],
+                },
+              },
+            ),
+          );
+          return;
+        }
+        if (path.contains('song/detail')) {
+          handler.resolve(
+            Response(
+              requestOptions: options,
+              statusCode: 200,
+              data: {
+                'songs': [
+                  {
+                    'id': 111,
+                    'name': 'First Song',
+                    'ar': [
+                      {'name': 'Singer'},
+                    ],
+                    'al': {'name': 'Album', 'picUrl': ''},
+                    'dt': 200000,
+                  },
+                  {
+                    'id': 222,
+                    'name': 'Second Song',
+                    'ar': [
+                      {'name': 'Singer2'},
+                    ],
+                    'al': {'name': 'Album2', 'picUrl': ''},
+                    'dt': 180000,
+                  },
+                ],
+              },
             ),
           );
           return;
@@ -207,6 +262,165 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('排行榜加载失败'), findsNothing);
       expect(find.text('飙升榜'), findsOneWidget);
+    });
+  });
+
+  group('charts cover cache refresh (v1.1.5)', () {
+    /// Fake Dio that answers the toplist AND the playlist-detail chain
+    /// (v6 detail -> trackIds, song detail -> songs with covers), so a
+    /// chart detail page loads end to end without network.
+    MusicApi detailApi() {
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            final path = options.uri.path;
+            if (path.contains('toplist')) {
+              handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: _toplistJson(withCovers: false),
+                ),
+              );
+            } else if (path.contains('v6/playlist/detail')) {
+              handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {
+                    'playlist': {
+                      'name': '飙升榜',
+                      'trackIds': [
+                        {'id': 111},
+                        {'id': 222},
+                      ],
+                    },
+                  },
+                ),
+              );
+            } else if (path.contains('song/detail')) {
+              handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data: {
+                    'songs': [
+                      {
+                        'id': 111,
+                        'name': 'First Song',
+                        'ar': [
+                          {'name': 'Singer'},
+                        ],
+                        'al': {
+                          'name': 'Album',
+                          'picUrl': 'https://127.0.0.1:1/cover1.jpg',
+                        },
+                        'dt': 200000,
+                      },
+                      {
+                        'id': 222,
+                        'name': 'Second Song',
+                        'ar': [
+                          {'name': 'Singer2'},
+                        ],
+                        'al': {
+                          'name': 'Album2',
+                          'picUrl': 'https://127.0.0.1:1/cover2.jpg',
+                        },
+                        'dt': 180000,
+                      },
+                    ],
+                  },
+                ),
+              );
+            } else {
+              handler.reject(
+                DioException(
+                  requestOptions: options,
+                  type: DioExceptionType.unknown,
+                ),
+              );
+            }
+          },
+        ),
+      );
+      return MusicApi(dio: dio);
+    }
+
+    Future<void> pumpCharts(WidgetTester tester, MusicApi api) async {
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: ChartsPage(api: api),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    testWidgets('opening a chart refreshes a stale cached cover', (
+      tester,
+    ) async {
+      final api = detailApi();
+      // Seed a STALE cover: the old code only filled the cache when
+      // it was empty, so a weekly #1 change never showed. The
+      // expected cover is the fake detail's first song cover
+      // (coverHi leaves this URL unchanged). NOTE: do NOT call
+      // api.importPlaylist directly here — awaiting a Dio call in a
+      // testWidgets body hangs in the fake-async zone; the page
+      // drives the same call through pump() below.
+      const expected = 'https://127.0.0.1:1/cover1.jpg';
+      await MusicStore.setFeatureCover(
+        HiveKeys.featureCoverCharts,
+        'https://127.0.0.1:1/stale.jpg',
+      );
+      await pumpCharts(tester, api);
+      await tester.tap(find.text('飙升榜'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(PlazaDetailPage), findsOneWidget);
+      expect(find.text('First Song'), findsOneWidget);
+      // The detail page writes the first song's cover on load; let
+      // the fire-and-forget Hive put land before asserting.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        MusicStore.getFeatureCover(HiveKeys.featureCoverCharts),
+        expected,
+      );
+      // Let the cover image's 8s receive-timeout timer fire, or the
+      // test ends with a timer still pending.
+      await tester.pump(const Duration(seconds: 10));
+    });
+
+    testWidgets('a plaza detail open does not touch the charts cache', (
+      tester,
+    ) async {
+      final api = detailApi();
+      await MusicStore.setFeatureCover(
+        HiveKeys.featureCoverCharts,
+        'https://127.0.0.1:1/stale.jpg',
+      );
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: PlazaDetailPage(
+            playlist: PlaylistSummary(id: '19723756', name: '飙升榜'),
+            api: api,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('First Song'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        MusicStore.getFeatureCover(HiveKeys.featureCoverCharts),
+        'https://127.0.0.1:1/stale.jpg',
+      );
+      await tester.pump(const Duration(seconds: 10));
     });
   });
 }

@@ -64,12 +64,12 @@ void main() {
     final list = VideoSourcesStore.getAll();
     expect(list.length, 18);
     expect(
-      list.any((s) => s.apiUrl == 'http://cj.ffzyapi.com/api.php/provide/vod'),
+      list.any((s) => s.apiUrl == 'https://cj.ffzyapi.com/api.php/provide/vod'),
       isTrue,
     );
     expect(
       VideoSourcesStore.getEnabled().first.apiUrl,
-      'http://jyzyapi.com/api.php/provide/vod',
+      'https://jyzyapi.com/api.php/provide/vod',
     );
   });
 
@@ -98,7 +98,7 @@ void main() {
     final list = VideoSourcesStore.getAll();
     expect(list.length, 18);
     final feifanMain = list.firstWhere(
-      (s) => s.apiUrl == 'http://cj.ffzyapi.com/api.php/provide/vod',
+      (s) => s.apiUrl == 'https://cj.ffzyapi.com/api.php/provide/vod',
     );
     expect(feifanMain.name, '非凡主站');
     expect(feifanMain.sort, 7);
@@ -113,7 +113,7 @@ void main() {
     expect(ruyi.sort, 21);
     // Fire-and-forget persist from the merge must have landed.
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 2);
+    expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 3);
   });
 
   test('a user-deleted source is not resurrected on the next load', () async {

@@ -86,11 +86,15 @@ class HaoGlassCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(4),
     this.margin,
+    this.quality = GlassCardQuality.frosted,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry? margin;
+
+  /// Forwards to [GlassCard.quality] (Phase B). Default frosted.
+  final GlassCardQuality quality;
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +104,7 @@ class HaoGlassCard extends StatelessWidget {
         radius: 24,
         shadow: GlassShadow.card,
         padding: padding,
+        quality: quality,
         // Transparent Material inside the glass: ListTile/SwitchListTile
         // paint their ink splashes on the nearest Material ancestor —
         // without this Flutter asserts ("ink splashes may be invisible")
@@ -123,7 +128,12 @@ class SettingsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Phase B: grouped settings sections render as standard liquid
+    // glass (library shader, built for scrolling lists). Children are
+    // Material ListTile/SwitchListTile/RadioListTile rows — no glass
+    // controls inside, so no nesting issue.
     return HaoGlassCard(
+      quality: GlassCardQuality.standard,
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,

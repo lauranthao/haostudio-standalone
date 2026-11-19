@@ -112,8 +112,26 @@ class HiveKeys {
   static const String musicCurListId = 'curListId';
   static const String musicPlayMode = 'playMode'; // 'seq' | 'loop' | 'one' | 'shuffle' | 'once'
 
+  /// Music home section expanded states (我的歌单 / 最近播放): bool,
+  /// default true (expanded). Persisted so a collapse survives tab
+  /// switches (the PageView drops the music page State when you go 2
+  /// tabs away) and restarts. Same pattern as
+  /// [playbackSectionExpanded].
+  static const String musicPlaylistsExpanded = 'musicPlaylistsExpanded';
+  static const String musicRecentExpanded = 'musicRecentExpanded';
+
+  /// Personal FM disliked song identityKeys (never recommend again).
+  static const String fmDislikedIds = 'fmDislikedIds';
+
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
+
+  /// First-cover URLs for the music-home feature cards (plaza /
+  /// charts), cached so the home never re-fetches them on open.
+  /// The report card needs no key — it is computed live from the
+  /// local listen log on every build.
+  static const String featureCoverPlaza = 'hao_feature_cover_plaza';
+  static const String featureCoverCharts = 'hao_feature_cover_charts';
 
   /// Sleep timer custom minutes (stage 2, Beans `SleepTimerSheet`
   /// customMinutesText, clamped 1..720, default 30). Persisted so the
@@ -138,11 +156,29 @@ class HiveKeys {
   static const String wallpaperPaths = 'hao_wallpaper_paths';
   static const String wallpaperCurrent = 'hao_wallpaper_current';
 
+  /// One-time v1.1.5 migration flag (see
+  /// AppearanceStore.migrateWallpaperOffOnce): true once the stored
+  /// wallpaper-on has been turned off once, so a later user choice
+  /// is never overridden.
+  static const String wallpaperV115Migration = 'hao_wallpaper_v115_off_once';
+
   /// Custom background colour (stage 2, Beans `ThemeStore`
   /// backgroundHexLight/Dark, single value here — see
   /// AppearanceStore): enabled flag + '#RRGGBB' hex ('' = none).
   static const String bgColorEnabled = 'hao_bgcolor_enabled';
   static const String bgColorHex = 'hao_bgcolor_hex';
+
+  /// Tab-bar selected colour (icon + label of the selected tab),
+  /// user-chosen in settings → 自定义强调色. Int ARGB, stored with
+  /// its opacity; default NetEase red (see TabBarAccentController).
+  /// Only the tab-bar selected state reads it — nothing else.
+  static const String tabBarAccentColor = 'hao_tabbar_accent';
+
+  /// Custom accent-colour presets (user-added via the colour
+  /// sheet's + button): `List<int>` ARGB, in the order added. The 5
+  /// defaults (black/blue/green/yellow/red) are built in, not
+  /// stored — only customs persist here.
+  static const String tabBarAccentPresets = 'hao_tabbar_accent_presets';
 
   /// Custom font (stage 2, Beans `FontManager`): registered family
   /// name ('HaoCustomFont' when installed, '' = system default),
@@ -301,6 +337,7 @@ class HiveKeys {
   /// Scripts are additive to the built-in resolvers — no "at least one"
   /// guard, unlike the platform source groups.
   static const String lxScriptDisabled = 'hao_lx_disabled';
+  static const String lxScriptExplicitlyEnabled = 'hao_lx_explicit_enabled';
   static const String lxCustomScripts = 'hao_lx_custom';
   static const String lxDeletedBundledScripts = 'hao_lx_deleted_bundled';
   static const String lxScriptOrder = 'hao_lx_order';

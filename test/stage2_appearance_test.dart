@@ -164,4 +164,35 @@ void main() {
       expect(controller.backgroundActive.value, isTrue);
     });
   });
+
+  group('wallpaper v1.1.5 migration', () {
+    // The migration itself lives in main(), before load() — load()
+    // keeps its contract (pure reflection, see the test above), so
+    // the migration is tested on the store directly here.
+    test('stored on -> off once; files + selection kept', () async {
+      final path = await store.addWallpaper(await srcFile('wall.jpg', 'fake-jpeg'));
+      await store.applyWallpaper(path!);
+      expect(store.wallpaperEnabled, isTrue);
+      await store.migrateWallpaperOffOnce();
+      expect(store.wallpaperEnabled, isFalse);
+      expect(store.currentWallpaper, path); // selection kept
+      expect(store.wallpaperPaths, [path]); // files kept
+      expect(store.backgroundActive, isFalse);
+    });
+
+    test('never runs twice: re-enabling after migration sticks', () async {
+      await store.migrateWallpaperOffOnce();
+      final path = await store.addWallpaper(await srcFile('w.jpg', 'x'));
+      await store.applyWallpaper(path!);
+      expect(store.wallpaperEnabled, isTrue);
+      await store.migrateWallpaperOffOnce();
+      expect(store.wallpaperEnabled, isTrue);
+    });
+
+    test('already off stays off', () async {
+      expect(store.wallpaperEnabled, isFalse);
+      await store.migrateWallpaperOffOnce();
+      expect(store.wallpaperEnabled, isFalse);
+    });
+  });
 }

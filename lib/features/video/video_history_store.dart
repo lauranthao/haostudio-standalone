@@ -35,38 +35,76 @@ class VideoHistoryStore {
     return const [];
   }
 
-  /// Film identity for history dedup: the normalised title
-  /// ([videoNormTitle]). One film = one history row, even when it was
-  /// watched on different CMS sources (each source has its own vodId)
-  /// or after the detail page switched to a faster source. Episode /
-  /// line / progress are NOT part of the key — watching a new episode
-  /// updates the same row instead of starting a second one.
+  /// Film identity for history dedup: the normalised title plus the
+  /// release year (`normTitle|year`, the same key search dedup uses).
+  /// One film = one history row, even when it was watched on different
+  /// CMS sources (each source has its own vodId) or after the detail
+  /// page switched to a faster source. Episode / line / progress are
+  /// NOT part of the key — watching a new episode updates the same row
+  /// instead of starting a second one.
+  ///
+  /// The year matters because `videoNormTitle` strips a parenthesised
+  /// year (`霓裳尽欢 (2024)` -> `霓裳尽欢`): without it, a remake in a
+  /// different year collapses into the original's row (P1-16). A row
+  /// with no year (written before P1-16, or a film whose source gives
+  /// no year) falls back to the bare title, so old rows keep working
+  /// and are never lost.
   ///
   /// An empty normalised title (untitled entry) has no film identity
   /// and falls back to the exact `source|vodId` key, so two untitled
   /// entries never merge into each other.
-  static String filmKey(WatchHistoryEntry e) => videoNormTitle(e.title);
+  static String filmKey(WatchHistoryEntry e) {
+    final t = videoNormTitle(e.title);
+    if (t.isEmpty) return '';
+    final y = e.year.trim();
+    return y.isEmpty ? t : '$t|$y';
+  }
+
+  /// Whether two (title, year) pairs denote the same film for merge
+  /// purposes. Years must agree when BOTH are known; a missing year
+  /// on either side is treated as "unknown, may match" — the pre-fix
+  /// title-only behaviour — so a legacy year-less row is absorbed by
+  /// the film it belongs to instead of lingering as a duplicate row.
+  /// Two rows with different KNOWN years never match.
+  static bool _filmMatches(
+    String titleA,
+    String yearA,
+    String titleB,
+    String yearB,
+  ) {
+    if (videoNormTitle(titleA) != videoNormTitle(titleB)) return false;
+    final ya = yearA.trim();
+    final yb = yearB.trim();
+    if (ya.isEmpty || yb.isEmpty) return true;
+    return ya == yb;
+  }
 
   /// Merge legacy duplicates: at most one row per film (by [filmKey]),
   /// keeping the most recently watched entry (`at` latest; ties keep
   /// the first in stored order, which is most-recent-first). Runs on
   /// every read so pre-fix duplicates disappear from the UI without
   /// the user deleting anything; the next [record] persists the
-  /// merged list.
+  /// merged list. A legacy year-less row merges into the same-title
+  /// row (see [_filmMatches]); two rows with different KNOWN years
+  /// stay separate.
   static List<WatchHistoryEntry> _dedupeByFilm(
     List<WatchHistoryEntry> list,
   ) {
-    final slotByFilm = <String, int>{};
     final out = <WatchHistoryEntry>[];
     for (final e in list) {
-      final key = filmKey(e);
-      if (key.isEmpty) {
+      if (filmKey(e).isEmpty) {
         out.add(e);
         continue;
       }
-      final slot = slotByFilm[key];
-      if (slot == null) {
-        slotByFilm[key] = out.length;
+      var slot = -1;
+      for (var i = 0; i < out.length; i++) {
+        if (filmKey(out[i]).isEmpty) continue;
+        if (_filmMatches(e.title, e.year, out[i].title, out[i].year)) {
+          slot = i;
+          break;
+        }
+      }
+      if (slot < 0) {
         out.add(e);
       } else if (e.at.isAfter(out[slot].at)) {
         out[slot] = e;
@@ -91,7 +129,10 @@ class VideoHistoryStore {
     final key = filmKey(entry);
     final list = getAll().where((e) {
       if (key.isEmpty) return e.identityKey != entry.identityKey;
-      return filmKey(e) != key;
+      // Same rule as _dedupeByFilm: a legacy year-less row is
+      // absorbed by the same-title film; a different KNOWN year is
+      // a different film and keeps its own row.
+      return !_filmMatches(e.title, e.year, entry.title, entry.year);
     }).toList();
     list.insert(0, entry);
     await _save(list.take(maxEntries).toList());
@@ -109,13 +150,93 @@ class VideoHistoryStore {
   /// source it was last watched on. The detail page uses this (not
   /// [find]) so a film watched on another source still resumes at its
   /// latest episode instead of starting over at episode 1.
-  static WatchHistoryEntry? findByTitle(String title) {
+  ///
+  /// When [year] is given, only a row with that year — or a legacy
+  /// year-less row (unknown year, pre-P1-16) — matches; a row with a
+  /// DIFFERENT known year never matches, so a remake does not resume
+  /// into the original's position. With no year, any same-title row
+  /// matches (most recent first), as before.
+  static WatchHistoryEntry? findByTitle(String title, {String year = ''}) {
     final key = videoNormTitle(title);
     if (key.isEmpty) return null;
-    for (final e in getAll()) {
-      if (filmKey(e) == key) return e;
+    final y = year.trim();
+    final all = getAll();
+    if (y.isNotEmpty) {
+      for (final e in all) {
+        if (videoNormTitle(e.title) == key && e.year.trim() == y) {
+          return e;
+        }
+      }
+      for (final e in all) {
+        if (videoNormTitle(e.title) == key && e.year.trim().isEmpty) {
+          return e;
+        }
+      }
+      return null;
+    }
+    for (final e in all) {
+      if (filmKey(e).isNotEmpty && videoNormTitle(e.title) == key) {
+        return e;
+      }
     }
     return null;
+  }
+
+  /// Film-level resume (P1-15): the latest history row for this film
+  /// (title + year, any source), mapped onto the CURRENT detail's
+  /// lines by episode NAME. The winning source's own resume key
+  /// ([loadResume]) is tried first by the caller; this is the
+  /// fallback for a source switch, where the new source+vodId has no
+  /// resume key of its own yet.
+  ///
+  /// Only the SAME episode resumes: the stored episode name must
+  /// appear in these lines (searched across ALL lines — the new
+  /// source may order its lines differently). When the name is not
+  /// there the episode list does not line up, so this returns null
+  /// instead of guessing by index and reporting a time for the wrong
+  /// episode. The saved position must also pass the vodLocalLoad rule
+  /// (> 10 s in, >= 30 s from the end, against the STORED duration).
+  static ResumeInfo? loadResumeForFilm({
+    required String title,
+    required String year,
+    required List<PlayLine> lines,
+  }) {
+    if (lines.isEmpty) return null;
+    final hist = findByTitle(title, year: year);
+    if (hist == null) return null;
+    if (hist.position <= 10) return null;
+    if (hist.duration > 0 && hist.position >= hist.duration - 30) {
+      return null;
+    }
+    if (hist.epName.isNotEmpty) {
+      for (var li = 0; li < lines.length; li++) {
+        final eps = lines[li].episodes;
+        for (var ei = 0; ei < eps.length; ei++) {
+          if (eps[ei].name == hist.epName) {
+            return ResumeInfo(
+              lineIdx: li,
+              epIdx: ei,
+              epName: hist.epName,
+              position: hist.position,
+              duration: hist.duration,
+            );
+          }
+        }
+      }
+      return null;
+    }
+    // No episode name recorded: index only, validated + clamped by
+    // the same rule as a stored resume key.
+    return ResumeInfo.fromStored(
+      {
+        'lineIdx': hist.lineIdx,
+        'epIdx': hist.epIdx,
+        'epName': hist.epName,
+        'position': hist.position,
+        'duration': hist.duration,
+      },
+      lines,
+    );
   }
 
   static Future<void> remove(dynamic source, String vodId) async {
@@ -362,6 +483,14 @@ class VideoSourcesStore {
   /// - Matched defaults get their `sort` refreshed from the current
   ///   defaults, so a re-prioritisation (fast first, slow last)
   ///   applies; the user's `enabled` toggle is never touched.
+  /// - A stored http:// URL whose default twin is now https:// is
+  ///   upgraded IN PLACE (rev 3: 金鹰/非凡/非凡主站): only the scheme
+  ///   changes — the stored `sort` and `enabled` are kept exactly as
+  ///   the user has them, so a manual reorder / toggle survives the
+  ///   upgrade and no duplicate (http twin + https twin) appears.
+  ///   The upgrade is matched by scheme-insensitive URL, and a
+  ///   stored http twin counts as "present" so the https default is
+  ///   not appended a second time.
   /// - The revision guard means a source the user deliberately
   ///   deleted is never resurrected by a later load: the merge runs
   ///   once per revision, then the stored revision is bumped.
@@ -376,26 +505,44 @@ class VideoSourcesStore {
       }
     } catch (_) {}
     if (seenRev >= kVideoSourcesRevision) return stored;
-    final byUrl = <String, VideoSource>{
-      for (final s in stored) s.apiUrl: s,
+    // A stored url counts as present under both its own scheme and
+    // its https form, so an http twin is not "missing" its https
+    // default (which would append a duplicate).
+    final storedUrls = <String>{
+      for (final s in stored) s.apiUrl,
+      for (final s in stored) toHttps(s.apiUrl),
     };
     var changed = false;
     final merged = stored.map((s) {
       VideoSource? def;
       for (final d in kDefaultVideoSources) {
-        if (d.apiUrl == s.apiUrl) {
+        if (d.apiUrl == s.apiUrl || d.apiUrl == toHttps(s.apiUrl)) {
           def = d;
           break;
         }
       }
-      if (def != null && def.sort != s.sort) {
+      if (def == null) return s;
+      if (def.apiUrl != s.apiUrl) {
+        // Scheme-only upgrade (http→https twin): keep the user's
+        // sort and enabled untouched; only the scheme changes.
+        changed = true;
+        return VideoSource(
+          id: s.id,
+          name: s.name,
+          apiUrl: def.apiUrl,
+          kind: s.kind,
+          enabled: s.enabled,
+          sort: s.sort,
+        );
+      }
+      if (def.sort != s.sort) {
         changed = true;
         return s.copyWith(sort: def.sort);
       }
       return s;
     }).toList();
     for (final def in kDefaultVideoSources) {
-      if (!byUrl.containsKey(def.apiUrl)) {
+      if (!storedUrls.contains(def.apiUrl)) {
         merged.add(def);
         changed = true;
       }

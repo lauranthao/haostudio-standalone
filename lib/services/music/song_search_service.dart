@@ -54,6 +54,29 @@ class SearchStreamUpdate {
   final Set<MusicPlatform> pending;
 }
 
+/// One streaming update from [SongSearchService.searchPlaylistsStream].
+///
+/// Same convention as [SearchStreamUpdate]: [items] is the cumulative
+/// playlist list so far (arrival order, deduped); [pending] is the set
+/// of platforms with a leg not yet settled; it is empty on the last
+/// emission, just before the stream closes. A fresh list on every
+/// emission; the service never mutates a list it already handed out.
+class PlaylistSearchUpdate {
+  const PlaylistSearchUpdate({required this.items, required this.pending});
+
+  final List<PlaylistSummary> items;
+  final Set<MusicPlatform> pending;
+}
+
+/// One streaming update from [SongSearchService.searchArtistsStream].
+/// Same convention as [PlaylistSearchUpdate].
+class ArtistSearchUpdate {
+  const ArtistSearchUpdate({required this.items, required this.pending});
+
+  final List<ArtistSummary> items;
+  final Set<MusicPlatform> pending;
+}
+
 /// Cover backfill (v1.0.6 phone bug: "很多歌曲都没封面"): Kugou search
 /// returns NO cover field at all, so ~1 in 4 merged rows was coverless
 /// by construction. Fill an empty cover from another result with the
@@ -352,6 +375,186 @@ class SongSearchService {
       }
     }
 
+    return controller.stream;
+  }
+
+  var _playlistGeneration = 0;
+  StreamController<PlaylistSearchUpdate>? _playlistCurrent;
+  var _artistGeneration = 0;
+  StreamController<ArtistSearchUpdate>? _artistCurrent;
+
+  /// Streaming playlist search — same convention as [searchAllStream]:
+  /// one emission per settled leg, in arrival order; the stream closes
+  /// when every leg has settled (or the search was superseded). The
+  /// fastest leg shows first, a slow leg never holds up the rest.
+  ///
+  /// Legs are the platforms with a playlist-search endpoint: wy +
+  /// kw (QQ's playlist API rejects the call, Kugou has none — see
+  /// music_api.dart). [onlyPlatform] scopes to one platform, like the
+  /// song search's capsule; a platform with no endpoint yields no leg
+  /// and the stream closes with no emission. Results accumulate in
+  /// arrival order (no wy+tx-first sort — playlist rows carry their
+  /// own platform badge, and with the capsule there is one leg
+  /// anyway); same-platform duplicates are dropped.
+  Stream<PlaylistSearchUpdate> searchPlaylistsStream(
+    String query, {
+    MusicPlatform? onlyPlatform,
+  }) {
+    const supporting = [MusicPlatform.wy, MusicPlatform.kw];
+    return _leggedSearch<PlaylistSummary, PlaylistSearchUpdate>(
+      platforms: onlyPlatform != null
+          ? supporting.where((pf) => pf == onlyPlatform).toList()
+          : supporting,
+      generation: () => ++_playlistGeneration,
+      currentGeneration: () => _playlistGeneration,
+      current: () => _playlistCurrent,
+      setCurrent: (c) => _playlistCurrent = c,
+      clearCurrent: (c) {
+        if (identical(_playlistCurrent, c)) _playlistCurrent = null;
+      },
+      runLeg: (pf) async {
+        final r = pf == MusicPlatform.wy
+            ? await _api.searchWyPlaylists(query, 1)
+            : await _api.searchKwPlaylists(query, 1);
+        return r.items;
+      },
+      dedupeKey: (p) => '${p.platform.code}|${p.id}',
+      buildUpdate: (items, pending) =>
+          PlaylistSearchUpdate(items: items, pending: pending),
+    );
+  }
+
+  /// Streaming artist search — same convention as [searchAllStream]:
+  /// one emission per settled leg, in arrival order; the stream closes
+  /// when every leg has settled (or the search was superseded).
+  ///
+  /// Legs are the platforms with an artist-search endpoint: wy + tx
+  /// + kw (Kugou has none — its artist search was never ported).
+  /// [onlyPlatform] scopes to one platform. Results accumulate in
+  /// arrival order; same-platform duplicates are dropped.
+  Stream<ArtistSearchUpdate> searchArtistsStream(
+    String query, {
+    MusicPlatform? onlyPlatform,
+  }) {
+    const supporting = [
+      MusicPlatform.wy,
+      MusicPlatform.tx,
+      MusicPlatform.kw,
+    ];
+    return _leggedSearch<ArtistSummary, ArtistSearchUpdate>(
+      platforms: onlyPlatform != null
+          ? supporting.where((pf) => pf == onlyPlatform).toList()
+          : supporting,
+      generation: () => ++_artistGeneration,
+      currentGeneration: () => _artistGeneration,
+      current: () => _artistCurrent,
+      setCurrent: (c) => _artistCurrent = c,
+      clearCurrent: (c) {
+        if (identical(_artistCurrent, c)) _artistCurrent = null;
+      },
+      runLeg: (pf) async {
+        return switch (pf) {
+          MusicPlatform.wy => _api.searchWyArtists(query),
+          MusicPlatform.tx => _api.searchTxArtists(query, 1),
+          _ => _api.searchKwArtists(query),
+        };
+      },
+      dedupeKey: (a) => a.id.isNotEmpty
+          ? '${a.platform.code}|${a.id}'
+          : '${a.platform.code}|${a.name}',
+      buildUpdate: (items, pending) =>
+          ArtistSearchUpdate(items: items, pending: pending),
+    );
+  }
+
+  /// Shared streaming skeleton for the playlist / artist searches
+  /// (the song search keeps its own, richer implementation — script
+  /// legs, platform-priority sort, cover backfill). One emission per
+  /// settled leg; a failing or > 5 s leg contributes nothing and never
+  /// blocks the others; a new search of the same kind closes the
+  /// previous stream at once, and late leg completions are dropped.
+  Stream<U> _leggedSearch<T, U>({
+    required List<MusicPlatform> platforms,
+    required int Function() generation,
+    required int Function() currentGeneration,
+    required StreamController<U>? Function() current,
+    required void Function(StreamController<U>?) setCurrent,
+    required void Function(StreamController<U>) clearCurrent,
+    required Future<List<T>> Function(MusicPlatform pf) runLeg,
+    required String Function(T item) dedupeKey,
+    required U Function(List<T> items, Set<MusicPlatform> pending)
+    buildUpdate,
+  }) {
+    final gen = generation();
+    final prev = current();
+    final controller = StreamController<U>();
+    setCurrent(controller);
+    unawaited(prev?.close());
+
+    if (platforms.isEmpty) {
+      // No leg can run (e.g. a platform with no endpoint for this
+      // kind): never hand out a stream that never closes.
+      unawaited(controller.close());
+      return controller.stream;
+    }
+
+    final accumulated = <T>[];
+    final seenKeys = <String>{};
+    final legsLeftByPlatform = <MusicPlatform, int>{
+      for (final pf in platforms) pf: 1,
+    };
+    var legsLeft = platforms.length;
+
+    bool isLive() => gen == currentGeneration() && !controller.isClosed;
+
+    void emit() {
+      if (!isLive()) return;
+      final pending = <MusicPlatform>{
+        for (final e in legsLeftByPlatform.entries)
+          if (e.value > 0) e.key,
+      };
+      controller.add(buildUpdate(List.of(accumulated), pending));
+    }
+
+    void settle(MusicPlatform pf) {
+      if (!isLive()) return;
+      legsLeftByPlatform[pf] = legsLeftByPlatform[pf]! - 1;
+      legsLeft--;
+      emit();
+      if (legsLeft == 0) {
+        clearCurrent(controller);
+        unawaited(controller.close());
+      }
+    }
+
+    Future<void> runOneLeg(MusicPlatform pf) async {
+      List<T> items;
+      try {
+        // Same 5 s leg cap as the song search: a dead leg used to
+        // hold the whole search up to 10–21 s.
+        items = await runLeg(pf)
+            .timeout(const Duration(seconds: 5), onTimeout: () => <T>[])
+            .catchError((_) => <T>[]);
+      } catch (_) {
+        items = const [];
+      }
+      if (!isLive()) return;
+      try {
+        for (final item in items) {
+          final key = dedupeKey(item);
+          if (!seenKeys.add(key)) continue;
+          accumulated.add(item);
+        }
+      } catch (_) {
+        // A corrupt entry must not kill the search.
+      } finally {
+        settle(pf);
+      }
+    }
+
+    for (final pf in platforms) {
+      unawaited(runOneLeg(pf));
+    }
     return controller.stream;
   }
 }

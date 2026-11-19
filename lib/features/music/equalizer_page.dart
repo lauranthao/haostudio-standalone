@@ -94,6 +94,7 @@ class _ResponseCard extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return GlassCard(
       radius: 18,
+      quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,6 +366,7 @@ class _PresetCard extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return GlassCard(
       radius: 18,
+      quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,6 +686,7 @@ class _BandsCard extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return GlassCard(
       radius: 18,
+      quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -32,14 +32,21 @@
 //   standard/minimal on a busy phone. The rest of the app keeps
 //   ios27 defaults.
 //
-// Our own GlassCard (BackdropFilter + hairline + highlight) stays
-// for content rows (chen: search-result rows are glass; SKILL.md
-// Rule 1 would make them solid — chen wins) and for surfaces the
-// library cannot express in our colours (dialogs: its primary
-// action forces a blue glow, destructive forces red).
+// Our own GlassCard stays the single card widget, now with a quality
+// parameter (Phase B): frosted (default, the old BackdropFilter +
+// hairline + highlight) for content rows (chen: search-result rows
+// are glass; SKILL.md Rule 1 would make them solid — chen wins),
+// standard/premium library glass for content cards, floating panels
+// and dialog shells. The dialog note below concerns the library's
+// GlassDialog widget (its primary action forces a blue glow,
+// destructive forces red) — a GlassContainer SHELL for our own
+// dialog content is fine, because the caller's buttons carry the
+// theme colours, not the library's actions.
 
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+import 'hao_themes.dart';
 
 class HaoLiquidGlass {
   HaoLiquidGlass._();
@@ -59,4 +66,41 @@ class HaoLiquidGlass {
   /// Resolves light/dark from the ambient glass brightness.
   static LiquidGlassSettings ios27Settings(BuildContext context) =>
       LiquidGlassSettings.ios27(context);
+
+  /// Floating-chrome glass (tab bar shell + mini player bar) for the
+  /// unified page (chen 2026-11-19: "不要有那种分开的感觉，就是一个
+  /// 页面连在一起的" — NetEase 漫游页参考：整页同一底色，顶栏 /
+  /// mini 播放器 / 底栏都是同色胶囊）.
+  ///
+  /// The ios27 preset's own tint (light glassColor 0x87F8F8F8 ≈ 53%
+  /// near-white + frostOpacity 0.73) washes the chrome toward white
+  /// whatever the page behind it is — over the theme scaffold colour
+  /// it reads as a separate light slab, over a wallpaper as a milky
+  /// slab breaking the photo. This preset keeps the ios27 optics
+  /// (thickness 32, frost 14, paraxial lens, rim) and only re-tints:
+  /// - glassColor = the page's own background (theme scaffold
+  ///   colour) at 0.12 — on a solid page the bar IS the page colour
+  ///   (the backdrop behind it is the same colour, so any alpha
+  ///   blends); over a wallpaper it is only a 12% wash, so the photo
+  ///   reads through continuously;
+  /// - frostOpacity 0.40 (from 0.73/0.85) — the frost cloud is
+  ///   thinner, so the backdrop shows through instead of going milky;
+  /// - saturation 1.0 (from 2.1/1.4) — the backdrop inside the bar
+  ///   must not be more saturated than the page around it;
+  /// - bodyShade 0 (dark was 0.28) — no extra darkening of the body,
+  ///   or the dark-mode bar would read darker than its page.
+  /// Theme-only (no appearance state): the same settings blend on a
+  /// solid page and stay transparent over a wallpaper, so no reactive
+  /// rebuild is needed when the wallpaper toggles. The pill is
+  /// grouped inside the bar, so it inherits this preset.
+  static LiquidGlassSettings chromeSettings(BuildContext context) {
+    final base = LiquidGlassSettings.ios27(context);
+    final page = HaoTheme.of(context).scaffoldBackground;
+    return base.copyWith(
+      glassColor: page.withValues(alpha: 0.12),
+      frostOpacity: 0.40,
+      saturation: 1.0,
+      bodyShade: 0.0,
+    );
+  }
 }

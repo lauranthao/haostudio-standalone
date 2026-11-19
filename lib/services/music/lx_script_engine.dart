@@ -82,7 +82,7 @@ const String kLxPrelude = r'''
         try { parts.push(typeof a === 'string' ? a : JSON.stringify(a)); }
         catch (e) { parts.push(String(a)); }
       }
-      sendMessage('LxLog', JSON.stringify({ level: level, text: parts.join(' ') }));
+      sendMessage('LxLog', JSON.stringify({ scriptId: globalThis.__haoLxScriptId || null, level: level, text: parts.join(' ') }));
     } catch (e) {}
   };
   if (typeof console === 'undefined') { globalThis.console = {}; }
@@ -105,7 +105,7 @@ const String kLxPrelude = r'''
     __handlers[event].push(fn);
   }
   function __send(event, data) {
-    try { sendMessage('LxSend', JSON.stringify({ event: event, data: data === undefined ? null : data })); } catch (e) {}
+    try { sendMessage('LxSend', JSON.stringify({ scriptId: globalThis.__haoLxScriptId || null, event: event, data: data === undefined ? null : data })); } catch (e) {}
   }
   function __request(url, options, callback) {
     if (typeof options === 'function') { callback = options; options = {}; }
@@ -117,7 +117,7 @@ const String kLxPrelude = r'''
       try { body = JSON.stringify(body); } catch (e) { body = String(body); }
     }
     try {
-      sendMessage('LxRequest', JSON.stringify({ id: id, url: String(url), method: options.method || 'GET', headers: options.headers || {}, body: body, timeout: options.timeout || 0 }));
+      sendMessage('LxRequest', JSON.stringify({ scriptId: globalThis.__haoLxScriptId || null, id: id, url: String(url), method: options.method || 'GET', headers: options.headers || {}, body: body, timeout: options.timeout || 0 }));
     } catch (e) {
       var cb = __reqCallbacks[id];
       delete __reqCallbacks[id];
@@ -165,6 +165,40 @@ const String kLxPrelude = r'''
     var out = JSON.stringify(r);
     if (r.done) delete __dispatchResults[id];
     return out;
+  };
+  // Timers: flutter_js's native setTimeout is bridged through a
+  // process-wide static Dart callback (JSCore: _sendMessageDartFunc),
+  // so with 20 runtimes a timer scheduled by script A fires its
+  // callback in the NEWEST runtime's context — and after A is
+  // disposed, in a released JSContext (native UAF, v1.0.7-class).
+  // Route timers through our own stamped channel instead: Dart
+  // fires __haoLxFireTimeout only on the runtime still registered
+  // under this script id, and drops the timer outright once the
+  // script is removed. flutter_js's own extensions (fetch /
+  // handle_promises) do not use setTimeout, so nothing else loses
+  // its timer by overwriting the global here.
+  var __haoTimeoutSeq = 0;
+  var __haoTimeoutCallbacks = {};
+  globalThis.__haoLxFireTimeout = function (idx) {
+    var fn = __haoTimeoutCallbacks[idx];
+    if (!fn) return 'no-timer';
+    delete __haoTimeoutCallbacks[idx];
+    try { fn(); } catch (e) {}
+    return 'ok';
+  };
+  globalThis.setTimeout = function (fn, ms) {
+    if (typeof fn === 'string') { try { fn = new Function(fn); } catch (e) { return 0; } }
+    if (typeof fn !== 'function') return 0;
+    var args = [];
+    for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+    var id = ++__haoTimeoutSeq;
+    __haoTimeoutCallbacks[id] = function () { fn.apply(null, args); };
+    try { sendMessage('LxTimeout', JSON.stringify({ scriptId: globalThis.__haoLxScriptId || null, action: 'set', timeoutIndex: String(id), timeout: ms || 0 })); } catch (e) {}
+    return id;
+  };
+  globalThis.clearTimeout = function (id) {
+    delete __haoTimeoutCallbacks[id];
+    try { sendMessage('LxTimeout', JSON.stringify({ scriptId: globalThis.__haoLxScriptId || null, action: 'clear', timeoutIndex: String(id), timeout: 0 })); } catch (e) {}
   };
   var __b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   function __b64encode(bytes) {
@@ -478,41 +512,60 @@ class LxScriptInfo {
 }
 
 /// One script's JS runtime + its Dart-side channels.
+///
+/// Routing (flutter_js 0.8.7 static-callback cross-talk, JSCore):
+/// `JavascriptCoreRuntime._sendMessageDartFunc` is a static field
+/// overwritten by every new runtime's constructor, so on iOS ALL
+/// runtimes' `sendMessage` calls land in the NEWEST runtime's Dart
+/// handlers. (QuickJS2 builds a per-instance closure instead, so
+/// Android is unaffected — but the routing below is harmless there.)
+/// Every message our prelude sends is therefore stamped with
+/// `scriptId` (`globalThis.__haoLxScriptId`, set by [_loadScript]
+/// right after the prelude), and each handler below forwards a
+/// stamped message to the runtime still registered under that id —
+/// or drops it when that script was removed. Unstamped messages
+/// (legacy / foreign) fall back to this runtime, as before.
+/// Dispose unregisters the id, so a message arriving after removal
+/// can never touch a released JSContext.
 class _ScriptRuntime {
   _ScriptRuntime(this.js, this.scriptId) {
+    _byScriptId[scriptId] = this;
     js.onMessage('LxSend', (args) {
       if (args is Map) {
-        final m = Map<String, dynamic>.from(args);
-        final event = m['event']?.toString();
-        final data = m['data'];
-        if (event == 'inited') {
-          initedReceived = true;
-          initedData =
-              data is Map ? Map<String, dynamic>.from(data) : null;
-        } else if (event == 'updateAlert') {
-          lastUpdateAlert =
-              data is Map ? Map<String, dynamic>.from(data) : null;
-        } else if (event == 'showConfigView') {
-          configView = data is Map ? Map<String, dynamic>.from(data) : null;
-        }
+        _route(Map<String, dynamic>.from(args))?._ingestSend(args);
       }
     });
     js.onMessage('LxRequest', (args) {
       if (args is Map) {
-        try {
-          httpJobs.add(_HttpJob.fromJson(Map<String, dynamic>.from(args)));
-        } catch (_) {}
+        _route(Map<String, dynamic>.from(args))?._ingestRequest(args);
       }
     });
     js.onMessage('LxLog', (args) {
       if (args is Map) {
-        final text = args['text']?.toString() ?? '';
-        if (text.isNotEmpty) {
-          logs.add(text);
-          if (logs.length > 100) logs.removeAt(0);
-        }
+        _route(Map<String, dynamic>.from(args))?._ingestLog(args);
       }
     });
+    js.onMessage('LxTimeout', (args) {
+      if (args is Map) {
+        _route(Map<String, dynamic>.from(args))?._ingestTimeout(args);
+      }
+    });
+  }
+
+  /// Live runtimes by script id. The single source of truth for
+  /// "which runtime owns this message / is this timer still alive":
+  /// dispose removes the entry, so anything stamped for a removed
+  /// script is dropped instead of delivered to a released context.
+  static final Map<String, _ScriptRuntime> _byScriptId = {};
+
+  /// Resolve the owning runtime for a stamped message. Returns this
+  /// runtime for unstamped messages; returns null when the stamped
+  /// script is gone (caller must drop the message, never fall back
+  /// to the newest runtime — that is exactly the cross-talk).
+  _ScriptRuntime? _route(Map<String, dynamic> m) {
+    final stamped = m['scriptId']?.toString();
+    if (stamped == null || stamped.isEmpty) return this;
+    return _byScriptId[stamped];
   }
 
   final JavascriptRuntime js;
@@ -527,7 +580,87 @@ class _ScriptRuntime {
   Map<String, dynamic>? lastUpdateAlert;
   Map<String, dynamic>? configView;
 
+  bool _disposed = false;
+
+  /// Pending prelude-setTimeout timers, by JS timeout index.
+  /// Cancelled on dispose, so a timer can never fire into a
+  /// released JSContext (P1-2 slow-inited case).
+  final Map<String, Timer> _timers = {};
+
+  void _ingestSend(Map args) {
+    if (_disposed) return;
+    final m = Map<String, dynamic>.from(args);
+    final event = m['event']?.toString();
+    final data = m['data'];
+    if (event == 'inited') {
+      initedReceived = true;
+      initedData = data is Map ? Map<String, dynamic>.from(data) : null;
+    } else if (event == 'updateAlert') {
+      lastUpdateAlert = data is Map ? Map<String, dynamic>.from(data) : null;
+    } else if (event == 'showConfigView') {
+      configView = data is Map ? Map<String, dynamic>.from(data) : null;
+    }
+  }
+
+  void _ingestRequest(Map args) {
+    if (_disposed) return;
+    try {
+      httpJobs.add(_HttpJob.fromJson(Map<String, dynamic>.from(args)));
+    } catch (_) {}
+  }
+
+  void _ingestLog(Map args) {
+    if (_disposed) return;
+    final text = args['text']?.toString() ?? '';
+    if (text.isNotEmpty) {
+      logs.add(text);
+      if (logs.length > 100) logs.removeAt(0);
+    }
+  }
+
+  void _ingestTimeout(Map args) {
+    if (_disposed) return;
+    final m = Map<String, dynamic>.from(args);
+    final idx = m['timeoutIndex']?.toString() ?? '';
+    if (idx.isEmpty) return;
+    if (m['action'] == 'clear') {
+      _timers.remove(idx)?.cancel();
+      return;
+    }
+    _timers.remove(idx)?.cancel();
+    final ms = (m['timeout'] as num?)?.toInt() ?? 0;
+    _timers[idx] = Timer(Duration(milliseconds: ms < 0 ? 0 : ms), () {
+      _timers.remove(idx);
+      _fireTimeout(idx);
+    });
+  }
+
+  /// Fire one prelude timer on THIS runtime — only when this runtime
+  /// is still the registered owner of its script id. The registry
+  /// check is the dispose linkage: after removeScript/dispose the
+  /// entry is gone and the timer is dropped, never evaluated.
+  void _fireTimeout(String idx) {
+    if (_disposed || !identical(_byScriptId[scriptId], this)) return;
+    try {
+      js.evaluate("__haoLxFireTimeout('$idx')");
+    } catch (_) {}
+    try {
+      js.executePendingJob();
+    } catch (_) {}
+  }
+
   void dispose() {
+    _disposed = true;
+    for (final t in _timers.values) {
+      t.cancel();
+    }
+    _timers.clear();
+    // Only unregister when this instance is still the owner: a
+    // re-load registers its replacement first, and disposing the old
+    // instance must not unregister the new one.
+    if (identical(_byScriptId[scriptId], this)) {
+      _byScriptId.remove(scriptId);
+    }
     try {
       js.dispose();
     } catch (_) {}
@@ -575,6 +708,7 @@ class LxScriptEngine {
     LxRuntimeFactory? runtimeFactory,
     LxAssetLoader? assetLoader,
     this._fileStore,
+    this.initedTimeout = const Duration(seconds: 10),
   })  : _dio = dio ?? sharedDio(),
         _runtimeFactory =
             runtimeFactory ?? (() => getJavascriptRuntime(xhr: false)),
@@ -592,6 +726,13 @@ class LxScriptEngine {
   /// construct the engine without one — those load bundled scripts
   /// from assets exactly as before.
   final LxScriptFileStore? _fileStore;
+
+  /// How long [_loadScript] waits for a script's deferred `inited`
+  /// (polled every 100ms, early exit on arrival). 10s covers scripts
+  /// that defer `inited` behind a slow update check (原版念心 waits
+  /// 4–5s); a script that never sends `inited` still fails, bounded.
+  /// Tests inject a shorter value so the never-inited case stays fast.
+  final Duration initedTimeout;
 
   Future<void>? _initFuture;
   final Map<String, _ScriptRuntime> _runtimes = {};
@@ -738,10 +879,10 @@ class LxScriptEngine {
   /// no `@name`. Throws [LxScriptException] with a user-facing
   /// reason on any failure; nothing is saved then.
   ///
-  /// Same ~1s `inited` wait as [_loadScript] — a slow script that
+  /// Same ~10s `inited` wait as [_loadScript] — a slow script that
   /// defers `inited` (e.g. 原版念心 waits 4–5s for its update check)
-  /// cannot be imported this way; use the fixed -lx variant whose
-  /// `inited` fires immediately.
+  /// can be imported this way; a script that never sends `inited`
+  /// still fails, bounded.
   Future<LxScriptInfo> addCustomScriptFromFile({
     required String fileName,
     required String code,
@@ -827,22 +968,40 @@ class LxScriptEngine {
       if (pre.isError) {
         throw LxScriptException('LX 环境初始化失败: ${pre.stringResult}');
       }
+      // Stamp the script id the prelude's sendMessage calls carry:
+      // the flutter_js static-callback routing (see _ScriptRuntime)
+      // delivers every message stamped with this id to THIS runtime,
+      // even when a newer runtime was created afterwards. Must run
+      // before the script itself is evaluated.
+      rt.js.evaluate(
+        'globalThis.__haoLxScriptId = ${jsonEncode(id)};',
+      );
       final ev = rt.js.evaluate(code);
       if (ev.isError) {
         throw LxScriptException('脚本执行失败: ${ev.stringResult}');
       }
       rt.js.executePendingJob();
-      // Some scripts defer `inited` behind a short timer (统一音乐源 used
-      // to send it from setTimeout(100ms)). Poll briefly so a deferred
-      // inited is still accepted: deciding failure synchronously would
-      // dispose a runtime whose Dart setTimeout timer is still pending,
-      // and the timer's later evaluate would run on the released
-      // JSContext — a native use-after-free crash on iOS. Scripts that
-      // send `inited` synchronously (all 20 bundled ones now) exit this
-      // loop immediately, so there is no cost in the common case; a
-      // script that never sends `inited` still fails after ~1s.
-      for (var i = 0; i < 10 && !rt.initedReceived; i++) {
+      // Some scripts defer `inited` behind a timer (统一音乐源 used
+      // to send it from setTimeout(100ms); 原版念心 waits 4–5s for
+      // its update check). Poll so a deferred inited is still
+      // accepted, early exit in the common synchronous case. The
+      // loop also bails the moment this runtime stops being the
+      // registered one (script removed / re-loaded mid-load): the
+      // load must not register sources for a runtime that is gone.
+      // Disposal itself is safe for late timers: prelude setTimeout
+      // is routed through LxTimeout, and _fireTimeout drops the
+      // callback once the runtime is unregistered — so a timer
+      // firing after dispose never evaluates on a released
+      // JSContext (the v1.0.7-class UAF this wait used to cause).
+      final steps = initedTimeout.inMilliseconds ~/ 100;
+      for (var i = 0; i < steps && !rt.initedReceived; i++) {
         await Future.delayed(const Duration(milliseconds: 100));
+        if (_runtimes[id] != rt) {
+          throw LxScriptException('脚本已卸载: $id');
+        }
+      }
+      if (_runtimes[id] != rt) {
+        throw LxScriptException('脚本已卸载: $id');
       }
       if (!rt.initedReceived) {
         throw LxScriptException('脚本未发送 inited (不是有效的 LX 音源)');
@@ -869,7 +1028,13 @@ class LxScriptEngine {
       unawaited(_pumpHttp(rt).catchError((_) {}));
       return info;
     } catch (e) {
-      _runtimes.remove(id)?.dispose();
+      // Identity-guarded: a re-load may already have replaced this
+      // runtime — disposing the map entry then would kill the new
+      // runtime. Only remove when this load's runtime is still the
+      // registered one (the common failure path).
+      if (_runtimes[id] == rt) {
+        _runtimes.remove(id)?.dispose();
+      }
       if (e is LxScriptException) rethrow;
       throw LxScriptException(e.toString());
     }
@@ -965,6 +1130,13 @@ class LxScriptEngine {
         throw LxScriptException('脚本已卸载: $scriptId');
       }
       await _pumpHttp(rt);
+      // _pumpHttp awaits HTTP: the runtime may have been disposed /
+      // replaced while a request was in flight. Never evaluate the
+      // dispatch result on a released JSContext — re-check identity
+      // after the await, same guard as the loop top.
+      if (_runtimes[scriptId] != rt) {
+        throw LxScriptException('脚本已卸载: $scriptId');
+      }
       final resRaw =
           rt.js.evaluate('__haoLxDispatchResult($id)').stringResult;
       Map<String, dynamic>? res;
@@ -1030,6 +1202,12 @@ class LxScriptEngine {
       } catch (e) {
         err = e.toString();
       }
+      // The Dio request above awaited: the script may have been
+      // removed mid-flight (settings → delete). Delivering into a
+      // released JSContext is a native use-after-free — drop the
+      // result and stop pumping instead. Same identity guard as the
+      // loop top, re-checked after EVERY await.
+      if (_runtimes[rt.scriptId] != rt) return;
       rt.js.evaluate(
         '__haoLxDeliver(${job.id}, ${jsonEncode(err)}, '
         '${jsonEncode(respJson)})',

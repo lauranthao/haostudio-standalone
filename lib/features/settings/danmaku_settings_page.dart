@@ -98,14 +98,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          HaoGlassCard(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              '设置立即生效：直播间打开时读取，直播中修改也会实时更新。',
-              style: TextStyle(color: theme.textSecondary, fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 16),
           const HaoSectionTitle('各平台弹幕开关'),
           SettingsGroup(
             children: [
@@ -116,10 +108,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   title: Text(
                     site.name,
                     style: TextStyle(color: theme.textPrimary),
-                  ),
-                  subtitle: Text(
-                    on ? '该平台直播间显示弹幕' : '该平台直播间不显示弹幕',
-                    style: TextStyle(color: theme.textSecondary),
                   ),
                   value: on,
                   activeThumbColor: theme.accent,
@@ -199,7 +187,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ListTile(
                 title: Text('弹幕区域', style: TextStyle(color: theme.textPrimary)),
                 subtitle: Text(
-                  '仅全屏时生效：弹幕在视频上覆盖的区域。竖屏时弹幕是下方列表，不受影响',
+                  '仅全屏时生效',
                   style: TextStyle(color: theme.textSecondary),
                 ),
               ),
@@ -232,14 +220,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
             children: [
               ListTile(
                 title: Text('列表样式', style: TextStyle(color: theme.textPrimary)),
-                subtitle: Text(
-                  '紧凑：一行一条；卡片：每条一张卡片',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
                 trailing: SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: 'compact', label: Text('紧凑')),
-                    ButtonSegment(value: 'card', label: Text('卡片')),
+                    ButtonSegment(value: 'compact', label: Text('一行一条')),
+                    ButtonSegment(value: 'card', label: Text('每条一卡')),
                   ],
                   selected: {_listStyle},
                   onSelectionChanged: (selected) async {
@@ -252,10 +236,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
               ListTile(
                 title: Text('行间距', style: TextStyle(color: theme.textPrimary)),
-                subtitle: Text(
-                  '紧密 / 标准 / 宽松',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
                 trailing: SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'compact', label: Text('紧密')),
@@ -275,10 +255,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                 title: Text(
                   '显示用户名',
                   style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '关闭后列表只显示弹幕内容',
-                  style: TextStyle(color: theme.textSecondary),
                 ),
                 value: _showUsernames,
                 activeThumbColor: theme.accent,
@@ -317,7 +293,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   style: TextStyle(color: theme.textPrimary),
                 ),
                 subtitle: Text(
-                  '越高越严格（只挡更像的）；当前 $_similarityThreshold',
+                  '越高越严格（只挡更像的）',
                   style: TextStyle(color: theme.textSecondary),
                 ),
               ),
@@ -376,7 +352,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   style: TextStyle(color: theme.textPrimary),
                 ),
                 subtitle: Text(
-                  '超过设定字数的弹幕不显示；当前上限 $_blockLongLength 字',
+                  '超过设定字数的弹幕不显示',
                   style: TextStyle(color: theme.textSecondary),
                 ),
                 value: _blockLong,
@@ -504,19 +480,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   ),
               ],
             ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('暂无此设置'),
-          SettingsGroup(
-            children: [
-              ListTile(
-                title: Text('弹幕速度', style: TextStyle(color: theme.textPrimary)),
-                subtitle: Text(
-                  '当前弹幕为直播间下方的列表形式，没有滚动速度可调',
-                  style: TextStyle(color: theme.textMuted),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );

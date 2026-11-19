@@ -6,7 +6,7 @@
 // - Quality switch re-parses; a server receipt != request corrects the UI
 //   to the receipt quality + toast (Bilibili guest 10000 -> 250; Douyu
 //   rate is an opaque id, never sorted).
-// - Identical URLs after a quality switch -> toast "清晰度流未变化", abort.
+// - Identical URLs after a quality switch -> silent abort, no toast.
 // - Huya recovery order: next line -> fresh re-parse -> 60 s throttle ->
 //   10 s fallback; prefetch at the lease refreshAt (~100 s) fetches and
 //   HOLDS a fresh plan — never switches the playing stream; recovery
@@ -937,7 +937,7 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('identical URLs after a quality switch: toast + abort, no reload',
+    testWidgets('identical URLs after a quality switch: silent abort, no reload',
         (tester) async {
       final site = _FakeSite();
       // The "高清" re-parse returns the exact same URL list.
@@ -948,7 +948,9 @@ void main() {
       await tester.tap(find.text('高清'));
       await settle(tester);
       expect(site.recoveryCalls, 1); // the re-parse happened
-      expect(find.text('清晰度流未变化'), findsOneWidget);
+      // v1.1.3 clean pass: nothing changed, nothing to say — no toast
+      // at all, and no reload.
+      expect(find.text('清晰度流未变化'), findsNothing);
       expect(log.opens.length, 1); // no reload
       expect(chip(tester, '原画').selected, isTrue);
       expect(chip(tester, '高清').selected, isFalse);
@@ -975,7 +977,8 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('single line failure shows the failure card; manual retry waits 10 s',
+    testWidgets(
+        'single line failure auto-recovers first; manual retry is fetch-throttled',
         (tester) async {
       final site = _FakeSite()
         ..urlsByQuality = const {
@@ -986,17 +989,24 @@ void main() {
       await pumpRoom(tester, site, log, freshConfigs());
       log.backends.last.emitError('boom');
       await settle(tester);
+      // P1-8: a single line no longer fails at once — the first error
+      // spends a fresh recovery (fetch in flight), so no failure card
+      // yet, and one site call has run.
+      expect(find.text('▶ 重试'), findsNothing);
+      expect(site.recoveryCalls, 1);
+      // 10 s with no new stream -> the fresh fetch times out, the
+      // failure card comes back.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
       expect(find.text('▶ 重试'), findsOneWidget);
       await tester.tap(find.text('▶ 重试'));
       // settle(), not a bare pump(): the tap's onPressed setState lands
       // mid-frame and needs a second frame to rebuild the failure card
       // away.
       await settle(tester);
-      // Fresh fetch in flight: loading, failure buttons hidden.
-      expect(find.text('▶ 重试'), findsNothing);
-      // 10 s with no new stream -> the failure UI comes back.
-      await tester.pump(const Duration(seconds: 10));
-      await tester.pump();
+      // Manual retry resets the failure budget, but the 60 s fetch
+      // throttle (stamped by the auto attempt) means no new fetch runs
+      // — the card is back right away and no second site call is made.
       expect(find.text('▶ 重试'), findsOneWidget);
       expect(site.recoveryCalls, 1);
       await disposeRoom(tester, log);
@@ -1039,7 +1049,7 @@ void main() {
     );
 
     testWidgets(
-      'stall with lines exhausted shows the failure card, never downgrades',
+      'stall with one line recovers via fresh re-parse, never downgrades',
       (tester) async {
         final site = _FakeSite()
           ..urlsByQuality = const {
@@ -1052,15 +1062,19 @@ void main() {
         expect(chip(tester, '原画').selected, isTrue);
         log.backends.last.emitError('buffering_stall');
         await settle(tester);
-        // Single line, already exhausted: Pure Live never
-        // auto-downgrades — the room fails visibly instead of
-        // silently dropping quality. (The old auto-downgrade could
-        // never fire anyway: every successful recovery reset its
-        // counter to 0.)
-        expect(site.recoveryCalls, 0);
+        // P1-8: a single line now gets a fresh re-parse before failing —
+        // the stalled line's possibly-expired URL is replaced by the
+        // fresh signature (A2), the room recovers, and quality is NOT
+        // downgraded. (The old auto-downgrade could never fire anyway:
+        // every successful recovery reset its counter to 0.)
+        expect(site.recoveryCalls, 1);
+        expect(
+          log.opens.last.url,
+          'https://tx.flv.huya.com/src/660000.flv?wsSecret=A2',
+        );
         expect(chip(tester, '原画').selected, isTrue);
         expect(chip(tester, '高清').selected, isFalse);
-        expect(find.text('▶ 重试'), findsOneWidget);
+        expect(find.text('▶ 重试'), findsNothing);
         expect(
           HiveStore.getString(HiveKeys.preferResolution, ''),
           '原画',

@@ -133,8 +133,17 @@ void main() {
       expect(result, UpdateCheckResult.upToDate);
     });
 
-    test('numeric semver: 1.0.10 beats 1.0.9', () async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.10')));
+    test('numeric semver: x.y.10 beats x.y.3', () async {
+      // Numeric, not lexicographic: as strings '1.1.10' < '1.1.3'
+      // ('1' < '3' in the last segment), but 10 > 3 numerically.
+      // Computed from kAppVersion so it survives version bumps —
+      // the old hard-coded '1.0.10' went stale the moment the app
+      // passed 1.0.10 (it now reads as upToDate, correctly).
+      final parts = kAppVersion.split('.').map(int.parse).toList();
+      parts[parts.length - 1] =
+          parts[parts.length - 1] < 10 ? 10 : parts[parts.length - 1] + 1;
+      final remote = parts.join('.');
+      final service = UpdateService(dio: _stubDio(_manifest(remote)));
       final (result, _) = await service.checkManual();
       expect(result, UpdateCheckResult.newerAvailable);
     });
