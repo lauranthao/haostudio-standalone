@@ -226,9 +226,10 @@ void main() {
     );
   });
 
-  // Top-of-page shot (no scroll): the greeting large title (P0-4)
-  // and the feature shelf (P0-1) are above the fold and invisible in
-  // the scrolled shots above, so they get their own goldens.
+  // Top-of-page shot (no scroll): the feature shelf (P0-1) is above
+  // the fold and invisible in the scrolled shots above, so it gets
+  // its own goldens. (The greeting large title used to be here too —
+  // removed 2026-11-19 clean pass; the shelf is the anchor now.)
   Future<void> pumpHomeTop(WidgetTester tester, ThemeData theme) async {
     await pumpHome(tester, theme);
     // pumpHome scrolled to the bottom; scroll back to the top.

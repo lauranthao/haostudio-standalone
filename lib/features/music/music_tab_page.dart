@@ -7,9 +7,9 @@ import 'dart:async';
 // this closed-source app). Sources per item:
 // - P0-1 feature shelf: HomeView.swift:238-276 (shelf spacing 16,
 //   vertical padding 6), FeatureCard :400-457 (230x132, radius 12,
-//   white 0.12 stroke 0.5pt, padding 14, icon 22, title 15 bold,
-//   subtitle 11 white 0.75, text shadow black 0.4 r2 y1, cover +
-//   black 0.1->0.68 gradient). C1/C2 (REVISED 2026-11-18 — chen: the
+//   white 0.12 stroke 0.5pt, padding 14, icon 22, title 15 bold
+//   (subtitle removed 2026-11-19 clean pass), text shadow black 0.4
+//   r2 y1, cover + black 0.1->0.68 gradient). C1/C2 (REVISED 2026-11-18 — chen: the
 //   all-black cards are ugly): NO theme-accent gradient — the accent
 //   is black after the blue->black rule, so all five cards read black.
 //   Each card gets its own Kumone gradient (topLeading->
@@ -39,10 +39,9 @@ import 'dart:async';
 //   list.cover is already the first-track cover
 //   (music_models.dart:458); a truly coverless list gets a neutral
 //   accent gradient tile + note, not a grey block.
-// - P0-4: no AppBar (the tab bar already says 音乐); the greeting is
-//   the page's one large title, 34 bold (Kumone HomeView
-//   .navigationTitle, iOS large title 34 bold), date 13 secondary,
-//   top padding 4 (Theme.Layout.pageTopPadding).
+// - P0-4: no AppBar (the tab bar already says 音乐). The greeting/
+//   date header was removed 2026-11-19 (clean pass); the feature
+//   shelf is the page's visual anchor now.
 // - P1-5: page inset 24 (Theme.Layout.contentInset), shelf spacing 16.
 // - P1-6: mini player capsule (IOSMainWindow.swift:472-620
 //   IOSMiniPlayerBar legacyOverlay): capsule shape, cover 32 radius 6
@@ -78,7 +77,7 @@ import 'dart:async';
 //   subtitle, spacing 12); full-page recents empty state minHeight 300
 //   (LibraryPages.swift:52-55).
 //
-// Order, top to bottom: greeting/date, feature shelf (search / daily /
+// Order, top to bottom: feature shelf (search / daily /
 // plaza / charts / listen report), then 我的歌单, then 最近播放. Both
 // sections start EXPANDED; collapse is kept (tap the head) but the
 // default is open. Collapse state is per-section, kept for the session.
@@ -124,15 +123,16 @@ class MusicTabPage extends StatefulWidget {
   State<MusicTabPage> createState() => _MusicTabPageState();
 }
 
-/// One feature-shelf card: icon, title, subtitle, destination, its own
+/// One feature-shelf card: icon, title, destination, its own
 /// Kumone gradient (see the file header — one distinct gradient per
 /// card, never black/grey), and an optional real cover (daily card
 /// only — the cover replaces the gradient, with the black scrim).
+/// No subtitle (removed 2026-11-19 clean pass — title sits at the
+/// bottom of the card, 15 bold, unchanged).
 class _FeatureTile {
   const _FeatureTile({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.gradient,
     required this.onTap,
     this.showsDate = false,
@@ -141,7 +141,6 @@ class _FeatureTile {
 
   final IconData icon;
   final String title;
-  final String subtitle;
 
   /// Two-stop gradient, topLeading -> bottomTrailing (Kumone
   /// FeatureCard, HomeView.swift:415).
@@ -214,7 +213,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
             TextField(
               controller: nameController,
               autofocus: true,
-              decoration: const InputDecoration(hintText: '歌单名'),
+              decoration: const InputDecoration(),
             ),
             const SizedBox(height: 16),
             Row(
@@ -334,8 +333,8 @@ class _MusicTabPageState extends State<MusicTabPage> {
     return Obx(
       () => Scaffold(
         backgroundColor: tabScaffoldBackground(context),
-        // P0-4: no AppBar — the tab bar already says 音乐; the greeting
-        // below is the page's one large title.
+        // P0-4: no AppBar — the tab bar already says 音乐; the feature
+        // shelf below is the page's visual anchor.
         body: SafeArea(
           top: true,
           bottom: false,
@@ -344,10 +343,13 @@ class _MusicTabPageState extends State<MusicTabPage> {
               Expanded(
                 child: ListView(
                   children: [
-                    _greeting(theme),
                     _featureShelf(theme),
                     // Gap arithmetic (Kumone sectionSpacing 20):
                     // shelf bottom padding 6 + 4 + head top padding 10.
+                    // The shelf is the page's visual anchor now — the
+                    // greeting/date header was removed 2026-11-19
+                    // (clean pass); homeDateText itself stays, it is
+                    // still used by daily_page.dart:159.
                     const SizedBox(height: 4),
                     CollapsibleSection(
                       title: '我的歌单',
@@ -402,38 +404,12 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
-  Widget _greeting(HaoTheme theme) {
-    final now = DateTime.now();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            greetingFor(now),
-            style: TextStyle(
-              color: theme.textPrimary,
-              fontSize: 34,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            homeDateText(now),
-            style: TextStyle(color: theme.textSecondary, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _featureShelf(HaoTheme theme) {
     final tiles = <_FeatureTile>[
       // Kumone Theme.swift:9-10 accentGradient.
       _FeatureTile(
         icon: Icons.search,
         title: '搜歌',
-        subtitle: '全网音乐一键搜',
         gradient: const [Color(0xFFF85B5B), Color(0xFFC92929)],
         onTap: () => _push(const SongSearchPage()),
       ),
@@ -442,7 +418,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.calendar_today,
         title: '每日推荐',
-        subtitle: '根据你的口味生成',
         gradient: const [Color(0xFFBF2938), Color(0xFFF25947)],
         showsDate: true,
         cover: _dailyFirstCover(),
@@ -452,7 +427,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.grid_view,
         title: '歌单广场',
-        subtitle: '发现大家的好歌单',
         gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
         onTap: () => _push(const PlazaPage()),
       ),
@@ -461,7 +435,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.leaderboard,
         title: '排行榜',
-        subtitle: '热门歌曲榜单',
         gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
         onTap: () => _push(const ChartsPage()),
       ),
@@ -470,7 +443,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
       _FeatureTile(
         icon: Icons.bar_chart,
         title: '听歌报告',
-        subtitle: '回顾你的听歌足迹',
         gradient: const [Color(0xFFD96114), Color(0xFFFA9433)],
         onTap: () => _push(const ListenReportPage()),
       ),
@@ -515,7 +487,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
           icon: Icons.download,
           title: '已下载',
           subtitle: _player.downloads.downloadedCount == 0
-              ? '离线听歌，还没有下载'
+              ? '还没有下载'
               : '${_player.downloads.downloadedCount} 首歌曲',
           onTap: () => _push(const DownloadsPage()),
         ),
@@ -553,7 +525,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
                       child: HaoEmptyState(
                         icon: Icons.music_note,
                         title: '还没有歌单',
-                        subtitle: '搜一首歌加进来吧',
                       ),
                     ),
                   ],
@@ -561,7 +532,9 @@ class _MusicTabPageState extends State<MusicTabPage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          // Empty state lost its subtitle line (clean pass) — give the
+          // card 12 below it instead of 8 so it still breathes.
+          SizedBox(height: _lists.isEmpty ? 12 : 8),
           _importRow(theme),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -754,7 +727,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         ),
         const SizedBox(width: 8),
         _CapsuleButton(
-          label: _importing ? '导入中…' : '一键导入',
+          label: _importing ? '导入中…' : '导入',
           enabled: !_importing,
           onTap: _importLink,
         ),
@@ -769,7 +742,6 @@ class _MusicTabPageState extends State<MusicTabPage> {
         child: HaoEmptyState(
           icon: Icons.access_time,
           title: '暂无播放记录',
-          subtitle: '搜首歌播一下吧',
           minHeight: 300,
         ),
       );
@@ -1022,8 +994,8 @@ class _MusicTabPageState extends State<MusicTabPage> {
 
 /// Kumone `FeatureCard` (HomeView.swift:400-457): 230x132, radius 12
 /// (Theme.Radius.large), white 0.12 stroke 0.5pt, padding 14, icon 22
-/// top-left, title 15 bold + subtitle 11 white 0.75 bottom-left, text
-/// shadow black 0.4 r2 y1; background is the cover + black 0.1->0.68
+/// top-left, title 15 bold bottom-left (no subtitle — removed
+/// 2026-11-19 clean pass), text shadow black 0.4 r2 y1; background is
 /// gradient, or (no cover) the tile's own Kumone gradient + white 0.18
 /// radial highlight (top-leading, endRadius 220). The gradient comes
 /// from the tile (one distinct Kumone gradient per card — see the file
@@ -1099,23 +1071,6 @@ class _FeatureCard extends StatelessWidget {
                             color: Colors.white,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
-                            shadows: [
-                              Shadow(
-                                color: Color.fromRGBO(0, 0, 0, 0.4),
-                                blurRadius: 2,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          tile.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color.fromRGBO(255, 255, 255, 0.75),
-                            fontSize: 11,
                             shadows: [
                               Shadow(
                                 color: Color.fromRGBO(0, 0, 0, 0.4),

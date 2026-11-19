@@ -185,29 +185,24 @@ void main() {
     return controller;
   }
 
-  testWidgets('sections default expanded, no AppBar, greeting is 34 bold', (
+  testWidgets('sections default expanded, no AppBar, no greeting', (
     tester,
   ) async {
     await pumpHome(tester);
     expect(find.byType(AppBar), findsNothing);
-    // Greeting is the one large title (Kumone iOS large title 34 bold).
-    // The greeting depends on the time of day — compute it like the page.
-    final hour = DateTime.now().hour;
-    final greetingText = hour < 12
-        ? '早上好'
-        : hour < 18
-        ? '下午好'
-        : '晚上好';
-    final greeting = tester.widget<Text>(find.text(greetingText).first);
-    expect(greeting.style?.fontSize, 34);
-    expect(greeting.style?.fontWeight, FontWeight.w700);
+    // Greeting/date header removed (clean pass 2026-11-19): no
+    // time-of-day greeting anywhere on the page; the feature shelf
+    // is the page's visual anchor.
+    expect(find.text('早上好'), findsNothing);
+    expect(find.text('下午好'), findsNothing);
+    expect(find.text('晚上好'), findsNothing);
     // Both sections open without any tap: rows, import box, 新建 button.
     expect(find.text('我喜欢的音乐'), findsOneWidget);
     expect(find.text('粤语经典'), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
     expect(find.text('已下载'), findsOneWidget);
     expect(find.text('本地文件'), findsOneWidget);
-    expect(find.text('一键导入'), findsOneWidget);
+    expect(find.text('导入'), findsOneWidget);
     expect(find.text('新建歌单'), findsOneWidget);
     expect(find.text('富士山下'), findsOneWidget);
     expect(find.text('播放全部'), findsOneWidget);
@@ -227,7 +222,7 @@ void main() {
     // 0), so plain find.text still matches it — hitTestable() is the
     // assertion that the rows are really gone from the screen.
     expect(find.text('我喜欢的音乐').hitTestable(), findsNothing);
-    expect(find.text('一键导入').hitTestable(), findsNothing);
+    expect(find.text('导入').hitTestable(), findsNothing);
     // The other section is independent.
     expect(find.text('富士山下').hitTestable(), findsOneWidget);
     await tester.tap(find.text('我的歌单'));
@@ -325,9 +320,10 @@ void main() {
   ) async {
     await pumpHome(tester, seedLists: false, seedRecents: false);
     expect(find.text('还没有歌单'), findsOneWidget);
-    expect(find.text('搜一首歌加进来吧'), findsOneWidget);
     expect(find.text('暂无播放记录'), findsOneWidget);
-    expect(find.text('搜首歌播一下吧'), findsOneWidget);
+    // Subtitles removed (clean pass 2026-11-19): icon + title only.
+    expect(find.text('搜一首歌加进来吧'), findsNothing);
+    expect(find.text('搜首歌播一下吧'), findsNothing);
     // Play-all capsule is present but disabled with nothing to play.
     expect(find.text('播放全部'), findsOneWidget);
     expect(tester.takeException(), isNull);
