@@ -71,6 +71,7 @@ class VideoDetailPage extends StatefulWidget {
     required this.vodId,
     this.preload,
     this.autoResume = false,
+    this.detailService,
   });
 
   final dynamic sourceId;
@@ -86,12 +87,17 @@ class VideoDetailPage extends StatefulWidget {
   /// opens normally and play starts from the beginning.
   final bool autoResume;
 
+  /// Test seam only: an injected [VideoDetailService] (canned fetch in
+  /// render tests). Null in production — the page owns a fresh one.
+  final VideoDetailService? detailService;
+
   @override
   State<VideoDetailPage> createState() => _VideoDetailPageState();
 }
 
 class _VideoDetailPageState extends State<VideoDetailPage> {
-  final _detailService = VideoDetailService();
+  late final VideoDetailService _detailService =
+      widget.detailService ?? VideoDetailService();
   final _douban = DoubanService();
 
   VideoDetail? _detail;

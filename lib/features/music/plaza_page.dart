@@ -39,14 +39,18 @@ import '../../widgets/play_count_badge.dart';
 enum _PlazaSort { rec, hot, fresh }
 
 class PlazaPage extends StatefulWidget {
-  const PlazaPage({super.key});
+  const PlazaPage({super.key, this.api});
+
+  /// Test seam only: an injected [MusicApi] (fake Dio in render
+  /// tests). Null in production — the page owns a fresh one.
+  final MusicApi? api;
 
   @override
   State<PlazaPage> createState() => _PlazaPageState();
 }
 
 class _PlazaPageState extends State<PlazaPage> {
-  final _api = MusicApi();
+  late final MusicApi _api = widget.api ?? MusicApi();
   final _cache = <MusicPlatform, List<PlaylistSummary>>{};
   late MusicPlatform _platform;
   var _sort = _PlazaSort.rec;
