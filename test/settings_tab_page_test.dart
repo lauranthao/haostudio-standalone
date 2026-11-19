@@ -157,15 +157,18 @@ void main() {
     expect(find.text('120Hz 高刷新'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
     expect(find.text('启动时自动播放上次歌曲'), findsOneWidget);
+    // Subtitle removed (clean pass 2026-11-19): title + switch only.
     expect(find.text('打开软件后自动恢复上次未播放完的歌曲'),
-        findsOneWidget);
+        findsNothing);
     // ONE quality row (chen: all songs are third-party resolves).
     expect(find.text('播放音质'), findsOneWidget);
     expect(find.text('触感反馈'), findsOneWidget);
     // Stage 3: the EQ engine exists now, so the row is back (Beans
     // `equalizerSection`): real state trailing, opens the 10-band page.
     expect(find.text('均衡器'), findsOneWidget);
-    expect(find.text('调节低音、人声与高音'), findsOneWidget);
+    // Subtitle removed (clean pass 2026-11-19): title + 已开启/已关闭
+    // state trailing stays.
+    expect(find.text('调节低音、人声与高音'), findsNothing);
     expect(find.text('已关闭'), findsOneWidget);
     expect(find.text('第三方音源'), findsOneWidget);
     // No second entry: the '管理 / 导入音源' button inside this panel

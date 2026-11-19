@@ -107,10 +107,6 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
                     '缓存总计',
                     style: TextStyle(color: theme.textPrimary),
                   ),
-                  subtitle: Text(
-                    '历史记录、收藏与歌单不受影响',
-                    style: TextStyle(color: theme.textSecondary),
-                  ),
                   trailing: Text(
                     CacheService.formatBytes(_total),
                     style: TextStyle(
@@ -162,10 +158,6 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
                   title: Text(
                     '音乐下载',
                     style: TextStyle(color: theme.textPrimary),
-                  ),
-                  subtitle: Text(
-                    '已下载的歌曲文件，可离线播放',
-                    style: TextStyle(color: theme.textSecondary),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
