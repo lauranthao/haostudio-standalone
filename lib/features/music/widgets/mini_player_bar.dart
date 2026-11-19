@@ -182,6 +182,7 @@ class MiniPlayerBar extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       _MiniControl(
+                        buttonKey: const ValueKey('mini-mode'),
                         icon: playModeIcon(player.mode),
                         size: 14,
                         color: theme.textSecondary,
@@ -236,12 +237,17 @@ class MiniPlayerBar extends StatelessWidget {
 
 class _MiniControl extends StatelessWidget {
   const _MiniControl({
+    this.buttonKey,
     required this.icon,
     required this.size,
     required this.color,
     required this.onPressed,
   });
 
+  /// Key on the IconButton itself (tests find the mode control this way:
+  /// no tooltip — Tooltip needs an Overlay ancestor and the overlay
+  /// placement sits above the root Navigator, where there is none).
+  final Key? buttonKey;
   final IconData icon;
   final double size;
   final Color color;
@@ -253,6 +259,7 @@ class _MiniControl extends StatelessWidget {
       width: 44,
       height: 44,
       child: IconButton(
+        key: buttonKey,
         icon: Icon(icon, size: size, color: color),
         padding: EdgeInsets.zero,
         onPressed: onPressed,

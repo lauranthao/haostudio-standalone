@@ -242,7 +242,9 @@ void main() {
       seedRecents: false,
       seedQueue: true,
     );
-    // All four controls present: mode (tooltip), prev, play, next.
+    // All four controls present: mode (keyed — the bar has no tooltips:
+    // Tooltip needs an Overlay ancestor and the overlay placement sits
+    // above the root Navigator), prev, play, next.
     // The 「播放全部」 capsule also uses a play_arrow (size 13), so
     // the mini player's play button is identified by its size 15.
     // getRect on an icon/tooltip measures the glyph, not the button:
@@ -252,7 +254,7 @@ void main() {
     );
     Finder controlButton(Finder inner) =>
         find.ancestor(of: inner, matching: find.byType(IconButton));
-    final modeButton = controlButton(find.byTooltip('播放模式'));
+    final modeButton = find.byKey(const ValueKey('mini-mode'));
     final prevButton = controlButton(find.byIcon(Icons.skip_previous));
     final playButton = controlButton(miniPlay);
     final nextButton = controlButton(find.byIcon(Icons.skip_next));
