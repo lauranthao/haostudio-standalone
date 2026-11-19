@@ -40,10 +40,25 @@ import '../music_player_controller.dart';
 ///   and the overlay placement sits above the root Navigator, where
 ///   there is none (a tooltip there throws "No Overlay widget found"
 ///   while building). The other three buttons never had tooltips.
-class MiniPlayerBar extends StatelessWidget {
-  const MiniPlayerBar({super.key, required this.onOpenPlayer});
+class MiniPlayerBar extends StatefulWidget {
+  const MiniPlayerBar({
+    super.key,
+    required this.onOpenPlayer,
+    this.margin = const EdgeInsets.fromLTRB(12, 0, 12, 8),
+  });
 
-  final VoidCallback onOpenPlayer;
+  /// Receives the bar's own global rect (its capsule, margins
+  /// excluded — the render box of the bar itself, which is the outer
+  /// Container; the margin sits outside the box). The opener expands
+  /// the player page from that rect (see `player_expand_route.dart`);
+  /// a null rect means the box was gone and the opener falls back to
+  /// the plain slide.
+  final void Function(Rect? barRect) onOpenPlayer;
+
+  /// The capsule's outer margin (default the usual 12/0/12/8); the
+  /// expand transition's fading bar copy passes zero because it is
+  /// already positioned exactly on the bar's rect.
+  final EdgeInsets margin;
 
   /// Bottom clearance a music sub-page's scrollable needs so its last
   /// row is not covered by the floating overlay: bar height 52 (44
@@ -57,6 +72,19 @@ class MiniPlayerBar extends StatelessWidget {
       bottomClearance + MediaQuery.of(context).padding.bottom;
 
   @override
+  State<MiniPlayerBar> createState() => _MiniPlayerBarState();
+}
+
+/// State for [MiniPlayerBar]: holds the GlobalKey on the capsule so
+/// the expand transition can capture the bar's own rect at tap time.
+/// (The build context's `findRenderObject` returns the overlay's
+/// full-width Positioned box, not the capsule — the key is the only
+/// exact handle. Verified by a diagnostic run: the context rect came
+/// back as the full screen width, 0→390.)
+class _MiniPlayerBarState extends State<MiniPlayerBar> {
+  final _barKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     final player = MusicPlayerController.ensure();
     final theme = HaoTheme.of(context);
@@ -66,7 +94,8 @@ class MiniPlayerBar extends StatelessWidget {
       return GlassPressScale(
         pressedScale: 0.97,
         child: Container(
-          margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          key: _barKey,
+          margin: widget.margin,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             boxShadow: glassMiniPlayerShadow(context),
@@ -88,7 +117,19 @@ class MiniPlayerBar extends StatelessWidget {
                 child: InkWell(
                   onTap: () {
                     HaoHaptics.tap();
-                    onOpenPlayer();
+                    // The bar's own rect (the keyed Container's box —
+                    // the margin sits outside it, so this is the
+                    // capsule). Captured at tap time; the opener
+                    // expands the player page from it. The press
+                    // scale (0.97) may shrink it by up to 3% at tap
+                    // time — invisible inside a 400ms spring.
+                    final box = _barKey.currentContext
+                            ?.findRenderObject()
+                        as RenderBox?;
+                    final rect = box == null
+                        ? null
+                        : box.localToGlobal(Offset.zero) & box.size;
+                    widget.onOpenPlayer(rect);
                   },
                   borderRadius: BorderRadius.circular(999),
                   child: Row(

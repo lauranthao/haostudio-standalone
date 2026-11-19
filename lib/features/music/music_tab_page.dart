@@ -114,6 +114,7 @@ import 'local_music_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
 import 'song_search_page.dart';
@@ -363,6 +364,14 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
+  /// Open the player from the embedded mini player bar: the page
+  /// EXPANDS from the bar's rect (NetEase). Song-row / FM / heartbeat
+  /// taps keep using [_openPlayer] (plain slide) — there is no bar
+  /// to expand from there.
+  void _openPlayerFromBar(Rect? barRect) {
+    unawaited(openPlayerPage<void>(context, fromRect: barRect));
+  }
+
   /// Start personal FM, then open the full player. When there are no
   /// local seeds at all the service returns false and a real prompt
   /// is shown instead of failing silently.
@@ -518,7 +527,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
               ),
               MiniPlayerBar(
                 key: const ValueKey('homeMiniPlayer'),
-                onOpenPlayer: _openPlayer,
+                onOpenPlayer: _openPlayerFromBar,
               ),
             ],
           ),
