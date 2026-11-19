@@ -1,8 +1,8 @@
 // Online update service (fix 8).
 //
-// Fetches version.json from the shop server FIRST (reachable from mainland
-// China) and falls back to GitHub raw (blocked/slow there, CDN cache lags
-// hours behind a push). Compares semver NUMERICALLY (1.0.10 beats 1.0.9),
+// Fetches version.json from Gitee raw FIRST (hosted in mainland China,
+// so the check works from chen's phone) and falls back to the shop
+// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9),
 // never against a changelog tag or the build number. Automatic check at
 // most once per 20 hours; a skipped version is never nagged about again.
 //
@@ -66,14 +66,24 @@ class UpdateInfo {
 }
 
 class UpdateService {
-  UpdateService({Dio? dio}) : _dio = dio ?? sharedDio();
+  UpdateService({Dio? dio, String? versionUrl, String? fallbackUrl})
+      : _dio = dio ?? sharedDio(),
+        _versionUrl = versionUrl ?? kVersionUrl,
+        _fallbackUrl = fallbackUrl ?? kVersionUrlFallback;
 
   final Dio _dio;
+
+  /// Manifest URLs (constructor-injectable so tests can point at a
+  /// local server; production uses [kVersionUrl]/[kVersionUrlFallback]).
+  final String _versionUrl;
+  final String _fallbackUrl;
 
   static const Duration autoCheckInterval = Duration(hours: 20);
 
   /// Total wall-clock cap for one fetch (primary + retry + fallback).
-  static const Duration fetchTimeout = Duration(seconds: 15);
+  /// Two 8 s per-attempt timeouts plus a fallback attempt fit inside
+  /// 30 s; the old 15 s cap could kill the retry mid-flight.
+  static const Duration fetchTimeout = Duration(seconds: 30);
 
   /// Kind of the most recent fetch failure, for the manual-check error
   /// message. Null when the last fetch succeeded or none ran yet.
@@ -103,20 +113,36 @@ class UpdateService {
     }
   }
 
-  /// Primary (shop server) with one retry on transient failures, then
-  /// fallback (GitHub raw) once. When both fail, the primary error is
-  /// reported — it is the source the user can actually reach.
+  /// Primary with one retry on transient failures, then fallback once.
+  /// When both fail, the primary error is reported — it is the source
+  /// the user can actually reach.
   Future<(UpdateInfo?, UpdateFetchError?, int?)> _fetchWithFallback() async {
-    var last = await _fetchOne(kVersionUrl);
+    var last = await _fetchOne(_versionUrl);
     if (last.$1 != null) return last;
-    if (last.$2 == UpdateFetchError.timeout ||
-        last.$2 == UpdateFetchError.network) {
-      last = await _fetchOne(kVersionUrl);
+    if (_isTransient(last)) {
+      last = await _fetchOne(_versionUrl);
       if (last.$1 != null) return last;
     }
-    final fallback = await _fetchOne(kVersionUrlFallback);
+    final fallback = await _fetchOne(_fallbackUrl);
     if (fallback.$1 != null) return fallback;
     return last;
+  }
+
+  /// Transient: worth one immediate retry on the same host — timeout,
+  /// no route to the host, or a 5xx from a server that is restarting
+  /// or shedding load (Railway free tier returns 502 while deploying;
+  /// the old code retried only timeout/network, so one 502 failed the
+  /// whole check even though the retry would have succeeded).
+  bool _isTransient((UpdateInfo?, UpdateFetchError?, int?) r) {
+    if (r.$2 == UpdateFetchError.timeout ||
+        r.$2 == UpdateFetchError.network) {
+      return true;
+    }
+    if (r.$2 == UpdateFetchError.http) {
+      final status = r.$3;
+      if (status != null && status >= 500 && status < 600) return true;
+    }
+    return false;
   }
 
   /// One GET of a manifest URL. Classifies every failure; never throws.

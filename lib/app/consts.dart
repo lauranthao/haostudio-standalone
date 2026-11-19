@@ -11,20 +11,22 @@
 const String kAppVersion = '1.1.4';
 
 /// Current build number (CFBundleVersion).
-const int kAppBuild = 15;
+const int kAppBuild = 16;
 
-/// Online-update manifest (primary). Served from the shop server, which
-/// is reachable from mainland China. The published version.json in the
-/// shop's public/ must be bumped to version 1.0.4 / build 5 with the new
-/// IPA URL at release time.
+/// Online-update manifest (primary). Gitee raw, hosted in mainland China,
+/// so the check works from chen's phone — the shop server (Railway US)
+/// is slow from China and its free tier returns 502 while deploying,
+/// which is what broke the check. Gitee raw redirects (302) to its file
+/// CDN; Dio follows redirects. The repo is public, the manifest holds
+/// only public release info (version/build/size/IPA URL/changelog).
 const String kVersionUrl =
-    'https://chen-hao-shop-production.up.railway.app/version.json';
+    'https://gitee.com/chenhao030610/chen-hao-shop/raw/master/version.json';
 
-/// Online-update manifest (fallback). GitHub raw is slow/blocked in
-/// mainland China and its CDN cache lags hours behind a push, so it is
-/// only tried when the shop server fails.
+/// Online-update manifest (fallback). The shop server, kept as the
+/// second source when Gitee is unreachable. Its version.json is updated
+/// at release time alongside the Gitee copy — both must agree.
 const String kVersionUrlFallback =
-    'https://raw.githubusercontent.com/lauranthao/haostudio-standalone/master/version.json';
+    'https://chen-hao-shop-production.up.railway.app/version.json';
 
 /// Compare two dotted semver strings numerically, part by part.
 /// Missing parts count as 0; the first differing part decides; equal means
