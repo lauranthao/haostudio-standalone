@@ -57,6 +57,9 @@ jobs:
             sleep 15
             echo "=== pidof (empty = process dead) ==="
             adb shell pidof com.haostudio.standalone || echo "PROCESS_NOT_RUNNING"
+            adb shell uiautomator dump /sdcard/ui.xml
+            adb pull /sdcard/ui.xml $GITHUB_WORKSPACE/ui.xml
+            adb exec-out screencap -p > $GITHUB_WORKSPACE/home.png
             adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
             echo "=== crash lines ==="
             grep -iE "FATAL EXCEPTION|AndroidRuntime|com.haostudio|signal 11|libc.*fatal|UnsatisfiedLink" "$GITHUB_WORKSPACE/logcat.txt" | head -60 || true
@@ -65,5 +68,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: launch-logcat
-          path: logcat.txt
+          path: |
+            logcat.txt
+            ui.xml
+            home.png
           retention-days: 7
