@@ -376,11 +376,10 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // --- Clean COVER top (Infuse hero) ---
-              // No centre play button anywhere on the cover.
-              _CoverHero(
-                pic: m.pic,
-                epLabel: _currentEpName,
-              ),
+              // No centre play button anywhere on the cover, and no
+              // episode pill on it either — the big play button below
+              // already names the episode.
+              _CoverHero(pic: m.pic),
               // --- Big blue play button below the cover ---
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -728,13 +727,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
 /// fading into the PAGE background (not a card). Back button top-left,
 /// current episode chip bottom-left. NO centre play button.
 class _CoverHero extends StatelessWidget {
-  const _CoverHero({
-    required this.pic,
-    required this.epLabel,
-  });
+  const _CoverHero({required this.pic});
 
   final String pic;
-  final String epLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -783,28 +778,6 @@ class _CoverHero extends StatelessWidget {
               child: IconButton(
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            bottom: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 5,
-              ),
-              decoration: BoxDecoration(
-                color: const Color(0xA6000000),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                epLabel,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
               ),
             ),
           ),
@@ -1094,19 +1067,10 @@ class _DetailSkeleton extends StatelessWidget {
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '正在加载影片详情…',
-                      style: TextStyle(color: theme.textMuted),
-                    ),
-                  ],
+                child: const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
             ],

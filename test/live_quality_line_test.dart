@@ -6,7 +6,7 @@
 // - Quality switch re-parses; a server receipt != request corrects the UI
 //   to the receipt quality + toast (Bilibili guest 10000 -> 250; Douyu
 //   rate is an opaque id, never sorted).
-// - Identical URLs after a quality switch -> toast "清晰度流未变化", abort.
+// - Identical URLs after a quality switch -> silent abort, no toast.
 // - Huya recovery order: next line -> fresh re-parse -> 60 s throttle ->
 //   10 s fallback; prefetch at the lease refreshAt (~100 s) fetches and
 //   HOLDS a fresh plan — never switches the playing stream; recovery
@@ -937,7 +937,7 @@ void main() {
       await disposeRoom(tester, log);
     });
 
-    testWidgets('identical URLs after a quality switch: toast + abort, no reload',
+    testWidgets('identical URLs after a quality switch: silent abort, no reload',
         (tester) async {
       final site = _FakeSite();
       // The "高清" re-parse returns the exact same URL list.
@@ -948,7 +948,9 @@ void main() {
       await tester.tap(find.text('高清'));
       await settle(tester);
       expect(site.recoveryCalls, 1); // the re-parse happened
-      expect(find.text('清晰度流未变化'), findsOneWidget);
+      // v1.1.3 clean pass: nothing changed, nothing to say — no toast
+      // at all, and no reload.
+      expect(find.text('清晰度流未变化'), findsNothing);
       expect(log.opens.length, 1); // no reload
       expect(chip(tester, '原画').selected, isTrue);
       expect(chip(tester, '高清').selected, isFalse);

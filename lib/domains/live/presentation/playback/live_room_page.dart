@@ -18,8 +18,8 @@
 // - Same quality+line = no-op. Epoch guard stops stale responses
 //   overwriting a new room/selection.
 // - Server ack differs from request -> UI corrects to the acked quality +
-//   toast "清晰度已限制为…". URLs identical after a quality change -> toast
-//   "清晰度流未变化" and abort.
+//   toast "清晰度已限制为…". URLs identical after a quality change -> silent
+//   abort (no toast: nothing changed).
 // - Line buttons show only "线路 N", never CDN names.
 // - Only the PREFERRED quality is persisted (preferResolution /
 //   preferResolutionCellular); current quality+line live in memory per
@@ -44,6 +44,7 @@ import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../core/theme/glass.dart';
 import '../../../../features/settings/source_stores.dart';
+import '../../../../features/settings/danmaku_settings_page.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../data/playback_header_resolver.dart';
@@ -307,7 +308,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         setState(() {
           _loading = false;
           _failed = true;
-          _errorMessage = '加载直播间失败，请检查网络后重试';
+          _errorMessage = '加载失败';
         });
       }
     }
@@ -674,8 +675,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     });
   }
 
-  /// Switch quality: re-parse. Identical URLs after the switch -> toast
-  /// "清晰度流未变化" and abort.
+  /// Switch quality: re-parse. Identical URLs after the switch ->
+  /// silent abort (no toast: nothing changed).
   ///
   /// [persist] false skips saving the preference. There is NO
   /// automatic downgrade (Pure Live has none either): a stall recovers
@@ -687,11 +688,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// selection follows the CONFIRMED quality — same rule as entry —
   /// so the UI shows the quality actually playing, never the requested
   /// label. When the confirmed stream is identical to the one already
-  /// playing, say the cap plainly ("清晰度已限制为蓝光4M") instead of
-  /// the cryptic "清晰度流未变化". A resolve that throws (all CDNs
-  /// failed) is a toast, not a silent no-op: the throw used to escape
-  /// uncaught through unawaited(), leaving the room on the old quality
-  /// with no feedback at all.
+  /// playing, the cap is said plainly ("清晰度已限制为蓝光4M"); with
+  /// no cap and identical URLs the switch is a silent abort. A resolve
+  /// that throws (all CDNs failed) is a toast, not a silent no-op: the
+  /// throw used to escape uncaught through unawaited(), leaving the
+  /// room on the old quality with no feedback at all.
   Future<void> _switchQuality(int index, {bool persist = true}) async {
     if (index == _currentQuality) return; // no-op
     final epoch = ++_selectionEpoch;
@@ -726,9 +727,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           '提示',
           '清晰度已限制为${_qualities[ackedIndex].quality}',
         );
-      } else {
-        Get.snackbar('提示', '清晰度流未变化');
       }
+      // Identical URLs and no cap: nothing changed, nothing to say —
+      // no toast, just abort.
       return;
     }
     setState(() {
@@ -1679,7 +1680,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
             ),
           if (_failed)
             _FailureCard(
-              message: _errorMessage ?? '播放失败，请检查网络后点 ▶ 重试',
+              message: _errorMessage ?? '播放失败',
               onRetry: _manualRetry,
             ),
           if (_showingStallNotice && !_failed)
@@ -1867,14 +1868,6 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             ),
                           ),
                         const SizedBox(width: 8),
-                        Text(
-                          '详情',
-                          style: TextStyle(
-                            color: theme.accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                         Icon(
                           Icons.chevron_right,
                           size: 18,
@@ -1986,40 +1979,46 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               if (!fullscreen)
                 Expanded(
                   child: !_danmakuEnabled
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: theme.accentSoft,
-                                  shape: BoxShape.circle,
+                      ? InkWell(
+                          // Tap opens danmaku settings directly — the
+                          // empty state is the shortcut, not a signpost.
+                          onTap: () =>
+                              Get.to(() => const DanmakuSettingsPage()),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: theme.accentSoft,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.chat_bubble_outline,
+                                    size: 32,
+                                    color: theme.accent,
+                                  ),
                                 ),
-                                child: Icon(
-                                  Icons.chat_bubble_outline,
-                                  size: 32,
-                                  color: theme.accent,
+                                const SizedBox(height: 14),
+                                Text(
+                                  '弹幕已关闭',
+                                  style: TextStyle(
+                                    color: theme.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                '弹幕已关闭',
-                                style: TextStyle(
-                                  color: theme.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                const SizedBox(height: 4),
+                                Text(
+                                  '点按打开弹幕设置',
+                                  style: TextStyle(
+                                    color: theme.textMuted,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '可在「设置 → 弹幕设置」中开启',
-                                style: TextStyle(
-                                  color: theme.textMuted,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         )
                       : _danmaku.isEmpty

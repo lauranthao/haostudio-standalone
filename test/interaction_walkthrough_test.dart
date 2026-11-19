@@ -220,13 +220,13 @@ void main() {
       // is in the tree (established by music_home_kumone_test: every
       // tap is followed by pump() + pump(300ms)).
       await tester.pump(const Duration(milliseconds: 300));
-      // Search page opened (its idle placeholder), home behind it.
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsOneWidget);
+      // Search page opened (its field hint), home behind it.
+      expect(find.text('搜索歌曲 / 歌手…'), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('搜一首歌、歌单、歌手或专辑'), findsNothing);
+      expect(find.text('搜索歌曲 / 歌手…'), findsNothing);
       expect(find.text('搜歌'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

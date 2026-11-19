@@ -415,7 +415,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             if (!mounted || gen != _pageGen) return;
             setState(() {
               _loading = false;
-              if (_songs.isEmpty) _error = '没搜到，换个歌名试试';
+              if (_songs.isEmpty) _error = '没搜到';
             });
           },
           cancelOnError: false,
@@ -713,20 +713,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
               },
             ),
           ],
-          const SizedBox(height: 28),
-          Center(
-            child: Text(
-              '搜一首歌、歌单、歌手或专辑',
-              style: TextStyle(color: theme.textMuted, fontSize: 15),
-            ),
-          ),
         ],
       );
     }
     if (_error.isNotEmpty) {
       // Beans `ErrorStateView`: icon + message + retry (re-runs the
-      // same query — the "没搜到，换个歌名试试" empty case lands here
-      // too, and retry is harmless there).
+      // same query — the "没搜到" empty case lands here too, and retry
+      // is harmless there).
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -761,9 +754,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    // Beans `SearchView` song header (SearchView.swift:
-                    // 551): "找到 N 首 · {provider}".
-                    '找到 ${_songs.length} 首 · ${_platform.displayName}',
+                    // Count only — the platform is already in the
+                    // switch capsule above, so no "找到 N 首 · 平台" echo.
+                    '${_songs.length} 首',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                   const Spacer(),
@@ -811,10 +804,14 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       );
                     }
                     final hasMore = _songs.length > _shown;
+                    // More rows are already in hand — scrolling reveals
+                    // them, so nothing is shown while there are more.
+                    // Only the end of the list gets a footer.
+                    if (hasMore) return const SizedBox.shrink();
                     return Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(
-                        hasMore ? '加载中…' : '已加载全部',
+                        '已加载全部',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: theme.textMuted),
                       ),
@@ -849,7 +846,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    '找到 ${_playlists.length} 个 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_playlists.length} 个',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -939,9 +937,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    // Beans `SearchView` artist header
-                    // (SearchView.swift:617): "找到 N 位 · {provider}".
-                    '找到 ${_artists.length} 位 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_artists.length} 位',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
@@ -1010,10 +1007,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
         );
       case _SearchType.album:
         // Stage 2 album results (Beans `SearchView.albumResultsArea`,
-        // SearchView.swift:678-730): header "找到 N 张 · {provider}",
-        // rows cover 46/radius 10 + name + artist, tap opens the
-        // existing AlbumDetailPage. GlassCard rows match the other
-        // search types on this page.
+        // SearchView.swift:678-730): count-only header, rows cover
+        // 46/radius 10 + name + artist, tap opens the existing
+        // AlbumDetailPage. GlassCard rows match the other search types
+        // on this page.
         return Column(
           children: [
             Padding(
@@ -1021,7 +1018,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
               child: Row(
                 children: [
                   Text(
-                    '找到 ${_albums.length} 张 · ${_platform.displayName}',
+                    // Count only (see the song header above).
+                    '${_albums.length} 张',
                     style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
