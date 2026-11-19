@@ -392,6 +392,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           title: m.name,
           pic: m.pic,
           picAlt: m.picAlt,
+          // Year feeds the film key (P1-16): without it, a remake
+          // would merge into the original's history row.
+          year: m.year,
           lineIdx: _lineIdx,
           epIdx: _epIdx,
           epName: _episode.name,

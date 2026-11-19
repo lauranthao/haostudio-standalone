@@ -537,6 +537,7 @@ class WatchHistoryEntry {
     required this.title,
     this.pic = '',
     this.picAlt = '',
+    this.year = '',
     this.lineIdx = 0,
     this.epIdx = 0,
     this.epName = '',
@@ -552,6 +553,9 @@ class WatchHistoryEntry {
         title: (json['title'] as String?) ?? '',
         pic: (json['pic'] as String?) ?? '',
         picAlt: (json['picAlt'] as String?) ?? '',
+        // Pre-P1-16 rows carry no year: '' means "unknown", and the
+        // film key falls back to title-only for them (see filmKey).
+        year: (json['year'] as String?) ?? '',
         lineIdx: (json['lineIdx'] as num?)?.toInt() ?? 0,
         epIdx: (json['epIdx'] as num?)?.toInt() ?? 0,
         epName: (json['epName'] as String?) ?? '',
@@ -568,6 +572,7 @@ class WatchHistoryEntry {
         'title': title,
         'pic': pic,
         'picAlt': picAlt,
+        'year': year,
         'lineIdx': lineIdx,
         'epIdx': epIdx,
         'epName': epName,
@@ -581,6 +586,11 @@ class WatchHistoryEntry {
   final String title;
   final String pic;
   final String picAlt;
+
+  /// Release year, copied from the VideoItem/VideoMeta that was
+  /// playing when the row was recorded. '' on rows written before
+  /// P1-16 (unknown year — the film key then falls back to title).
+  final String year;
   final int lineIdx;
   final int epIdx;
   final String epName;

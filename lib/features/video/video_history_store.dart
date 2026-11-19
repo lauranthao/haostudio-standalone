@@ -35,38 +35,76 @@ class VideoHistoryStore {
     return const [];
   }
 
-  /// Film identity for history dedup: the normalised title
-  /// ([videoNormTitle]). One film = one history row, even when it was
-  /// watched on different CMS sources (each source has its own vodId)
-  /// or after the detail page switched to a faster source. Episode /
-  /// line / progress are NOT part of the key — watching a new episode
-  /// updates the same row instead of starting a second one.
+  /// Film identity for history dedup: the normalised title plus the
+  /// release year (`normTitle|year`, the same key search dedup uses).
+  /// One film = one history row, even when it was watched on different
+  /// CMS sources (each source has its own vodId) or after the detail
+  /// page switched to a faster source. Episode / line / progress are
+  /// NOT part of the key — watching a new episode updates the same row
+  /// instead of starting a second one.
+  ///
+  /// The year matters because `videoNormTitle` strips a parenthesised
+  /// year (`霓裳尽欢 (2024)` -> `霓裳尽欢`): without it, a remake in a
+  /// different year collapses into the original's row (P1-16). A row
+  /// with no year (written before P1-16, or a film whose source gives
+  /// no year) falls back to the bare title, so old rows keep working
+  /// and are never lost.
   ///
   /// An empty normalised title (untitled entry) has no film identity
   /// and falls back to the exact `source|vodId` key, so two untitled
   /// entries never merge into each other.
-  static String filmKey(WatchHistoryEntry e) => videoNormTitle(e.title);
+  static String filmKey(WatchHistoryEntry e) {
+    final t = videoNormTitle(e.title);
+    if (t.isEmpty) return '';
+    final y = e.year.trim();
+    return y.isEmpty ? t : '$t|$y';
+  }
+
+  /// Whether two (title, year) pairs denote the same film for merge
+  /// purposes. Years must agree when BOTH are known; a missing year
+  /// on either side is treated as "unknown, may match" — the pre-fix
+  /// title-only behaviour — so a legacy year-less row is absorbed by
+  /// the film it belongs to instead of lingering as a duplicate row.
+  /// Two rows with different KNOWN years never match.
+  static bool _filmMatches(
+    String titleA,
+    String yearA,
+    String titleB,
+    String yearB,
+  ) {
+    if (videoNormTitle(titleA) != videoNormTitle(titleB)) return false;
+    final ya = yearA.trim();
+    final yb = yearB.trim();
+    if (ya.isEmpty || yb.isEmpty) return true;
+    return ya == yb;
+  }
 
   /// Merge legacy duplicates: at most one row per film (by [filmKey]),
   /// keeping the most recently watched entry (`at` latest; ties keep
   /// the first in stored order, which is most-recent-first). Runs on
   /// every read so pre-fix duplicates disappear from the UI without
   /// the user deleting anything; the next [record] persists the
-  /// merged list.
+  /// merged list. A legacy year-less row merges into the same-title
+  /// row (see [_filmMatches]); two rows with different KNOWN years
+  /// stay separate.
   static List<WatchHistoryEntry> _dedupeByFilm(
     List<WatchHistoryEntry> list,
   ) {
-    final slotByFilm = <String, int>{};
     final out = <WatchHistoryEntry>[];
     for (final e in list) {
-      final key = filmKey(e);
-      if (key.isEmpty) {
+      if (filmKey(e).isEmpty) {
         out.add(e);
         continue;
       }
-      final slot = slotByFilm[key];
-      if (slot == null) {
-        slotByFilm[key] = out.length;
+      var slot = -1;
+      for (var i = 0; i < out.length; i++) {
+        if (filmKey(out[i]).isEmpty) continue;
+        if (_filmMatches(e.title, e.year, out[i].title, out[i].year)) {
+          slot = i;
+          break;
+        }
+      }
+      if (slot < 0) {
         out.add(e);
       } else if (e.at.isAfter(out[slot].at)) {
         out[slot] = e;
@@ -91,7 +129,10 @@ class VideoHistoryStore {
     final key = filmKey(entry);
     final list = getAll().where((e) {
       if (key.isEmpty) return e.identityKey != entry.identityKey;
-      return filmKey(e) != key;
+      // Same rule as _dedupeByFilm: a legacy year-less row is
+      // absorbed by the same-title film; a different KNOWN year is
+      // a different film and keeps its own row.
+      return !_filmMatches(e.title, e.year, entry.title, entry.year);
     }).toList();
     list.insert(0, entry);
     await _save(list.take(maxEntries).toList());
