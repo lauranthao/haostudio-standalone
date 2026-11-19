@@ -1,10 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 import 'music_navigation.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 
 /// The single shared route observer for the mini player overlay.
@@ -79,8 +78,13 @@ final musicRouteObserver = MusicRouteObserver();
 ///
 /// The home page keeps its own embedded [MiniPlayerBar] — the overlay
 /// is hidden there because the home route carries no music name.
-/// Tapping the bar opens the full player; the full player route is
+/// Tapping the bar opens the full player with the expand animation
+/// (see `player_expand_route.dart`); the full player route is
 /// unnamed, so the overlay hides above it and returns when it closes.
+/// The show/hide is a 250ms fade (AnimatedSwitcher), not a pop: on
+/// close the bar fades back in over the content while the player
+/// slides right (video frame 017), and on open it fades out as the
+/// sheet expands over it.
 class MiniPlayerOverlay extends StatelessWidget {
   const MiniPlayerOverlay({super.key, required this.observer});
 
@@ -97,17 +101,25 @@ class MiniPlayerOverlay extends StatelessWidget {
       child: ValueListenableBuilder<bool>(
         valueListenable: observer.isMusicSubPage,
         builder: (context, isMusic, _) {
-          if (!isMusic) return const SizedBox.shrink();
-          if (MediaQuery.of(context).viewInsets.bottom > 0) {
-            return const SizedBox.shrink();
-          }
-          return MiniPlayerBar(
-            // Key distinguishes the overlay bar from the home page's
-            // embedded bar in tests (same widget, two instances).
-            key: const ValueKey('overlayMiniPlayer'),
-            onOpenPlayer: () {
-              unawaited(Get.to(() => const MusicPlayerPage()));
-            },
+          final show =
+              isMusic && MediaQuery.of(context).viewInsets.bottom == 0;
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: show
+                ? MiniPlayerBar(
+                    // Key distinguishes the overlay bar from the home
+                    // page's embedded bar in tests (same widget, two
+                    // instances).
+                    key: const ValueKey('overlayMiniPlayer'),
+                    onOpenPlayer: (rect) {
+                      unawaited(
+                        openPlayerPage<void>(context, fromRect: rect),
+                      );
+                    },
+                  )
+                : const SizedBox.shrink(
+                    key: ValueKey('overlayHidden'),
+                  ),
           );
         },
       ),

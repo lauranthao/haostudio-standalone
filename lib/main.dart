@@ -22,6 +22,7 @@ import 'core/storage/hive_store.dart';
 import 'core/storage/local_paths.dart';
 import 'core/theme/appearance_store.dart';
 import 'core/theme/liquid_glass_theme.dart';
+import 'core/theme/screen_capture.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/live/live_breadcrumb.dart';
 import 'features/music/av_music_player.dart';
@@ -86,8 +87,12 @@ Future<void> main() async {
 
   // Appearance (stage 2: wallpaper / background colour): load the
   // stored background state before the first frame so the AppShell
-  // layer paints immediately.
+  // layer paints immediately. The v1.1.5 migration runs first (turn
+  // a stored wallpaper-on off once — the unified page needs the
+  // theme background, not a photo), so load() already reads the
+  // migrated state.
   final appearanceController = Get.put(AppearanceController());
+  await appearanceController.migrateWallpaperOffOnce();
   await appearanceController.load();
 
   // Automatic update check, 2 s after start, at most once per 20 h.
@@ -142,9 +147,16 @@ class HAoApp extends StatelessWidget {
         // on music sub-pages only (the observer decides). The home keeps
         // its own embedded bar; the overlay is hidden there, on the full
         // player, and on video / live / settings pages.
+        // The root content sits inside a RepaintBoundary so the
+        // accent-colour dropper can capture the app frame (see
+        // ScreenCapture); it also isolates the app's repaints from
+        // the overlay above it.
         builder: (context, child) => Stack(
           children: [
-            child ?? const SizedBox.shrink(),
+            RepaintBoundary(
+              key: ScreenCapture.boundaryKey,
+              child: child ?? const SizedBox.shrink(),
+            ),
             MiniPlayerOverlay(observer: musicRouteObserver),
           ],
         ),

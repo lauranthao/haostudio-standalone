@@ -102,6 +102,7 @@ import '../../core/theme/haptics.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/search_platform_store.dart';
 import '../../services/music/local_music_store.dart';
 import 'artist_detail_page.dart';
 import 'charts_page.dart';
@@ -114,6 +115,7 @@ import 'local_music_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
 import 'song_search_page.dart';
@@ -125,7 +127,13 @@ import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 
 class MusicTabPage extends StatefulWidget {
-  const MusicTabPage({super.key});
+  const MusicTabPage({super.key, this.api});
+
+  /// Test seam only: an injected [MusicApi] (fake Dio in render /
+  /// widget tests). Null in production — the page owns a fresh one.
+  /// The seam also keeps the lazy first-cover fetch offline in
+  /// tests (a real api would hit the network from the test VM).
+  final MusicApi? api;
 
   @override
   State<MusicTabPage> createState() => _MusicTabPageState();
@@ -133,8 +141,11 @@ class MusicTabPage extends StatefulWidget {
 
 /// One feature-shelf card: icon, title, destination, its own
 /// Kumone gradient (see the file header — one distinct gradient per
-/// card, never black/grey), and an optional real cover (daily card
-/// only — the cover replaces the gradient, with the black scrim).
+/// card, never black/grey), and an optional real cover — when set,
+/// the cover replaces the gradient, with the black scrim (top 0.1 ->
+/// bottom 0.68) keeping the white title readable. 搜歌 has no cover;
+/// the other four shelf cards show their first item's cover
+/// (daily / plaza / charts / report — see [_featureShelf]).
 /// No subtitle (removed 2026-11-19 clean pass — title sits at the
 /// bottom of the card, 15 bold, unchanged).
 ///
@@ -186,6 +197,7 @@ class _FeatureTile {
 
 class _MusicTabPageState extends State<MusicTabPage> {
   final _importController = TextEditingController();
+  late final MusicApi _api = widget.api ?? MusicApi();
   var _playlistsExpanded = true;
   var _recentExpanded = true;
   List<UserPlaylist> _lists = [];
@@ -206,6 +218,13 @@ class _MusicTabPageState extends State<MusicTabPage> {
         HiveStore.getBool(HiveKeys.musicPlaylistsExpanded, true);
     _recentExpanded = HiveStore.getBool(HiveKeys.musicRecentExpanded, true);
     _refresh();
+    // Lazy first-cover fill (plaza / charts): after the first frame,
+    // so the home renders its gradients first and swaps a cover in
+    // when it arrives. The fetch runs once per home lifetime and
+    // only for the cards whose cached URL is missing.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _fetchMissingCovers(),
+    );
   }
 
   void _togglePlaylists() {
@@ -363,6 +382,14 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
+  /// Open the player from the embedded mini player bar: the page
+  /// EXPANDS from the bar's rect (NetEase). Song-row / FM / heartbeat
+  /// taps keep using [_openPlayer] (plain slide) — there is no bar
+  /// to expand from there.
+  void _openPlayerFromBar(Rect? barRect) {
+    unawaited(openPlayerPage<void>(context, fromRect: barRect));
+  }
+
   /// Start personal FM, then open the full player. When there are no
   /// local seeds at all the service returns false and a real prompt
   /// is shown instead of failing silently.
@@ -447,6 +474,91 @@ class _MusicTabPageState extends State<MusicTabPage> {
     return cover.isEmpty ? null : cover;
   }
 
+  /// Plaza first cover for the 歌单广场 card: sync read of the
+  /// cached URL only (see [_fetchMissingCovers] for the fill).
+  String? _plazaFirstCover() =>
+      MusicStore.getFeatureCover(HiveKeys.featureCoverPlaza);
+
+  /// Charts first cover for the 排行榜 card: sync read of the
+  /// cached URL only (see [_fetchMissingCovers] for the fill).
+  String? _chartsFirstCover() =>
+      MusicStore.getFeatureCover(HiveKeys.featureCoverCharts);
+
+  /// Report first cover for the 听歌报告 card: computed live from
+  /// the local listen log on every build — same range ('week') and
+  /// live-event merge as ListenReportPage, so the card's #1 song
+  /// always agrees with the report page. No cache, no network.
+  String? _reportFirstCover() {
+    final live = _player.liveListenEvent;
+    final log = MusicStore.getListenLog();
+    final report = ListenReport.compute(
+      live == null ? log : [live, ...log],
+      'week',
+    );
+    if (report.topSongs.isEmpty) return null;
+    final cover = report.topSongs.first.song.cover;
+    return cover.isEmpty ? null : cover;
+  }
+
+  /// Lazy fill for the plaza / charts first covers: one background
+  /// fetch per missing card, reusing each page's own fetch
+  /// (PlazaPage._load / ChartsPage._load + importPlaylist). A
+  /// failed fetch leaves the gradient — never an error, never a
+  /// blank card. The URL is cached, so later home opens read it
+  /// synchronously and never re-fetch.
+  Future<void> _fetchMissingCovers() async {
+    if (!mounted) return;
+    if (_plazaFirstCover() == null) {
+      unawaited(_fetchPlazaCover());
+    }
+    if (_chartsFirstCover() == null) {
+      unawaited(_fetchChartsCover());
+    }
+  }
+
+  Future<void> _fetchPlazaCover() async {
+    try {
+      final items = await _api.plaza(SearchPlatformStore.current());
+      if (!mounted) return;
+      for (final item in items) {
+        if (item.cover.isNotEmpty) {
+          await MusicStore.setFeatureCover(
+            HiveKeys.featureCoverPlaza,
+            item.cover,
+          );
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    } catch (_) {
+      // Offline / API down: keep the gradient.
+    }
+  }
+
+  Future<void> _fetchChartsCover() async {
+    try {
+      final charts = await _api.neteaseCharts();
+      if (!mounted || charts.isEmpty) return;
+      final tracks = await _api.importPlaylist(
+        MusicPlatform.wy,
+        charts.first.id,
+      );
+      if (!mounted) return;
+      for (final song in tracks.tracks) {
+        if (song.cover.isNotEmpty) {
+          await MusicStore.setFeatureCover(
+            HiveKeys.featureCoverCharts,
+            song.cover,
+          );
+          if (mounted) setState(() {});
+          return;
+        }
+      }
+    } catch (_) {
+      // Offline / API down: keep the gradient.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
@@ -518,7 +630,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
               ),
               MiniPlayerBar(
                 key: const ValueKey('homeMiniPlayer'),
-                onOpenPlayer: _openPlayer,
+                onOpenPlayer: _openPlayerFromBar,
               ),
             ],
           ),
@@ -547,26 +659,34 @@ class _MusicTabPageState extends State<MusicTabPage> {
         onTap: () => _push(const DailyPage()),
       ),
       // Kumone HomeView.swift:268-269 心动模式.
+      // Cover: the first playlist's cover (cached, lazily filled).
       _FeatureTile(
         icon: Icons.grid_view,
         title: '歌单广场',
         gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
+        cover: _plazaFirstCover(),
         onTap: () => _push(const PlazaPage()),
       ),
       // Kumone HomeView.swift:262-263 私人漫游 indigo, shifted blue
       // (purple end banned — see the file header).
+      // Cover: the #1 song of the first chart (cached, lazily
+      // filled via neteaseCharts + importPlaylist).
       _FeatureTile(
         icon: Icons.leaderboard,
         title: '排行榜',
         gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
+        cover: _chartsFirstCover(),
         onTap: () => _push(const ChartsPage()),
       ),
       // Derived from HomeView.swift:268-269 pink-orange, hue shifted
       // rose -> amber (see the file header).
+      // Cover: the #1 song of this week's report (computed live
+      // from the local listen log — no cache, no network).
       _FeatureTile(
         icon: Icons.bar_chart,
         title: '听歌报告',
         gradient: const [Color(0xFFD96114), Color(0xFFFA9433)],
+        cover: _reportFirstCover(),
         onTap: () => _push(const ListenReportPage()),
       ),
     ];

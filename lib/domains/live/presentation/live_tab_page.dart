@@ -81,6 +81,15 @@ class _LiveTabPageState extends State<LiveTabPage> {
       backgroundColor: tabScaffoldBackground(context),
       appBar: AppBar(
         title: const Text('直播'),
+        // Unified page (chen 2026-11-19): the top bar IS the page
+        // background, not a separate surface-coloured slab — the
+        // title sits directly on the page like NetEase's. The
+        // Scaffold is Obx-wrapped, so a wallpaper toggle re-resolves
+        // this immediately (transparent over wallpaper, scaffold
+        // colour otherwise). The body never slides under the bar
+        // (no extendBodyBehindAppBar), so transparency has no
+        // scroll-bleed.
+        backgroundColor: tabScaffoldBackground(context),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),

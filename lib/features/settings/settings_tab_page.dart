@@ -74,6 +74,7 @@ import '../../services/music/music_store.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
+import 'accent_color_sheet.dart';
 import '../live/live_breadcrumb.dart';
 import '../music/av_music_player.dart';
 import '../music/equalizer_page.dart';
@@ -171,7 +172,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
-      appBar: AppBar(title: const Text('设置')),
+      // Unified page (chen 2026-11-19): the top bar IS the page
+      // background, not a separate surface-coloured slab — see the
+      // live tab AppBar for the reasoning.
+      appBar: AppBar(
+        title: const Text('设置'),
+        backgroundColor: tabScaffoldBackground(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
@@ -243,6 +250,16 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               await Get.to(() => const WallpaperPage());
               setState(() => _loadAppearance());
             },
+          ),
+          const SizedBox(height: 12),
+          // Tab-bar selected colour (icon + label): the ring shows
+          // the current colour live; tapping opens the colour sheet.
+          // The colour controls only the tab-bar selected state.
+          _BeansRow(
+            icon: Icons.colorize,
+            title: '自定义强调色',
+            trailing: const AccentRingButton(),
+            onTap: () => showAccentColorSheet(context),
           ),
           const SizedBox(height: 12),
           _BeansSwitchRow(
