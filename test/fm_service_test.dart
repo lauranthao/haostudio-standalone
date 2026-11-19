@@ -39,6 +39,15 @@ class FakeMusicApi extends MusicApi {
     searches++;
     return byQuery[q] ?? [];
   }
+
+  // The home's lazy first-cover fill: empty lists keep every card
+  // on its gradient (the home must never hit the real network from
+  // a test).
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
 }
 
 Song song(
@@ -127,7 +136,7 @@ void main() {
       GetMaterialApp(
         debugShowCheckedModeBanner: false,
         theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: const MusicTabPage(),
+        home: MusicTabPage(api: FakeMusicApi(const {})),
       ),
     );
     await tester.pump();

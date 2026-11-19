@@ -126,6 +126,13 @@ class HiveKeys {
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
 
+  /// First-cover URLs for the music-home feature cards (plaza /
+  /// charts), cached so the home never re-fetches them on open.
+  /// The report card needs no key — it is computed live from the
+  /// local listen log on every build.
+  static const String featureCoverPlaza = 'hao_feature_cover_plaza';
+  static const String featureCoverCharts = 'hao_feature_cover_charts';
+
   /// Sleep timer custom minutes (stage 2, Beans `SleepTimerSheet`
   /// customMinutesText, clamped 1..720, default 30). Persisted so the
   /// next open remembers the last custom value.

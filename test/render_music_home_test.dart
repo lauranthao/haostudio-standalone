@@ -29,6 +29,7 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
 import 'package:standalone/widgets/app_shell.dart';
@@ -65,6 +66,18 @@ ThemeData _cjkTheme(ThemeData base) {
       ),
     ),
   );
+}
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient, so the goldens are
+/// unchanged.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
 }
 
 List<Song> _sampleSongs() => [
@@ -170,7 +183,7 @@ void main() {
         // full-height so its content scrolls under the bar.
         home: Stack(
           children: [
-            const MusicTabPage(),
+            MusicTabPage(api: _EmptyCoverApi()),
             Positioned(
               left: 0,
               right: 0,

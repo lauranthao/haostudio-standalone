@@ -27,8 +27,20 @@ import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
 import 'package:standalone/features/music/widgets/collapsible_section.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
+}
 
 void main() {
   late Directory hiveDir;
@@ -118,7 +130,7 @@ void main() {
       GetMaterialApp(
         debugShowCheckedModeBanner: false,
         theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: const MusicTabPage(),
+        home: MusicTabPage(api: _EmptyCoverApi()),
       ),
     );
     await tester.pump();

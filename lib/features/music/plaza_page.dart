@@ -22,6 +22,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/storage/hive_store.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/glass.dart';
 import '../../services/music/music_api.dart';
@@ -96,6 +97,16 @@ class _PlazaPageState extends State<PlazaPage> {
     // never overwrite the newly selected platform.
     if (seq != _seq || !mounted) return;
     _cache[pf] = items;
+    // Keep the home's 歌单广场 card fresh: the first playlist's
+    // cover is cached for the home to read (no fetch from the home).
+    if (items.isNotEmpty && items.first.cover.isNotEmpty) {
+      unawaited(
+        MusicStore.setFeatureCover(
+          HiveKeys.featureCoverPlaza,
+          items.first.cover,
+        ),
+      );
+    }
     setState(() {
       _loading = false;
       _failed = items.isEmpty;

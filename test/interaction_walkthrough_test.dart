@@ -49,10 +49,22 @@ import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/features/player/fullscreen_controller.dart';
 import 'package:standalone/features/video/video_history_page.dart';
 import 'package:standalone/features/video/widgets/referer_image.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/music_store.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 import 'package:standalone/widgets/glass_dialog.dart';
+
+/// Offline cover fetch for the home's lazy first-cover fill: the
+/// home must never hit the real network from a test (flaky + slow).
+/// Empty lists keep every card on its gradient.
+class _EmptyCoverApi extends MusicApi {
+  @override
+  Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];
+
+  @override
+  Future<List<PlaylistSummary>> neteaseCharts() async => [];
+}
 
 /// No-load player double (copied from music_home_kumone_test.dart):
 /// playQueue / prev / next / togglePlayPause / cyclePlayMode are
@@ -197,7 +209,7 @@ void main() {
       GetMaterialApp(
         debugShowCheckedModeBanner: false,
         theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: const MusicTabPage(),
+        home: MusicTabPage(api: _EmptyCoverApi()),
       ),
     );
     await tester.pump();
