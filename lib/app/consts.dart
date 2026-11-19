@@ -8,10 +8,10 @@
 // or a cache-buster.
 
 /// Current app version (CFBundleShortVersionString).
-const String kAppVersion = '1.1.4';
+const String kAppVersion = '1.1.5';
 
 /// Current build number (CFBundleVersion).
-const int kAppBuild = 16;
+const int kAppBuild = 19;
 
 /// Online-update manifest (primary). Gitee raw, hosted in mainland China,
 /// so the check works from chen's phone — the shop server (Railway US)
