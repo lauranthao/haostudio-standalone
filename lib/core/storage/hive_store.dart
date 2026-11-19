@@ -301,6 +301,7 @@ class HiveKeys {
   /// Scripts are additive to the built-in resolvers — no "at least one"
   /// guard, unlike the platform source groups.
   static const String lxScriptDisabled = 'hao_lx_disabled';
+  static const String lxScriptExplicitlyEnabled = 'hao_lx_explicit_enabled';
   static const String lxCustomScripts = 'hao_lx_custom';
   static const String lxDeletedBundledScripts = 'hao_lx_deleted_bundled';
   static const String lxScriptOrder = 'hao_lx_order';

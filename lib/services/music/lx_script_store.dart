@@ -2,9 +2,12 @@
 //
 // Two things live here:
 // - Enable/disable per script id (bundled + custom). Default: all
-//   enabled; the store keeps the DISABLED list only. No "at least one"
-//   guard: scripts are additive to the built-in resolvers, so turning
-//   them all off is harmless.
+//   enabled, except the dead-host ids in [_defaultDisabledIds]
+//   (ikun), which are off until the user turns one on — the store
+//   keeps the DISABLED list only for the rest, plus an
+//   explicit-enable list for the default-disabled ones. No "at least
+//   one" guard: scripts are additive to the built-in resolvers, so
+//   turning them all off is harmless.
 // - User-added custom scripts: {id, name, url, code, addedAt}. The code
 //   is stored so scripts load offline at startup without re-fetching.
 //
@@ -51,6 +54,35 @@ class LxCustomScript {
 }
 
 class LxScriptSourcesStore {
+  /// Bundled scripts disabled by default (dead upstream host, e.g.
+  /// ikun's api.ikunshare.com — curl-verified dead 2026-11-19, and
+  /// the built-in ikun resolver was disabled the same day): a fresh
+  /// install has them OFF, but they still load and show in 音源管理
+  /// with their toggle, and a user who turns one ON stays on — the
+  /// explicit-enable list is the record of that choice and is never
+  /// reset by an upgrade. No stored choice is ever overwritten:
+  /// before this change ikun was on by default, so there is no
+  /// recorded "user turned it on" to preserve — anyone who wants it
+  /// re-enables it with one tap. A user who disabled one before
+  /// stays disabled (the disabled list still wins for the others,
+  /// and for these ids the absent explicit-enable means off).
+  static const _defaultDisabledIds = {'ikun'};
+
+  static List<String> _explicitlyEnabledIds({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    if (b == null) return const [];
+    final raw = b.get(HiveKeys.lxScriptExplicitlyEnabled);
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          return decoded.map((e) => e.toString()).toList();
+        }
+      } catch (_) {}
+    }
+    return const [];
+  }
+
   static List<String> _disabledIds({Box<dynamic>? box}) {
     final b = _safeBox(box);
     if (b == null) return const [];
@@ -66,8 +98,12 @@ class LxScriptSourcesStore {
     return const [];
   }
 
-  static bool isEnabled(String scriptId, {Box<dynamic>? box}) =>
-      !_disabledIds(box: box).contains(scriptId);
+  static bool isEnabled(String scriptId, {Box<dynamic>? box}) {
+    if (_defaultDisabledIds.contains(scriptId)) {
+      return _explicitlyEnabledIds(box: box).contains(scriptId);
+    }
+    return !_disabledIds(box: box).contains(scriptId);
+  }
 
   static Future<void> setEnabled(
     String scriptId,
@@ -76,6 +112,24 @@ class LxScriptSourcesStore {
   }) async {
     final b = _safeBox(box);
     if (b == null) return;
+    if (_defaultDisabledIds.contains(scriptId)) {
+      // The explicit-enable list is the source of truth for these
+      // ids; drop any stale disabled-list entry so the two lists
+      // cannot disagree about the same script.
+      final next = _explicitlyEnabledIds(box: b).toSet();
+      if (value) {
+        next.add(scriptId);
+      } else {
+        next.remove(scriptId);
+      }
+      await b.put(
+        HiveKeys.lxScriptExplicitlyEnabled,
+        jsonEncode(next.toList()),
+      );
+      final disabled = _disabledIds(box: b).toSet()..remove(scriptId);
+      await b.put(HiveKeys.lxScriptDisabled, jsonEncode(disabled.toList()));
+      return;
+    }
     final next = _disabledIds(box: b).toSet();
     if (value) {
       next.remove(scriptId);
