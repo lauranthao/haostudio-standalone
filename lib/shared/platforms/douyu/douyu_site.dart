@@ -73,11 +73,30 @@ class DouyuSite extends LiveSite {
   static const Duration _leaseRefreshLead = Duration(seconds: 45);
 
   /// `expire` seconds carried by a URL, or null when it has none.
+  ///
+  /// First occurrence wins — never `Uri.queryParameters` (it keeps
+  /// the LAST value). A Douyu play URL can carry `expire` twice: the
+  /// server-issued value comes first (`expire=300` on ws lines), and
+  /// `_resolvePlayUrl` appends `&expire=0` after it. Taking the last
+  /// value read 0, so the lease parsed as null for every ws line and
+  /// no refreshAt/invalidAt was ever computed (no prefetch, recovery
+  /// flying blind on expiry). The first value is the one the server
+  /// signed/issued, so it is the conservative lease: prefetch at
+  /// issued+255 s is merely early if the CDN honours the appended 0
+  /// instead, and it saves the stream if the CDN honours the 300.
+  /// The raw query is split by hand (`Uri.query` preserves order);
+  /// a single `expire=0` still means no lease.
   static int? douyuUrlExpireSeconds(String url) {
-    final value = int.tryParse(
-      Uri.tryParse(url)?.queryParameters['expire'] ?? '',
-    );
-    return value != null && value > 0 ? value : null;
+    final query = Uri.tryParse(url)?.query;
+    if (query == null || query.isEmpty) return null;
+    for (final part in query.split('&')) {
+      final eq = part.indexOf('=');
+      final key = eq < 0 ? part : part.substring(0, eq);
+      if (key != 'expire') continue;
+      final value = int.tryParse(eq < 0 ? '' : part.substring(eq + 1));
+      return value != null && value > 0 ? value : null;
+    }
+    return null;
   }
 
   /// Hard expiry for one URL, given when it was issued.
@@ -435,6 +454,10 @@ class DouyuSite extends LiveSite {
     var url = parsePlayUrl(playData);
     // 海外/部分匿名会话会拿到 5 分钟即失效的 ws CDN 线（expire=300&fcdn=ws）；
     // 附加 expire=0 让 CDN 按默认时长签发（simple_live 同款补丁）。
+    // Lease 解析读的是第一个 expire（服务端签发的 300，见
+    // douyuUrlExpireSeconds），所以这个重复参数不会再把 lease 读成
+    // null；若 CDN 实际按 0 走，300s 的 lease 只会让 prefetch 提前，
+    // 不会切走健康流。
     if (url.contains('expire=300') && url.contains('fcdn=ws')) {
       url = '$url&expire=0';
     }
