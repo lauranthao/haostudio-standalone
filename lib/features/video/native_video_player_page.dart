@@ -740,17 +740,36 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
 
   // -- Vertical drag: left half brightness, right half volume. --
 
-  void _onSystemDragStart(DragStartDetails details) {
+  void _onSystemDragStart(DragStartDetails details) async {
     if (_failed || _ended) return;
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
     final width = MediaQuery.of(context).size.width;
     final isBrightness = details.globalPosition.dx < width / 2;
+    // Brightness seed: re-read at drag start, never the init-time
+    // capture. _brightness goes stale the moment the user moves
+    // brightness in Control Center (or the system does): anchoring
+    // the drag to the stale value would jump the screen brightness
+    // back to the old level on the first move. Best-effort with a
+    // short timeout — a stalled channel falls back to the cached
+    // level instead of dropping the drag. Volume needs no re-read:
+    // _volume is kept live by the volumeChanges stream (hardware
+    // keys / Control Center push back through _onExternalVolume).
+    var seed = isBrightness ? _brightness : _volume;
+    if (isBrightness) {
+      try {
+        seed = await ScreenBrightness.getBrightness().timeout(
+          const Duration(milliseconds: 300),
+        );
+      } catch (_) {}
+      if (!mounted) return;
+    }
     setState(() {
       _dragSide = isBrightness
           ? _PlayerDragSide.brightness
           : _PlayerDragSide.volume;
-      _dragSystemValue = isBrightness ? _brightness : _volume;
+      _dragSystemValue = seed;
+      if (isBrightness) _brightness = seed;
     });
   }
 
@@ -945,6 +964,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _session.setForeground(false);
+        // Give the brightness back to the system NOW, not only on
+        // dispose: the iOS plugin re-applies a remembered app
+        // brightness on every foreground return, so a stale player
+        // value would overwrite whatever the user picked in Control
+        // Center while backgrounded. reset() clears the remembered
+        // value, so the return keeps the user's system brightness.
+        unawaited(ScreenBrightness.reset());
         final s = _session.status;
         if (s == PlaybackStatus.playing ||
             s == PlaybackStatus.buffering ||
@@ -953,6 +979,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         }
       case AppLifecycleState.resumed:
         _session.setForeground(true);
+        // Re-read the CURRENT brightness as the next drag's seed —
+        // never set it. Whatever the user picked in Control Center
+        // while backgrounded is the brightness now; re-applying the
+        // old player value here would be the bug chen reported.
+        unawaited(
+          ScreenBrightness.getBrightness().then((v) {
+            if (mounted) _brightness = v;
+          }),
+        );
       case AppLifecycleState.inactive:
         break;
     }
@@ -961,6 +996,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving the player hands the brightness back to the system:
+    // a player-set level must not leak onto every other page (or
+    // survive to be re-applied on the next foreground return).
+    unawaited(ScreenBrightness.reset());
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
     _positionSub?.cancel();
