@@ -79,7 +79,7 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-results.xml
             adb pull /sdcard/ui-results.xml $GITHUB_WORKSPACE/ui-results.xml
             adb exec-out screencap -p > $GITHUB_WORKSPACE/search-results.png
-            adb shell input tap 540 690
+            adb shell input tap 540 813
             sleep 12
             adb shell uiautomator dump /sdcard/ui-player.xml
             adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml
