@@ -155,6 +155,12 @@ class HiveKeys {
   static const String bgColorEnabled = 'hao_bgcolor_enabled';
   static const String bgColorHex = 'hao_bgcolor_hex';
 
+  /// Tab-bar selected colour (icon + label of the selected tab),
+  /// user-chosen in settings → 自定义强调色. Int ARGB, stored with
+  /// its opacity; default NetEase red (see TabBarAccentController).
+  /// Only the tab-bar selected state reads it — nothing else.
+  static const String tabBarAccentColor = 'hao_tabbar_accent';
+
   /// Custom font (stage 2, Beans `FontManager`): registered family
   /// name ('HaoCustomFont' when installed, '' = system default),
   /// the installed file's display name, and its RELATIVE path

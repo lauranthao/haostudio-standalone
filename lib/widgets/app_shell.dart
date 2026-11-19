@@ -73,6 +73,7 @@ import '../core/theme/glass.dart';
 import '../core/theme/hao_themes.dart';
 import '../core/theme/haptics.dart';
 import '../core/theme/liquid_glass_theme.dart';
+import '../core/theme/tab_bar_accent.dart';
 
 import '../domains/live/presentation/live_tab_page.dart';
 import '../features/music/music_tab_page.dart';
@@ -193,67 +194,151 @@ class GlassTabBar extends StatefulWidget {
 }
 
 class GlassTabBarState extends State<GlassTabBar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   // Beans constants (RootView.swift): innerInset 4, contentHeight 56.
   static const double _innerInset = 4;
   static const double _contentHeight = 56;
+
+  /// Rest width of the pill: 1.5 cells (NetEase frames
+  /// netease_pill_rest / netease_sw_p2 — the pill at rest is centred
+  /// on the selected cell and spans it plus half of each neighbour).
+  /// Clamped to the bar's content bounds, so on the first/last tab
+  /// the pill sits against the bar's edge instead of sticking out.
+  static const double _restWidthCells = 1.5;
 
   /// Kumone settle spring (GlassTabBar.swift:36):
   /// `Animation.spring(response: 0.35, dampingFraction: 0.82)`.
   /// Flutter equivalent: ω = 2π / response, stiffness = ω²,
   /// damping = 2 · dampingFraction · ω, mass 1 — an underdamped
   /// spring (ζ = 0.82 < 1), so the pill overshoots slightly and
-  /// settles, instead of easing to a stop.
+  /// settles, instead of easing to a stop. Drives the pill's
+  /// LEADING edge (see _springTo).
   static const settleSpring = SpringDescription(
     mass: 1.0,
     stiffness: 322.273,
     damping: 29.441,
   );
 
+  /// Trailing-edge stagger: the trailing edge starts this much
+  /// later than the leading edge, on the same settle spring. The
+  /// leading edge moves alone first, so the pill stretches
+  /// mid-flight (NetEase frames: ~1.7+ cells spanning from→to) and
+  /// the trailing edge catches up — both settle in ~0.35 + 0.06s,
+  /// instead of the trailing edge lagging on a slower spring (which
+  /// would stretch less and settle slower).
+  static const _trailDelay = Duration(milliseconds: 60);
+
+  /// Generation counter for the staggered trailing-edge start:
+  /// incremented on every _springTo and on drag-start, so a delayed
+  /// start from a superseded move never fires.
+  int _springGeneration = 0;
+
   /// Key for the sliding pill (tests assert its settled position).
   static const pillKey = ValueKey('glassTabBarPill');
 
-  late final AnimationController _springController;
+  /// One controller per pill edge; each drives a fixed edge (left →
+  /// _pillLeft, right → _pillRight). Which spring each gets depends
+  /// on the direction of the move (see _springTo) — the leading
+  /// edge gets the settle spring, the trailing edge the slower
+  /// trail spring.
+  late final AnimationController _leftController;
+  late final AnimationController _rightController;
 
-  /// Current pill left edge (content space). Null until the first
-  /// layout, when it is placed at the rest position with no animation.
+  /// Current pill edges (content space). Null until the first
+  /// layout, when they are placed at the rest position with no
+  /// animation.
   double? _pillLeft;
+  double? _pillRight;
 
-  /// Rest position the spring is currently driving towards; null
+  /// Rest position the springs are currently driving towards; null
   /// while the finger owns the pill. Guards against restarting the
-  /// spring on every rebuild mid-flight.
-  double? _springTarget;
+  /// springs on every rebuild mid-flight.
+  double? _leftTarget;
+  double? _rightTarget;
 
   @override
   void initState() {
     super.initState();
-    _springController = AnimationController.unbounded(vsync: this)
-      ..addListener(() {
-        setState(() => _pillLeft = _springController.value);
-      });
+    _leftController = AnimationController.unbounded(vsync: this)
+      ..addListener(() => setState(() => _pillLeft = _leftController.value));
+    _rightController = AnimationController.unbounded(vsync: this)
+      ..addListener(
+        () => setState(() => _pillRight = _rightController.value),
+      );
   }
 
   @override
   void dispose() {
-    _springController.dispose();
+    _leftController.dispose();
+    _rightController.dispose();
     super.dispose();
   }
 
-  /// Drive the pill to [target] with the Kumone settle spring,
-  /// starting from its current position and velocity — so a tap
-  /// mid-settle or a release after a drag never jumps.
-  void _springTo(double target) {
-    _springTarget = target;
-    _springController.animateWith(
-      SpringSimulation(
-        settleSpring,
-        // _pillLeft is the true current position (the listener keeps
-        // it in sync with the controller while a spring runs).
-        _pillLeft ?? _springController.value,
-        target,
-        _springController.velocity,
-      ),
-    );
+  /// Drive both pill edges to [targetLeft]/[targetRight]. The edge
+  /// moving towards the target (leading) starts now on the Kumone
+  /// settle spring; the other (trailing) starts [_trailDelay] later
+  /// on the same spring — staggered, so the pill stretches
+  /// mid-flight and the trailing edge catches up, shrinking it back
+  /// to 1.5 cells at rest. Both start from their current position
+  /// and velocity, so a tap mid-settle or a release after a drag
+  /// never jumps. The delayed start is generation-guarded: a newer
+  /// move, a drag, or disposal cancels it.
+  void _springTo(
+    double targetLeft,
+    double targetRight, {
+    required bool leadingRight,
+  }) {
+    _leftTarget = targetLeft;
+    _rightTarget = targetRight;
+    final generation = ++_springGeneration;
+    void startEdge(bool isLeft) {
+      final controller = isLeft ? _leftController : _rightController;
+      final target = isLeft ? targetLeft : targetRight;
+      final current = isLeft ? _pillLeft : _pillRight;
+      controller.animateWith(
+        SpringSimulation(
+          settleSpring,
+          current ?? controller.value,
+          target,
+          controller.velocity,
+        ),
+      );
+    }
+
+    if (leadingRight) {
+      startEdge(false);
+      Future.delayed(_trailDelay, () {
+        if (!mounted || _isDragging) return;
+        if (generation != _springGeneration) return;
+        if (_leftTarget != targetLeft || _rightTarget != targetRight) {
+          return;
+        }
+        startEdge(true);
+      });
+    } else {
+      startEdge(true);
+      Future.delayed(_trailDelay, () {
+        if (!mounted || _isDragging) return;
+        if (generation != _springGeneration) return;
+        if (_leftTarget != targetLeft || _rightTarget != targetRight) {
+          return;
+        }
+        startEdge(false);
+      });
+    }
+  }
+
+  /// How selected cell [i] reads, from the pill centre's distance
+  /// to the cell centre (in cells): 1 inside a 0.25-cell dead zone,
+  /// fading to 0 at 0.75 cells. The dead zone absorbs the 0.25-cell
+  /// clamp offset at the first/last tab, so the selected tab is
+  /// fully coloured at rest and both neighbours read 0 — while
+  /// mid-slide both adjacent tabs read ~0.5 (NetEase frames: the
+  /// colour follows the pill, the cell the leading edge covers
+  /// turns red as the pill arrives).
+  static double selectednessFor(int i, double pillCenter, double cellW) {
+    final d = (pillCenter - cellW * (i + 0.5)).abs() / cellW;
+    return (1 - (d - 0.25) / 0.5).clamp(0.0, 1.0);
   }
 
   static const List<(IconData, String)> _items = [
@@ -313,34 +398,56 @@ class GlassTabBarState extends State<GlassTabBar>
             final width = constraints.maxWidth;
             final count = _items.length;
             final cellW = width / count;
-            // Rest position: centre of the selected cell. While
-            // dragging the pill follows the finger (clamped so it
-            // never leaves the bar) — _pillLeft is written directly
-            // by the drag callbacks, with no animation. At rest the
-            // pill is driven to the selected cell by the settle
-            // spring (tap and release both go through here). The
-            // spring is started in a post-frame callback, never
-            // during build (starting it would notify the listener,
-            // i.e. setState during build).
-            final restX = cellW * (widget.currentIndex + 0.5);
+            final restWidth = cellW * _restWidthCells;
+            // Rest rect: 1.5 cells centred on the selected cell,
+            // clamped to the bar's content bounds (first/last tab).
+            final restCenter = cellW * (widget.currentIndex + 0.5);
+            final restLeft =
+                (restCenter - restWidth / 2).clamp(0.0, width - restWidth);
+            final restRight = restLeft + restWidth;
+            // Pill edges: while dragging the pill follows the finger
+            // (clamped so it never leaves the bar) — both edges are
+            // written directly by the drag callbacks, with no
+            // animation. At rest the edges are driven to the selected
+            // cell by the springs (tap and release both go through
+            // here). The springs are started in a post-frame
+            // callback, never during build (starting one would
+            // notify its listener, i.e. setState during build).
             final double pillLeft;
+            final double pillRight;
             if (_isDragging && _dragX != null) {
-              pillLeft = _pillLeft ?? restX - (cellW - 8) / 2;
+              pillLeft = _pillLeft ?? restLeft;
+              pillRight = _pillRight ?? restRight;
             } else {
-              final target = restX - (cellW - 8) / 2;
-              if (_pillLeft == null) {
-                _pillLeft = target;
-                _springTarget = target;
-              } else if (_springTarget != target) {
-                _springTarget = target;
+              if (_pillLeft == null || _pillRight == null) {
+                _pillLeft = restLeft;
+                _pillRight = restRight;
+                _leftTarget = restLeft;
+                _rightTarget = restRight;
+              } else if (_leftTarget != restLeft ||
+                  _rightTarget != restRight) {
+                final targetLeft = restLeft;
+                final targetRight = restRight;
+                _leftTarget = targetLeft;
+                _rightTarget = targetRight;
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (!mounted || _isDragging) return;
-                  if (_springTarget != target) return;
-                  _springTo(target);
+                  if (_leftTarget != targetLeft ||
+                      _rightTarget != targetRight) {
+                    return;
+                  }
+                  final center = (_pillLeft! + _pillRight!) / 2;
+                  _springTo(
+                    targetLeft,
+                    targetRight,
+                    leadingRight: (targetLeft + targetRight) / 2 > center,
+                  );
                 });
               }
               pillLeft = _pillLeft!;
+              pillRight = _pillRight!;
             }
+            final pillCenter = (pillLeft + pillRight) / 2;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) {
@@ -363,15 +470,21 @@ class GlassTabBarState extends State<GlassTabBar>
                 setState(() {
                   _isDragging = true;
                   _dragX = details.localPosition.dx;
-                  // Finger owns the pill now: stop any settle spring
-                  // and track the finger directly (Kumone: pillX =
-                  // dragX while dragging). Clearing _springTarget
-                  // forces a fresh spring on release.
-                  _springController.stop();
+                  // Finger owns the pill now: stop both springs and
+                  // track the finger directly (Kumone: pillX =
+                  // dragX while dragging), at rest width — no stretch
+                  // while dragging. Clearing the targets forces a
+                  // fresh spring on release; bumping the generation
+                  // cancels any pending staggered trailing start.
+                  _leftController.stop();
+                  _rightController.stop();
+                  _springGeneration++;
                   _pillLeft = _dragX!
-                          .clamp(cellW / 2, width - cellW / 2) -
-                      (cellW - 8) / 2;
-                  _springTarget = null;
+                          .clamp(restWidth / 2, width - restWidth / 2) -
+                      restWidth / 2;
+                  _pillRight = _pillLeft! + restWidth;
+                  _leftTarget = null;
+                  _rightTarget = null;
                 });
                 _select(_indexForX(details.localPosition.dx, cellW));
               },
@@ -394,40 +507,66 @@ class GlassTabBarState extends State<GlassTabBar>
               },
               child: SizedBox(
                 height: _contentHeight,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      // Pill position is owned by the settle spring
-                      // (see _springTo) or, while dragging, by the
-                      // finger directly — never an ease curve.
-                      left: pillLeft,
-                      top: 0,
-                      child: Container(
-                        key: GlassTabBarState.pillKey,
-                        width: cellW - 8,
-                        height: _contentHeight,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.10)
-                              : Colors.black.withValues(alpha: 0.075),
+                // Clip the pill to the bar's capsule: the settle
+                // spring overshoots ~1-2%, so at an edge tab the
+                // leading edge can briefly pass the bar's end.
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        // Pill edges are owned by the two springs
+                        // (see _springTo) or, while dragging, by the
+                        // finger directly — never an ease curve.
+                        // The lens is a GROUPED GlassContainer
+                        // (useOwnLayer false, the default): it joins
+                        // the bar's own layer, so the bar + pill are
+                        // ONE refraction pass — never two nested
+                        // layers (standing rule). No settings: grouped
+                        // children inherit the bar's ios27 preset +
+                        // premium quality. The pill is a transparent
+                        // lens — no fill, no colour (chen: 不要胶囊
+                        // 黑色); the selection reads through the
+                        // icon/label colour below, which follows the
+                        // pill. The icons paint above the lens, so
+                        // the lens refracts the page behind the bar,
+                        // not the icons themselves (the icons must
+                        // stay above the glass to stay sharp — the
+                        // per-pixel magnification inside the lens is
+                        // not reproduced; see the report).
+                        left: pillLeft,
+                        top: 0,
+                        child: GlassContainer(
+                          key: GlassTabBarState.pillKey,
+                          shape: const LiquidRoundedSuperellipse(
+                            borderRadius: 999,
+                          ),
+                          quality: GlassQuality.premium,
+                          child: SizedBox(
+                            width: pillRight - pillLeft,
+                            height: _contentHeight,
+                          ),
                         ),
                       ),
-                    ),
-                    Row(
-                      children: [
-                        for (var i = 0; i < _items.length; i++)
-                          Expanded(
-                            child: _TabItem(
-                              icon: _items[i].$1,
-                              label: _items[i].$2,
-                              selected: i == widget.currentIndex,
-                              theme: theme,
+                      Row(
+                        children: [
+                          for (var i = 0; i < _items.length; i++)
+                            Expanded(
+                              child: _TabItem(
+                                icon: _items[i].$1,
+                                label: _items[i].$2,
+                                selectedness: selectednessFor(
+                                  i,
+                                  pillCenter,
+                                  cellW,
+                                ),
+                                theme: theme,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -464,40 +603,47 @@ class _TabItem extends StatelessWidget {
   const _TabItem({
     required this.icon,
     required this.label,
-    required this.selected,
+    required this.selectedness,
     required this.theme,
   });
 
   final IconData icon;
   final String label;
-  final bool selected;
+
+  /// 0..1, from the pill centre's distance to this cell's centre
+  /// (GlassTabBarState.selectednessFor): 1 = fully selected, 0 =
+  /// unselected. The icon + label colour is the lerp between the
+  /// unselected colour and the tab-bar accent (user-chosen, default
+  /// NetEase red) — so the colour follows the pill as it slides,
+  /// and the icon/label never move (chen: 字不动只变色).
+  final double selectedness;
   final HaoTheme theme;
 
   @override
   Widget build(BuildContext context) {
-    // Kumone: selected = accent (ours: theme accent — black after the
-    // blue->black change for appleGlass/polarIce; Kumone's own accent
-    // is red #EC4949, NOT copied), unselected = primary at 0.8.
-    // Icons are black-filled by the theme colours; selected
-    // icon/label use the accent, never blue.
-    final color = selected
-        ? theme.accent
-        : theme.textPrimary.withValues(alpha: 0.8);
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 23, color: color),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          maxLines: 1,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: color,
+    final accent = TabBarAccentController.ensure();
+    return Obx(() {
+      final color = Color.lerp(
+        theme.textPrimary.withValues(alpha: 0.8),
+        accent.color.value,
+        selectedness,
+      )!;
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 23, color: color),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }
