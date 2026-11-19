@@ -8,7 +8,8 @@
 //      (then partition room lists, first 3 partitions, two hosts tried).
 // A stage that errors or returns nothing falls through to the next; all
 // stages failing returns [] — never fake rooms. Anchor search is NOT here:
-// Douyin does not support it (DouyinSite.searchAnchors throws).
+// Douyin has no anchor-search endpoint, so DouyinSite.searchAnchors
+// (P1-19) reuses the room search instead of throwing.
 //
 // Differences from upstream: Dio instead of Pure Live's HttpClient, and
 // no user-configured cookie store exists in this project yet — search

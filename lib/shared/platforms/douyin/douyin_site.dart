@@ -19,9 +19,14 @@
 // so the player decides from facts, never from the platform.
 //
 // Search: DouyinSearch (live API -> general API -> partition search).
-// searchAnchors throws "抖音暂不支持搜索主播" (upstream: Douyin has no
-// anchor search). Recommend: `webcast/feed/` (both response generations
-// parsed). Categories: homepage `categoryData` scrape; areaId "id,type".
+// searchAnchors reuses searchRooms (P1-19): Douyin has no anchor-search
+// API, and the old implementation threw — which breaks any
+// cross-platform unified search that calls searchAnchors on all 5
+// platforms. A room result already carries its anchor (owner
+// nickname/avatar + roomId + liveStatus), so it doubles as an anchor
+// result, the same shape Kuaishou returns from both searches.
+// Recommend: `webcast/feed/` (both response generations parsed).
+// Categories: homepage `categoryData` scrape; areaId "id,type".
 //
 // Danmaku: WS requires the ttwid cookie — the transport in
 // douyin_danmaku.dart handles it via the native WS util; untouched here.
@@ -818,13 +823,33 @@ class DouyinSite extends LiveSite {
     return _search.search(keyword, page: page, pageSize: pageSize);
   }
 
+  /// Anchor search (P1-19): Douyin has no anchor-search endpoint, so
+  /// this reuses [searchRooms] instead of throwing. A room result
+  /// already carries its anchor (owner nickname/avatar + roomId +
+  /// liveStatus), so it doubles as an anchor result — the same shape
+  /// Kuaishou returns from both searches. Never throws for a missing
+  /// anchor API: searchRooms returns [] when every stage fails.
+  ///
+  /// Caller contract across platforms — searchAnchors always returns
+  /// LiveRoom entries; only Bilibili can still throw (see below), so a
+  /// unified caller must try/catch per platform, never assume all five
+  /// behave alike:
+  /// - Douyin (here): room search reused; watching populated,
+  ///   liveStatus real.
+  /// - Bilibili: true anchor search, but it needs the buvid cookie —
+  ///   getHeader() fetches one first, and if that fetch fails the API
+  ///   answers HTTP 412 and parseSearchAnchors throws StateError.
+  /// - Huya/Douyu: true anchor search; watching is 0 (not reported),
+  ///   only nick/avatar/liveStatus are populated.
+  /// - Kuaishou: author search; watching is 0 (unknown, never faked),
+  ///   only the `living` flag says whether the anchor is live.
   @override
   Future<List<LiveRoom>> searchAnchors(
     String keyword, {
     int page = 1,
     int pageSize = 30,
   }) async {
-    throw Exception('抖音暂不支持搜索主播');
+    return searchRooms(keyword, page: page, pageSize: pageSize);
   }
 
   @override
