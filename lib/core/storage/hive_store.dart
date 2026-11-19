@@ -112,6 +112,14 @@ class HiveKeys {
   static const String musicCurListId = 'curListId';
   static const String musicPlayMode = 'playMode'; // 'seq' | 'loop' | 'one' | 'shuffle' | 'once'
 
+  /// Music home section expanded states (我的歌单 / 最近播放): bool,
+  /// default true (expanded). Persisted so a collapse survives tab
+  /// switches (the PageView drops the music page State when you go 2
+  /// tabs away) and restarts. Same pattern as
+  /// [playbackSectionExpanded].
+  static const String musicPlaylistsExpanded = 'musicPlaylistsExpanded';
+  static const String musicRecentExpanded = 'musicRecentExpanded';
+
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
 

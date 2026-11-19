@@ -80,7 +80,11 @@ import 'dart:async';
 // Order, top to bottom: feature shelf (search / daily /
 // plaza / charts / listen report), then 我的歌单, then 最近播放. Both
 // sections start EXPANDED; collapse is kept (tap the head) but the
-// default is open. Collapse state is per-section, kept for the session.
+// default is open. Collapse state is per-section and persisted in
+// Hive (musicPlaylistsExpanded / musicRecentExpanded): the bottom tab
+// is a PageView with no AutomaticKeepAlive, so switching 2 tabs away
+// disposes this State — without persistence the sections reopened by
+// themselves (reported 2026-11-19).
 //
 // Playlist card count = tracks.length (audit P0-1) — never a stored
 // count field. The import box lives inside the 我的歌单 section.
@@ -89,6 +93,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' hide GlassCard;
 
+import '../../core/storage/hive_store.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
@@ -168,7 +173,22 @@ class _MusicTabPageState extends State<MusicTabPage> {
   @override
   void initState() {
     super.initState();
+    _playlistsExpanded =
+        HiveStore.getBool(HiveKeys.musicPlaylistsExpanded, true);
+    _recentExpanded = HiveStore.getBool(HiveKeys.musicRecentExpanded, true);
     _refresh();
+  }
+
+  void _togglePlaylists() {
+    final next = !_playlistsExpanded;
+    setState(() => _playlistsExpanded = next);
+    unawaited(HiveStore.put(HiveKeys.musicPlaylistsExpanded, next));
+  }
+
+  void _toggleRecent() {
+    final next = !_recentExpanded;
+    setState(() => _recentExpanded = next);
+    unawaited(HiveStore.put(HiveKeys.musicRecentExpanded, next));
   }
 
   @override
@@ -354,9 +374,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                     CollapsibleSection(
                       title: '我的歌单',
                       expanded: _playlistsExpanded,
-                      onToggle: () => setState(
-                        () => _playlistsExpanded = !_playlistsExpanded,
-                      ),
+                      onToggle: _togglePlaylists,
                       showLeadingChevron: false,
                       horizontalPadding: 24,
                       verticalPadding: 10,
@@ -373,8 +391,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
                     CollapsibleSection(
                       title: '最近播放',
                       expanded: _recentExpanded,
-                      onToggle: () =>
-                          setState(() => _recentExpanded = !_recentExpanded),
+                      onToggle: _toggleRecent,
                       showLeadingChevron: false,
                       horizontalPadding: 24,
                       verticalPadding: 10,
