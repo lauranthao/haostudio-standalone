@@ -177,6 +177,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         children: [
           const _SectionTitle('主题'),
           HaoGlassCard(
+            quality: GlassCardQuality.standard,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,6 +365,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           if (_engineExpanded) ...[
             const SizedBox(height: 12),
             HaoGlassCard(
+              quality: GlassCardQuality.standard,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: RadioGroup<String>(
                 groupValue: _engineKey,
@@ -701,6 +703,7 @@ class _BackgroundSwatches extends StatelessWidget {
       pressedScale: 0.98,
       child: GlassCard(
         radius: 18,
+        quality: GlassCardQuality.standard,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

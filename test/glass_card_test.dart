@@ -13,6 +13,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassCard, GlassShadow;
 import 'package:standalone/core/theme/glass.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 
@@ -21,6 +23,7 @@ void main() {
     WidgetTester tester, {
     double radius = 20,
     GlassShadow shadow = GlassShadow.card,
+    GlassCardQuality quality = GlassCardQuality.frosted,
   }) async {
     await tester.pumpWidget(
       GetMaterialApp(
@@ -30,6 +33,7 @@ void main() {
             child: GlassCard(
               radius: radius,
               shadow: shadow,
+              quality: quality,
               child: const Text('glass'),
             ),
           ),
@@ -122,6 +126,44 @@ void main() {
             .first,
       );
       expect((decorated.decoration as BoxDecoration).boxShadow, isNull);
+    });
+
+    testWidgets('standard renders library glass, no BackdropFilter', (
+      tester,
+    ) async {
+      await pumpCard(tester, quality: GlassCardQuality.standard);
+      // Library branch: a GlassContainer (ios27 preset, own layer),
+      // and no hand-rolled BackdropFilter anywhere under the card.
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      // Same Beans card shadow as the frosted branch.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('premium renders library glass with premium floor', (
+      tester,
+    ) async {
+      await pumpCard(tester, quality: GlassCardQuality.premium);
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      expect(find.byType(GlassAdaptiveScope), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('frosted is the default (no quality arg)', (tester) async {
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const Scaffold(
+            body: Center(
+              child: GlassCard(child: Text('glass')),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      expect(find.byType(GlassContainer), findsNothing);
     });
   });
 

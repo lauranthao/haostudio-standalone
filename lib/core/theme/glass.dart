@@ -34,8 +34,10 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'hao_themes.dart';
+import 'liquid_glass_theme.dart';
 
 /// Shadow for a glass card (Beans `beansCardShadow` defaults).
 List<BoxShadow> glassCardShadow(BuildContext context) {
@@ -102,6 +104,32 @@ List<BoxShadow> glassSmallShadow(BuildContext context) {
   ];
 }
 
+/// Which glass a [GlassCard] renders with (Phase B, 2026-11-19).
+///
+/// - [frosted] (default): the hand-rolled look — BackdropFilter blur +
+///   theme surface + hairline + top sheen. Byte-identical to the old
+///   GlassCard, so dense list rows and inputs keep exactly their
+///   current look (and chen's "search-result rows are glass" stays).
+/// - [standard]: the library's lightweight single-pass shader
+///   (`GlassQuality.standard`, ios27 preset) — real liquid glass
+///   built for scrollable lists (library docs: 5-10x faster than
+///   BackdropFilter). Content cards, grouped section cards, scrolled
+///   controls.
+/// - [premium]: the library's full multi-pass shader
+///   (`GlassQuality.premium`, ios27 preset) with the
+///   `GlassAdaptiveScope(minQuality: premium)` floor, same as the tab
+///   bar / mini player. Floating panels, dialogs, sheet roots and
+///   single focal controls in STATIC (non-scrollable) layouts only —
+///   the library warns premium "may not render correctly in
+///   scrollable contexts".
+///
+/// The library branches draw their rim from the ios27 settings, so
+/// they take no [GlassCard.borderColor]: passing one with
+/// [standard]/[premium] is a debug assert. The shadow is the same
+/// Beans shadow on every branch (the library paints no shadow, so
+/// the outer Container keeps it — same pattern as the mini player).
+enum GlassCardQuality { frosted, standard, premium }
+
 /// A liquid-glass container: backdrop blur + low-alpha theme surface +
 /// hairline border + top highlight + soft shadow.
 ///
@@ -110,6 +138,9 @@ List<BoxShadow> glassSmallShadow(BuildContext context) {
 /// picks the card or panel shadow. The glass is transparent by design
 /// — over a flat scaffold background it reads as a tinted card; over
 /// varied content (cover art, lists) the blur shows.
+///
+/// [quality] selects the rendering (see [GlassCardQuality]). Default
+/// is [GlassCardQuality.frosted] — the old look, unchanged.
 class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
@@ -119,7 +150,12 @@ class GlassCard extends StatelessWidget {
     this.shadow = GlassShadow.card,
     this.margin,
     this.borderColor,
-  });
+    this.quality = GlassCardQuality.frosted,
+  }) : assert(
+         borderColor == null || quality == GlassCardQuality.frosted,
+         'borderColor is only supported by the frosted branch — the '
+         'library branches draw their rim from the ios27 settings',
+       );
 
   final Widget child;
   final double radius;
@@ -132,10 +168,81 @@ class GlassCard extends StatelessWidget {
   /// white-based stroke (white 0.22 light / 0.08 dark,
   /// GlassTabBar.swift) here; the bar now draws that stroke as an
   /// overlay above the library glass instead.
+  ///
+  /// Frosted only: the library branches ignore it (see
+  /// [GlassCardQuality] — debug assert if combined with them).
   final Color? borderColor;
+
+  /// Which glass this card renders with. Default frosted (old look).
+  final GlassCardQuality quality;
+
+  /// The Beans shadow for [shadow] (glass.dart header: card r9 y3,
+  /// panel r14 y8, tab bar r12 y4, mini player r10 y4, small r4 y2;
+  /// black 0.08 light / 0.35 dark, panel 0.16 light).
+  List<BoxShadow>? _shadowFor(BuildContext context) {
+    switch (shadow) {
+      case GlassShadow.none:
+        return null;
+      case GlassShadow.card:
+        return glassCardShadow(context);
+      case GlassShadow.panel:
+        return glassPanelShadow(context);
+      case GlassShadow.tabBar:
+        return glassTabBarShadow(context);
+      case GlassShadow.miniPlayer:
+        return glassMiniPlayerShadow(context);
+      case GlassShadow.small:
+        return glassSmallShadow(context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    switch (quality) {
+      case GlassCardQuality.frosted:
+        return _buildFrosted(context);
+      case GlassCardQuality.standard:
+        return _buildLibrary(context, GlassQuality.standard);
+      case GlassCardQuality.premium:
+        // Same floor as the tab bar / mini player: the adaptive
+        // monitor can never demote this panel to frosted standard.
+        return GlassAdaptiveScope(
+          minQuality: GlassQuality.premium,
+          child: _buildLibrary(context, GlassQuality.premium),
+        );
+    }
+  }
+
+  /// Library-backed card (standard / premium): ios27 preset +
+  /// own layer (per-widget settings are ignored in grouped mode
+  /// without it — GlassContainer docs) + the Beans shadow on an
+  /// outer Container (the library paints no shadow — same pattern
+  /// as the mini player). The shape is Apple's continuous corner
+  /// (LiquidRoundedSuperellipse) at the same radius number.
+  Widget _buildLibrary(BuildContext context, GlassQuality quality) {
+    final borderRadius = BorderRadius.circular(radius);
+    final glass = GlassContainer(
+      shape: LiquidRoundedSuperellipse(borderRadius: radius),
+      settings: HaoLiquidGlass.ios27Settings(context),
+      useOwnLayer: true,
+      quality: quality,
+      padding: padding,
+      child: child,
+    );
+    return Container(
+      margin: margin,
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: _shadowFor(context),
+      ),
+      child: glass,
+    );
+  }
+
+  /// The original hand-rolled frosted card, unchanged (Phase B kept
+  /// it as the default branch so the 28 frosted sites render exactly
+  /// as before).
+  Widget _buildFrosted(BuildContext context) {
     final theme = HaoTheme.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderRadius = BorderRadius.circular(radius);
@@ -143,14 +250,7 @@ class GlassCard extends StatelessWidget {
       margin: margin,
       decoration: BoxDecoration(
         borderRadius: borderRadius,
-        boxShadow: switch (shadow) {
-          GlassShadow.none => null,
-          GlassShadow.card => glassCardShadow(context),
-          GlassShadow.panel => glassPanelShadow(context),
-          GlassShadow.tabBar => glassTabBarShadow(context),
-          GlassShadow.miniPlayer => glassMiniPlayerShadow(context),
-          GlassShadow.small => glassSmallShadow(context),
-        },
+        boxShadow: _shadowFor(context),
       ),
       child: ClipRRect(
         borderRadius: borderRadius,

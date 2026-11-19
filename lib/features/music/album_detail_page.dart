@@ -394,6 +394,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       borderRadius: BorderRadius.circular(24),
       child: GlassCard(
         radius: 999,
+        quality: GlassCardQuality.standard,
         padding: EdgeInsets.zero,
         child: SizedBox(
           width: 48,

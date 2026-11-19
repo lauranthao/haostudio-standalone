@@ -65,6 +65,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
         child: GlassCard(
           radius: 24,
           shadow: GlassShadow.panel,
+          quality: GlassCardQuality.premium,
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 480),

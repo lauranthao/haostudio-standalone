@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
@@ -227,6 +228,7 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
           Expanded(
             child: HaoGlassCard(
               margin: const EdgeInsets.symmetric(horizontal: 8),
+              quality: GlassCardQuality.standard,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: ReorderableListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 4),

@@ -133,6 +133,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
         return GlassCard(
           radius: 24,
           shadow: GlassShadow.panel,
+          quality: GlassCardQuality.premium,
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: Column(
@@ -673,6 +674,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       radius: 999,
                       padding: EdgeInsets.zero,
                       shadow: GlassShadow.none,
+                      quality: GlassCardQuality.premium,
                       child: SizedBox(
                         width: 54,
                         height: 30,

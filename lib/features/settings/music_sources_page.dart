@@ -31,6 +31,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../widgets/glass_dialog.dart';
@@ -401,6 +402,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     final ordered = _orderedScriptInfos();
     return HaoGlassCard(
       padding: const EdgeInsets.symmetric(vertical: 4),
+      quality: GlassCardQuality.standard,
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),

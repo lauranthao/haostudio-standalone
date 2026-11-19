@@ -175,6 +175,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
     return Expanded(
       child: GlassCard(
         radius: 24,
+        quality: GlassCardQuality.standard,
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           children: [

@@ -238,6 +238,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                       radius: 999,
                                       padding: EdgeInsets.zero,
                                       shadow: GlassShadow.card,
+                                      quality: GlassCardQuality.standard,
                                       child: IconButton(
                                         icon: Icon(
                                           Icons.history,
@@ -255,6 +256,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                       radius: 999,
                                       padding: EdgeInsets.zero,
                                       shadow: GlassShadow.card,
+                                      quality: GlassCardQuality.standard,
                                       child: IconButton(
                                         icon: Icon(
                                           Icons.favorite_border,
@@ -280,6 +282,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                                   ),
                                   child: GlassCard(
                                     radius: 10,
+                                    quality: GlassCardQuality.standard,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
                                       vertical: 8,

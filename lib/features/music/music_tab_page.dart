@@ -657,6 +657,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         children: [
           GlassCard(
             radius: 20,
+            quality: GlassCardQuality.standard,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             // Transparent Material so the rows' InkWells can paint
             // ripples (GlassCard itself carries no Material).

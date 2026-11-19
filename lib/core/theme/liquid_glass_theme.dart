@@ -32,11 +32,16 @@
 //   standard/minimal on a busy phone. The rest of the app keeps
 //   ios27 defaults.
 //
-// Our own GlassCard (BackdropFilter + hairline + highlight) stays
-// for content rows (chen: search-result rows are glass; SKILL.md
-// Rule 1 would make them solid — chen wins) and for surfaces the
-// library cannot express in our colours (dialogs: its primary
-// action forces a blue glow, destructive forces red).
+// Our own GlassCard stays the single card widget, now with a quality
+// parameter (Phase B): frosted (default, the old BackdropFilter +
+// hairline + highlight) for content rows (chen: search-result rows
+// are glass; SKILL.md Rule 1 would make them solid — chen wins),
+// standard/premium library glass for content cards, floating panels
+// and dialog shells. The dialog note below concerns the library's
+// GlassDialog widget (its primary action forces a blue glow,
+// destructive forces red) — a GlassContainer SHELL for our own
+// dialog content is fine, because the caller's buttons carry the
+// theme colours, not the library's actions.
 
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
