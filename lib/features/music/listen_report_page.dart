@@ -21,6 +21,7 @@ import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 
 /// Empty-state text for the selected range. The empty state is
@@ -87,7 +88,12 @@ class _ListenReportPageState extends State<ListenReportPage> {
       backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('听歌报告')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          16 + MiniPlayerBar.bottomClearanceFor(context),
+        ),
         children: [
           Row(
             children: [

@@ -22,6 +22,7 @@ import '../../services/music/music_models.dart';
 import '../../widgets/glass_dialog.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 
 class LocalMusicPage extends StatefulWidget {
   const LocalMusicPage({super.key});
@@ -156,6 +157,9 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                 ),
                 Expanded(
                   child: ListView.builder(
+                    padding: EdgeInsets.only(
+                      bottom: MiniPlayerBar.bottomClearanceFor(context),
+                    ),
                     itemCount: _songs.length,
                     itemBuilder: (ctx, i) {
                       final song = _songs[i];

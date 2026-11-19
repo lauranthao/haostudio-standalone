@@ -31,6 +31,7 @@ import '../../../services/music/sleep_timer.dart';
 import '../../../services/music/equalizer_store.dart';
 import '../comments_page.dart';
 import '../equalizer_page.dart';
+import '../music_navigation.dart';
 import '../music_player_controller.dart';
 import '../music_player_sheet.dart';
 import 'sleep_timer_sheet.dart';
@@ -194,6 +195,7 @@ Future<void> handleTrackMoreAction(
         unawaited(
           Navigator.of(context).push(
             MaterialPageRoute<void>(
+              settings: const RouteSettings(name: musicSubPageRouteName),
               builder: (_) => SongCommentsPage(song: song),
             ),
           ),

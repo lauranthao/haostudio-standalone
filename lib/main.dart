@@ -25,6 +25,7 @@ import 'core/theme/liquid_glass_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/live/live_breadcrumb.dart';
 import 'features/music/av_music_player.dart';
+import 'features/music/mini_player_overlay.dart';
 import 'features/settings/update_dialog.dart';
 import 'features/splash/splash_page.dart';
 import 'services/custom_font_service.dart';
@@ -136,6 +137,17 @@ class HAoApp extends StatelessWidget {
         darkTheme: themeController.darkTheme,
         themeMode: themeController.themeMode.value,
         home: const SplashPage(),
+        navigatorObservers: [musicRouteObserver],
+        // App-level mini player overlay: floats above the root Navigator
+        // on music sub-pages only (the observer decides). The home keeps
+        // its own embedded bar; the overlay is hidden there, on the full
+        // player, and on video / live / settings pages.
+        builder: (context, child) => Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            MiniPlayerOverlay(observer: musicRouteObserver),
+          ],
+        ),
       ),
     );
   }

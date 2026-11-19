@@ -28,9 +28,11 @@ import '../../services/music/search_prewarm.dart';
 import '../../services/music/song_search_service.dart';
 import 'album_detail_page.dart';
 import 'artist_detail_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'plaza_page.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
@@ -766,7 +768,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
     if (!_searched) {
       final history = MusicStore.getSearchHistory();
       return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          4,
+          16,
+          16 + MiniPlayerBar.bottomClearanceFor(context),
+        ),
         children: [
           if (history.isNotEmpty)
             _SearchHistory(
@@ -867,6 +874,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 controller: _scrollController,
                 itemCount: shown.length + 1,
                 itemBuilder: (ctx, i) {
@@ -945,6 +955,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _playlists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _playlists.length) return _pendingFooter(theme);
@@ -1036,6 +1049,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _artists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _artists.length) return _pendingFooter(theme);
@@ -1079,6 +1095,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(
                                 platform: a.platform,
                                 artistId: a.id,
@@ -1117,6 +1135,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _albums.length,
                 itemBuilder: (ctx, i) {
                   final a = _albums[i];
@@ -1185,6 +1206,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => AlbumDetailPage(
                                 platform: a.platform,
                                 albumId: a.id,
@@ -1210,6 +1233,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openArtist(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => ArtistDetailPage(
           platform: song.platform,
           artistId: '',
@@ -1222,6 +1246,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openAlbum(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => AlbumDetailPage(
           platform: song.platform,
           albumId: '',
@@ -1234,7 +1259,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openPlazaDetail(PlaylistSummary p) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => PlazaDetailPage(playlist: p)),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
+        builder: (_) => PlazaDetailPage(playlist: p),
+      ),
     );
   }
 }
