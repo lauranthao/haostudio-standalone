@@ -926,7 +926,16 @@ class MusicPlayerController extends GetxController
       if (r == null || r.url.isEmpty) {
         // _tryAltOrNext keeps the flag (same gen) while it looks for
         // an alt platform, then clears it.
-        await _tryAltOrNext(song, gen, auto: auto, reason: '无可用音源');
+        // A null resolve is only "no source" when every available
+        // job was actually tried: if the 8 s budget ran out with
+        // jobs still untried, say so instead of claiming no source
+        // exists — the retry really does re-try them (a cooled job
+        // is only sorted last, never skipped, and the trial
+        // exclusion was cleared at the top of this load).
+        final reason = _resolvers.lastResolveTruncated
+            ? '解析超时，未试完所有音源'
+            : '无可用音源';
+        await _tryAltOrNext(song, gen, auto: auto, reason: reason);
         return;
       }
       url = r.url;
