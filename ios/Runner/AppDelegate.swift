@@ -39,5 +39,11 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.NowPlayingPlugin") {
       NowPlayingPlugin.register(with: registrar)
     }
+    // System volume (video / live drag volume drives the device
+    // volume, not the player gain): getVolume / setVolume +
+    // volumeChanged push for hardware keys / Control Center.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.SystemVolumePlugin") {
+      SystemVolumePlugin.register(with: registrar)
+    }
   }
 }

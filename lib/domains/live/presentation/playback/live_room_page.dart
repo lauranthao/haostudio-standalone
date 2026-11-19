@@ -38,6 +38,7 @@ import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../../../core/models/live_models.dart';
+import '../../../../core/native/system_volume.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
@@ -148,7 +149,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // only — the transport keeps running; hides the portrait list and
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
-  double _volume = 1.0;
+  // System volume (MethodChannel): the vertical drag drives the
+  // device volume, not the player gain; the channel is the source
+  // of truth — there is no local level cache.
+  final SystemVolume _systemVolume = SystemVolume();
+  StreamSubscription<double>? _volumeSub;
   // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
   // the surface maps to a quarter of the level range per half-height
   // (see _applyDrag); the card hides 1 s after the last drag.
@@ -260,6 +265,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(LiveBreadcrumb.write('live-msg'));
     unawaited(LiveBreadcrumb.write('live-present'));
     unawaited(_loadRoom());
+    // Keep the HUD on the real level when hardware keys / Control
+    // Center move it. The drag itself reads the level live.
+    _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
   }
 
   Future<void> _loadRoom() async {
@@ -1076,11 +1084,22 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         _startsInSystemHomeGestureZone(details.localPosition, size);
   }
 
+  /// Hardware keys / Control Center changed the system volume:
+  /// keep the cached level and the drag HUD on the same value. A
+  /// brightness HUD already on screen is left alone.
+  void _onExternalVolume(double volume) {
+    if (!mounted) return;
+    if (_dragHudVisible && _dragIsBrightness) return;
+    setState(() {
+      _dragIsBrightness = false;
+      _dragValue = volume;
+    });
+    _keepDragHudVisible();
+  }
+
   /// Vertical drag: left half brightness, right half volume (Pure Live
   /// PlayerGestureLayer._apply, verbatim formula). Volume is the
-  /// PLAYER volume (`session.setVolume`) — Pure Live also drives the
-  /// system volume via VolumeController, which this app does not
-  /// depend on; the player volume is the part that changes loudness.
+  /// SYSTEM volume (SystemVolume channel).
   Future<void> _onVerticalDragUpdate(DragUpdateDetails details) async {
     if (_dragInSystemZone || _controlsLocked) return;
     final size = _videoSurfaceKey.currentContext?.size;
@@ -1092,7 +1111,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _dragIsBrightness = isBrightness;
       final observed = isBrightness
           ? await ScreenBrightness.getBrightness()
-          : _volume;
+          : await _systemVolume.getVolume();
       if (!mounted) return;
       setState(() => _dragValue = observed.clamp(0.0, 1.0));
     }
@@ -1109,8 +1128,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (isBrightness) {
       unawaited(ScreenBrightness.setBrightness(target));
     } else {
-      _volume = target;
-      unawaited(_session.setVolume(target));
+      unawaited(_systemVolume.setVolume(target));
     }
   }
 
@@ -1271,6 +1289,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
     _dragHudTimer?.cancel();
+    _volumeSub?.cancel();
+    _systemVolume.dispose();
     _barrageController.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
