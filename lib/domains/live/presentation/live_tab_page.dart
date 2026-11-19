@@ -140,7 +140,6 @@ class _LiveTabPageState extends State<LiveTabPage> {
         return _StateView(
           icon: Icons.live_tv_outlined,
           title: '暂无直播间',
-          subtitle: '该平台暂时没有返回推荐内容，换个平台试试，或稍后重试',
           actionLabel: '重新加载',
           onAction: _controller.retry,
         );
@@ -479,6 +478,12 @@ class _RoomCardState extends State<_RoomCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Empty title used to fall back to nick here, so
+                      // the same name showed twice. Now an empty title
+                      // renders one nick line only (14 bold, same
+                      // style as the title line); the second line is
+                      // skipped. Card height is fixed by the grid
+                      // aspect ratio, so it does not change.
                       Text(
                         room.title.isEmpty ? room.nick : room.title,
                         maxLines: 1,
@@ -489,16 +494,18 @@ class _RoomCardState extends State<_RoomCard> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        room.nick,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 12,
+                      if (room.title.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          room.nick,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -605,20 +612,22 @@ class _SkeletonGrid extends StatelessWidget {
   }
 }
 
-/// Centred honest state (empty / error): icon, title, subtitle, retry.
+/// Centred honest state (empty / error): icon, title, optional
+/// subtitle, retry. The empty state has no subtitle (removed
+/// 2026-11-19 clean pass); the error state keeps its '请检查网络后重试'.
 /// The retry button uses the theme accent — never red.
 class _StateView extends StatelessWidget {
   const _StateView({
     required this.icon,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.actionLabel,
     required this.onAction,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String actionLabel;
   final VoidCallback onAction;
 
@@ -648,16 +657,18 @@ class _StateView extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: theme.textSecondary,
-                fontSize: 14,
-                height: 1.5,
+            if (subtitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: theme.textSecondary,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 20),
             FilledButton(
               onPressed: onAction,
