@@ -120,6 +120,9 @@ class HiveKeys {
   static const String musicPlaylistsExpanded = 'musicPlaylistsExpanded';
   static const String musicRecentExpanded = 'musicRecentExpanded';
 
+  /// Personal FM disliked song identityKeys (never recommend again).
+  static const String fmDislikedIds = 'fmDislikedIds';
+
   /// Daily-picks cache key for a day (`hao_daily_YYYY-MM-DD`).
   static String musicDailyKey(String dayKey) => 'hao_daily_$dayKey';
 

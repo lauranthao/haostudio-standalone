@@ -78,7 +78,8 @@ import 'dart:async';
 //   (LibraryPages.swift:52-55).
 //
 // Order, top to bottom: feature shelf (search / daily /
-// plaza / charts / listen report), then 我的歌单, then 最近播放. Both
+// plaza / charts / listen report), then 我的歌单, then 私人漫游 /
+// 心动模式 (two cards side by side), then 最近播放. Both
 // sections start EXPANDED; collapse is kept (tap the head) but the
 // default is open. Collapse state is per-section and persisted in
 // Hive (musicPlaylistsExpanded / musicRecentExpanded): the bottom tab
@@ -107,6 +108,7 @@ import 'charts_page.dart';
 import 'daily_page.dart';
 import 'downloads_page.dart';
 import 'favourites_page.dart';
+import 'fm_service.dart';
 import 'listen_report_page.dart';
 import 'local_music_page.dart';
 import 'music_navigation.dart';
@@ -335,6 +337,78 @@ class _MusicTabPageState extends State<MusicTabPage> {
     );
   }
 
+  /// Start personal FM, then open the full player. When there are no
+  /// local seeds at all the service returns false and a real prompt
+  /// is shown instead of failing silently.
+  Future<void> _startFM() async {
+    final started = await FmService.ensure().startFM();
+    if (!mounted) return;
+    if (!started) {
+      await _showFmEmptyPrompt(
+        title: '私人漫游',
+        body: '还没有收藏和最近播放的歌曲。先收藏几首喜欢的歌，或者听几首歌，私人漫游会从这些歌出发，为你找相似的歌。',
+      );
+      return;
+    }
+    _openPlayer();
+  }
+
+  /// Start heartbeat mode, then open the full player. With no liked
+  /// songs the service returns false and a real prompt is shown.
+  Future<void> _startHeartbeat() async {
+    final started = await FmService.ensure().startHeartbeat();
+    if (!mounted) return;
+    if (!started) {
+      await _showFmEmptyPrompt(
+        title: '心动模式',
+        body: '还没有收藏的歌曲。先去收藏几首喜欢的歌，心动模式会以其中一首为种子，为你找相似的歌。',
+      );
+      return;
+    }
+    _openPlayer();
+  }
+
+  Future<void> _showFmEmptyPrompt({
+    required String title,
+    required String body,
+  }) async {
+    await showGlassDialog<void>(
+      context,
+      builder: (ctx) {
+        final theme = HaoTheme.of(ctx);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('知道了'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// Daily first cover for the 每日推荐 feature card: sync read of the
   /// cached daily list only. If the user has never opened Daily today
   /// there is no cached list and the card falls back to the theme
@@ -387,6 +461,9 @@ class _MusicTabPageState extends State<MusicTabPage> {
                     ),
                     // Gap arithmetic: body bottom (no trailing spacer) +
                     // 10 + next head top padding 10 = sectionSpacing 20.
+                    const SizedBox(height: 10),
+                    _fmRow(theme),
+                    // Same 10 + 10 arithmetic before the next section.
                     const SizedBox(height: 10),
                     CollapsibleSection(
                       title: '最近播放',
@@ -480,6 +557,58 @@ class _MusicTabPageState extends State<MusicTabPage> {
               child: _FeatureCard(tile: tiles[i]),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Personal FM + heartbeat cards, side by side between 我的歌单 and
+  /// 最近播放. Same _FeatureCard rendering as the shelf (radius 12,
+  /// white 0.12 stroke, icon 22 top-left, title 15 bold bottom-left,
+  /// no subtitle); half width each (16 gap) at 96 high to keep the
+  /// shelf's 230:132 ratio. Gradients are Kumone's: FM indigo shifted
+  /// blue like the 排行榜 card (purple end banned), heartbeat red-pink.
+  /// NOTE: the two gradients intentionally match the 排行榜 / 歌单广场
+  /// cards (the brief says to copy Kumone's values); if that reads as
+  /// duplicated, shift one of them.
+  Widget _fmRow(HaoTheme theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StaggerIn(
+              index: 5,
+              id: 'home-fm',
+              child: _FeatureCard(
+                width: double.infinity,
+                height: 96,
+                tile: _FeatureTile(
+                  icon: Icons.waves,
+                  title: '私人漫游',
+                  gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
+                  onTap: _startFM,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _StaggerIn(
+              index: 6,
+              id: 'home-heartbeat',
+              child: _FeatureCard(
+                width: double.infinity,
+                height: 96,
+                tile: _FeatureTile(
+                  icon: Icons.favorite,
+                  title: '心动模式',
+                  gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
+                  onTap: _startHeartbeat,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -824,16 +953,24 @@ class _MusicTabPageState extends State<MusicTabPage> {
 /// header); the theme accent is never used here, so the cards stay
 /// coloured in all 4 themes x light/dark.
 class _FeatureCard extends StatelessWidget {
-  const _FeatureCard({required this.tile});
+  const _FeatureCard({required this.tile, this.width = 230, this.height = 132});
 
   final _FeatureTile tile;
+
+  /// Card width (the shelf uses the Kumone 230; the FM / heartbeat
+  /// row passes double.infinity inside its Expanded cells).
+  final double width;
+
+  /// Card height (the shelf uses the Kumone 132; the FM / heartbeat
+  /// row uses 96 to keep the 230:132 ratio at half width).
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final cover = tile.cover;
     return Container(
-      width: 230,
-      height: 132,
+      width: width,
+      height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(

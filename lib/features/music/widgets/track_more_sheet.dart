@@ -31,6 +31,7 @@ import '../../../services/music/sleep_timer.dart';
 import '../../../services/music/equalizer_store.dart';
 import '../comments_page.dart';
 import '../equalizer_page.dart';
+import '../fm_service.dart';
 import '../music_navigation.dart';
 import '../music_player_controller.dart';
 import '../music_player_sheet.dart';
@@ -44,6 +45,8 @@ enum TrackMoreAction {
   playMode,
   sleepTimer,
   playNext,
+  // Personal FM only: "不喜欢" (skip + never recommend again).
+  dislike,
   download,
   equalizer,
   cancel,
@@ -240,6 +243,13 @@ Future<void> handleTrackMoreAction(
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(ok ? '已加入下一首播放' : '这首歌正在播放')));
       }
+    case TrackMoreAction.dislike:
+      await FmService.ensure().dislike(song);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已记为不喜欢，以后不再推荐')),
+        );
+      }
     case TrackMoreAction.equalizer:
       // Stage 3: opens the 10-band EQ page (same destination as the
       // settings playback-panel row). The sheet is already popped by
@@ -410,6 +420,14 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
               title: Text('下一首播放', style: TextStyle(color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playNext),
             ),
+            // Personal FM only: "不喜欢" skips the song and never
+            // recommends it again (FmService.dislike).
+            if (FmService.ensure().isFM.value)
+              ListTile(
+                leading: Icon(Icons.thumb_down, color: theme.textPrimary),
+                title: Text('不喜欢', style: TextStyle(color: theme.textPrimary)),
+                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.dislike),
+              ),
             Obx(
               () => ListTile(
                 leading: Icon(
