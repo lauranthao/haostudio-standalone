@@ -84,6 +84,7 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-player.xml
             adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml
             adb exec-out screencap -p > $GITHUB_WORKSPACE/player.png
+            for i in $(seq 1 12); do adb shell uiautomator dump /sdcard/ui-player.xml >/dev/null 2>&1; adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml >/dev/null 2>&1; PROG=$(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-player.xml').read(); ds=[d for d in re.findall(r'content-desc=\"([^\"]*)\"', s); print(ds)" 2>/dev/null); echo "wait-playing $i: $PROG"; echo "$PROG" | grep -qv '0:00', '0:00' && break; sleep 5; done
             adb shell cmd statusbar expand-notifications
             sleep 2
             adb shell uiautomator dump /sdcard/ui-notif.xml || true
@@ -92,10 +93,10 @@ jobs:
             # Phase 2: tap notification pause button (from notif-shade.png: pause icon center ~ (250,945) on the 1080x1920 screen)
             adb shell input tap $(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-notif.xml').read(); m=re.search(r'resource-id=\"android:id/action1\"[^>]*bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', s); print((int(m.group(1))+int(m.group(3)))//2, (int(m.group(2))+int(m.group(4)))//2)" 2>/dev/null || echo "258 864")
             sleep 3
-            adb shell uiautomator dump /sdcard/ui-player-paused.xml || true
-            adb pull /sdcard/ui-player-paused.xml $GITHUB_WORKSPACE/ui-player-paused.xml || true
             adb shell cmd statusbar collapse
             sleep 1
+            adb shell uiautomator dump /sdcard/ui-player-paused.xml || true
+            adb pull /sdcard/ui-player-paused.xml $GITHUB_WORKSPACE/ui-player-paused.xml || true
             adb exec-out screencap -p > $GITHUB_WORKSPACE/player-paused.png
             adb shell cmd statusbar expand-notifications
             sleep 2
