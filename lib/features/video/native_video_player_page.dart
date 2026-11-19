@@ -53,6 +53,56 @@ int? autoNextEpisodeIndex({
   return next < total ? next : null;
 }
 
+/// Resolve the line/episode to play on a switch-target detail
+/// (P1-17, pure — unit-tested):
+/// - Same episode by NAME first, searched across ALL of the target's
+///   lines (the target may put the episode on its 2nd/3rd line while
+///   the current source has it on the 1st) — `matchedByName` true.
+/// - No same-name episode: keep the CURRENT line number (clamped to
+///   the target's line count) and clamp the episode index into that
+///   line — never "always line 1". `matchedByName` false, and the
+///   caller must NOT resume a saved position into the clamped
+///   episode: the clamp is a best-effort neighbour, not the same
+///   episode (P1-15 rule: only the same episode resumes).
+/// - No episodes anywhere: (0, 0, false); the caller skips the target.
+({int lineIdx, int epIdx, bool matchedByName}) resolveSwitchTarget({
+  required List<PlayLine> lines,
+  required String epName,
+  required int lineIdx,
+  required int epIdx,
+}) {
+  if (lines.isEmpty) return (lineIdx: 0, epIdx: 0, matchedByName: false);
+  for (var li = 0; li < lines.length; li++) {
+    final eps = lines[li].episodes;
+    for (var ei = 0; ei < eps.length; ei++) {
+      if (eps[ei].name == epName) {
+        return (lineIdx: li, epIdx: ei, matchedByName: true);
+      }
+    }
+  }
+  final li = lineIdx.clamp(0, lines.length - 1);
+  var eps = lines[li].episodes;
+  var targetLine = li;
+  if (eps.isEmpty) {
+    // The corresponding line is empty: first non-empty line wins.
+    var found = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].episodes.isNotEmpty) {
+        found = i;
+        break;
+      }
+    }
+    if (found < 0) return (lineIdx: 0, epIdx: 0, matchedByName: false);
+    targetLine = found;
+    eps = lines[found].episodes;
+  }
+  return (
+    lineIdx: targetLine,
+    epIdx: epIdx.clamp(0, eps.length - 1),
+    matchedByName: false,
+  );
+}
+
 /// Opens [detail] at [initialLineIndex]/[initialEpisodeIndex] in
 /// landscape fullscreen. [onClose] reports the last line/episode/
 /// position so the detail page can refresh its resume state.
@@ -281,9 +331,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     if (meta.name.isEmpty) return false;
     // Capture before the loop: a failed switch attempt already
     // replaced _detail, so later matches must still use the ORIGINAL
-    // episode name/index.
+    // episode name/index/line.
     final epName = _episode.name;
     final epIndex = _epIdx;
+    final lineIndex = _lineIdx;
     var attempts = 0;
     try {
       await for (final alt in _detailService.findAlts(
@@ -302,20 +353,33 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           continue;
         }
         if (!altDetail.usable) continue;
-        final eps = altDetail.lines.first.episodes;
-        if (eps.isEmpty) continue;
-        // Same episode: same name first (e.g. 第21集）, else same
-        // index clamped to the new line's length.
-        var epIdx = eps.indexWhere((e) => e.name == epName);
-        if (epIdx < 0) epIdx = epIndex.clamp(0, eps.length - 1);
+        if (!altDetail.lines.any((l) => l.episodes.isNotEmpty)) continue;
+        // P1-17: same episode by name across ALL lines first; else
+        // keep the current line number and clamp the episode index
+        // into that line — never forced to the target's line 1.
+        final target = resolveSwitchTarget(
+          lines: altDetail.lines,
+          epName: epName,
+          lineIdx: lineIndex,
+          epIdx: epIndex,
+        );
         if (!mounted) return false;
         setState(() {
           _detail = altDetail;
-          _lineIdx = 0;
-          _epIdx = epIdx;
+          _lineIdx = target.lineIdx;
+          _epIdx = target.epIdx;
           _resumeSought = false;
         });
         if (await _openEpisodeUrl()) {
+          // P1-15: only the SAME episode resumes. A name-matched
+          // switch keeps the saved position (the resume seek in
+          // _openCurrent runs after this returns); a clamped switch
+          // landed on a neighbour episode, so the old position must
+          // not follow it there.
+          if (!target.matchedByName) {
+            _resumePosition = 0;
+            _resumeSought = true;
+          }
           if (mounted) {
             ScaffoldMessenger.maybeOf(context)
                 ?.showSnackBar(const SnackBar(content: Text('已切换片源，继续播放')));
