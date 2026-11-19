@@ -84,7 +84,7 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-player.xml
             adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml
             adb exec-out screencap -p > $GITHUB_WORKSPACE/player.png
-            for i in $(seq 1 12); do adb shell uiautomator dump /sdcard/ui-player.xml >/dev/null 2>&1; adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml >/dev/null 2>&1; PROG=$(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-player.xml').read(); ds=[d for d in re.findall(r'content-desc=\"([^\"]*)\"', s); print(ds)" 2>/dev/null); echo "wait-playing $i: $PROG"; echo "$PROG" | grep -qv '0:00', '0:00' && break; sleep 5; done
+            for i in $(seq 1 12); do adb shell uiautomator dump /sdcard/ui-player.xml >/dev/null 2>&1; adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml >/dev/null 2>&1; PROG=$(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-player.xml').read(); ds=[d for d in re.findall(r'content-desc=\"([^\"]*)\"', s) if d]; print(ds)" 2>/dev/null); echo "wait-playing $i: $PROG"; echo "$PROG" | grep -qv "'0:00', '0:00'" && break; sleep 5; done
             adb shell cmd statusbar expand-notifications
             sleep 2
             adb shell uiautomator dump /sdcard/ui-notif.xml || true
