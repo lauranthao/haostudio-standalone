@@ -84,6 +84,13 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-player.xml
             adb pull /sdcard/ui-player.xml $GITHUB_WORKSPACE/ui-player.xml
             adb exec-out screencap -p > $GITHUB_WORKSPACE/player.png
+            adb shell cmd statusbar expand-notifications
+            sleep 2
+            adb shell uiautomator dump /sdcard/ui-notif.xml
+            adb pull /sdcard/ui-notif.xml $GITHUB_WORKSPACE/ui-notif.xml
+            adb exec-out screencap -p > $GITHUB_WORKSPACE/notif-shade.png
+            adb shell dumpsys notification | grep -i "hao_music_playback" | head -5 || true
+            adb shell dumpsys media_session | head -50            
             adb shell input keyevent 4
             sleep 1
             adb shell input tap 171 1662
@@ -120,4 +127,6 @@ jobs:
             video-home.png
             ui-detail.xml
             video-detail.png
+            ui-notif.xml
+            notif-shade.png
           retention-days: 7
