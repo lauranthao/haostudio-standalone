@@ -318,7 +318,17 @@ void main() {
 
     testWidgets('toggle OFF stops at the end of the episode',
         (tester) async {
-      await VideoPlaybackSettings.setAutoNext(false);
+      // Fire-and-forget, NOT awaited and NOT runAsync: the value
+      // lands in the box synchronously (the getter reads it right
+      // away), which is all this test needs before pumpPlayer.
+      // Awaiting the put hangs in the FULL file run (it passes
+      // alone): the earlier widget test leaves fire-and-forget Hive
+      // writes queued ahead of it, and their futures never resolve
+      // in the fake-async zone, so an awaited put behind them never
+      // resolves either — even inside runAsync. This is the same
+      // pattern the file's tearDown (unawaited deletes) and the
+      // production in-player toggle already use for Hive writes.
+      unawaited(VideoPlaybackSettings.setAutoNext(false));
       await pumpPlayer(tester);
 
       currentBackend().emitCompleted();
