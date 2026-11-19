@@ -586,7 +586,10 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 tile: _FeatureTile(
                   icon: Icons.waves,
                   title: '私人漫游',
-                  gradient: const [Color(0xFF1A408C), Color(0xFF2959D9)],
+                  // NOTE: Kumone 私人漫游 indigo shifted blue is #1A408C->#2959D9,
+                  // but 排行榜 already uses it — file rule: no two cards share a
+                  // gradient. Same indigo-blue family, darker so the two read apart.
+                  gradient: const [Color(0xFF0F2A5C), Color(0xFF1D4ED8)],
                   onTap: _startFM,
                 ),
               ),
@@ -603,7 +606,10 @@ class _MusicTabPageState extends State<MusicTabPage> {
                 tile: _FeatureTile(
                   icon: Icons.favorite,
                   title: '心动模式',
-                  gradient: const [Color(0xFFD93069), Color(0xFFFA6B57)],
+                  // NOTE: Kumone 心动模式 red-pink is #D93069->#FA6B57,
+                  // but 歌单广场 already uses it — file rule: no two cards share a
+                  // gradient. Same red-pink family, rose end instead of orange.
+                  gradient: const [Color(0xFFBE123C), Color(0xFFF43F5E)],
                   onTap: _startHeartbeat,
                 ),
               ),
