@@ -34,6 +34,7 @@ import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 import '../../widgets/platform_logo.dart';
+import '../../widgets/play_count_badge.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
@@ -261,8 +262,15 @@ class _PlazaPageState extends State<PlazaPage> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                // 播放量只在角标里出现一次（Kumone
+                                // PlayCountBadge）：副标题不再重复 raw
+                                // 数字，避免“12.3万”和“123456次播放”
+                                // 两处打架；playCount 为 0 时角标不
+                                // 显示，副标题也不画“0次播放”。
                                 subtitle: Text(
-                                  '${p.creator.isEmpty ? p.platform.displayName : p.creator} · ${p.playCount}次播放',
+                                  p.creator.isEmpty
+                                      ? p.platform.displayName
+                                      : p.creator,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -270,9 +278,22 @@ class _PlazaPageState extends State<PlazaPage> {
                                     fontSize: 13,
                                   ),
                                 ),
-                                trailing: Icon(
-                                  Icons.chevron_right,
-                                  color: theme.textMuted,
+                                // Kumone 把角标放封面右上角（Cards.swift:28-30），
+                                // 但本页卡片是 ListTile 行、封面只有 52px，
+                                // 角标最窄约 47px，6px 内嵌会溢出封面左缘，
+                                // 所以落点改为行尾（badge + chevron）。
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (p.playCount > 0)
+                                      PlayCountBadge(count: p.playCount),
+                                    if (p.playCount > 0)
+                                      const SizedBox(width: 8),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: theme.textMuted,
+                                    ),
+                                  ],
                                 ),
                                 onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute<void>(
