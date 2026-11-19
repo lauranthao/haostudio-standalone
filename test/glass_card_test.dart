@@ -24,6 +24,7 @@ void main() {
     double radius = 20,
     GlassShadow shadow = GlassShadow.card,
     GlassCardQuality quality = GlassCardQuality.frosted,
+    LinearGradient? tint,
   }) async {
     await tester.pumpWidget(
       GetMaterialApp(
@@ -34,6 +35,7 @@ void main() {
               radius: radius,
               shadow: shadow,
               quality: quality,
+              tint: tint,
               child: const Text('glass'),
             ),
           ),
@@ -164,6 +166,47 @@ void main() {
       await tester.pump();
       expect(find.byType(BackdropFilter), findsOneWidget);
       expect(find.byType(GlassContainer), findsNothing);
+    });
+
+    testWidgets('standard + tint paints the wash, still library glass', (
+      tester,
+    ) async {
+      const wash = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0x241D4ED8), Color(0x0F1D4ED8)],
+      );
+      await pumpCard(
+        tester,
+        quality: GlassCardQuality.standard,
+        tint: wash,
+      );
+      // Library branch: GlassContainer, no hand-rolled BackdropFilter.
+      expect(find.byType(GlassContainer), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsNothing);
+      // The wash is the child background: one Container whose
+      // BoxDecoration gradient is exactly the tint passed in.
+      final washBox = find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).gradient == wash,
+      );
+      expect(washBox, findsOneWidget);
+      expect(find.text('glass'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tint with frosted asserts (frosted owns its surface)', (
+      tester,
+    ) async {
+      expect(
+        () => GlassCard(
+          tint: const LinearGradient(colors: [Colors.blue, Colors.blue]),
+          child: const Text('glass'),
+        ),
+        throwsAssertionError,
+      );
     });
   });
 

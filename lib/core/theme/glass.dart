@@ -128,6 +128,12 @@ List<BoxShadow> glassSmallShadow(BuildContext context) {
 /// [standard]/[premium] is a debug assert. The shadow is the same
 /// Beans shadow on every branch (the library paints no shadow, so
 /// the outer Container keeps it — same pattern as the mini player).
+///
+/// A [GlassCard.tint] wash (FM / heartbeat cards, 2026-11-19) is
+/// painted as the child background inside the library branches only
+/// — the frosted branch owns its own surface, so tint + frosted is
+/// a debug assert. The tint is a caller-built gradient (per-mode
+/// alphas live at the call site, next to the colours they tint).
 enum GlassCardQuality { frosted, standard, premium }
 
 /// A liquid-glass container: backdrop blur + low-alpha theme surface +
@@ -151,10 +157,16 @@ class GlassCard extends StatelessWidget {
     this.margin,
     this.borderColor,
     this.quality = GlassCardQuality.frosted,
+    this.tint,
   }) : assert(
          borderColor == null || quality == GlassCardQuality.frosted,
          'borderColor is only supported by the frosted branch — the '
          'library branches draw their rim from the ios27 settings',
+       ),
+       assert(
+         tint == null || quality != GlassCardQuality.frosted,
+         'tint is only supported by the library branches — the '
+         'frosted branch paints its own theme surface',
        );
 
   final Widget child;
@@ -175,6 +187,14 @@ class GlassCard extends StatelessWidget {
 
   /// Which glass this card renders with. Default frosted (old look).
   final GlassCardQuality quality;
+
+  /// Tint wash painted as the child background inside the library
+  /// branches (standard / premium only — see the assert above).
+  /// The gradient is the caller's: e.g. the FM / heartbeat cards
+  /// wash their own gradient colour at low alpha so the card reads
+  /// as coloured glass instead of a flat fill. Library branches
+  /// only — never a second glass implementation.
+  final LinearGradient? tint;
 
   /// The Beans shadow for [shadow] (glass.dart header: card r9 y3,
   /// panel r14 y8, tab bar r12 y4, mini player r10 y4, small r4 y2;
@@ -219,15 +239,31 @@ class GlassCard extends StatelessWidget {
   /// outer Container (the library paints no shadow — same pattern
   /// as the mini player). The shape is Apple's continuous corner
   /// (LiquidRoundedSuperellipse) at the same radius number.
+  ///
+  /// With [tint] the wash is the child background: the gradient
+  /// Container wraps the padded child, and the GlassContainer
+  /// padding is zeroed so the wash reaches the card edge (the
+  /// padding lives inside the wash instead). `clipBehavior:
+  /// Clip.antiAlias` is required there — the library defaults to
+  /// Clip.none, and the square-cornered wash would otherwise stick
+  /// out of the superellipse at the corners.
   Widget _buildLibrary(BuildContext context, GlassQuality quality) {
     final borderRadius = BorderRadius.circular(radius);
+    final tint = this.tint;
+    final Widget content = tint == null
+        ? child
+        : Container(
+            decoration: BoxDecoration(gradient: tint),
+            child: Padding(padding: padding, child: child),
+          );
     final glass = GlassContainer(
       shape: LiquidRoundedSuperellipse(borderRadius: radius),
       settings: HaoLiquidGlass.ios27Settings(context),
       useOwnLayer: true,
       quality: quality,
-      padding: padding,
-      child: child,
+      padding: tint == null ? padding : EdgeInsets.zero,
+      clipBehavior: tint == null ? Clip.none : Clip.antiAlias,
+      child: content,
     );
     return Container(
       margin: margin,

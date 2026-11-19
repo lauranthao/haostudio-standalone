@@ -137,6 +137,12 @@ class MusicTabPage extends StatefulWidget {
 /// only — the cover replaces the gradient, with the black scrim).
 /// No subtitle (removed 2026-11-19 clean pass — title sits at the
 /// bottom of the card, 15 bold, unchanged).
+///
+/// [glass] (FM / heartbeat only, 2026-11-19 — chen approved the
+/// preview): the card renders as real liquid glass instead of the
+/// solid gradient — GlassCard standard + a tint wash built from the
+/// tile's own gradient colour (see [_FeatureCard] for the values).
+/// The four shelf cards keep [glass] false and their gradients.
 class _FeatureTile {
   const _FeatureTile({
     required this.icon,
@@ -145,7 +151,13 @@ class _FeatureTile {
     required this.onTap,
     this.showsDate = false,
     this.cover,
-  });
+    this.glass = false,
+    this.glassTint,
+    this.glassTintDark,
+  }) : assert(
+         !glass || glassTint != null,
+         'a glass tile needs its tint wash base colour',
+       );
 
   final IconData icon;
   final String title;
@@ -156,6 +168,20 @@ class _FeatureTile {
   final VoidCallback onTap;
   final bool showsDate;
   final String? cover;
+
+  /// Glass switch (default false — the shelf cards stay gradient).
+  final bool glass;
+
+  /// Tint-wash base colour for the glass card: light mode. Always
+  /// the tile's own gradient bright end (FM #1D4ED8, heartbeat
+  /// #F43F5E — preview ~/workspace/preview/fm-glass-preview.html).
+  final Color? glassTint;
+
+  /// Tint-wash base colour for the glass card: dark mode. Null =
+  /// same as [glassTint]. FM needs a lighter blue here (#3B82F6 —
+  /// preview) so the wash stays visible on the dark background;
+  /// heartbeat reuses #F43F5E.
+  final Color? glassTintDark;
 }
 
 class _MusicTabPageState extends State<MusicTabPage> {
@@ -591,6 +617,12 @@ class _MusicTabPageState extends State<MusicTabPage> {
                   // gradient. Same indigo-blue family, darker so the two read apart.
                   gradient: const [Color(0xFF0F2A5C), Color(0xFF1D4ED8)],
                   onTap: _startFM,
+                  // Glass (chen-approved preview): wash base is the
+                  // gradient bright end; dark mode gets the lighter
+                  // #3B82F6 so the wash stays visible on dark.
+                  glass: true,
+                  glassTint: const Color(0xFF1D4ED8),
+                  glassTintDark: const Color(0xFF3B82F6),
                 ),
               ),
             ),
@@ -611,6 +643,11 @@ class _MusicTabPageState extends State<MusicTabPage> {
                   // gradient. Same red-pink family, rose end instead of orange.
                   gradient: const [Color(0xFFBE123C), Color(0xFFF43F5E)],
                   onTap: _startHeartbeat,
+                  // Glass (chen-approved preview): wash base is the
+                  // gradient bright end, same colour both modes.
+                  glass: true,
+                  glassTint: const Color(0xFFF43F5E),
+                  glassTintDark: const Color(0xFFF43F5E),
                 ),
               ),
             ),
@@ -974,6 +1011,9 @@ class _FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (tile.glass) {
+      return _buildGlass(context);
+    }
     final cover = tile.cover;
     return Container(
       width: width,
@@ -1027,7 +1067,7 @@ class _FeatureCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _featureIcon(),
+                        _featureIcon(Colors.white),
                         const Spacer(),
                         Text(
                           tile.title,
@@ -1051,6 +1091,75 @@ class _FeatureCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Glass FM / heartbeat card (chen-approved preview
+  /// ~/workspace/preview/fm-glass-preview.html): real liquid glass
+  /// — GlassCard standard, because the cards sit in the scrolling
+  /// music home (the library warns premium "may not render correctly
+  /// in scrollable contexts"); radius 12, padding zero; tint wash
+  /// from the tile's own gradient colour, 135° (topLeft ->
+  /// bottomRight), light 0.14 -> 0.06 / dark 0.22 -> 0.10. Icon +
+  /// title use theme.textPrimary (dark text in light mode, white in
+  /// dark mode); the title shadow is dropped here — it only exists
+  /// to lift white text off the solid gradient, and it muddies text
+  /// on glass. Tap + haptics are the same InkWell as the gradient
+  /// branch; layout (96 high, icon 22 top-left, title 15 bold
+  /// bottom-left, 14 padding) is unchanged.
+  Widget _buildGlass(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tintBase =
+        isDark ? (tile.glassTintDark ?? tile.glassTint!) : tile.glassTint!;
+    final wash = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        tintBase.withValues(alpha: isDark ? 0.22 : 0.14),
+        tintBase.withValues(alpha: isDark ? 0.10 : 0.06),
+      ],
+    );
+    final foreground = theme.textPrimary;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: GlassCard(
+        radius: 12,
+        padding: EdgeInsets.zero,
+        quality: GlassCardQuality.standard,
+        tint: wash,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              HaoHaptics.tap();
+              tile.onTap();
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _featureIcon(foreground),
+                  const Spacer(),
+                  Text(
+                    tile.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1092,12 +1201,13 @@ class _FeatureCard extends StatelessWidget {
     );
   }
 
-  /// 22 medium white icon; the daily card overlays today's day number
+  /// 22 medium icon; the daily card overlays today's day number
   /// (10 bold, offset y+3) like Kumone's showsDate (HomeView.swift
-  /// :427-435).
-  Widget _featureIcon() {
+  /// :427-435). [color] is white on the gradient cards and
+  /// theme.textPrimary on the glass cards.
+  Widget _featureIcon(Color color) {
     if (!tile.showsDate) {
-      return Icon(tile.icon, size: 22, color: Colors.white);
+      return Icon(tile.icon, size: 22, color: color);
     }
     return SizedBox(
       width: 22,
@@ -1105,7 +1215,7 @@ class _FeatureCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(tile.icon, size: 22, color: Colors.white),
+          Icon(tile.icon, size: 22, color: color),
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Text(
