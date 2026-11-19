@@ -344,12 +344,32 @@ void main() {
 
     // Same room State, dark theme — a second pumpWidget with the same
     // tree shape reuses the State instead of opening a second room.
+    // The dark IconTheme lags the theme switch: at 200 ms + one
+    // extra frame it still shows the LIGHT AppBar IconTheme (icons
+    // black on dark); after 1 s it is the dark textPrimary. The
+    // product itself is correct (icons resolve to textPrimary) — the
+    // golden would otherwise capture a stale frame that does NOT
+    // exist on a real phone, where the room opens in one theme.
     await tester.pumpWidget(
       app(_cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark)),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('room A'), findsOneWidget);
+    // Regression point: the top-bar icons must resolve to the dark
+    // textPrimary (near-white), not the light one.
+    final darkTextPrimary = HaoThemes.of(HaoThemeId.appleGlass).dark
+        .extension<HaoTheme>()!
+        .textPrimary;
+    final swapThemes = find.ancestor(
+      of: find.byIcon(Icons.swap_horiz),
+      matching: find.byType(IconTheme),
+    );
+    expect(
+      tester.widget<IconTheme>(swapThemes.first).data.color,
+      darkTextPrimary,
+    );
     await expectLater(
       find.byType(GetMaterialApp),
       matchesGoldenFile('goldens/live_room_dark.png'),
