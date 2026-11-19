@@ -55,7 +55,14 @@ class DailyService {
           artist: ev.artist,
           platform: ev.platform,
           cover: ev.cover,
-          dur: ev.dur,
+          // Song.dur is the FULL song length. ev.dur is the seconds
+          // actually heard in that session — passing it here made the
+          // daily rows show "listened seconds" as the song's
+          // duration (same class as ListenReport.compute, which
+          // already uses totalDur). Legacy events carry totalDur 0,
+          // so those rows hide the duration instead of showing a
+          // wrong number (SongRow only shows dur > 0).
+          dur: ev.totalDur,
           reasonKey: 'becauseListen',
           reasonArg: ' ×$n',
         );

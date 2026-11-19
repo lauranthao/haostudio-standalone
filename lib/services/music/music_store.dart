@@ -133,7 +133,11 @@ class MusicStore {
           artist: e.artist,
           platform: e.platform,
           cover: e.cover,
-          dur: e.dur,
+          // Full song length, NOT the listened seconds (e.dur):
+          // Song.dur is displayed as the song's duration, so
+          // passing the heard seconds here showed a wrong length
+          // on favourite rows resolved from listen history.
+          dur: e.totalDur,
         ),
       );
     }
