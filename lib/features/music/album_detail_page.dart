@@ -27,6 +27,7 @@ import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
 class AlbumDetailPage extends StatefulWidget {
@@ -256,7 +257,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    0,
+                    16,
+                    MiniPlayerBar.bottomClearanceFor(context),
+                  ),
                   children: [
                     const SizedBox(height: 8),
                     _cover(theme),

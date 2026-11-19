@@ -20,6 +20,7 @@ import '../../widgets/glass_dialog.dart';
 import '../settings/cache_service.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
 enum _DownloadFilter { all, done, downloading }
@@ -180,6 +181,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 );
               }
               return ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: filtered.length,
                 itemBuilder: (ctx, i) {
                   final row = filtered[i];

@@ -19,11 +19,13 @@ import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'album_detail_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
 class ArtistDetailPage extends StatefulWidget {
@@ -244,7 +246,12 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                               ),
                       ),
                     ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height:
+                            24 + MiniPlayerBar.bottomClearanceFor(context),
+                      ),
+                    ),
                   ],
                 ),
     );
@@ -364,6 +371,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         HaoHaptics.tap();
         Navigator.of(context).push(
           MaterialPageRoute<void>(
+            settings: const RouteSettings(name: musicSubPageRouteName),
             builder: (_) => AlbumDetailPage(
               platform: widget.platform,
               albumId: album.id,

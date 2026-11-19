@@ -28,9 +28,11 @@ import '../../services/music/search_prewarm.dart';
 import '../../services/music/song_search_service.dart';
 import 'album_detail_page.dart';
 import 'artist_detail_page.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
 import 'plaza_page.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
@@ -39,7 +41,12 @@ import '../../widgets/platform_logo.dart';
 enum _SearchType { song, playlist, artist, album }
 
 class SongSearchPage extends StatefulWidget {
-  const SongSearchPage({super.key});
+  const SongSearchPage({super.key, this.searchService, this.api});
+
+  /// Test seam: the page builds its own service/api by default.
+  /// Widget tests inject fakes here so a search runs without network.
+  final SongSearchService? searchService;
+  final MusicApi? api;
 
   @override
   State<SongSearchPage> createState() => _SongSearchPageState();
@@ -48,8 +55,9 @@ class SongSearchPage extends StatefulWidget {
 class _SongSearchPageState extends State<SongSearchPage> {
   final _queryController = TextEditingController();
   final _scrollController = ScrollController();
-  final _searchService = SongSearchService();
-  final _api = MusicApi();
+  late final SongSearchService _searchService =
+      widget.searchService ?? SongSearchService();
+  late final MusicApi _api = widget.api ?? MusicApi();
   final _hotService = HotSearchService();
   // Current search platform (stage 2 capsule, Beans `SearchView`
   // provider): one platform at a time, persisted, no "全部".
@@ -84,6 +92,14 @@ class _SongSearchPageState extends State<SongSearchPage> {
   List<ArtistSummary> _artists = [];
   List<AlbumSummary> _albums = [];
   String _error = '';
+
+  // Results-cache identity: every cached list (_songs / _playlists /
+  // _artists / _albums) belongs to one (query, platform) pair. A
+  // search for a different pair clears all four lists first (see
+  // _search), so switching types can show the cache only when the
+  // pair matches — never another query's or platform's rows.
+  String _cacheQuery = '';
+  MusicPlatform? _cachePlatform;
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
 
@@ -234,6 +250,57 @@ class _SongSearchPageState extends State<SongSearchPage> {
     }
   }
 
+  int _resultCountFor(_SearchType t) => switch (t) {
+    _SearchType.song => _songs.length,
+    _SearchType.playlist => _playlists.length,
+    _SearchType.artist => _artists.length,
+    _SearchType.album => _albums.length,
+  };
+
+  void _clearResultsFor(_SearchType t) {
+    switch (t) {
+      case _SearchType.song:
+        _songs = [];
+        _prewarm.cancel();
+        _coverBackfill.cancel();
+      case _SearchType.playlist:
+        _playlists = [];
+      case _SearchType.artist:
+        _artists = [];
+      case _SearchType.album:
+        _albums = [];
+    }
+  }
+
+  /// Switching the type tabs re-runs the current query for the new
+  /// type — the old code only flipped _type, so the new type's list
+  /// stayed empty until the user tapped search again (reported
+  /// 2026-11-19). Cached results for the same query + platform are
+  /// shown as-is, no re-search; an empty cache (never searched, or a
+  /// new query) triggers one search. The old type's in-flight request
+  /// is cancelled first so two types never run at once (they share
+  /// _loading); if it was still loading, its partial list is dropped
+  /// so switching back re-searches full results instead of presenting
+  /// a partial list as complete.
+  void _onTypeChanged(_SearchType next) {
+    if (next == _type) return;
+    if (_loading) _clearResultsFor(_type);
+    _pageGen++;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
+    setState(() => _type = next);
+    if (!_searched) return;
+    final q = _queryController.text.trim();
+    if (q.isEmpty) return;
+    if (_cacheQuery == q &&
+        _cachePlatform == _platform &&
+        _resultCountFor(next) > 0) {
+      return;
+    }
+    unawaited(_search());
+  }
+
   Future<void> _search() async {
     final q = _queryController.text.trim();
     if (q.isEmpty) return;
@@ -242,6 +309,26 @@ class _SongSearchPageState extends State<SongSearchPage> {
     // fire-and-forget: the Hive write must not sit on the critical
     // path to the first result (the search starts immediately).
     unawaited(MusicStore.saveSearchQuery(q).catchError((_) {}));
+    // A search for a new (query, platform) invalidates every cached
+    // list, not just the current type's — otherwise switching types
+    // would show another query's / platform's rows.
+    if (q != _cacheQuery || _platform != _cachePlatform) {
+      _cacheQuery = q;
+      _cachePlatform = _platform;
+      _songs = [];
+      _playlists = [];
+      _artists = [];
+      _albums = [];
+    }
+    // Cancel any in-flight search and bump the generation before
+    // dispatching, so the album branch (a single await, no stream)
+    // also drops a stale run instead of letting it land behind the
+    // new search. The per-type branches repeat this (their own
+    // convention) — double cancel / double bump is harmless.
+    _pageGen++;
+    unawaited(_searchSub?.cancel());
+    unawaited(_playlistSub?.cancel());
+    unawaited(_artistSub?.cancel());
     if (_type == _SearchType.song) {
       _searchSongs(q);
       return;
@@ -256,6 +343,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
     }
     // Album only (stage 2): one platform, its own album endpoint —
     // still a single await, not streamed (no multi-leg fan-out).
+    // Generation-guarded like the streams: a newer search (or a type
+    // switch, which bumps _pageGen) makes this late completion a
+    // no-op instead of clearing _loading under the new search.
+    final gen = _pageGen;
     setState(() {
       _loading = true;
       _searched = true;
@@ -268,13 +359,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
       final albums = await _api
           .searchAlbums(_platform, q)
           .catchError((_) => <AlbumSummary>[]);
-      if (!mounted) return;
+      if (!mounted || gen != _pageGen) return;
       setState(() {
         _albums = albums;
         if (_albums.isEmpty) _error = '没搜到相关专辑';
       });
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && gen == _pageGen) setState(() => _loading = false);
     }
   }
 
@@ -449,6 +540,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
     _prewarm.cancel();
     _coverBackfill.cancel();
     _queryController.clear();
+    _cacheQuery = '';
+    _cachePlatform = null;
     setState(() {
       _loading = false;
       _searched = false;
@@ -637,8 +730,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     ],
                     selected: {_type},
                     showSelectedIcon: false,
-                    onSelectionChanged: (s) =>
-                        setState(() => _type = s.first),
+                    onSelectionChanged: (s) => _onTypeChanged(s.first),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -676,7 +768,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
     if (!_searched) {
       final history = MusicStore.getSearchHistory();
       return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          4,
+          16,
+          16 + MiniPlayerBar.bottomClearanceFor(context),
+        ),
         children: [
           if (history.isNotEmpty)
             _SearchHistory(
@@ -777,6 +874,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 controller: _scrollController,
                 itemCount: shown.length + 1,
                 itemBuilder: (ctx, i) {
@@ -855,6 +955,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _playlists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _playlists.length) return _pendingFooter(theme);
@@ -946,6 +1049,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _artists.length + (_loading ? 1 : 0),
                 itemBuilder: (ctx, i) {
                   if (i >= _artists.length) return _pendingFooter(theme);
@@ -989,6 +1095,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(
                                 platform: a.platform,
                                 artistId: a.id,
@@ -1027,6 +1135,9 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                padding: EdgeInsets.only(
+                  bottom: MiniPlayerBar.bottomClearanceFor(context),
+                ),
                 itemCount: _albums.length,
                 itemBuilder: (ctx, i) {
                   final a = _albums[i];
@@ -1095,6 +1206,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
+                              settings: const RouteSettings(
+                                  name: musicSubPageRouteName),
                               builder: (_) => AlbumDetailPage(
                                 platform: a.platform,
                                 albumId: a.id,
@@ -1120,6 +1233,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openArtist(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => ArtistDetailPage(
           platform: song.platform,
           artistId: '',
@@ -1132,6 +1246,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _openAlbum(Song song) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => AlbumDetailPage(
           platform: song.platform,
           albumId: '',
@@ -1144,7 +1259,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openPlazaDetail(PlaylistSummary p) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => PlazaDetailPage(playlist: p)),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: musicSubPageRouteName),
+        builder: (_) => PlazaDetailPage(playlist: p),
+      ),
     );
   }
 }

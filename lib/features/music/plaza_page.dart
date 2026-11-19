@@ -28,8 +28,10 @@ import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import '../../services/music/search_platform_store.dart';
+import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'music_player_sheet.dart';
+import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
@@ -223,6 +225,10 @@ class _PlazaPageState extends State<PlazaPage> {
                             ),
                           )
                         : ListView.builder(
+                            padding: EdgeInsets.only(
+                              bottom:
+                                  MiniPlayerBar.bottomClearanceFor(context),
+                            ),
                             itemCount: items.length,
                             itemBuilder: (ctx, i) {
                               final p = items[i];
@@ -301,6 +307,8 @@ class _PlazaPageState extends State<PlazaPage> {
                                 ),
                                 onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute<void>(
+                                    settings: const RouteSettings(
+                                        name: musicSubPageRouteName),
                                     builder: (_) =>
                                         PlazaDetailPage(playlist: p),
                                   ),
@@ -570,6 +578,9 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                     const SizedBox(height: 8),
                     Expanded(
                       child: ListView.builder(
+                        padding: EdgeInsets.only(
+                          bottom: MiniPlayerBar.bottomClearanceFor(context),
+                        ),
                         itemCount: _tracks?.length ?? 0,
                         itemBuilder: (ctx, i) {
                           final song = _tracks![i];
