@@ -382,15 +382,16 @@ class GlassTabBarState extends State<GlassTabBar>
               // Capsule: radius far above half the height.
               shape: const LiquidRoundedSuperellipse(borderRadius: 999),
               padding: const EdgeInsets.all(_innerInset),
-              // The demo's glass, copied verbatim:
-              // `GlassTabBar.bottom` passes no settings, so the demo
-              // bar renders the ambient ios27 defaults — light
-              // glassColor 0.53 / frost 0.73 / rimShade 1, dark
-              // rimLight 1.15 / rimShade 1 / bodyShade 0.28.
-              // (useOwnLayer: true — per-widget settings are ignored
-              // in grouped mode without it). Premium: floating chrome
-              // (SKILL.md Rule 5).
-              settings: HaoLiquidGlass.ios27Settings(context),
+              // Unified page (chen 2026-11-19): the chrome shares the
+              // page's own background colour instead of the demo's
+              // 53%-white ios27 tint, so the bar reads as part of the
+              // page, not a separate slab (see
+              // HaoLiquidGlass.chromeSettings). Optics are still the
+              // ios27 preset underneath. (useOwnLayer: true —
+              // per-widget settings are ignored in grouped mode
+              // without it). Premium: floating chrome (SKILL.md
+              // Rule 5).
+              settings: HaoLiquidGlass.chromeSettings(context),
               useOwnLayer: true,
               quality: GlassQuality.premium,
               child: LayoutBuilder(

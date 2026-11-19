@@ -7,6 +7,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' hide GlassCard;
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/liquid_glass_theme.dart';
 import 'music_image.dart';
 import 'track_more_sheet.dart';
 import '../music_player_controller.dart';
@@ -104,12 +105,15 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
             // Same premium floor as the tab bar (app_shell.dart): the
             // adaptive scope may demote premium to frosted glass on a
             // busy phone; the mini player is floating chrome and must
-            // stay premium. Glass parameters themselves are already
-            // the demo's (ios27 preset + premium).
+            // stay premium. Glass parameters are the unified-page
+            // chrome (ios27 optics re-tinted to the page background —
+            // see HaoLiquidGlass.chromeSettings), so the bar reads as
+            // part of the page instead of a separate slab.
             minQuality: GlassQuality.premium,
             child: GlassContainer(
               shape: const LiquidRoundedSuperellipse(borderRadius: 999),
               padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+              settings: HaoLiquidGlass.chromeSettings(context),
               useOwnLayer: true,
               quality: GlassQuality.premium,
               child: Material(

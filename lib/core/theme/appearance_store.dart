@@ -247,6 +247,26 @@ class AppearanceStore {
     } catch (_) {}
   }
 
+  /// One-time v1.1.5 migration (chen 2026-11-19: the page must read
+  /// as one connected surface, NetEase-style — the wallpaper photo is
+  /// what broke the page into separate slabs). Turns a stored
+  /// wallpaperEnabled=true off ONCE; the wallpaper files + current
+  /// selection are kept, so the user can turn it back on in Settings
+  /// and get their wallpaper back. Guarded by a Hive flag, so a
+  /// later user choice is never overridden. Safe to call on every
+  /// load (no-op after the first run).
+  Future<void> migrateWallpaperOffOnce() async {
+    try {
+      if (HiveStore.getBool(HiveKeys.wallpaperV115Migration, false)) {
+        return;
+      }
+      await HiveStore.put(HiveKeys.wallpaperV115Migration, true);
+      if (wallpaperEnabled) {
+        await HiveStore.put(HiveKeys.wallpaperEnabled, false);
+      }
+    } catch (_) {}
+  }
+
   /// Delete [path] from disk and from the list; if it was the
   /// current wallpaper, the current selection is cleared (the
   /// background falls back to colour / theme default — never a
@@ -382,6 +402,13 @@ class AppearanceController extends GetxController {
     await load();
     return path;
   }
+
+  /// One-time v1.1.5 wallpaper migration (see
+  /// [AppearanceStore.migrateWallpaperOffOnce]). Called once at
+  /// startup from main(), before [load] — never from [load] itself,
+  /// so load() keeps its contract (pure reflection of the store).
+  Future<void> migrateWallpaperOffOnce() =>
+      _store.migrateWallpaperOffOnce();
 
   Future<void> applyWallpaper(String path) async {
     await _store.applyWallpaper(path);

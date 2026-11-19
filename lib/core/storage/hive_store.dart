@@ -156,6 +156,12 @@ class HiveKeys {
   static const String wallpaperPaths = 'hao_wallpaper_paths';
   static const String wallpaperCurrent = 'hao_wallpaper_current';
 
+  /// One-time v1.1.5 migration flag (see
+  /// AppearanceStore.migrateWallpaperOffOnce): true once the stored
+  /// wallpaper-on has been turned off once, so a later user choice
+  /// is never overridden.
+  static const String wallpaperV115Migration = 'hao_wallpaper_v115_off_once';
+
   /// Custom background colour (stage 2, Beans `ThemeStore`
   /// backgroundHexLight/Dark, single value here — see
   /// AppearanceStore): enabled flag + '#RRGGBB' hex ('' = none).

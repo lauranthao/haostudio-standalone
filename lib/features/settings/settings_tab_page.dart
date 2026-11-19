@@ -172,7 +172,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
-      appBar: AppBar(title: const Text('设置')),
+      // Unified page (chen 2026-11-19): the top bar IS the page
+      // background, not a separate surface-coloured slab — see the
+      // live tab AppBar for the reasoning.
+      appBar: AppBar(
+        title: const Text('设置'),
+        backgroundColor: tabScaffoldBackground(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [

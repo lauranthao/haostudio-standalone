@@ -87,8 +87,12 @@ Future<void> main() async {
 
   // Appearance (stage 2: wallpaper / background colour): load the
   // stored background state before the first frame so the AppShell
-  // layer paints immediately.
+  // layer paints immediately. The v1.1.5 migration runs first (turn
+  // a stored wallpaper-on off once — the unified page needs the
+  // theme background, not a photo), so load() already reads the
+  // migrated state.
   final appearanceController = Get.put(AppearanceController());
+  await appearanceController.migrateWallpaperOffOnce();
   await appearanceController.load();
 
   // Automatic update check, 2 s after start, at most once per 20 h.
