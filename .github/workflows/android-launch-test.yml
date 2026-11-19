@@ -65,6 +65,11 @@ jobs:
             adb shell uiautomator dump /sdcard/ui-music.xml
             adb pull /sdcard/ui-music.xml $GITHUB_WORKSPACE/ui-music.xml
             adb exec-out screencap -p > $GITHUB_WORKSPACE/music-home.png
+            adb shell input tap 417 525
+            sleep 2
+            adb shell uiautomator dump /sdcard/ui-search.xml
+            adb pull /sdcard/ui-search.xml $GITHUB_WORKSPACE/ui-search.xml
+            adb exec-out screencap -p > $GITHUB_WORKSPACE/search-page.png
             adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
             echo "=== crash lines ==="
             grep -iE "FATAL EXCEPTION|AndroidRuntime|com.haostudio|signal 11|libc.*fatal|UnsatisfiedLink" "$GITHUB_WORKSPACE/logcat.txt" | head -60 || true
@@ -79,4 +84,6 @@ jobs:
             home.png
             ui-music.xml
             music-home.png
+            ui-search.xml
+            search-page.png
           retention-days: 7
