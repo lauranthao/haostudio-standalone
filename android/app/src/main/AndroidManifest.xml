@@ -4,6 +4,15 @@
     <!-- VIBRATE: HaoHaptics via Flutter HapticFeedback (normal permission,
          no runtime prompt; without it haptics silently fail on some devices). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- FOREGROUND_SERVICE: the music media notification is posted by
+         MusicPlaybackService, a foreground service (MediaSession +
+         MediaStyle notification for the status bar / shade / lock
+         screen). FOREGROUND_SERVICE_MEDIA_PLAYBACK is required on
+         API 34+ for a mediaPlayback-type service; both are normal
+         permissions, no runtime prompt. Foreground-service
+         notifications do NOT need POST_NOTIFICATIONS. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- usesCleartextTraffic: plain-http sources (ikun api.ikunshare.com,
          落雪 http://220.167.101.253:6001, some live http CDNs) cannot play
          on Android 9+ without it — same as iOS ATS being fully open. -->
@@ -39,6 +48,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Music media notification (NowPlayingPlugin + MediaSession):
+             foreground service, mediaPlayback type. The service posts
+             the MediaStyle notification and routes its buttons back to
+             Dart through the session's transport controls. -->
+        <service
+            android:name=".MusicPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <!-- 启动闪退修复（2026-11-18）：Android 上 Impeller/Vulkan 在液态玻璃
              fragment shader 预热/首帧渲染时崩（"HAo Studio keeps stopping"，
              首页都没出来）。强制回 Skia；FragmentProgram 在 Skia 下照样跑
