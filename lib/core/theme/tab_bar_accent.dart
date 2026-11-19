@@ -52,3 +52,47 @@ class TabBarAccentController extends GetxController {
     } catch (_) {}
   }
 }
+
+/// The colour sheet's preset dots: 5 built-in defaults (never
+/// deletable) plus the user's own customs (persisted in Hive, added
+/// with the sheet's + button, long-press a custom to delete).
+class AccentPresetStore {
+  /// Built-in presets, in sheet order: black, blue, green, yellow,
+  /// red (the reference sheet's five dots).
+  static const List<Color> defaults = [
+    Color(0xFF000000),
+    Color(0xFF2563EB),
+    Color(0xFF22C55E),
+    Color(0xFFFACC15),
+    Color(0xFFEF4444),
+  ];
+
+  /// User-added presets, in the order added. Empty when Hive is
+  /// unavailable (widget tests without Hive).
+  static List<Color> loadCustoms() {
+    try {
+      final raw = HiveStore.box.get(HiveKeys.tabBarAccentPresets);
+      if (raw is! List) return [];
+      return [
+        for (final v in raw)
+          if (v is int) Color(v),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveCustoms(List<Color> customs) async {
+    try {
+      await HiveStore.put(
+        HiveKeys.tabBarAccentPresets,
+        [for (final c in customs) c.toARGB32()],
+      );
+    } catch (_) {}
+  }
+
+  /// True when [color] is already a preset (default or custom) —
+  /// the + button adds nothing then, so the list never duplicates.
+  static bool contains(Color color, List<Color> customs) =>
+      defaults.contains(color) || customs.contains(color);
+}

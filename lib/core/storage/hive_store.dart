@@ -161,6 +161,12 @@ class HiveKeys {
   /// Only the tab-bar selected state reads it — nothing else.
   static const String tabBarAccentColor = 'hao_tabbar_accent';
 
+  /// Custom accent-colour presets (user-added via the colour
+  /// sheet's + button): `List<int>` ARGB, in the order added. The 5
+  /// defaults (black/blue/green/yellow/red) are built in, not
+  /// stored — only customs persist here.
+  static const String tabBarAccentPresets = 'hao_tabbar_accent_presets';
+
   /// Custom font (stage 2, Beans `FontManager`): registered family
   /// name ('HaoCustomFont' when installed, '' = system default),
   /// the installed file's display name, and its RELATIVE path

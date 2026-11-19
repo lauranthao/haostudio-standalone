@@ -22,6 +22,7 @@ import 'core/storage/hive_store.dart';
 import 'core/storage/local_paths.dart';
 import 'core/theme/appearance_store.dart';
 import 'core/theme/liquid_glass_theme.dart';
+import 'core/theme/screen_capture.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/live/live_breadcrumb.dart';
 import 'features/music/av_music_player.dart';
@@ -142,9 +143,16 @@ class HAoApp extends StatelessWidget {
         // on music sub-pages only (the observer decides). The home keeps
         // its own embedded bar; the overlay is hidden there, on the full
         // player, and on video / live / settings pages.
+        // The root content sits inside a RepaintBoundary so the
+        // accent-colour dropper can capture the app frame (see
+        // ScreenCapture); it also isolates the app's repaints from
+        // the overlay above it.
         builder: (context, child) => Stack(
           children: [
-            child ?? const SizedBox.shrink(),
+            RepaintBoundary(
+              key: ScreenCapture.boundaryKey,
+              child: child ?? const SizedBox.shrink(),
+            ),
             MiniPlayerOverlay(observer: musicRouteObserver),
           ],
         ),
