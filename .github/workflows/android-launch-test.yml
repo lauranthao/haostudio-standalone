@@ -90,7 +90,7 @@ jobs:
             adb pull /sdcard/ui-notif.xml $GITHUB_WORKSPACE/ui-notif.xml || true
             adb exec-out screencap -p > $GITHUB_WORKSPACE/notif-shade.png
             # Phase 2: tap notification pause button (from notif-shade.png: pause icon center ~ (250,945) on the 1080x1920 screen)
-            if [ -f $GITHUB_WORKSPACE/ui-notif.xml ]; then CENTER=$(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-notif.xml').read(); m=re.search(r'resource-id=\"android:/action1\"[^>]*bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', s); print((int(m.group(1))+int(m.group(3)))//2, (int(m.group(2))+int(m.group(4)))//2)"); else CENTER="250 945"; fi
+            if [ -f $GITHUB_WORKSPACE/ui-notif.xml ]; then CENTER=$(python3 -c "import re; s=open('$GITHUB_WORKSPACE/ui-notif.xml').read(); m=re.search(r'resource-id=\"android:id/action1\"[^>]*bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', s); print((int(m.group(1))+int(m.group(3)))//2, (int(m.group(2))+int(m.group(4)))//2)"); else CENTER="250 945"; fi
             adb shell input tap $CENTER
             echo "tapped notification center button at: $CENTER"
             sleep 3
