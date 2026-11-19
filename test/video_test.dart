@@ -193,12 +193,16 @@ void main() {
       expect(detail!.meta.name, '流浪地球2');
       expect(detail.meta.actor, '吴京,刘德华');
       expect(detail.meta.director, '郭帆');
-      // Only the m3u8 line survives the preference filter.
-      expect(detail.lines, hasLength(1));
+      // P1-18: m3u8 lines sort first, non-m3u8 lines are kept
+      // (no longer dropped) — both lines survive, m3u8 first.
+      expect(detail.lines, hasLength(2));
       expect(detail.lines[0].name, '线路1');
       expect(detail.lines[0].episodes, hasLength(1));
       expect(detail.lines[0].episodes[0].url,
           'https://cdn.example.com/wandering2.m3u8');
+      expect(detail.lines[1].name, '线路2');
+      expect(detail.lines[1].episodes[0].url,
+          'https://cdn.example.com/wandering2.mp4');
       expect(detail.usable, isTrue);
     });
 
