@@ -69,6 +69,22 @@ import 'room_switch_panel.dart';
 /// only: production passes neither and gets Sites.of(platform) + the
 /// real native backends.
 class LiveRoomPage extends StatefulWidget {
+  /// P1-8: auto-recovery budget for one episode of consecutive session
+  /// errors — how many recovery attempts run before the failure card.
+  /// Multi-line rooms keep the old bound (one attempt per extra line:
+  /// `lineCount - 1`). A single-line room (Kuaishou by design, Douyin
+  /// often 1-2 lines) gets the session ladder's fresh budget
+  /// (`freshRounds = 2`, playback_session.dart): held plan first, then
+  /// a live re-parse. The old bound was 0 for `lineCount == 1`, so the
+  /// FIRST error showed the failure card and `_recoverWithFreshUrls`
+  /// never ran — a mid-playback stall (12 s watchdog) in a single-line
+  /// room could only be fixed by a manual retry.
+  @visibleForTesting
+  static int autoRecoveryBudget(int lineCount) {
+    if (lineCount == 1) return 2; // == PlaybackSession.open freshRounds
+    return lineCount - 1;
+  }
+
   const LiveRoomPage({
     super.key,
     required this.room,
@@ -552,14 +568,18 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   void _onSessionError(String message) {
     if (!mounted) return;
     // Order: next line first (no request), then fresh re-parse.
-    // BOUND: after every line has failed once in this episode, stop
+    // BOUND: after the recovery budget for this episode is spent, stop
     // and show the failure card. advanceLine() wraps around, so
     // without this the room retries lines forever — the retry storm
     // saturates the UI isolate and the whole app looks frozen
     // (spinner stuck, taps ignored, failure card never reachable).
     // The initial open already tried one line, so lines.length - 1
-    // further advances cover every line exactly once.
-    if (_consecutiveAutoFailures >= _recovery.lines.length - 1) {
+    // further advances cover every line exactly once; a single-line
+    // room gets the ladder's fresh budget instead (P1-8 — see
+    // LiveRoomPage.autoRecoveryBudget). Healthy playback resets the
+    // counter, so this bounds one episode of consecutive failures.
+    if (_consecutiveAutoFailures >=
+        LiveRoomPage.autoRecoveryBudget(_recovery.lines.length)) {
       // Lines exhausted at this quality: show the failure card.
       // Pure Live never auto-downgrades — recovery is re-parse +
       // sweep at the same quality, and when the sweep is exhausted
