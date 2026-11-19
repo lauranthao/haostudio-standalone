@@ -268,13 +268,14 @@ void main() {
       expect(lines[0].name, '线路1');
     });
 
-    test('m3u8 lines win over mp4-only lines', () {
+    test('m3u8 lines sort first, mp4-only lines are kept (P1-18)', () {
       final lines = parsePlayLines(
         '第01集\$https://a.com/1.mp4\$\$\$第01集\$https://b.com/1.m3u8',
         '线路1\$\$\$线路2',
       );
-      expect(lines, hasLength(1));
+      expect(lines, hasLength(2));
       expect(lines[0].name, '线路2');
+      expect(lines[1].name, '线路1');
     });
 
     test('all-mp4 returns all lines', () {

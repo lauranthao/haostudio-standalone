@@ -122,8 +122,11 @@ VideoItem parseCmsVideoItem(VideoSource source, Map<String, dynamic> x) {
 /// line, episodes joined by `#`; each episode `<name>$<url>` (split on
 /// the FIRST `$`). Empty name → '正片'. Line display name: the
 /// `play_from` name if it contains CJK, else '线路' + (index+1).
-/// Prefer m3u8: if any line has an .m3u8 episode, return only the lines
-/// containing m3u8 episodes; otherwise return all lines.
+/// Prefer m3u8 by ORDER, not by dropping: lines containing an .m3u8
+/// episode sort first, every other line is kept after them (P1-18).
+/// The old filter returned ONLY the m3u8 lines, so a source whose
+/// m3u8 lines were all dead hid its working MP4/FLV lines from the
+/// detail page, the player line chips, and same-source fallback.
 List<PlayLine> parsePlayLines(String playUrl, String playFrom) {
   final names = playFrom.split('\$\$\$');
   final groups = <PlayLine>[];
@@ -152,10 +155,18 @@ List<PlayLine> parsePlayLines(String playUrl, String playFrom) {
       episodes: eps,
     ));
   }
+  // m3u8 lines first, the rest kept after them in original order —
+  // never dropped (P1-18). Callers (detail chips, player chips,
+  // episode sheet, _trySwitchSource's lines.first) all read
+  // `lines` directly, so keeping every line is what makes the
+  // non-m3u8 lines visible and usable as same-source fallback.
   final m3 = groups
       .where((g) => g.episodes.any((e) => e.url.contains('.m3u8')))
       .toList();
-  return m3.isNotEmpty ? m3 : groups;
+  final rest = groups
+      .where((g) => g.episodes.every((e) => !e.url.contains('.m3u8')))
+      .toList();
+  return [...m3, ...rest];
 }
 
 /// Fallback: synthesise one 直链 line when no lines parse but the CMS
