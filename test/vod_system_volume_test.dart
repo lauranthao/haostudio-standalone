@@ -156,7 +156,10 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  Future<void> pumpPlayer(WidgetTester tester) async {
+  Future<void> pumpPlayer(
+    WidgetTester tester, {
+    bool echoQuantized = false,
+  }) async {
     outgoing = <MethodCall>[];
     nativeVolume = 0.6;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -164,7 +167,26 @@ void main() {
       outgoing.add(call);
       if (call.method == 'getVolume') return nativeVolume;
       if (call.method == 'setVolume') {
-        nativeVolume = (call.arguments as Map)['volume'] as double;
+        final v = (call.arguments as Map)['volume'] as double;
+        nativeVolume = v;
+        if (echoQuantized) {
+          // Real iOS: every MPVolumeView set fires AVAudioSession
+          // outputVolume KVO, and the system volume is quantized to
+          // 1/16 steps — so the echo of each set arrives a step behind
+          // the dragged value.
+          final q = (v * 16).round() / 16.0;
+          unawaited(Future(() async {
+            await TestDefaultBinaryMessengerBinding
+                .instance.defaultBinaryMessenger
+                .handlePlatformMessage(
+              systemVolumeChannelName,
+              codec.encodeMethodCall(
+                MethodCall('volumeChanged', <String, Object>{'volume': q}),
+              ),
+              (_) {},
+            );
+          }));
+        }
         return null;
       }
       return null;
@@ -226,6 +248,44 @@ void main() {
     await tester.pump();
     expect(find.text('30%'), findsOneWidget);
     expect(backend.setVolumes.length, volumesBeforeDrag);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('quantized KVO echo during a drag does not fight the HUD',
+      (tester) async {
+    await pumpPlayer(tester, echoQuantized: true);
+    final volumesBeforeDrag = backend.setVolumes.length;
+
+    // Same right-half upward drag as above, but the mock now echoes
+    // every set back quantized to 1/16 (real iOS behaviour). The HUD
+    // must keep showing the dragged value, never the lagging echo.
+    await tester.dragFrom(
+      const Offset(600, 200),
+      const Offset(0, -100),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+
+    final systemSets =
+        outgoing.where((c) => c.method == 'setVolume').toList();
+    expect(systemSets, isNotEmpty);
+    final lastSet = (systemSets.last.arguments as Map)['volume'] as double;
+    expect(lastSet, greaterThan(0.6));
+    expect(lastSet, lessThanOrEqualTo(1.0));
+    expect(backend.setVolumes.length, volumesBeforeDrag);
+    // The HUD shows the dragged value, not the quantized echo.
+    expect(find.text('${(lastSet * 100).round()}%'), findsOneWidget);
+    final echoValue = (lastSet * 16).round() / 16.0;
+    if ((echoValue * 100).round() != (lastSet * 100).round()) {
+      expect(find.text('${(echoValue * 100).round()}%'), findsNothing);
+    }
 
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpWidget(const SizedBox.shrink());
