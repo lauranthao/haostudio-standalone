@@ -5,11 +5,18 @@
 // (~/workspace/preview/netease_pill_anim/frame_005 = mid-slide,
 // frame_011 = over 我的/搜索）.
 //
-// - rest: pill settled on 音乐 (index 2).
-// - mid-slide: tap 设置, shot 120ms into the spring — the leading
-//   edge is ahead, the pill is stretched, and the icon under the lens
-//   must read magnified / warped.
-// - settled: pill at rest on 设置 (index 3).
+// - rest: pill settled on 音乐 (index 2) — the lens is fully faded
+//   out (Opacity 0) and the solid resting pill shows; the selected
+//   icon+label are a single direct copy at normal scale (bug 6).
+// - mid-slide: tap 设置 (scoped to the bar — an unscoped tap hit the
+//   music page's own 设置 row), shot 300ms into the spring (6x50ms
+//   pumps — a single big pump does not tick the spring in this
+//   harness) — the 180ms thickness forward has completed (lens fully
+//   up) while the settle spring is still mid-flight, the pill is
+//   stretched, and the icon + label under the lens must read
+//   magnified / warped, a single copy.
+// - settled: pill at rest on 设置 (index 3) — lens out, resting pill
+//   in again.
 // Light + dark. The list is scrolled to the bottom first, so song rows
 // sit behind the bar and the glass has something to refract (same
 // trick as render_music_home_test.dart).
@@ -23,6 +30,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
+import 'package:standalone/core/theme/tab_bar_accent.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
 import 'package:standalone/services/music/music_api.dart';
@@ -205,11 +213,47 @@ void main() {
     );
   }
 
+  /// The tab-bar tab label, scoped to the GlassTabBar: an unscoped
+  /// find.text('设置') matches the music page's own 设置 row first,
+  /// so the old mid-slide/settled tests tapped the page instead of
+  /// the tab and their goldens were meaningless duplicates of
+  /// rest-on-音乐 (both sha256 ad6c408f…).
+  Finder barTab(String label) => find.descendant(
+        of: find.byType(GlassTabBar),
+        matching: find.text(label),
+      );
+
+  /// Crossfade state (bug 6, chen 2026-11-20): at rest the lens
+  /// Opacity is 0 (not painted — a single direct copy on the solid
+  /// resting pill) and the resting pill Opacity is 1; in motion the
+  /// lens is 1 and the resting pill 0.
+  double lensOpacity(WidgetTester tester) =>
+      tester.widget<Opacity>(find.byKey(GlassTabBarState.pillOpacityKey)).opacity;
+  double restPillOpacity(WidgetTester tester) =>
+      tester.widget<Opacity>(
+        find.byKey(GlassTabBarState.restPillOpacityKey),
+      ).opacity;
+
+  void expectAtRest(WidgetTester tester) {
+    expect(find.byKey(GlassTabBarState.restPillKey), findsOneWidget);
+    expect(lensOpacity(tester), 0.0);
+    expect(restPillOpacity(tester), 1.0);
+  }
+
+  void expectInMotion(WidgetTester tester) {
+    expect(find.byKey(GlassTabBarState.pillKey), findsOneWidget);
+    expect(lensOpacity(tester), 1.0);
+    expect(restPillOpacity(tester), 0.0);
+  }
+
   testWidgets('pill rest on 音乐 light', (tester) async {
     await pumpHome(
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
+    // Bug 6: at rest the lens is fully faded out and the solid
+    // resting pill shows — a single direct copy, normal scale.
+    expectAtRest(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_rest_light');
   });
@@ -285,8 +329,23 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(find.text('设置'));
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.tap(barTab('设置'));
+    // The tap-triggered spring starts in a post-frame callback, so
+    // it needs a starter pump before the clock advance (same as
+    // glass_tab_bar_test.dart: "a tap-triggered spring needs two
+    // pumps to start"). Advance in 50ms steps, not one big pump: a
+    // single pump(300ms) does not tick the spring/thickness tickers
+    // in this harness (the pill stays put), while repeated small
+    // pumps advance them (the glass test's slide-stretch test uses
+    // the same 6x50ms pattern). After 300ms the 180ms thickness
+    // forward has completed (lens fully up) while the 350ms settle
+    // spring is still mid-flight, the pill stretched, the lens
+    // refracting the tab item.
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expectInMotion(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_mid_light');
     // Drain the pill spring's trailing-edge delay (scheduled in the
@@ -299,8 +358,12 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(find.text('设置'));
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.tap(barTab('设置'));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expectInMotion(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
         'pill_mid_dark');
     await tester.pump(const Duration(seconds: 1));
@@ -311,8 +374,36 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(find.text('设置'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(barTab('设置'));
+    // Same starter pump + small steps as mid-slide: a single big
+    // pump does not tick the spring in this harness (the pill stays
+    // on 音乐 and the golden would be a meaningless rest duplicate).
+    // Then pumpAndSettle to drain the spring + the 180ms thickness
+    // reverse (the spring's exact settle time in this harness is
+    // longer than the 350ms response, so a fixed 1s of pumps leaves
+    // the lens up).
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+    // Settled: the spring is done and the 180ms thickness reverse
+    // has completed — the lens is out again, the resting pill is in,
+    // and the tab has actually switched to 设置.
+    expectAtRest(tester);
+    expect(
+      tester
+          .widget<Icon>(
+            find
+                .descendant(
+                  of: find.byType(GlassTabBar),
+                  matching: find.byType(Icon),
+                )
+                .at(3),
+          )
+          .color,
+      TabBarAccentController.defaultColor,
+    );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_settled_light');
     await tester.pump(const Duration(seconds: 1));
@@ -323,8 +414,26 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(find.text('设置'));
-    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(barTab('设置'));
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pumpAndSettle();
+    expectAtRest(tester);
+    expect(
+      tester
+          .widget<Icon>(
+            find
+                .descendant(
+                  of: find.byType(GlassTabBar),
+                  matching: find.byType(Icon),
+                )
+                .at(3),
+          )
+          .color,
+      TabBarAccentController.defaultColor,
+    );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
         'pill_settled_dark');
     await tester.pump(const Duration(seconds: 1));

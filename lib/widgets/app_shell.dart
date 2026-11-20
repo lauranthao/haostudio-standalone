@@ -62,6 +62,14 @@
 // Swiping INTO live from another tab still works, because the guard reads
 // the CURRENT page. The live room is a pushed route (no tab bar at all
 // while open — fix 17.3), separate from this guard.
+//
+// Pill crossfade (fix for the doubling, chen 2026-11-20, bug 6): the
+// lens is ONLY visible while the pill moves (Opacity = thickness);
+// at rest the pill is a SOLID faint-tint capsule (Kumone's white
+// 0.10 dark / black 0.075 light) with the selected icon+label at
+// normal scale — a single copy, like NetEase at rest. See
+// GlassTabBarState._thicknessController for the mechanism and the
+// library citation.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -236,6 +244,32 @@ class GlassTabBarState extends State<GlassTabBar>
   /// Key for the sliding pill (tests assert its settled position).
   static const pillKey = ValueKey('glassTabBarPill');
 
+  /// Key for the resting pill (the solid faint-tint capsule shown at
+  /// rest, see below) and for the two Opacity wrappers that crossfade
+  /// it against the lens. Tests assert the crossfade state.
+  static const restPillKey = ValueKey('glassTabBarRestPill');
+  static const restPillOpacityKey = ValueKey('glassTabBarRestPillOpacity');
+  static const pillOpacityKey = ValueKey('glassTabBarPillOpacity');
+
+  /// Pill "thickness" — the motion value that crossfades the resting
+  /// pill against the lens, following the library's own
+  /// AnimatedGlassIndicator (liquid_glass_widgets 1.17.5,
+  /// lib/widgets/shared/animated_glass_indicator.dart):
+  /// `backgroundOpacity = 1 - thickness / 0.15` (solid pill at rest)
+  /// and the glass lens crossfades in with `visibility = fade`
+  /// (`fade = thickness`, glass only when fade > 0.05). The library
+  /// also wraps the lens in `Opacity(opacity: fade, ...)`.
+  ///
+  /// 0 = at rest (solid resting pill, NO lens — NetEase frames
+  /// netease_pill_anim frame_001/021: the pill at rest is a solid
+  /// dark oval with the selected icon+label at NORMAL size, red,
+  /// single copy); 1 = in motion (lens fully visible, refracting
+  /// the whole tab item — icon + label — magnified/warped, NetEase
+  /// frames 005/011). Driven by _thicknessController (180ms): it
+  /// forwards when a drag engages or a settle spring starts, and
+  /// reverses when both springs have settled and the finger is off.
+  late final AnimationController _thicknessController;
+
   /// One controller per pill edge; each drives a fixed edge (left →
   /// _pillLeft, right → _pillRight). Which spring each gets depends
   /// on the direction of the move (see _springTo) — the leading
@@ -260,18 +294,52 @@ class GlassTabBarState extends State<GlassTabBar>
   void initState() {
     super.initState();
     _leftController = AnimationController.unbounded(vsync: this)
-      ..addListener(() => setState(() => _pillLeft = _leftController.value));
+      ..addListener(() => setState(() => _pillLeft = _leftController.value))
+      ..addStatusListener((_) => _maybeReverseThickness());
     _rightController = AnimationController.unbounded(vsync: this)
       ..addListener(
         () => setState(() => _pillRight = _rightController.value),
-      );
+      )
+      ..addStatusListener((_) => _maybeReverseThickness());
+    // The crossfade driver (see _thicknessController): its own
+    // listener rebuilds the bar during the 180ms fade, when the
+    // springs are idle and would not otherwise trigger a rebuild.
+    _thicknessController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    )..addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _leftController.dispose();
     _rightController.dispose();
+    _thicknessController.dispose();
     super.dispose();
+  }
+
+  /// Reverse the thickness crossfade (lens out, resting pill in)
+  /// once the pill has settled. Called from both springs' status
+  /// listeners, so the staggered trailing edge (which starts 60ms
+  /// late) keeps the lens up until it too has settled.
+  ///
+  /// The settle test is the springs' STATUS (completed/dismissed),
+  /// not isAnimating: a status listener fires synchronously inside
+  /// animateWith, and at that instant the other edge (not yet
+  /// started — the trailing edge lags 60ms) still reads idle, so an
+  /// isAnimating check would reverse the thickness at the very start
+  /// of every move and the lens would never come up.
+  void _maybeReverseThickness() {
+    if (_isDragging) return;
+    const settled = [
+      AnimationStatus.completed,
+      AnimationStatus.dismissed,
+    ];
+    if (!settled.contains(_leftController.status)) return;
+    if (!settled.contains(_rightController.status)) return;
+    if (_thicknessController.value > 0) {
+      _thicknessController.reverse();
+    }
   }
 
   /// Drive both pill edges to [targetLeft]/[targetRight]. The edge
@@ -290,6 +358,10 @@ class GlassTabBarState extends State<GlassTabBar>
   }) {
     _leftTarget = targetLeft;
     _rightTarget = targetRight;
+    // The pill is about to move (tap settle or drag release): bring
+    // the lens up (resting pill fades out with it). It reverses via
+    // _maybeReverseThickness once both springs have settled.
+    _thicknessController.forward();
     final generation = ++_springGeneration;
     void startEdge(bool isLeft) {
       final controller = isLeft ? _leftController : _rightController;
@@ -458,6 +530,9 @@ class GlassTabBarState extends State<GlassTabBar>
                 setState(() {
                   _isDragging = true;
                   _dragX = dx;
+                  // The lens comes up (resting pill fades out). It
+                  // reverses once the release spring has settled.
+                  _thicknessController.forward();
                   // Finger owns the pill now: stop both springs and
                   // track the finger directly (Kumone: pillX =
                   // dragX while dragging), at rest width — no stretch
@@ -554,6 +629,47 @@ class GlassTabBarState extends State<GlassTabBar>
                                 ],
                               ),
                             ),
+                            // Resting pill (doubling fix, chen
+                            // 2026-11-20): a SOLID faint-tint capsule
+                            // at the pill's current edges, crossfaded
+                            // against the lens by _thicknessController
+                            // (opacity 1 - thickness). At rest the
+                            // lens is fully faded out (Opacity 0
+                            // skips painting it entirely) and only
+                            // this pill shows, with the selected
+                            // icon+label drawn directly on it at
+                            // normal scale — a single copy, exactly
+                            // like NetEase at rest (frame_001/021:
+                            // solid dark oval, normal-size red
+                            // icon+label). During motion it fades out
+                            // as the lens fades in, at the same edges,
+                            // so the swap is a clean morph. Tint is
+                            // Kumone's (see header): white 0.10 dark
+                            // / black 0.075 light — a faint grey,
+                            // never black (chen).
+                            Positioned(
+                              left: pillLeft,
+                              top: 0,
+                              child: Opacity(
+                                key: GlassTabBarState.restPillOpacityKey,
+                                opacity: 1 - _thicknessController.value,
+                                child: DecoratedBox(
+                                  key: GlassTabBarState.restPillKey,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(999),
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.10)
+                                        : Colors.black.withValues(
+                                            alpha: 0.075,
+                                          ),
+                                  ),
+                                  child: SizedBox(
+                                    width: pillRight - pillLeft,
+                                    height: _contentHeight,
+                                  ),
+                                ),
+                              ),
+                            ),
                             Positioned(
                               // Pill edges are owned by the two springs
                               // (see _springTo) or, while dragging, by
@@ -580,20 +696,59 @@ class GlassTabBarState extends State<GlassTabBar>
                               // nested inside another glass container,
                               // so the two layers are not nested
                               // refractive glass.
+                              //
+                              // Doubling fix (chen 2026-11-20, bug 6):
+                              // the old pill was this lens permanently
+                              // ON, even at rest, sitting over the
+                              // directly-drawn icon row. On the phone
+                              // (Impeller premium) the see-through
+                              // lens body does not hide the direct
+                              // copy — the library's own shader says
+                              // it verbatim (liquid_glass_render.frag,
+                              // passthrough comment): "the icon layer
+                              // is also drawn directly, so a
+                              // see-through body reveals the crisp copy
+                              // next to the refracted one, i.e. doubled
+                              // labels" — so the direct (normal-scale)
+                              // icon+label showed through next to the
+                              // refracted (magnified) copy, the icon
+                              // pushed up and the label pushed down,
+                              // both clipped at the pill edges. The
+                              // fix follows the library's
+                              // AnimatedGlassIndicator and NetEase:
+                              // the lens is ONLY visible while the pill
+                              // moves (Opacity = thickness, 0 at rest,
+                              // 1 in motion). At rest it is not
+                              // painted at all and the solid resting
+                              // pill above shows instead — one copy,
+                              // normal scale. In motion it refracts the
+                              // WHOLE tab item (icon + label together,
+                              // chen 2026-11-20: the lens magnifies
+                              // the entire tab item, not just the icon)
+                              // — a single magnified/warped copy,
+                              // turning red as the pill covers it,
+                              // NetEase frames 005/011. The lens
+                              // settings are unchanged (RI 1.35,
+                              // thickness 36): the magnification is
+                              // NOT weakened to hide the doubling.
                               left: pillLeft,
                               top: 0,
-                              child: GlassContainer(
-                                key: GlassTabBarState.pillKey,
-                                shape: const LiquidRoundedSuperellipse(
-                                  borderRadius: 999,
-                                ),
-                                settings:
-                                    HaoLiquidGlass.pillLensSettings(context),
-                                useOwnLayer: true,
-                                quality: GlassQuality.premium,
-                                child: SizedBox(
-                                  width: pillRight - pillLeft,
-                                  height: _contentHeight,
+                              child: Opacity(
+                                key: GlassTabBarState.pillOpacityKey,
+                                opacity: _thicknessController.value,
+                                child: GlassContainer(
+                                  key: GlassTabBarState.pillKey,
+                                  shape: const LiquidRoundedSuperellipse(
+                                    borderRadius: 999,
+                                  ),
+                                  settings:
+                                      HaoLiquidGlass.pillLensSettings(context),
+                                  useOwnLayer: true,
+                                  quality: GlassQuality.premium,
+                                  child: SizedBox(
+                                    width: pillRight - pillLeft,
+                                    height: _contentHeight,
+                                  ),
                                 ),
                               ),
                             ),
@@ -646,8 +801,14 @@ class _TabItem extends StatelessWidget {
   /// (GlassTabBarState.selectednessFor): 1 = fully selected, 0 =
   /// unselected. The icon + label colour is the lerp between the
   /// unselected colour and the tab-bar accent (user-chosen, default
-  /// NetEase red) — so the colour follows the pill as it slides,
-  /// and the icon/label never move (chen: 字不动只变色).
+  /// NetEase red) — so the colour follows the pill as it slides.
+  /// The direct icon/label never move (drawn at normal scale); the
+  /// magnification happens in the LENS, which refracts the whole tab
+  /// item — icon + label together (chen 2026-11-20; NetEase frames
+  /// 005/011: the label magnifies with the icon inside the lens,
+  /// turning red as the pill covers it). At rest the label is normal
+  /// size (NetEase frames 001/021) — the "labels magnify" is a
+  /// motion effect, not a rest state.
   final double selectedness;
   final HaoTheme theme;
 

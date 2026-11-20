@@ -48,9 +48,17 @@ class VideoTabPage extends StatefulWidget {
   State<VideoTabPage> createState() => _VideoTabPageState();
 }
 
-class _VideoTabPageState extends State<VideoTabPage> {
+/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
+/// Safe here: initState renders from cache + refreshes once in the
+/// background; no timers, streams or polling that would keep running
+/// while hidden.
+class _VideoTabPageState extends State<VideoTabPage>
+    with AutomaticKeepAliveClientMixin {
   final _homeService = VideoHomeService();
   final _detailService = VideoDetailService();
+
+  @override
+  bool get wantKeepAlive => true;
 
   VideoHomeData? _home;
   List<VideoItem> _daily = [];
@@ -165,6 +173,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),

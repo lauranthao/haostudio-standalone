@@ -196,11 +196,21 @@ class _FeatureTile {
   final Color? glassTintDark;
 }
 
-class _MusicTabPageState extends State<MusicTabPage> {
+/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
+/// Safe here: no timers/streams/polling in this State (the only
+/// AnimationController is the one-shot 250ms _StaggerIn entrance,
+/// and the Hive listenable is key-scoped + removed in dispose).
+/// This also fixes the section-collapse reset the music page used to
+/// suffer on tab switch (music_tab_page.dart:88 comment).
+class _MusicTabPageState extends State<MusicTabPage>
+    with AutomaticKeepAliveClientMixin {
   final _importController = TextEditingController();
   late final MusicApi _api = widget.api ?? MusicApi();
   var _playlistsExpanded = true;
   var _recentExpanded = true;
+
+  @override
+  bool get wantKeepAlive => true;
   List<UserPlaylist> _lists = [];
   List<Song> _recent = [];
   var _importing = false;
@@ -600,6 +610,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(
       () => Scaffold(
