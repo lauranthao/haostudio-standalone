@@ -1288,6 +1288,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving the room hands the brightness back to the system:
+    // a room-set level must not leak onto every other page (or
+    // survive to be re-applied on the next foreground return).
+    unawaited(ScreenBrightness.reset());
     _hideControlsTimer?.cancel();
     _dragHudTimer?.cancel();
     _volumeSub?.cancel();
@@ -1324,9 +1328,23 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _session.setForeground(false);
+        // Give the brightness back to the system NOW, not only on
+        // dispose: the iOS plugin re-applies a remembered app
+        // brightness on every foreground return, so a stale room
+        // value would overwrite whatever the user picked in Control
+        // Center while backgrounded. reset() clears the remembered
+        // value, so the return keeps the user's system brightness.
+        // (The live audio keeps playing in background — only the
+        // screen brightness is handed back, never the stream.)
+        unawaited(ScreenBrightness.reset());
         _enterBackground();
       case AppLifecycleState.resumed:
         _session.setForeground(true);
+        // Do NOT re-apply any brightness here: whatever the user
+        // picked in Control Center while backgrounded is the
+        // brightness now. The next vertical drag re-reads the
+        // current value at drag start (_onVerticalDragUpdate),
+        // so no cached seed needs refreshing.
         unawaited(_enterForeground());
       case AppLifecycleState.inactive:
         // Transient (call, Control Center, app switcher): the room

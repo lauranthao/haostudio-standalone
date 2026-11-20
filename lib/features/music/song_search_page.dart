@@ -30,7 +30,7 @@ import 'album_detail_page.dart';
 import 'artist_detail_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
@@ -588,11 +588,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
   void _playSong(Song song, List<Song> queue) {
     final idx = queue.indexWhere((s) => s.identityKey == song.identityKey);
     unawaited(_player.playQueue(queue, idx < 0 ? 0 : idx));
-    unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage())),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   @override

@@ -16,7 +16,7 @@ import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
@@ -48,11 +48,7 @@ class _FavouritesPageState extends State<FavouritesPage> {
   void _playSong(Song song) {
     final idx = _songs.indexWhere((s) => s.identityKey == song.identityKey);
     unawaited(_player.playQueue(_songs, idx < 0 ? 0 : idx, label: '我的收藏'));
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-      ),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   @override

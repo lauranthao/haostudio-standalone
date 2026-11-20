@@ -31,7 +31,7 @@ import '../../services/music/music_store.dart';
 import '../../services/music/search_platform_store.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
@@ -478,11 +478,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
     final tracks = _tracks;
     if (tracks == null || tracks.isEmpty) return;
     unawaited(_player.playQueue(tracks, 0, label: widget.playlist.name));
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-      ),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   @override
@@ -637,13 +633,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                               unawaited(
                                 _player.playQueue(_tracks!, i),
                               );
-                              unawaited(
-                                Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => const MusicPlayerPage(),
-                                  ),
-                                ),
-                              );
+                              unawaited(openPlayerPage<void>(context));
                             },
                             onToggleFav: () async {
                               await _player.toggleFav(song);
