@@ -223,6 +223,63 @@ void main() {
         'pill_rest_dark');
   });
 
+  // Bug 4 (tab-bar glass back, 4 themes x light/dark): the bar at
+  // rest in the other three themes, so the frost bump can be eyeballed
+  // per theme instead of assuming appleGlass generalises.
+  testWidgets('pill rest 暗夜鎏金 light', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.darkGold).light),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.darkGold).light),
+        'pill_rest_gold_light');
+  });
+
+  testWidgets('pill rest 暗夜鎏金 dark', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.darkGold).dark),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.darkGold).dark),
+        'pill_rest_gold_dark');
+  });
+
+  testWidgets('pill rest 清新薄荷 light', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.freshMint).light),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.freshMint).light),
+        'pill_rest_mint_light');
+  });
+
+  testWidgets('pill rest 清新薄荷 dark', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.freshMint).dark),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.freshMint).dark),
+        'pill_rest_mint_dark');
+  });
+
+  testWidgets('pill rest 极夜冰蓝 light', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.polarIce).light),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.polarIce).light),
+        'pill_rest_ice_light');
+  });
+
+  testWidgets('pill rest 极夜冰蓝 dark', (tester) async {
+    await pumpHome(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.polarIce).dark),
+    );
+    await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.polarIce).dark),
+        'pill_rest_ice_dark');
+  });
+
   testWidgets('pill mid-slide to 设置 light', (tester) async {
     await pumpHome(
       tester,

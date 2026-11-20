@@ -103,8 +103,15 @@ class HaoLiquidGlass {
   ///   (the backdrop behind it is the same colour, so any alpha
   ///   blends); over a wallpaper it is only a 12% wash, so the photo
   ///   reads through continuously;
-  /// - frostOpacity 0.40 (from 0.73/0.85) — the frost cloud is
-  ///   thinner, so the backdrop shows through instead of going milky;
+  /// - frostOpacity 0.55 (from 0.73/0.85, raised from 0.40 in the
+  ///   bug-4 fix) — the frost cloud is thinner than the ios27 slab
+  ///   but thick enough that content scrolling under the bar visibly
+  ///   diffuses instead of showing through sharp: that diffusion IS
+  ///   the glass cue. 0.40 (the §4 value) left the bar reading as a
+  ///   flat strip — chen 2026-11-20: "菜单的那个玻璃也没有了".
+  ///   Over a perfectly uniform backdrop frost changes nothing (the
+  ///   pill lens is the cue there: it magnifies the icons); over
+  ///   real content the 0.55 frost is what makes the bar read glass.
   /// - saturation 1.0 (from 2.1/1.4) — the backdrop inside the bar
   ///   must not be more saturated than the page around it;
   /// - bodyShade 0 (dark was 0.28) — no extra darkening of the body,
@@ -120,8 +127,9 @@ class HaoLiquidGlass {
     final page = HaoTheme.of(context).scaffoldBackground;
     return base.copyWith(
       glassColor: page.withValues(alpha: 0.12),
-      frostOpacity: 0.40,
+      frostOpacity: 0.55,
       saturation: 1.0,
+      rimLight: 1.5,
       bodyShade: 0.0,
     );
   }
