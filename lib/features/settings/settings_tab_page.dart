@@ -96,8 +96,14 @@ class SettingsTabPage extends StatefulWidget {
   State<SettingsTabPage> createState() => _SettingsTabPageState();
 }
 
-class _SettingsTabPageState extends State<SettingsTabPage> {
+/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
+/// Safe here: a static settings list, no timers, streams or polling.
+class _SettingsTabPageState extends State<SettingsTabPage>
+    with AutomaticKeepAliveClientMixin {
   late String _engineKey;
+
+  @override
+  bool get wantKeepAlive => true;
   late bool _engineExpanded;
   late bool _playbackExpanded;
   late bool _autoNext;
@@ -168,6 +174,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
