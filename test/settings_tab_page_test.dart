@@ -136,6 +136,22 @@ void main() {
     expect(crashTop, greaterThan(updateTop));
   });
 
+  testWidgets('version row opens the changelog; 完成 closes it',
+      (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.text('版本'));
+    await tester.pumpAndSettle();
+    expect(find.text('更新日志'), findsOneWidget);
+    expect(find.text('v1.1.5'), findsOneWidget);
+    expect(find.text('新增功能'), findsWidgets);
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('更新日志'), findsNothing);
+    expect(find.text('版本'), findsOneWidget);
+  });
+
   Future<void> expandPlayback(WidgetTester tester) async {
     await HiveStore.box.delete(HiveKeys.playbackSectionExpanded);
     await pumpPage(tester);
