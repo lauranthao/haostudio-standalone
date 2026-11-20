@@ -52,6 +52,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     required this.liveRed,
     required this.glassBlurSigma,
     required this.scaffoldBackground,
+    required this.tabPill,
   });
 
   /// Sophisticated theme accent for buttons / active states (never red).
@@ -87,6 +88,15 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
 
   final Color scaffoldBackground;
 
+  /// Solid matte colour of the tab-bar resting pill (Muse app bar,
+  /// chen 2026-11-20 "一模一样"): light #E4E4E4 measured off the
+  /// reference frames (pill 228 on bar 249), dark #3A3A3C, clearly
+  /// lighter than every dark scaffold (0–13). Opaque on purpose —
+  /// the old colorBurn painter rendered nearly invisible in Skia,
+  /// and a matte fill is deterministic in both renderers. Never
+  /// black, never faint.
+  final Color tabPill;
+
   static HaoTheme of(BuildContext context) =>
       Theme.of(context).extension<HaoTheme>()!;
 
@@ -104,6 +114,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     Color? liveRed,
     double? glassBlurSigma,
     Color? scaffoldBackground,
+    Color? tabPill,
   }) {
     return HaoTheme(
       accent: accent ?? this.accent,
@@ -118,6 +129,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       liveRed: liveRed ?? this.liveRed,
       glassBlurSigma: glassBlurSigma ?? this.glassBlurSigma,
       scaffoldBackground: scaffoldBackground ?? this.scaffoldBackground,
+      tabPill: tabPill ?? this.tabPill,
     );
   }
 
@@ -142,6 +154,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
         other.scaffoldBackground,
         t,
       )!,
+      tabPill: Color.lerp(tabPill, other.tabPill, t)!,
     );
   }
 }
@@ -168,6 +181,7 @@ ThemeData _buildThemeData({
   required Color textSecondary,
   required Color textMuted,
   required double glassBlurSigma,
+  required Color tabPill,
   // Custom font family (stage 2, Beans `FontManager`): null = system
   // default. Passed to the ThemeData constructor so it lands in the
   // default text themes (ThemeData.copyWith has NO fontFamily
@@ -411,10 +425,19 @@ ThemeData _buildThemeData({
         liveRed: liveRed,
         glassBlurSigma: glassBlurSigma,
         scaffoldBackground: scaffoldBackground,
+        tabPill: tabPill,
       ),
     ],
   );
 }
+
+/// Text/icon colour on top of a custom accent: white on dark
+/// accents, near-black on light ones (same split the gold and
+/// mint dark-mode pairs already use for their light accents).
+Color _onAccentFor(Color accent) =>
+    ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+        ? Colors.white
+        : const Color(0xFF0B0B0F);
 
 /// All four themes, each with light + dark. No purple anywhere.
 /// Blue -> black (chen 2026-11-18): the two blue/cyan accents
@@ -432,15 +455,26 @@ class HaoThemes {
     HaoThemeId.polarIce: '极夜冰蓝',
   };
 
-  static HaoThemePair of(HaoThemeId id, {String? fontFamily}) {
+  /// The user's custom accent (settings -> 自定义强调色) replaces the
+  /// per-theme accent in BOTH modes when set; null keeps the
+  /// per-theme defaults. Only accent-role usages move: liveRed,
+  /// text colours and surfaces are separate slots and never change.
+  static HaoThemePair of(
+    HaoThemeId id, {
+    String? fontFamily,
+    Color? accentOverride,
+  }) {
+    final overrideOnAccent = accentOverride == null
+        ? null
+        : _onAccentFor(accentOverride);
     switch (id) {
       case HaoThemeId.appleGlass:
         return HaoThemePair(
           light: _buildThemeData(
             brightness: Brightness.light,
             fontFamily: fontFamily,
-            accent: const Color(0xFF000000),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF000000),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFFF2F2F7),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -453,12 +487,13 @@ class HaoThemes {
             // mode is untouched (7.31:1 already).
             textMuted: const Color(0xFF6B6B70),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,
-            accent: const Color(0xFF76767A),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF76767A),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFF000000),
             surface: Colors.white.withValues(alpha: 0.10),
             surfaceStrong: Colors.white.withValues(alpha: 0.16),
@@ -468,6 +503,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFD1D1D6),
             textMuted: const Color(0xFF98989D),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.darkGold:
@@ -475,8 +511,8 @@ class HaoThemes {
           light: _buildThemeData(
             brightness: Brightness.light,
             fontFamily: fontFamily,
-            accent: const Color(0xFF9A7B1E),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF9A7B1E),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFFFAF6EC),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -489,12 +525,13 @@ class HaoThemes {
             // untouched (5.88:1 already).
             textMuted: const Color(0xFF7A6C4E),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,
-            accent: const Color(0xFFD4AF37),
-            onAccent: const Color(0xFF0B0B0F),
+            accent: accentOverride ?? const Color(0xFFD4AF37),
+            onAccent: overrideOnAccent ?? const Color(0xFF0B0B0F),
             scaffoldBackground: const Color(0xFF0D0B08),
             surface: Colors.white.withValues(alpha: 0.08),
             surfaceStrong: Colors.white.withValues(alpha: 0.14),
@@ -504,6 +541,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFD8C9A3),
             textMuted: const Color(0xFF9A8B6B),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.freshMint:
@@ -511,8 +549,8 @@ class HaoThemes {
           light: _buildThemeData(
             brightness: Brightness.light,
             fontFamily: fontFamily,
-            accent: const Color(0xFF00897B),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF00897B),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFFEFFAF6),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -525,12 +563,13 @@ class HaoThemes {
             // mode untouched (6.95:1 already).
             textMuted: const Color(0xFF58746D),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,
-            accent: const Color(0xFF4DD0C4),
-            onAccent: const Color(0xFF0B0B0F),
+            accent: accentOverride ?? const Color(0xFF4DD0C4),
+            onAccent: overrideOnAccent ?? const Color(0xFF0B0B0F),
             scaffoldBackground: const Color(0xFF07110F),
             surface: Colors.white.withValues(alpha: 0.09),
             surfaceStrong: Colors.white.withValues(alpha: 0.15),
@@ -540,6 +579,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFB9D9D2),
             textMuted: const Color(0xFF7FA39B),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.polarIce:
@@ -547,8 +587,8 @@ class HaoThemes {
           light: _buildThemeData(
             brightness: Brightness.light,
             fontFamily: fontFamily,
-            accent: const Color(0xFF000000),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF000000),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFFEEF6FB),
             surface: Colors.white.withValues(alpha: 0.55),
             surfaceStrong: Colors.white.withValues(alpha: 0.68),
@@ -561,12 +601,13 @@ class HaoThemes {
             // mode untouched (6.76:1 already).
             textMuted: const Color(0xFF4F6E84),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,
-            accent: const Color(0xFF76767A),
-            onAccent: Colors.white,
+            accent: accentOverride ?? const Color(0xFF76767A),
+            onAccent: overrideOnAccent ?? Colors.white,
             scaffoldBackground: const Color(0xFF050B12),
             surface: Colors.white.withValues(alpha: 0.08),
             surfaceStrong: Colors.white.withValues(alpha: 0.14),
@@ -576,6 +617,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFB4D2E6),
             textMuted: const Color(0xFF7D9BB0),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
     }

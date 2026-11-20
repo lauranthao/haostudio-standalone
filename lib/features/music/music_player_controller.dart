@@ -34,6 +34,7 @@ import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart' show ProcessingState;
 import 'av_music_player.dart';
 
+import '../../core/logging/app_log.dart';
 import '../../core/native/now_playing.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/storage/local_paths.dart';
@@ -411,7 +412,7 @@ class MusicPlayerController extends GetxController
         _active = _playerA;
         _playersReady = true;
       } catch (e) {
-        debugPrint('[HAo] music players failed to initialise: $e');
+        AppLog.error('音乐播放器初始化失败：$e');
         _playersReady = false;
       }
     }
@@ -568,7 +569,7 @@ class MusicPlayerController extends GetxController
     if (_disposed) return;
     switch (command) {
       case NowPlayingRemoteCommand.play:
-        if (!isPlaying.value) await _active.play();
+        await _playCurrentOrResume();
       case NowPlayingRemoteCommand.pause:
         if (isPlaying.value) await _active.pause();
       case NowPlayingRemoteCommand.toggle:
@@ -914,6 +915,7 @@ class MusicPlayerController extends GetxController
             song.title,
           );
         } catch (_) {
+          AppLog.warn('解析播放地址失败：${song.title}');
           r = null;
         }
       }
@@ -1318,6 +1320,7 @@ class MusicPlayerController extends GetxController
     required bool auto,
     required String reason,
   }) async {
+    AppLog.error('无法播放：${song.title}（$reason）');
     _loadFailed = true;
     if (!auto) {
       loadError.value = (song: song, reason: reason);
@@ -1507,8 +1510,28 @@ class MusicPlayerController extends GetxController
     if (isPlaying.value) {
       await _active.pause();
     } else {
-      await _active.play();
+      await _playCurrentOrResume();
     }
+  }
+
+  /// Play when a track is loaded; on a fresh launch (or after a
+  /// failed load) nothing is in the player yet, so a bare play() is
+  /// a no-op — AvMusicPlayer.play() returns early without a source —
+  /// and the tap does nothing (chen 2026-11-20: 刚进 app 点播放歌曲
+  /// 不播放，要切到下一首歌才播放). Load the restored current song
+  /// through the normal path instead. A load already in flight is
+  /// left alone (it plays when it lands); a loaded-but-paused track
+  /// still resumes without reloading.
+  Future<void> _playCurrentOrResume() async {
+    if (isPlaying.value) return;
+    if (_playersReady &&
+        _loadedIdentityKey.isEmpty &&
+        currentSong != null &&
+        !isResolving.value) {
+      await playIndex(currentIndex.value);
+      return;
+    }
+    await _active.play();
   }
 
   /// Pause playback if currently playing; no-op when already paused.

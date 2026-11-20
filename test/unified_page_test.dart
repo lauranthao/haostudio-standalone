@@ -4,7 +4,10 @@
 //
 // - chromeSettings tints the floating chrome with the page's own
 //   background (theme scaffold colour) at low alpha, thin frost —
-//   in all 4 themes x light/dark;
+//   in all 4 themes x light/dark. Frost 0.55 + rimLight 1.5 since the
+//   bug-4 fix (chen 2026-11-20: "菜单的那个玻璃也没有了" — the §4
+//   0.40 frost left the bar reading as a flat strip); the tint stays
+//   the page colour, so the bar is still not a white slab.
 // - the tab bar shell + the mini player bar both use it;
 // - the tab-root top bars (live + settings AppBars) ARE the page
 //   background: scaffold colour with wallpaper off, transparent
@@ -179,8 +182,13 @@ void main() {
           );
           expect(
             settings.frostOpacity,
-            0.40,
+            0.55,
             reason: '$id $mode: frost is not thinned',
+          );
+          expect(
+            settings.rimLight,
+            1.5,
+            reason: '$id $mode: rim light is the glass cue',
           );
           expect(
             settings.saturation,
@@ -228,7 +236,8 @@ void main() {
           .extension<HaoTheme>()!
           .scaffoldBackground;
       expect(shell.settings?.glassColor, page.withValues(alpha: 0.12));
-      expect(shell.settings?.frostOpacity, 0.40);
+      expect(shell.settings?.frostOpacity, 0.55);
+      expect(shell.settings?.rimLight, 1.5);
     });
 
     testWidgets('mini player bar uses chromeSettings', (tester) async {
@@ -258,7 +267,8 @@ void main() {
           .extension<HaoTheme>()!
           .scaffoldBackground;
       expect(bar.settings?.glassColor, page.withValues(alpha: 0.12));
-      expect(bar.settings?.frostOpacity, 0.40);
+      expect(bar.settings?.frostOpacity, 0.55);
+      expect(bar.settings?.rimLight, 1.5);
     });
   });
 

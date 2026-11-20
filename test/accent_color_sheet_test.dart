@@ -110,13 +110,20 @@ void main() {
   Color tabIconColor(WidgetTester tester, int i) =>
       tester.widget<Icon>(find.byType(Icon).at(i)).color!;
 
-  testWidgets('grid pick applies to the tab bar immediately',
+  testWidgets('grid pick updates the stored accent; tab bar stays theme text',
       (tester) async {
     await pumpBarWithSheet(tester);
     await openSheet(tester);
+    // The tab bar no longer follows the accent (Muse bar: all icons
+    // theme text) — the pick still updates the stored accent, which
+    // the rest of the app reads.
+    final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .textPrimary;
     expect(
       tabIconColor(tester, 0),
-      TabBarAccentController.defaultColor,
+      textPrimary,
     );
 
     // Hue 0 (red), row 4 (middle lightness): HSV(0, 0.55, 0.6).
@@ -125,7 +132,7 @@ void main() {
     final expected =
         HSVColor.fromAHSV(1.0, 0, 0.55, 0.6).toColor();
     expect(TabBarAccentController.ensure().color.value, expected);
-    expect(tabIconColor(tester, 0), expected);
+    expect(tabIconColor(tester, 0), textPrimary);
   });
 
   testWidgets('segments switch between grid / spectrum / sliders',
@@ -164,8 +171,13 @@ void main() {
     expect(find.text('25%'), findsOneWidget);
     final color = TabBarAccentController.ensure().color.value;
     expect(color.a, closeTo(0.25, 0.02));
-    // The tab bar reads the same translucent colour.
-    expect(tabIconColor(tester, 0).a, closeTo(0.25, 0.02));
+    // The tab bar no longer follows the accent (Muse bar: all icons
+    // theme text) — the icon stays opaque theme text.
+    final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .textPrimary;
+    expect(tabIconColor(tester, 0), textPrimary);
   });
 
   testWidgets('preset + adds, persists, long-press deletes customs only',
@@ -217,7 +229,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(TabBarAccentController.ensure().color.value, blue);
-    expect(tabIconColor(tester, 0), blue);
+    // The tab bar no longer follows the accent (Muse bar: all icons
+    // theme text) — the pick still updates the stored accent.
+    final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .textPrimary;
+    expect(tabIconColor(tester, 0), textPrimary);
   });
 
   testWidgets('settings row opens the sheet', (tester) async {

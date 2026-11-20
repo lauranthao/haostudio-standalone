@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+import '../storage/hive_store.dart';
 import 'hao_themes.dart';
 
 class ThemeController extends GetxController {
@@ -26,6 +27,23 @@ class ThemeController extends GetxController {
   /// default, 'HaoCustomFont' = user-installed font (registered with
   /// FontLoader before runApp — see main.dart).
   final RxString customFontFamily = ''.obs;
+
+  /// The user's custom accent colour (settings -> 自定义强调色):
+  /// null = no override, use the per-theme accent. Non-null = the
+  /// accent for BOTH modes of every theme (see [lightTheme] /
+  /// [darkTheme]). Stored OPAQUE: the sheet stores the colour with
+  /// its opacity for the tab bar (a translucent selected tab is a
+  /// look), but buttons / switches / progress need a solid accent,
+  /// so the opacity is dropped here — the hue is what carries over.
+  ///
+  /// Persistence lives with [TabBarAccentController]: the sheet
+  /// writes the colour (with opacity) to the shared Hive key
+  /// `hao_tabbar_accent` and this controller only holds the opaque
+  /// in-memory view, so the two never fight over the stored value.
+  /// [loadFromBox] reads the same key at startup; [clearCustomAccent]
+  /// only clears the in-memory view — the sheet's reset deletes the
+  /// stored key as well.
+  final Rx<Color?> customAccent = Rx<Color?>(null);
 
   ThemeController({HaoThemeId initialTheme = HaoThemeId.appleGlass, ThemeMode initialMode = ThemeMode.system})
       : themeId = initialTheme.obs,
@@ -49,6 +67,13 @@ class ThemeController extends GetxController {
     }
     final savedFont = box.get(_fontKey) as String?;
     if (savedFont != null) customFontFamily.value = savedFont;
+    // Custom accent: same shared key the tab bar reads
+    // (TabBarAccentController persists it with opacity); the theme
+    // takes the opaque form.
+    final savedAccent = box.get(HiveKeys.tabBarAccentColor);
+    if (savedAccent is int) {
+      customAccent.value = Color(savedAccent).withValues(alpha: 1.0);
+    }
   }
 
   void _persist(Box<dynamic> box) {
@@ -77,11 +102,27 @@ class ThemeController extends GetxController {
     if (box != null) _persist(box);
   }
 
+  /// Apply a custom accent colour immediately everywhere (the root
+  /// Obx in HAoApp rebuilds GetMaterialApp when this Rx changes).
+  /// Null clears the override and restores the per-theme accent.
+  /// Does NOT persist: the sheet persists through
+  /// TabBarAccentController (shared key, stored with opacity).
+  void setCustomAccent(Color? color) {
+    customAccent.value = color?.withValues(alpha: 1.0);
+  }
+
+  /// Clear the in-memory override (per-theme accent returns). The
+  /// sheet's reset also deletes the stored key.
+  void clearCustomAccent() {
+    customAccent.value = null;
+  }
+
   ThemeData get lightTheme {
     final family = customFontFamily.value;
     return HaoThemes.of(
       themeId.value,
       fontFamily: family.isEmpty ? null : family,
+      accentOverride: customAccent.value,
     ).light;
   }
 
@@ -90,6 +131,7 @@ class ThemeController extends GetxController {
     return HaoThemes.of(
       themeId.value,
       fontFamily: family.isEmpty ? null : family,
+      accentOverride: customAccent.value,
     ).dark;
   }
 }

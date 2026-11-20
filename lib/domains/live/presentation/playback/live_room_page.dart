@@ -37,6 +37,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+import '../../../../core/logging/app_log.dart';
 import '../../../../core/models/live_models.dart';
 import '../../../../core/native/system_volume.dart';
 import '../../../../core/player/kernel/player_engine.dart';
@@ -137,6 +138,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   bool _controlsVisible = true;
   bool _controlsLocked = false;
   Timer? _hideControlsTimer;
+  // Fullscreen-entry worker: entering fullscreen always re-shows the
+  // bars and restarts the 5 s auto-hide (see the worker setup in
+  // initState). One worker on the flag covers every entry path —
+  // the [ ] buttons and the double-tap all funnel through
+  // FullscreenController.toggleFullscreen.
+  Worker? _fullscreenWorker;
   bool _playing = false;
   bool _paused = false;
   // Background audio-only: true while the app is backgrounded and the
@@ -151,18 +158,34 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
   // System volume (MethodChannel): the vertical drag drives the
-  // device volume, not the player gain; the channel is the source
-  // of truth — there is no local level cache.
+  // device volume, not the player gain.
   final SystemVolume _systemVolume = SystemVolume();
   StreamSubscription<double>? _volumeSub;
+  // Per-side level caches (chen 2026-11-20: volume drag is choppy):
+  // the drag seeds from the cache of the side it starts on, so a
+  // mid-drag side change never re-reads the channel and never jumps
+  // the value. Volume stays live through the volumeChanges stream
+  // (+ an init-time read); brightness through an init-time read and
+  // the drag itself.
+  double _volumeLevel = 1.0;
+  double _brightnessLevel = 0.5;
   // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
   // the surface maps to a quarter of the level range per half-height
   // (see _applyDrag); the card hides 1 s after the last drag.
   bool _dragHudVisible = false;
   bool _dragIsBrightness = true;
-  double _dragValue = 1.0;
+  // The drag HUD value. A ValueNotifier, not a setState field — see
+  // the VOD player: pointer ticks rebuild only the HUD card, never
+  // the whole room page.
+  final ValueNotifier<double> _dragValueNotifier =
+      ValueNotifier<double>(1.0);
   Timer? _dragHudTimer;
   bool _dragInSystemZone = false;
+  // True once the drag-start seed has landed; updates arriving
+  // before that are dropped (the brightness seed awaits the channel
+  // for up to 300 ms — the VOD player drops them the same way, by
+  // leaving the drag side unset until the seed completes).
+  bool _dragSeedReady = false;
   // Fullscreen barrage pool (Pure Live PlayerDanmakuSurface +
   // LivePlayerFacade.floatingDanmaku): rendered over the video in
   // fullscreen only; the portrait list below stays the danmaku
@@ -219,7 +242,23 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _site = widget.site ?? Sites.of(widget.room.platform);
     _session = PlaybackSession(backendFactory: widget.backendFactory);
     _fullscreen = Get.put(FullscreenController());
+    // Entering fullscreen re-shows the bars and restarts the 5 s
+    // auto-hide from that moment: the portrait bar is page chrome
+    // (always visible when unlocked), so a hidden _controlsVisible
+    // is invisible in portrait — but the fullscreen overlay bar is
+    // gated on it, so without this, entering fullscreen after the
+    // 5 s auto-hide opens with no controls until the video is
+    // tapped. Exiting fullscreen leaves the bars alone. Locked
+    // stays locked: the overlay gate hides the bars and only the
+    // unlock button shows.
+    _fullscreenWorker = ever<bool>(
+      _fullscreen.isFullscreen,
+      (isFs) {
+        if (isFs && !_controlsLocked) _showControls();
+      },
+    );
     _recovery = LiveRecovery(site: _site, room: _room);
+    AppLog.info('进入直播间：${_room.platform} ${_room.roomId}');
     _danmakuFilter = DanmakuContentFilter();
     _readDanmakuSettings();
     _subscribeDanmakuSettings();
@@ -269,6 +308,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // Keep the HUD on the real level when hardware keys / Control
     // Center move it. The drag itself reads the level live.
     _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
+    // Seed the per-side caches at entry (best-effort): the first drag
+    // must start from the real levels, not the 1.0 / 0.5 defaults —
+    // the old code re-read inside the drag update instead and raced
+    // with the drag itself, jumping the value mid-drag.
+    unawaited(_systemVolume.getVolume().then((v) => _volumeLevel = v));
+    unawaited(
+      ScreenBrightness.getBrightness().then((v) => _brightnessLevel = v),
+    );
   }
 
   Future<void> _loadRoom() async {
@@ -576,6 +623,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   void _onSessionError(String message) {
     if (!mounted) return;
+    AppLog.warn('直播异常：$message');
     // Order: next line first (no request), then fresh re-parse.
     // BOUND: after the recovery budget for this episode is spent, stop
     // and show the failure card. advanceLine() wraps around, so
@@ -590,6 +638,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (_consecutiveAutoFailures >=
         LiveRoomPage.autoRecoveryBudget(_recovery.lines.length)) {
       // Lines exhausted at this quality: show the failure card.
+      AppLog.error('直播失败：$message');
       // Pure Live never auto-downgrades — recovery is re-parse +
       // sweep at the same quality, and when the sweep is exhausted
       // the room fails visibly instead of silently dropping quality
@@ -618,6 +667,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// — whose list `fetchFresh` already replaced with fresh URLs, so it
   /// is still a fresh line, never the dead one.
   Future<void> _recoverWithFreshUrls(String message) async {
+    AppLog.info('直播恢复：重新解析播放地址');
     final fresh = _recovery.takeHeld() ?? await _recovery.fetchFresh();
     if (!mounted) return;
     if (fresh != null && fresh.urls.isNotEmpty) {
@@ -1078,11 +1128,35 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     return localPosition.dy >= size.height - zone;
   }
 
-  void _onVerticalDragStart(DragStartDetails details) {
+  Future<void> _onVerticalDragStart(DragStartDetails details) async {
     final size = _videoSurfaceKey.currentContext?.size;
     _dragInSystemZone =
         size != null &&
         _startsInSystemHomeGestureZone(details.localPosition, size);
+    _dragSeedReady = false;
+    if (_dragInSystemZone || _controlsLocked) return;
+    if (size == null || size.width <= 0) return;
+    // Seed the drag from the side's cache. Volume needs no re-read —
+    // the cache is live through the volumeChanges stream. Brightness
+    // gets a best-effort re-read with a short timeout, like the VOD
+    // player (a stale brightness seed would jump the screen back to
+    // the old level on the first move); updates arriving before it
+    // lands are dropped (see _dragSeedReady) instead of racing it.
+    final isBrightness = details.localPosition.dx <= size.width / 2;
+    if (isBrightness) {
+      try {
+        final v = await ScreenBrightness.getBrightness().timeout(
+          const Duration(milliseconds: 300),
+        );
+        if (!mounted) return;
+        _brightnessLevel = v.clamp(0.0, 1.0);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    _dragIsBrightness = isBrightness;
+    _dragValueNotifier.value =
+        isBrightness ? _brightnessLevel : _volumeLevel;
+    _dragSeedReady = true;
   }
 
   /// Hardware keys / Control Center changed the system volume:
@@ -1090,10 +1164,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// brightness HUD already on screen is left alone.
   void _onExternalVolume(double volume) {
     if (!mounted) return;
+    _volumeLevel = volume;
     if (_dragHudVisible && _dragIsBrightness) return;
+    // Own-set echoes never reach here (SystemVolume suppresses them);
+    // a genuine hardware-key / Control Center change updates the HUD
+    // value directly — no page rebuild beyond the pill visibility.
+    _dragValueNotifier.value = volume;
     setState(() {
       _dragIsBrightness = false;
-      _dragValue = volume;
     });
     _keepDragHudVisible();
   }
@@ -1101,40 +1179,48 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// Vertical drag: left half brightness, right half volume (Pure Live
   /// PlayerGestureLayer._apply, verbatim formula). Volume is the
   /// SYSTEM volume (SystemVolume channel).
-  Future<void> _onVerticalDragUpdate(DragUpdateDetails details) async {
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
     if (_dragInSystemZone || _controlsLocked) return;
+    if (!_dragSeedReady) return;
     final size = _videoSurfaceKey.currentContext?.size;
     if (size == null || size.height <= 0) return;
     final delta = details.delta;
     if (delta.distance < 0.5) return;
     final isBrightness = details.localPosition.dx <= size.width / 2;
-    if (_dragIsBrightness != isBrightness || !_dragHudVisible) {
+    // Side change mid-drag: seed from the new side's cache (no
+    // channel read) so the value continues from that side's real
+    // level instead of jumping. The old code awaited getVolume /
+    // getBrightness here and the re-read overwrote the drag value
+    // while later ticks were already applying deltas to it.
+    if (_dragIsBrightness != isBrightness) {
       _dragIsBrightness = isBrightness;
-      final observed = isBrightness
-          ? await ScreenBrightness.getBrightness()
-          : await _systemVolume.getVolume();
-      if (!mounted) return;
-      setState(() => _dragValue = observed.clamp(0.0, 1.0));
+      _dragValueNotifier.value =
+          isBrightness ? _brightnessLevel : _volumeLevel;
     }
-    if (!mounted) return;
     _keepDragHudVisible();
     // Full travel of the surface maps to a quarter of the level range
     // per half-height: target = value - dy / (height / 2) * 0.25.
-    final target = (_dragValue - delta.dy / (size.height / 2) * 0.25).clamp(
-      0.0,
-      1.0,
-    );
-    if ((target - _dragValue).abs() <= 0.001) return;
-    setState(() => _dragValue = target);
+    final target =
+        (_dragValueNotifier.value - delta.dy / (size.height / 2) * 0.25)
+            .clamp(0.0, 1.0);
+    if ((target - _dragValueNotifier.value).abs() <= 0.001) return;
+    // HUD first, through the notifier only — the page is NOT rebuilt
+    // per tick. The platform call is coalesced inside
+    // SystemVolume.setVolume, so a fast drag sends the latest value
+    // instead of a queue of stale ones.
+    _dragValueNotifier.value = target;
     if (isBrightness) {
+      _brightnessLevel = target;
       unawaited(ScreenBrightness.setBrightness(target));
     } else {
+      _volumeLevel = target;
       unawaited(_systemVolume.setVolume(target));
     }
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
     _dragInSystemZone = false;
+    _dragSeedReady = false;
   }
 
   void _keepDragHudVisible() {
@@ -1147,12 +1233,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   /// Drag HUD icon (Pure Live PlayerGestureLayerState._icon).
   IconData get _dragHudIcon {
+    final value = _dragValueNotifier.value;
     if (_dragIsBrightness) {
-      if (_dragValue <= 0) return Icons.brightness_low;
-      return _dragValue < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
+      if (value <= 0) return Icons.brightness_low;
+      return value < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
     }
-    if (_dragValue <= 0) return Icons.volume_mute;
-    return _dragValue < 0.5 ? Icons.volume_down : Icons.volume_up;
+    if (value <= 0) return Icons.volume_mute;
+    return value < 0.5 ? Icons.volume_down : Icons.volume_up;
   }
 
   void _lockControls() {
@@ -1167,6 +1254,87 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     setState(() => _controlsLocked = false);
     _showControls();
   }
+
+  /// Bottom-bar buttons (Pure Live BottomActionBar): play/pause,
+  /// refresh, danmaku; fullscreen adds the quality + line selectors;
+  /// right lock + fullscreen toggle. Shared by the fullscreen
+  /// overlay (white on the black gradient) and the portrait
+  /// below-video bar (theme colour on the scaffold) — same buttons,
+  /// order, tooltips and handlers; only the colour changes. The
+  /// quality/line buttons render only in fullscreen (their Obx
+  /// returns a shrink in portrait — portrait has its own chip rows
+  /// below the video).
+  List<Widget> _bottomBarButtons(Color color) => [
+    IconButton(
+      icon: Icon(
+        _playing ? Icons.pause : Icons.play_arrow,
+        color: color,
+      ),
+      tooltip: _playing ? '暂停' : '播放',
+      onPressed: () => _session.togglePlayPause(),
+    ),
+    IconButton(
+      icon: Icon(Icons.refresh, color: color),
+      tooltip: '刷新',
+      onPressed: _manualRetry,
+    ),
+    IconButton(
+      icon: Icon(
+        _danmakuVisible ? Icons.chat_bubble_outline : Icons.chat_bubble,
+        color: color,
+      ),
+      tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
+      onPressed: () => setState(() => _danmakuVisible = !_danmakuVisible),
+    ),
+    Obx(() {
+      final fs = _fullscreen.isFullscreen.value;
+      if (!fs) return const SizedBox.shrink();
+      return TextButton(
+        onPressed: _qualities.isEmpty ? null : _openQualitySheet,
+        child: Text(
+          _qualities.isEmpty ? '清晰度' : _qualities[_currentQuality].quality,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }),
+    Obx(() {
+      final fs = _fullscreen.isFullscreen.value;
+      if (!fs) return const SizedBox.shrink();
+      return TextButton(
+        onPressed: _recovery.lines.length < 2 ? null : _openLineSheet,
+        child: Text(
+          '线路 ${_recovery.currentLineIndex + 1}',
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }),
+    const Spacer(),
+    IconButton(
+      icon: Icon(Icons.lock_open, color: color),
+      tooltip: '锁定控制条',
+      onPressed: _lockControls,
+    ),
+    IconButton(
+      icon: Obx(
+        () => Icon(
+          _fullscreen.isFullscreen.value
+              ? Icons.fullscreen_exit
+              : Icons.fullscreen,
+          color: color,
+        ),
+      ),
+      tooltip: '全屏',
+      onPressed: () => _fullscreen.toggleFullscreen(),
+    ),
+  ];
 
   /// Quality selector (Pure Live FullscreenStreamSelectorButton).
   void _openQualitySheet() {
@@ -1288,8 +1456,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving the room hands the brightness back to the system:
+    // a room-set level must not leak onto every other page (or
+    // survive to be re-applied on the next foreground return).
+    unawaited(ScreenBrightness.reset());
     _hideControlsTimer?.cancel();
+    _fullscreenWorker?.dispose();
+    _fullscreenWorker = null;
     _dragHudTimer?.cancel();
+    _dragValueNotifier.dispose();
     _volumeSub?.cancel();
     _systemVolume.dispose();
     _barrageController.dispose();
@@ -1324,9 +1499,23 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _session.setForeground(false);
+        // Give the brightness back to the system NOW, not only on
+        // dispose: the iOS plugin re-applies a remembered app
+        // brightness on every foreground return, so a stale room
+        // value would overwrite whatever the user picked in Control
+        // Center while backgrounded. reset() clears the remembered
+        // value, so the return keeps the user's system brightness.
+        // (The live audio keeps playing in background — only the
+        // screen brightness is handed back, never the stream.)
+        unawaited(ScreenBrightness.reset());
         _enterBackground();
       case AppLifecycleState.resumed:
         _session.setForeground(true);
+        // Do NOT re-apply any brightness here: whatever the user
+        // picked in Control Center while backgrounded is the
+        // brightness now. The next vertical drag re-reads the
+        // current value at drag start (_onVerticalDragUpdate),
+        // so no cached seed needs refreshing.
         unawaited(_enterForeground());
       case AppLifecycleState.inactive:
         // Transient (call, Control Center, app switcher): the room
@@ -1439,7 +1628,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               onVerticalDragStart: _onVerticalDragStart,
               onVerticalDragUpdate: _onVerticalDragUpdate,
               onVerticalDragEnd: _onVerticalDragEnd,
-              onVerticalDragCancel: () => _dragInSystemZone = false,
+              onVerticalDragCancel: () {
+                _dragInSystemZone = false;
+                _dragSeedReady = false;
+              },
             ),
           ),
           // Drag HUD (Pure Live PlayerGestureLayer card).
@@ -1454,41 +1646,47 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   // legible over any frame in every theme/mode.
                   child: DarkGlass(
                     radius: 16,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(_dragHudIcon, color: Colors.white),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 100,
-                                height: 20,
-                                child: LinearProgressIndicator(
-                                  value: _dragValue,
-                                  backgroundColor: Colors.white38,
-                                  valueColor: const AlwaysStoppedAnimation(
-                                    Colors.white,
+                    // Only this card listens to the drag value: ticks
+                    // rebuild the card, never the room page.
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _dragValueNotifier,
+                      builder: (context, value, _) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(_dragHudIcon, color: Colors.white),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SizedBox(
+                                  width: 100,
+                                  height: 20,
+                                  child: LinearProgressIndicator(
+                                    value: value,
+                                    backgroundColor: Colors.white38,
+                                    valueColor: const AlwaysStoppedAnimation(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          Text(
-                            '${(_dragValue * 100).round()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                            Text(
+                              '${(value * 100).round()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1542,11 +1740,31 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ),
             );
           }),
-          // Bottom bar (Pure Live BottomActionBar: left play/pause,
-          // refresh, danmaku; fullscreen adds the quality + line
-          // selectors; right lock + fullscreen toggle).
-          if (_controlsVisible && !_controlsLocked)
-            Positioned(
+          // Bottom bar — fullscreen overlay ONLY (Pure Live
+          // BottomActionBar: left play/pause, refresh, danmaku;
+          // fullscreen adds the quality + line selectors; right lock
+          // + fullscreen toggle). Portrait no longer overlays it: it
+          // sat on the video's bottom strip, colliding with the
+          // stream's own bottom HUD (chen 2026-11-20 — the game's
+          // skill buttons). In portrait the bar lives below the
+          // video (see the Column below), so the overlay only renders
+          // in fullscreen, where the video fills the screen and
+          // there is no "below" to move it to.
+          //
+          // The fullscreen gate MUST live in its own Obx (like the
+          // top bar above): videoSurface is built once per build()
+          // and reused by the outer Obx, so a plain `if` on
+          // isFullscreen would never re-evaluate on a fullscreen
+          // toggle — the overlay would stay mounted after exiting
+          // fullscreen (caught by
+          // live_room_portrait_control_bar_test: two '刷新' buttons
+          // after pumpPortrait).
+          Obx(() {
+            final fs = _fullscreen.isFullscreen.value;
+            if (!_controlsVisible || _controlsLocked || !fs) {
+              return const SizedBox.shrink();
+            }
+            return Positioned(
               bottom: 0,
               left: 0,
               right: 0,
@@ -1560,91 +1778,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       colors: [Colors.black54, Colors.transparent],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _playing ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
-                        ),
-                        tooltip: _playing ? '暂停' : '播放',
-                        onPressed: () => _session.togglePlayPause(),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.white),
-                        tooltip: '刷新',
-                        onPressed: _manualRetry,
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          _danmakuVisible
-                              ? Icons.chat_bubble_outline
-                              : Icons.chat_bubble,
-                          color: Colors.white,
-                        ),
-                        tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
-                        onPressed: () =>
-                            setState(() => _danmakuVisible = !_danmakuVisible),
-                      ),
-                      Obx(() {
-                        final fs = _fullscreen.isFullscreen.value;
-                        if (!fs) return const SizedBox.shrink();
-                        return TextButton(
-                          onPressed: _qualities.isEmpty
-                              ? null
-                              : _openQualitySheet,
-                          child: Text(
-                            _qualities.isEmpty
-                                ? '清晰度'
-                                : _qualities[_currentQuality].quality,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }),
-                      Obx(() {
-                        final fs = _fullscreen.isFullscreen.value;
-                        if (!fs) return const SizedBox.shrink();
-                        return TextButton(
-                          onPressed: _recovery.lines.length < 2
-                              ? null
-                              : _openLineSheet,
-                          child: Text(
-                            '线路 ${_recovery.currentLineIndex + 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.lock_open, color: Colors.white),
-                        tooltip: '锁定控制条',
-                        onPressed: _lockControls,
-                      ),
-                      IconButton(
-                        icon: Obx(
-                          () => Icon(
-                            _fullscreen.isFullscreen.value
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
-                            color: Colors.white,
-                          ),
-                        ),
-                        tooltip: '全屏',
-                        onPressed: () => _fullscreen.toggleFullscreen(),
-                      ),
-                    ],
-                  ),
+                  child: Row(children: _bottomBarButtons(Colors.white)),
                 ),
               ),
-            ),
+            );
+          }),
           // Locked: only the unlock button (Pure Live LockButton).
           if (_controlsLocked)
             Positioned(
@@ -1758,6 +1896,25 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 Expanded(child: videoSurface)
               else
                 AspectRatio(aspectRatio: 16 / 9, child: videoSurface),
+              // Portrait control bar BELOW the video (chen 2026-11-20):
+              // the overlaid bar sat on the video's bottom strip,
+              // colliding with the stream's own bottom HUD (the
+              // game's skill buttons in his screenshot). Page chrome
+              // now — below the video, on the scaffold, theme
+              // colours. Always visible when unlocked: it covers
+              // nothing, so auto-hiding it would only shift the
+              // layout up/down every 5 s. Locked hides it (the
+              // unlock button still shows over the video).
+              if (!fullscreen && !_controlsLocked)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: _bottomBarButtons(theme.textPrimary),
+                  ),
+                ),
               // Room info + quality / line controls below the video.
               // L05: the whole info bar is tappable — it opens the room
               // detail sheet (never covering the video).

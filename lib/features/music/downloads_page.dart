@@ -19,7 +19,7 @@ import '../../services/music/music_models.dart';
 import '../../widgets/glass_dialog.dart';
 import '../settings/cache_service.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 
@@ -70,11 +70,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     unawaited(
       _player.playQueue(songs, idx < 0 ? 0 : idx, label: '已下载'),
     );
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-      ),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   @override

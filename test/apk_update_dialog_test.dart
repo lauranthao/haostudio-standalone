@@ -126,7 +126,7 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本 v1.1.6'), findsOneWidget);
+    expect(find.text('发现新版本 v1.1.6 (build 20)'), findsOneWidget);
 
     await tester.tap(find.text('下载'));
     await tester.pump();
@@ -137,7 +137,7 @@ void main() {
     completer.complete(true);
     await tester.pumpAndSettle();
     expect(action, UpdateDialogAction.download);
-    expect(find.text('发现新版本 v1.1.6'), findsNothing);
+    expect(find.text('发现新版本 v1.1.6 (build 20)'), findsNothing);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('Android without APK URL: 下载 falls back to the URL opener',

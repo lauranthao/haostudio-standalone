@@ -30,6 +30,9 @@
 //   are copied exactly.
 // - Selected-tab accent is the theme accent (black after the
 //   blue->black change), not Beans' amber — our themes own the accent.
+// - The 版本 row opens the in-app 更新日志 page
+//   (changelog_page.dart, bundled history, chen 2026-11-20) — the
+//   row keeps its version/build subtitle and gains a chevron.
 // - NO equalizer row: stage 3 added the engine (vendored just_audio
 //   fork + MTAudioProcessingTap, see EqualizerStore), so the playback
 //   panel now has a 均衡器 row showing 已开启/已关闭, opening the
@@ -57,6 +60,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/consts.dart';
+import '../../core/logging/app_log.dart';
 import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/video_fit.dart';
@@ -75,7 +79,8 @@ import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
 import 'accent_color_sheet.dart';
-import '../live/live_breadcrumb.dart';
+import 'app_log_page.dart';
+import 'changelog_page.dart';
 import '../music/av_music_player.dart';
 import '../music/equalizer_page.dart';
 import '../music/music_player_controller.dart';
@@ -96,8 +101,14 @@ class SettingsTabPage extends StatefulWidget {
   State<SettingsTabPage> createState() => _SettingsTabPageState();
 }
 
-class _SettingsTabPageState extends State<SettingsTabPage> {
+/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
+/// Safe here: a static settings list, no timers, streams or polling.
+class _SettingsTabPageState extends State<SettingsTabPage>
+    with AutomaticKeepAliveClientMixin {
   late String _engineKey;
+
+  @override
+  bool get wantKeepAlive => true;
   late bool _engineExpanded;
   late bool _playbackExpanded;
   late bool _autoNext;
@@ -168,6 +179,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
@@ -505,6 +517,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             icon: Icons.info_outline,
             title: '版本',
             subtitle: '$kAppVersion (build $kAppBuild)',
+            onTap: () => Get.to(() => const ChangelogPage()),
           ),
           const SizedBox(height: 12),
           _BeansRow(
@@ -514,11 +527,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           ),
           const SizedBox(height: 12),
           _BeansRow(
-            icon: Icons.bug_report_outlined,
-            title: '直播崩溃记录',
-            subtitle: LiveBreadcrumb.current.isEmpty
-                ? '无记录'
-                : LiveBreadcrumb.current,
+            icon: Icons.article_outlined,
+            title: '日志',
+            onTap: () => Get.to(() => const AppLogPage()),
           ),
         ],
       ),
@@ -573,15 +584,21 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     if (!context.mounted) return;
     switch (result) {
       case UpdateCheckResult.newerAvailable:
-        await _updateService.recordKnownUpdate(info!.effectiveVersion);
+        AppLog.info(
+          '发现新版本 v${info!.effectiveVersion} (build ${info.effectiveBuild})',
+        );
+        await _updateService.recordKnownUpdate(info.effectiveVersion);
         if (!context.mounted) return;
         await showUpdateDialog(context, info, service: _updateService);
       case UpdateCheckResult.skipped:
+        AppLog.debug('更新检查：已跳过该版本');
         Get.snackbar('提示', '已跳过该版本');
       case UpdateCheckResult.upToDate:
+        AppLog.debug('更新检查：已是最新版本');
         await _updateService.clearKnownUpdate();
         Get.snackbar('提示', '已是最新版本');
       case UpdateCheckResult.unavailable:
+        AppLog.warn('更新检查失败');
         Get.snackbar('提示', _updateFailureMessage());
     }
   }

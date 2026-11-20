@@ -2,9 +2,13 @@
 //
 // Fetches version.json from Gitee raw FIRST (hosted in mainland China,
 // so the check works from chen's phone) and falls back to the shop
-// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9),
-// never against a changelog tag or the build number. Automatic check at
-// most once per 20 hours; a skipped version is never nagged about again.
+// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9)
+// AND the build number: a newer build of the same version IS an
+// update (1.1.5+22 beats 1.1.5+21 — the old version-only comparison
+// reported "already the latest" for every build bump of 1.1.5, chen
+// 2026-11-20). A skipped version is never nagged about again — the
+// skip is recorded per version+build, so skipping one build never
+// skips the next build of the same version.
 //
 // Fetch failures are classified (timeout / network / HTTP / parse) instead
 // of being swallowed into a single null, so the manual check can show a
@@ -85,11 +89,24 @@ class UpdateInfo {
           ? (apkVersion ?? version)
           : version;
 
+  /// The build this platform compares against [kAppBuild]: the APK
+  /// build on Android, the shared build elsewhere.
+  int get effectiveBuild =>
+      defaultTargetPlatform == TargetPlatform.android
+          ? (apkBuild ?? build)
+          : build;
+
   /// The download URL this platform installs from: the APK on
   /// Android, the IPA URL elsewhere. Null on Android when the
   /// manifest carries no APK.
   String? get installUrl =>
       defaultTargetPlatform == TargetPlatform.android ? apkUrl : ipaUrl;
+
+  /// Identity of this release for the skip check: effective version
+  /// + build ("1.1.5+24"). Skipping one build must not skip the next
+  /// build of the same version, so the skip key carries the build.
+  /// On iOS this is the shared version+build; on Android the APK's.
+  String get id => '$effectiveVersion+$effectiveBuild';
 }
 
 class UpdateService {
@@ -261,6 +278,18 @@ class UpdateService {
     return info;
   }
 
+  /// A release is newer when its version is newer, or when the
+  /// version is equal (neither side newer, so '1.1.05' equals
+  /// '1.1.5') and its build is higher. The old version-only
+  /// comparison reported upToDate for every 1.1.5 build bump.
+  /// The comparison uses the effective version/build: the APK's on
+  /// Android, the shared ones elsewhere.
+  bool _isNewer(UpdateInfo info) {
+    if (isNewerVersion(info.effectiveVersion, kAppVersion)) return true;
+    if (isNewerVersion(kAppVersion, info.effectiveVersion)) return false;
+    return info.effectiveBuild > kAppBuild;
+  }
+
   UpdateCheckResult _classify(UpdateInfo info) {
     // Android only offers the update when the manifest carries an APK:
     // an iOS-only manifest (no apkUrl) is not an update, it is "up to
@@ -269,12 +298,11 @@ class UpdateService {
         (info.apkUrl == null || info.apkUrl!.isEmpty)) {
       return UpdateCheckResult.upToDate;
     }
-    final effective = info.effectiveVersion;
-    if (!isNewerVersion(effective, kAppVersion)) {
+    if (!_isNewer(info)) {
       return UpdateCheckResult.upToDate;
     }
     final skipped = HiveStore.getString(HiveKeys.skippedVersion, '');
-    if (skipped == effective) return UpdateCheckResult.skipped;
+    if (skipped == info.id) return UpdateCheckResult.skipped;
     return UpdateCheckResult.newerAvailable;
   }
 

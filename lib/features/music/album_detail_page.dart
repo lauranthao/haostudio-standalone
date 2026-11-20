@@ -24,7 +24,7 @@ import '../../services/music/music_quality.dart';
 import '../../services/music/music_store.dart';
 import '../../widgets/glass_dialog.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/mini_player_bar.dart';
@@ -130,11 +130,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final songs = List<Song>.of(_songs);
     if (shuffle) songs.shuffle();
     unawaited(_player.playQueue(songs, 0, label: widget.albumName));
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-      ),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   Future<void> _addToPlaylist() async {
@@ -411,11 +407,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       isFav: favIds.contains(song.identityKey),
       onPlay: () {
         unawaited(_player.playQueue(_songs, index));
-        unawaited(
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-          ),
-        );
+        unawaited(openPlayerPage<void>(context));
       },
       onToggleFav: () async {
         await _player.toggleFav(song);

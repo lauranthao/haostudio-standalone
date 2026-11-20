@@ -39,10 +39,22 @@ class LiveTabPage extends StatefulWidget {
   State<LiveTabPage> createState() => _LiveTabPageState();
 }
 
-class _LiveTabPageState extends State<LiveTabPage> {
+/// Stutter fix (chen 2026-11-20): the bottom tab is a PageView, and
+/// without keep-alive a tab switch disposes the page State — the
+/// target page then rebuilds from scratch (room list, images) on the
+/// UI thread while the pill is dragging/springing, which drops frames.
+/// Keeping it alive means the list stays built and a switch is just
+/// a page flip. Safe here: initState loads once, there are no timers,
+/// streams or polling in this State that would keep running while
+/// hidden (the scroll listener only fires on scroll).
+class _LiveTabPageState extends State<LiveTabPage>
+    with AutomaticKeepAliveClientMixin {
   late final LiveTabController _controller;
   late final bool _ownsController;
   final _scrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -76,6 +88,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),

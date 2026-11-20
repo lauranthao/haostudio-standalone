@@ -24,9 +24,9 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/settings/update_dialog.dart';
 import 'package:standalone/services/update_service.dart';
 
-Map<String, dynamic> _manifest(String version) => {
+Map<String, dynamic> _manifest(String version, [int build = 6]) => {
       'version': version,
-      'build': 6,
+      'build': build,
       'ipaUrl': 'https://example.com/hao-$version.ipa',
       'changelog': '新功能：测试更新日志',
     };
@@ -127,6 +127,47 @@ void main() {
       expect(info?.version, kAppVersion);
     });
 
+    test('same version + higher build -> newerAvailable (chen 2026-11-20)',
+        () async {
+      // The 1.1.5 build-bump bug: the old version-only comparison
+      // reported upToDate for every 1.1.5+ build, so the app never
+      // offered 1.1.5+20/21/22. A higher build of the same version
+      // IS an update.
+      final service = UpdateService(
+        dio: _stubDio(_manifest(kAppVersion, kAppBuild + 1)),
+      );
+      final (result, info) = await service.checkManual();
+      expect(result, UpdateCheckResult.newerAvailable);
+      expect(info?.version, kAppVersion);
+      expect(info?.build, kAppBuild + 1);
+    });
+
+    test('same version + equal build -> upToDate', () async {
+      final service = UpdateService(
+        dio: _stubDio(_manifest(kAppVersion, kAppBuild)),
+      );
+      final (result, _) = await service.checkManual();
+      expect(result, UpdateCheckResult.upToDate);
+    });
+
+    test('same version + lower build -> upToDate', () async {
+      final service = UpdateService(
+        dio: _stubDio(_manifest(kAppVersion, kAppBuild - 1)),
+      );
+      final (result, _) = await service.checkManual();
+      expect(result, UpdateCheckResult.upToDate);
+    });
+
+    test('older version + higher build -> upToDate', () async {
+      // The version decides first: a higher build of an OLDER
+      // version is not an update.
+      final service = UpdateService(
+        dio: _stubDio(_manifest('1.0.3', 99)),
+      );
+      final (result, _) = await service.checkManual();
+      expect(result, UpdateCheckResult.upToDate);
+    });
+
     test('older remote version -> upToDate', () async {
       final service = UpdateService(dio: _stubDio(_manifest('1.0.3')));
       final (result, _) = await service.checkManual();
@@ -157,11 +198,12 @@ void main() {
   });
 
   group('Skip logic', () {
-    test('skipped version -> skipped; other version -> newerAvailable',
+    test('skipped version+build -> skipped; other version -> newerAvailable',
         () async {
       final newer = _newerVersion();
       final service = UpdateService(dio: _stubDio(_manifest(newer)));
-      await service.skipVersion(newer);
+      // The skip key is the version+build id, not the bare version.
+      await service.skipVersion('$newer+6');
       final (skipped, _) = await service.checkManual();
       expect(skipped, UpdateCheckResult.skipped);
 
@@ -170,12 +212,35 @@ void main() {
       expect(result, UpdateCheckResult.newerAvailable);
     });
 
-    test('skipVersion persists the exact version string', () async {
+    test('skipping one build does not skip the next build', () async {
+      final newer = _newerVersion();
+      final service = UpdateService(dio: _stubDio(_manifest(newer, 6)));
+      await service.skipVersion('$newer+6');
+      final (skipped, _) = await service.checkManual();
+      expect(skipped, UpdateCheckResult.skipped);
+
+      // Same version, next build: offered again.
+      final next = UpdateService(dio: _stubDio(_manifest(newer, 7)));
+      final (result, _) = await next.checkManual();
+      expect(result, UpdateCheckResult.newerAvailable);
+    });
+
+    test('old plain-version skip does not block a build', () async {
+      // A skip recorded before the id change (bare '1.1.6') never
+      // matches a version+build id, so it cannot hide an update.
+      final newer = _newerVersion();
+      final service = UpdateService(dio: _stubDio(_manifest(newer)));
+      await service.skipVersion(newer);
+      final (result, _) = await service.checkManual();
+      expect(result, UpdateCheckResult.newerAvailable);
+    });
+
+    test('skipVersion persists the exact version+build id', () async {
       final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
-      await service.skipVersion('1.0.5');
+      await service.skipVersion('1.0.5+6');
       expect(
         HiveStore.getString(HiveKeys.skippedVersion, ''),
-        '1.0.5',
+        '1.0.5+6',
       );
     });
   });
@@ -222,7 +287,7 @@ void main() {
       final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
       await pumpDialog(tester, service: service);
 
-      expect(find.text('发现新版本 v1.0.5'), findsOneWidget);
+      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsOneWidget);
       expect(find.text('新功能：测试更新日志'), findsOneWidget);
       expect(find.text('下载'), findsOneWidget);
       expect(find.text('跳过此版本'), findsOneWidget);
@@ -265,7 +330,7 @@ void main() {
       expect(opened, [Uri.parse('https://example.com/hao-1.0.5.ipa')]);
       expect(action, UpdateDialogAction.download);
       // Dialog dismissed after a successful open.
-      expect(find.text('发现新版本 v1.0.5'), findsNothing);
+      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsNothing);
     });
 
     testWidgets('下载 failure keeps the dialog open and shows a hint',
@@ -298,7 +363,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('无法打开下载链接，请检查网络后重试'), findsOneWidget);
-      expect(find.text('发现新版本 v1.0.5'), findsOneWidget);
+      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsOneWidget);
 
       // Close the snackbar before the test ends: Get.snackbar leaves a
       // pending 3 s auto-dismiss timer and an active animation ticker;
@@ -348,7 +413,7 @@ void main() {
       });
       expect(
         HiveStore.getString(HiveKeys.skippedVersion, ''),
-        '1.0.5',
+        '1.0.5+6',
       );
       // Skipped version is now classified as skipped by checkManual.
       final (result, _) = await service.checkManual();
@@ -385,7 +450,7 @@ void main() {
 
       expect(action, UpdateDialogAction.later);
       expect(HiveStore.getString(HiveKeys.skippedVersion, ''), '');
-      expect(find.text('发现新版本 v1.0.5'), findsNothing);
+      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsNothing);
     });
 
     testWidgets('renders in all 4 themes x light/dark', (tester) async {
@@ -417,7 +482,7 @@ void main() {
           await tester.tap(find.text('open'));
           await tester.pumpAndSettle();
           expect(
-            find.text('发现新版本 v1.0.5'),
+            find.text('发现新版本 v1.0.5 (build 6)'),
             findsOneWidget,
             reason: 'theme $id mode $mode',
           );

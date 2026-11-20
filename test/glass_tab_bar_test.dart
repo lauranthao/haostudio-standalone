@@ -1,14 +1,14 @@
 // GlassTabBar drag-to-switch (Beans KumoneGlassTabBar dragGesture)
 // + settle spring (GlassTabBar.swift:36 spring(0.35, 0.82))
-// + NetEase pill: transparent liquid-glass lens, 1.5 cells wide at
-// rest, stretches mid-slide (leading edge on the settle spring,
-// trailing edge on a slower spring), colour follows the pill.
+// + Muse pill: solid matte oval, 1 cell wide at rest, stretches
+// mid-slide (leading edge on the settle spring, trailing edge on a
+// 110ms-delayed spring), icon-only tabs, all icons theme text.
 //
 // Geometry at a 400pt-wide viewport: outer Padding 12 + GlassCard
 // inset 4 leaves 368pt for 4 cells -> cellW 92, cell centres (global)
 // 62 / 154 / 246 / 338, bar height 56 + 8 inset at the top. The pill
-// is 1.5 cells = 138 wide, so its settled left edge (global) is
-// 16 / 85 / 177 / 246 for tabs 0..3, top edge 4.
+// is 1 cell = 92 wide, so its settled left edge (global) is
+// 16 / 108 / 200 / 292 for tabs 0..3, top edge 4.
 
 import 'dart:math' as math;
 
@@ -30,9 +30,9 @@ void main() {
 
   tearDown(() {
     HaoHaptics.debugEnabledOverride = null;
-    // The accent controller is a Get singleton (put by the bar on
-    // first use); reset it so a colour set in one test cannot leak
-    // into the next.
+    // The accent controller is a Get singleton (created by the
+    // tests that touch it); reset it so a colour set in one test
+    // cannot leak into the next.
     Get.reset();
   });
 
@@ -126,7 +126,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(current, 2);
     topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(177, 0.5));
+    expect(topLeft.dx, closeTo(200, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
   });
 
@@ -169,11 +169,11 @@ void main() {
     await gesture.moveBy(const Offset(60, 0));
     await tester.pump();
     // Finger at global x 162 (content-local 146): the pill's left
-    // edge follows it exactly (146 - 69 = 77 content-local, 93
+    // edge follows it exactly (146 - 46 = 100 content-local, 116
     // global) — no 350ms ease lag while dragging.
     expect(
       tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx,
-      closeTo(93, 1.0),
+      closeTo(116, 1.0),
     );
     await gesture.moveBy(const Offset(60, 0));
     await tester.pump();
@@ -182,7 +182,7 @@ void main() {
 
     expect(current, 2);
     final topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(177, 0.5));
+    expect(topLeft.dx, closeTo(200, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
   });
 
@@ -260,7 +260,7 @@ void main() {
     expect(tapped, isEmpty);
   });
 
-  testWidgets('rest width is 1.5 cells', (tester) async {
+  testWidgets('rest width is 1 cell', (tester) async {
     await pumpBar(
       tester,
       currentIndex: 1,
@@ -268,14 +268,14 @@ void main() {
     );
 
     final size = tester.getSize(find.byKey(GlassTabBarState.pillKey));
-    expect(size.width, closeTo(138, 1.0)); // cellW 92 x 1.5
+    expect(size.width, closeTo(92, 1.0)); // cellW 92 x 1.0
     expect(size.height, closeTo(56, 0.5));
     final topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(85, 0.5));
+    expect(topLeft.dx, closeTo(108, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
   });
 
-  testWidgets('slide stretches mid-flight then shrinks to 1.5 cells',
+  testWidgets('slide stretches mid-flight then shrinks to 1 cell',
       (tester) async {
     var current = 0;
     tester.view.physicalSize = const Size(400, 200);
@@ -313,18 +313,21 @@ void main() {
         tester.getSize(find.byKey(GlassTabBarState.pillKey)).width,
       );
     }
-    // Mid-flight the pill spans from->to: ~1.7 cells or more
-    // (cellW 92 -> 156.4).
-    expect(maxWidth, greaterThan(156.4));
+    // Mid-flight the pill spans from->to: the 110ms trailing-edge
+    // stagger on this spring (ω = 2π/0.35, ζ = 0.82) opens a ~64pt
+    // gap on a 1-cell slide, so the sampled peak (50ms pumps) is
+    // ~153pt ≈ 1.67 cells — the Muse reference width. The 145
+    // threshold leaves margin for pump granularity.
+    expect(maxWidth, greaterThan(145.0));
     await tester.pumpAndSettle();
     expect(
       tester.getSize(find.byKey(GlassTabBarState.pillKey)).width,
-      closeTo(138, 1.0),
+      closeTo(92, 1.0),
     );
   });
 
-  testWidgets('colour follows the pill', (tester) async {
-    final accent = TabBarAccentController.defaultColor;
+  testWidgets('icons are theme text in every state (Muse bar)',
+      (tester) async {
     var current = 0;
     tester.view.physicalSize = const Size(400, 200);
     tester.view.devicePixelRatio = 1.0;
@@ -348,52 +351,53 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final unselected = HaoTheme.of(tester.element(find.byType(GlassTabBar)))
-        .textPrimary
-        .withValues(alpha: 0.8);
+    final textPrimary =
+        HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!.textPrimary;
 
     Color iconColor(int i) =>
         tester.widget<Icon>(find.byType(Icon).at(i)).color!;
-    // At rest the selected tab is the accent, the neighbours are
-    // the unselected colour.
-    expect(iconColor(0), accent);
-    expect(iconColor(1), unselected);
-    // Mid-slide (tab 0 -> 1) both adjacent tabs are lerped — neither
-    // pure accent nor pure unselected. Three pumps: a tap-triggered
-    // spring needs two pumps to start in this harness (diagnosed),
-    // and the third (100ms) puts the pill mid-flight.
+    // At rest every tab icon is the theme text colour — the pill
+    // alone marks the selection, no accent, no red.
+    expect(iconColor(0), textPrimary);
+    expect(iconColor(1), textPrimary);
+    // Mid-slide (tab 0 -> 1) the icons still do not change colour.
     await tester.tapAt(const Offset(154, 32));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(iconColor(0), isNot(accent));
-    expect(iconColor(0), isNot(unselected));
-    expect(iconColor(1), isNot(accent));
-    expect(iconColor(1), isNot(unselected));
-    // Settled on tab 1: the colour has moved with the pill.
+    expect(iconColor(0), textPrimary);
+    expect(iconColor(1), textPrimary);
+    // Settled on tab 1: still theme text.
     await tester.pumpAndSettle();
-    expect(iconColor(1), accent);
-    expect(iconColor(0), unselected);
+    expect(iconColor(1), textPrimary);
+    expect(iconColor(0), textPrimary);
   });
 
-  testWidgets('accent colour change applies immediately', (tester) async {
+  testWidgets('custom accent does not change the tab icons',
+      (tester) async {
     const blue = Color(0xFF2563EB);
     await pumpBar(
       tester,
       currentIndex: 0,
       onTap: (_) {},
     );
+    final textPrimary =
+        HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!.textPrimary;
     expect(
       tester.widget<Icon>(find.byType(Icon).at(0)).color,
-      TabBarAccentController.defaultColor,
+      textPrimary,
     );
 
+    // The accent is still stored and applied app-wide (switches,
+    // buttons — see custom_accent_theme_test.dart); the tab bar
+    // just no longer reads it (Muse bar: black icons).
     await TabBarAccentController.ensure().setColor(blue);
     await tester.pump();
-    expect(tester.widget<Icon>(find.byType(Icon).at(0)).color, blue);
+    expect(TabBarAccentController.ensure().color.value, blue);
+    expect(tester.widget<Icon>(find.byType(Icon).at(0)).color, textPrimary);
   });
 
-  testWidgets('theme matrix: pill + accent readable in all 8 combos',
+  testWidgets('theme matrix: pill + icons readable in all 8 combos',
       (tester) async {
     tester.view.physicalSize = const Size(400, 200);
     tester.view.devicePixelRatio = 1.0;
@@ -404,17 +408,19 @@ void main() {
     for (final id in HaoThemeId.values) {
       for (final mode in [Brightness.light, Brightness.dark]) {
         final pair = HaoThemes.of(id);
+        final themeData = mode == Brightness.light ? pair.light : pair.dark;
         await tester.pumpWidget(
           GetMaterialApp(
-            theme: mode == Brightness.light ? pair.light : pair.dark,
+            theme: themeData,
             home: Scaffold(
               body: GlassTabBar(currentIndex: 2, onTap: (_) {}),
             ),
           ),
         );
         await tester.pumpAndSettle();
-        // The lens is present and the selected tab reads the accent
-        // (never the unselected colour) in every combination.
+        final hao = themeData.extension<HaoTheme>()!;
+        // The lens is present and every tab icon is the theme text
+        // colour (never the accent) in every combination.
         expect(
           find.byKey(GlassTabBarState.pillKey),
           findsOneWidget,
@@ -422,9 +428,25 @@ void main() {
         );
         expect(
           tester.widget<Icon>(find.byType(Icon).at(2)).color,
-          TabBarAccentController.defaultColor,
-          reason: '$id $mode: selected tab is not the accent',
+          hao.textPrimary,
+          reason: '$id $mode: selected tab icon is not theme text',
         );
+        // The resting pill is the theme's matte colour and is
+        // visibly distinct from the page background: darker in
+        // light mode, lighter in dark mode.
+        final painter = tester
+                .widget<CustomPaint>(find.byKey(GlassTabBarState.restPillKey))
+                .painter as RestPillPainter;
+        expect(painter.color, hao.tabPill, reason: '$id $mode: pill colour');
+        final pillLum = hao.tabPill.computeLuminance();
+        final bgLum = hao.scaffoldBackground.computeLuminance();
+        if (mode == Brightness.light) {
+          expect(bgLum - pillLum, greaterThan(0.05),
+              reason: '$id $mode: pill too faint against the bar');
+        } else {
+          expect(pillLum - bgLum, greaterThan(0.02),
+              reason: '$id $mode: pill too faint against the bar');
+        }
         expect(tester.takeException(), isNull);
       }
     }

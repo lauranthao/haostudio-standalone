@@ -34,7 +34,7 @@ import '../equalizer_page.dart';
 import '../fm_service.dart';
 import '../music_navigation.dart';
 import '../music_player_controller.dart';
-import '../music_player_sheet.dart';
+import '../player_expand_route.dart';
 import 'sleep_timer_sheet.dart';
 import 'music_image.dart';
 
@@ -126,11 +126,7 @@ Future<void> openSongQuickMenu(BuildContext rowContext, Song song) async {
         unawaited(controller.playQueue([song], 0));
       }
       if (rowContext.mounted) {
-        unawaited(
-          Navigator.of(rowContext).push(
-            MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-          ),
-        );
+        unawaited(openPlayerPage<void>(rowContext));
       }
     case _QuickAction.fav:
       await controller.toggleFav(song);
@@ -215,7 +211,7 @@ Future<void> handleTrackMoreAction(
       controller.showQueuePanel.value = true;
       if (!fromPlayer && context.mounted) {
         // The panel floats above the player page — open it first.
-        unawaited(Get.to(() => const MusicPlayerPage()));
+        unawaited(openPlayerPage<void>(context));
       }
     case TrackMoreAction.playMode:
       await controller.cyclePlayMode();

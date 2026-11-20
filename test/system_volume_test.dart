@@ -129,6 +129,74 @@ void main() {
       await sub.cancel();
     });
 
+    test('rapid setVolume calls coalesce: only latest pending is sent',
+        () async {
+      // Gate the FIRST native call so the next two arrive while it is
+      // still in flight — the middle value must never reach the
+      // channel, and the last value must still be flushed.
+      final gate = Completer<void>();
+      var setCount = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        outgoing.add(call);
+        if (call.method == 'getVolume') return nativeVolume;
+        if (call.method == 'setVolume') {
+          setCount++;
+          if (setCount == 1) await gate.future;
+          nativeVolume = (call.arguments as Map)['volume'] as double;
+          return null;
+        }
+        return null;
+      });
+      final first = service.setVolume(0.5);
+      unawaited(service.setVolume(0.6));
+      unawaited(service.setVolume(0.7));
+      gate.complete();
+      await first;
+      final sets = outgoing
+          .where((c) => c.method == 'setVolume')
+          .map((c) => (c.arguments as Map)['volume'] as double)
+          .toList();
+      expect(sets, <double>[0.5, 0.7]);
+      expect(nativeVolume, 0.7);
+      // The flushed last value is the last known level.
+      throwOnGet = true;
+      expect(await service.getVolume(), 0.7);
+    });
+
+    test('own-set echo is suppressed, external change passes', () async {
+      final seen = <double>[];
+      final sub = service.volumeChanges.listen(seen.add);
+      await service.setVolume(0.44);
+      // iOS quantizes the system volume to 1/16 steps: the native
+      // KVO echo of our own 0.44 set arrives as 0.4375. It must not
+      // reach the stream (it would yank the drag HUD back a step).
+      await pushVolumeChanged(<String, Object>{'volume': 0.4375});
+      expect(seen, isEmpty);
+      // A genuine hardware-key change to a different level passes.
+      await pushVolumeChanged(<String, Object>{'volume': 0.3});
+      expect(seen, <double>[0.3]);
+      await sub.cancel();
+    });
+
+    test('echo of a superseded set is suppressed', () async {
+      final seen = <double>[];
+      final sub = service.volumeChanges.listen(seen.add);
+      await service.setVolume(0.5);
+      await service.setVolume(0.6);
+      // The native side echoes the first (superseded) set late: it
+      // matches a recent own set, so it is dropped, not forwarded.
+      await pushVolumeChanged(<String, Object>{'volume': 0.5});
+      expect(seen, isEmpty);
+      // The latest set's own echo is dropped too.
+      await pushVolumeChanged(<String, Object>{'volume': 0.6});
+      expect(seen, isEmpty);
+      // A different level (hardware key) still passes.
+      await pushVolumeChanged(<String, Object>{'volume': 0.3});
+      expect(seen, <double>[0.3]);
+      await sub.cancel();
+    });
+
     test('malformed volumeChanged is ignored', () async {
       final seen = <double>[];
       final sub = service.volumeChanges.listen(seen.add);

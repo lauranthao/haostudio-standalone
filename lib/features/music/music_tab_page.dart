@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 // Music home — Kumone redo (P0+P1, 2026-11-18).
 //
 // Values are borrowed from Kumone (~/workspace/research/kumone,
@@ -114,7 +116,6 @@ import 'listen_report_page.dart';
 import 'local_music_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
 import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
@@ -195,14 +196,38 @@ class _FeatureTile {
   final Color? glassTintDark;
 }
 
-class _MusicTabPageState extends State<MusicTabPage> {
+/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
+/// Safe here: no timers/streams/polling in this State (the only
+/// AnimationController is the one-shot 250ms _StaggerIn entrance,
+/// and the Hive listenable is key-scoped + removed in dispose).
+/// This also fixes the section-collapse reset the music page used to
+/// suffer on tab switch (music_tab_page.dart:88 comment).
+class _MusicTabPageState extends State<MusicTabPage>
+    with AutomaticKeepAliveClientMixin {
   final _importController = TextEditingController();
   late final MusicApi _api = widget.api ?? MusicApi();
   var _playlistsExpanded = true;
   var _recentExpanded = true;
+
+  @override
+  bool get wantKeepAlive => true;
   List<UserPlaylist> _lists = [];
   List<Song> _recent = [];
   var _importing = false;
+
+  /// Live listenable for the recent-plays key (bug3, chen 2026-11-20:
+  /// “下面的最近播放也不会实时变化”). _recent used to be read only
+  /// in _refresh() (initState + _push() return), so a song that
+  /// started playing while this tab stayed alive never appeared
+  /// until the user left and came back. Subscribing here re-reads
+  /// the key on every write (play start / track change / auto-next
+  /// all go through MusicStore.addRecent in _loadCurrent).
+  /// Same pattern as LiveRoomPage's danmaku-settings listenable
+  /// (HiveStore.box.listenable, key-scoped, removeListener in
+  /// dispose) — hive_ce's listenable is fed by box.watch() under the
+  /// hood, so no StreamSubscription lifecycle to manage, and only
+  /// hao_recent writes rebuild this page.
+  ValueListenable<Box<dynamic>>? _recentListenable;
 
   /// Local-file count future (stage 2): cached per refresh, not
   /// rebuilt on every build — LocalMusicStore.list() prunes missing
@@ -218,6 +243,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
         HiveStore.getBool(HiveKeys.musicPlaylistsExpanded, true);
     _recentExpanded = HiveStore.getBool(HiveKeys.musicRecentExpanded, true);
     _refresh();
+    _subscribeRecent();
     // Lazy first-cover fill (plaza / charts): after the first frame,
     // so the home renders its gradients first and swaps a cover in
     // when it arrives. The fetch runs once per home lifetime and
@@ -239,8 +265,35 @@ class _MusicTabPageState extends State<MusicTabPage> {
     unawaited(HiveStore.put(HiveKeys.musicRecentExpanded, next));
   }
 
+  /// Subscribe to hao_recent writes (see [_recentListenable]).
+  /// Guarded like LiveRoomPage: when Hive is not initialised there
+  /// is simply no live update and the _refresh() snapshot applies.
+  void _subscribeRecent() {
+    try {
+      final listenable = HiveStore.box.listenable(
+        keys: [HiveKeys.musicRecent],
+      );
+      _recentListenable = listenable;
+      listenable.addListener(_onRecentChanged);
+    } catch (_) {
+      // Hive unavailable — no live updates, snapshot only.
+    }
+  }
+
+  /// A recent-plays write landed: re-read ONLY _recent. NOT _refresh():
+  /// that also re-lists local files and re-reads the playlists, which
+  /// playback never changes — re-running it on every song start would
+  /// churn the local-files FutureBuilder for nothing.
+  void _onRecentChanged() {
+    if (!mounted) return;
+    setState(() {
+      _recent = MusicStore.getRecent();
+    });
+  }
+
   @override
   void dispose() {
+    _recentListenable?.removeListener(_onRecentChanged);
     _importController.dispose();
     super.dispose();
   }
@@ -332,7 +385,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
       if (r == null || r.tracks.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('导入失败：请粘贴网易云 / QQ / 酷我公开歌单链接')),
+          const SnackBar(content: Text('导入失败：请粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接')),
         );
         return;
       }
@@ -375,11 +428,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
   }
 
   void _openPlayer() {
-    unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage())),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   /// Open the player from the embedded mini player bar: the page
@@ -561,6 +610,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(
       () => Scaffold(

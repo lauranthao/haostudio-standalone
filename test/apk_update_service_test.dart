@@ -170,14 +170,18 @@ void main() {
       expect(info!.installUrl, isNull);
     });
 
-    test('skipped APK version -> skipped; other version -> newerAvailable',
+    test('skipped APK release -> skipped; other version -> newerAvailable',
         () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       final newer = _newerVersion();
       final service = UpdateService(
         dio: stubDio(manifest(version: newer, apkVersion: newer)),
       );
-      await service.skipVersion(newer);
+      // The dialog records the skip by release id (version+build);
+      // skipping one build must not skip the next build.
+      final (first, info) = await service.checkManual();
+      expect(first, UpdateCheckResult.newerAvailable);
+      await service.skipVersion(info!.id);
       final (skipped, _) = await service.checkManual();
       expect(skipped, UpdateCheckResult.skipped);
 
@@ -191,6 +195,28 @@ void main() {
       );
       final (result, _) = await third.checkManual();
       expect(result, UpdateCheckResult.newerAvailable);
+    });
+
+    test('same APK version, higher apkBuild -> newerAvailable', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      // kAppBuild is 24 on this branch; an APK manifest with the same
+      // version but a higher APK build is an update (the build-23
+      // fix: the old version-only comparison reported upToDate for
+      // every 1.1.5 build bump).
+      final service = UpdateService(
+        dio: stubDio(
+          manifest(
+            version: '1.1.5',
+            build: 24,
+            apkVersion: '1.1.5',
+            apkBuild: 25,
+          ),
+        ),
+      );
+      final (result, info) = await service.checkManual();
+      expect(result, UpdateCheckResult.newerAvailable);
+      expect(info!.effectiveBuild, 25);
+      expect(info.id, '1.1.5+25');
     });
   });
 

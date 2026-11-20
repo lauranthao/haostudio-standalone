@@ -193,7 +193,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // Brightness/volume drag (vertical swipe): left half brightness,
   // right half volume (Pure Live PlayerGestureLayer).
   _PlayerDragSide? _dragSide;
-  double _dragSystemValue = 0;
+  // The drag HUD value (brightness or volume, 0-1). A ValueNotifier,
+  // not a setState field: pointer ticks arrive at ~60-120 Hz and the
+  // HUD is a small subtree — rebuilding the whole player page per
+  // tick is what made the drag feel choppy (chen 2026-11-20). The
+  // page build only reads the notifier object; the hint pill rebuilds
+  // alone through the ValueListenableBuilder.
+  final ValueNotifier<double> _dragValueNotifier = ValueNotifier<double>(0);
   Timer? _dragHintTimer;
   Timer? _hideTimer;
   StreamSubscription<Duration>? _positionSub;
@@ -727,10 +733,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   void _onExternalVolume(double volume) {
     if (!mounted) return;
     if (_dragSide == _PlayerDragSide.brightness) return;
+    // Own-set echoes never reach here (SystemVolume suppresses them);
+    // a genuine hardware-key / Control Center change updates the HUD
+    // value directly — no page rebuild beyond showing the pill.
+    _dragValueNotifier.value = volume;
+    _volume = volume;
     setState(() {
       _dragSide = _PlayerDragSide.volume;
-      _dragSystemValue = volume;
-      _volume = volume;
     });
     _dragHintTimer?.cancel();
     _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
@@ -740,35 +749,57 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
 
   // -- Vertical drag: left half brightness, right half volume. --
 
-  void _onSystemDragStart(DragStartDetails details) {
+  void _onSystemDragStart(DragStartDetails details) async {
     if (_failed || _ended) return;
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
     final width = MediaQuery.of(context).size.width;
     final isBrightness = details.globalPosition.dx < width / 2;
+    // Brightness seed: re-read at drag start, never the init-time
+    // capture. _brightness goes stale the moment the user moves
+    // brightness in Control Center (or the system does): anchoring
+    // the drag to the stale value would jump the screen brightness
+    // back to the old level on the first move. Best-effort with a
+    // short timeout — a stalled channel falls back to the cached
+    // level instead of dropping the drag. Volume needs no re-read:
+    // _volume is kept live by the volumeChanges stream (hardware
+    // keys / Control Center push back through _onExternalVolume).
+    var seed = isBrightness ? _brightness : _volume;
+    if (isBrightness) {
+      try {
+        seed = await ScreenBrightness.getBrightness().timeout(
+          const Duration(milliseconds: 300),
+        );
+      } catch (_) {}
+      if (!mounted) return;
+    }
     setState(() {
       _dragSide = isBrightness
           ? _PlayerDragSide.brightness
           : _PlayerDragSide.volume;
-      _dragSystemValue = isBrightness ? _brightness : _volume;
+      if (isBrightness) _brightness = seed;
     });
+    // The HUD value rides the notifier (no page rebuild); the side
+    // above is the only setState at drag start.
+    _dragValueNotifier.value = seed;
   }
 
   void _onSystemDragUpdate(DragUpdateDetails details) {
     final side = _dragSide;
     if (side == null) return;
-    setState(() {
-      _dragSystemValue = (_dragSystemValue - details.delta.dy / 300).clamp(
-        0.0,
-        1.0,
-      );
-    });
+    // HUD first, through the notifier only — the page is NOT rebuilt
+    // per tick (see _dragValueNotifier). The platform call is
+    // coalesced inside SystemVolume.setVolume, so a fast drag sends
+    // the latest value instead of a queue of stale ones.
+    final next = (_dragValueNotifier.value - details.delta.dy / 300)
+        .clamp(0.0, 1.0);
+    _dragValueNotifier.value = next;
     if (side == _PlayerDragSide.brightness) {
-      _brightness = _dragSystemValue;
-      unawaited(ScreenBrightness.setBrightness(_dragSystemValue));
+      _brightness = next;
+      unawaited(ScreenBrightness.setBrightness(next));
     } else {
-      _volume = _dragSystemValue;
-      unawaited(_systemVolume.setVolume(_dragSystemValue));
+      _volume = next;
+      unawaited(_systemVolume.setVolume(next));
     }
   }
 
@@ -945,6 +976,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _session.setForeground(false);
+        // Give the brightness back to the system NOW, not only on
+        // dispose: the iOS plugin re-applies a remembered app
+        // brightness on every foreground return, so a stale player
+        // value would overwrite whatever the user picked in Control
+        // Center while backgrounded. reset() clears the remembered
+        // value, so the return keeps the user's system brightness.
+        unawaited(ScreenBrightness.reset());
         final s = _session.status;
         if (s == PlaybackStatus.playing ||
             s == PlaybackStatus.buffering ||
@@ -953,6 +991,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         }
       case AppLifecycleState.resumed:
         _session.setForeground(true);
+        // Re-read the CURRENT brightness as the next drag's seed —
+        // never set it. Whatever the user picked in Control Center
+        // while backgrounded is the brightness now; re-applying the
+        // old player value here would be the bug chen reported.
+        unawaited(
+          ScreenBrightness.getBrightness().then((v) {
+            if (mounted) _brightness = v;
+          }),
+        );
       case AppLifecycleState.inactive:
         break;
     }
@@ -961,8 +1008,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Leaving the player hands the brightness back to the system:
+    // a player-set level must not leak onto every other page (or
+    // survive to be re-applied on the next foreground return).
+    unawaited(ScreenBrightness.reset());
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
+    _dragValueNotifier.dispose();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _statusSub?.cancel();
@@ -1317,7 +1369,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                 ),
               if (_dragSide != null)
                 Center(
-                  child: _SystemHint(side: _dragSide!, value: _dragSystemValue),
+                  // The pill alone listens to the drag value: pointer
+                  // ticks rebuild only this subtree, never the page.
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _dragValueNotifier,
+                    builder: (context, value, _) => _SystemHint(
+                      side: _dragSide!,
+                      value: value,
+                    ),
+                  ),
                 ),
               if (_longPressSpeeding)
                 const Center(child: _LongPressSpeedHint()),
