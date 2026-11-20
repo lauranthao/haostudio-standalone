@@ -11,9 +11,9 @@
 // different message per failure kind. See [UpdateFetchError].
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../app/consts.dart';
 import '../core/network/http_client.dart';
@@ -57,6 +57,10 @@ class UpdateInfo {
     required this.ipaUrl,
     this.size,
     this.changelog,
+    this.apkUrl,
+    this.apkSize,
+    this.apkVersion,
+    this.apkBuild,
   });
 
   final String version;
@@ -64,6 +68,28 @@ class UpdateInfo {
   final String ipaUrl;
   final int? size;
   final String? changelog;
+
+  /// Android APK release (same manifest, alongside the iOS fields):
+  /// the APK file URL, its byte size, and its own version/build.
+  /// All null on an iOS-only manifest — Android then reports up to
+  /// date instead of offering the iOS link.
+  final String? apkUrl;
+  final int? apkSize;
+  final String? apkVersion;
+  final int? apkBuild;
+
+  /// The version string this platform compares against [kAppVersion]:
+  /// the APK version on Android, the shared version elsewhere.
+  String get effectiveVersion =>
+      defaultTargetPlatform == TargetPlatform.android
+          ? (apkVersion ?? version)
+          : version;
+
+  /// The download URL this platform installs from: the APK on
+  /// Android, the IPA URL elsewhere. Null on Android when the
+  /// manifest carries no APK.
+  String? get installUrl =>
+      defaultTargetPlatform == TargetPlatform.android ? apkUrl : ipaUrl;
 }
 
 class UpdateService {
@@ -178,6 +204,10 @@ class UpdateService {
           ipaUrl: ipaUrl,
           size: (data['size'] as num?)?.toInt(),
           changelog: data['changelog']?.toString(),
+          apkUrl: data['apkUrl']?.toString(),
+          apkSize: (data['apkSize'] as num?)?.toInt(),
+          apkVersion: data['apkVersion']?.toString(),
+          apkBuild: (data['apkBuild'] as num?)?.toInt(),
         ),
         null,
         status,
@@ -212,14 +242,7 @@ class UpdateService {
 
   /// Manual check (Settings → About → 检查更新). Always reports a result.
   /// Failure detail is exposed via [lastFetchError]/[lastHttpStatus].
-  ///
-  /// Android v1: disabled — version.json only carries an .ipa
-  /// (ipaUrl + minOs 15.0) and the store adds the APK file without
-  /// changing version.json, so there is no Android update channel
-  /// yet. The Settings row is hidden on Android too, so this is
-  /// unreachable there; the guard is the backstop. iOS is unchanged.
   Future<(UpdateCheckResult, UpdateInfo?)> checkManual() async {
-    if (Platform.isAndroid) return (UpdateCheckResult.unavailable, null);
     final (info, _, _) = await fetchRemote();
     if (info == null) return (UpdateCheckResult.unavailable, null);
     return (_classify(info), info);
@@ -227,11 +250,7 @@ class UpdateService {
 
   /// Automatic check. Returns null when it should stay silent (throttled,
   /// up to date, or fetch failed).
-  ///
-  /// Android v1: disabled, same reason as [checkManual] — the manifest
-  /// only describes an iOS build. iOS is unchanged.
   Future<UpdateInfo?> checkAuto() async {
-    if (Platform.isAndroid) return null;
     final last = HiveStore.getInt(HiveKeys.lastUpdateCheckAt, 0);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - last < autoCheckInterval.inMilliseconds) return null;
@@ -243,11 +262,19 @@ class UpdateService {
   }
 
   UpdateCheckResult _classify(UpdateInfo info) {
-    if (!isNewerVersion(info.version, kAppVersion)) {
+    // Android only offers the update when the manifest carries an APK:
+    // an iOS-only manifest (no apkUrl) is not an update, it is "up to
+    // date" — never offer the IPA link on Android.
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        (info.apkUrl == null || info.apkUrl!.isEmpty)) {
+      return UpdateCheckResult.upToDate;
+    }
+    final effective = info.effectiveVersion;
+    if (!isNewerVersion(effective, kAppVersion)) {
       return UpdateCheckResult.upToDate;
     }
     final skipped = HiveStore.getString(HiveKeys.skippedVersion, '');
-    if (skipped == info.version) return UpdateCheckResult.skipped;
+    if (skipped == effective) return UpdateCheckResult.skipped;
     return UpdateCheckResult.newerAvailable;
   }
 

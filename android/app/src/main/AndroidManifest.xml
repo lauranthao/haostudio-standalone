@@ -13,6 +13,12 @@
          notifications do NOT need POST_NOTIFICATIONS. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- REQUEST_INSTALL_PACKAGES: self-update installs the downloaded
+         APK via the system installer (ApkInstallPlugin). Without it
+         Android 8+ blocks the install; the system shows the allow-once
+         settings screen instead. Install-time permission, no runtime
+         prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- usesCleartextTraffic: plain-http sources (ikun api.ikunshare.com,
          落雪 http://220.167.101.253:6001, some live http CDNs) cannot play
          on Android 9+ without it — same as iOS ATS being fully open. -->
@@ -56,6 +62,18 @@
             android:name=".MusicPlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <!-- FileProvider for the self-update APK (ApkInstallPlugin):
+             serves cache/updates/*.apk to the system installer. The
+             APK itself is downloaded by Dart into that directory. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- 启动闪退修复（2026-11-18）：Android 上 Impeller/Vulkan 在液态玻璃
              fragment shader 预热/首帧渲染时崩（"HAo Studio keeps stopping"，
              首页都没出来）。强制回 Skia；FragmentProgram 在 Skia 下照样跑

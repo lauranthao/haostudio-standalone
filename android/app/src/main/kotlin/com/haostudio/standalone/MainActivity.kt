@@ -19,5 +19,10 @@ class MainActivity : FlutterActivity() {
         // device volume. Registered here so the channel exists before
         // the video / live players construct SystemVolume.
         flutterEngine.plugins.add(SystemVolumePlugin())
+        // APK self-update installer (FileProvider + system install
+        // intent): the channel the Dart ApkUpdateInstaller calls after
+        // downloading the APK. Registered here so it exists before the
+        // update dialog runs.
+        flutterEngine.plugins.add(ApkInstallPlugin())
     }
 }

@@ -24,10 +24,10 @@
 // 仓库 2026-11-18 现状；设计值汇总见 research/kumone-player-study.md)。
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
@@ -1215,8 +1215,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             // AirPlay is iOS-only (AVRoutePickerView). Off iOS the
             // channel call always fails and every tap shows an error
             // toast, so the button is hidden there (B5) instead of
-            // left as an orphan control that can only error.
-            if (Platform.isIOS)
+            // left as an orphan control that can only error. Gated on
+            // defaultTargetPlatform (not dart:io Platform) so widget
+            // tests can run this row as iOS via TargetPlatformVariant.
+            if (defaultTargetPlatform == TargetPlatform.iOS)
               _circleBtn(
                 icon: Icons.airplay,
                 iconSize: 15,

@@ -573,7 +573,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     if (!context.mounted) return;
     switch (result) {
       case UpdateCheckResult.newerAvailable:
-        await _updateService.recordKnownUpdate(info!.version);
+        await _updateService.recordKnownUpdate(info!.effectiveVersion);
         if (!context.mounted) return;
         await showUpdateDialog(context, info, service: _updateService);
       case UpdateCheckResult.skipped:

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for the self-update APK (see
+     lib/services/apk_update_installer.dart + ApkInstallPlugin.kt):
+     the downloaded APK lives in <cache>/updates/. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

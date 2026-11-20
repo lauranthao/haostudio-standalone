@@ -200,7 +200,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('无法打开隔空播放选择器'), findsOneWidget);
       expect(find.text('当前设备不支持隔空播放'), findsNothing);
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
     testWidgets('tap AirPlay when native opens the picker -> no toast', (
       tester,
@@ -216,7 +216,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('无法打开隔空播放选择器'), findsNothing);
       expect(find.text('当前设备不支持隔空播放'), findsNothing);
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    // B5: the AirPlay button is iOS-only — off iOS the row has 6
+    // buttons and no AirPlay icon at all (no orphan control).
+    testWidgets('AirPlay button is absent off iOS (B5)', (tester) async {
+      await pumpPage(tester);
+      expect(find.byIcon(Icons.airplay), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   });
 
   group('musicImageReferer', () {
