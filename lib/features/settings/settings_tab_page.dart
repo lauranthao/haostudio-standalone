@@ -30,6 +30,9 @@
 //   are copied exactly.
 // - Selected-tab accent is the theme accent (black after the
 //   blue->black change), not Beans' amber — our themes own the accent.
+// - The 版本 row opens the in-app 更新日志 page
+//   (changelog_page.dart, bundled history, chen 2026-11-20) — the
+//   row keeps its version/build subtitle and gains a chevron.
 // - NO equalizer row: stage 3 added the engine (vendored just_audio
 //   fork + MTAudioProcessingTap, see EqualizerStore), so the playback
 //   panel now has a 均衡器 row showing 已开启/已关闭, opening the
@@ -75,6 +78,7 @@ import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
 import 'accent_color_sheet.dart';
+import 'changelog_page.dart';
 import '../live/live_breadcrumb.dart';
 import '../music/av_music_player.dart';
 import '../music/equalizer_page.dart';
@@ -512,6 +516,7 @@ class _SettingsTabPageState extends State<SettingsTabPage>
             icon: Icons.info_outline,
             title: '版本',
             subtitle: '$kAppVersion (build $kAppBuild)',
+            onTap: () => Get.to(() => const ChangelogPage()),
           ),
           const SizedBox(height: 12),
           _BeansRow(
