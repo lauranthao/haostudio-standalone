@@ -18,7 +18,7 @@
 // - Prefetch: the next track's URL is resolved ahead of time AND its
 //   audio is pre-buffered on the standby player (crossfade reuses it).
 // - Song crossfade (Apple Music-style): on AUTO-advance the next track
-//   starts on a second AvMusicPlayer at volume 0 while the current fades
+//   starts on a second music player at volume 0 while the current fades
 //   out (~2.5 s overlap). Manual next/prev switch immediately, no fade.
 // - Progress is saved ONLY when the app is killed from the background
 //   (AppLifecycleState.detached — the pagehide equivalent), never while
@@ -28,11 +28,14 @@
 // - Next/previous advance exactly one track (fix 14 Dart-side rule).
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart' show ProcessingState;
 import 'av_music_player.dart';
+import 'mpv_music_player.dart';
+import 'music_player_adapter.dart';
 
 import '../../core/logging/app_log.dart';
 import '../../core/native/now_playing.dart';
@@ -56,8 +59,8 @@ class MusicPlayerController extends GetxController
     MusicResolvers? resolvers,
     NowPlayingService? nowPlaying,
     MusicDownloadService? downloads,
-    AvMusicPlayer? playerA,
-    AvMusicPlayer? playerB,
+    MusicPlayerAdapter? playerA,
+    MusicPlayerAdapter? playerB,
   })  : _api = api ?? MusicApi(),
         _resolvers = resolvers ?? MusicResolvers(),
         _nowPlayingOverride = nowPlaying,
@@ -131,12 +134,13 @@ class MusicPlayerController extends GetxController
     return queue[i];
   }
 
-  // Two AVPlayer players (just_audio): active + standby (crossfade
-  // partner). Volume is 0.0..1.0 here, not media_kit's 0..100.
-  late final AvMusicPlayer _playerA;
-  late final AvMusicPlayer _playerB;
-  late AvMusicPlayer _active;
-  AvMusicPlayer get _standby =>
+  // Two players (AVPlayer on mobile, MPV on Windows — see the
+  // onInit gate): active + standby (crossfade partner). Volume is
+  // 0.0..1.0 here, not media_kit's 0..100.
+  late final MusicPlayerAdapter _playerA;
+  late final MusicPlayerAdapter _playerB;
+  late MusicPlayerAdapter _active;
+  MusicPlayerAdapter get _standby =>
       identical(_active, _playerA) ? _playerB : _playerA;
 
   /// True once the players exist (end of onInit). Rate application is
@@ -398,17 +402,24 @@ class MusicPlayerController extends GetxController
       queue.assignAll(savedQueue.songs);
       currentIndex.value = savedQueue.index;
     }
-    // Two crossfade players (A/B, AVPlayer via just_audio). Only on
-    // platforms with native audio — on Linux tests there is none, and
-    // a just_audio method call there would throw MissingPluginException
-    // into the test zone. A player failure only disables playback
-    // (_playersReady stays false, rate/play calls no-op) instead of
-    // crashing the whole music tab during build. Injected players
-    // (constructor seam) are never overwritten here.
-    if (!_playersReady && AvMusicPlayer.isSupported) {
+    // Two crossfade players (A/B). Mobile: AVPlayer via just_audio.
+    // Windows: MPV via media_kit (there is no AVPlayer on Windows).
+    // Only on platforms with native audio — on Linux tests there is
+    // none, and a just_audio method call there would throw
+    // MissingPluginException into the test zone. A player failure only
+    // disables playback (_playersReady stays false, rate/play calls
+    // no-op) instead of crashing the whole music tab during build.
+    // Injected players (constructor seam) are never overwritten here.
+    if (!_playersReady &&
+        (MpvMusicPlayer.isSupported || AvMusicPlayer.isSupported)) {
       try {
-        _playerA = AvMusicPlayer();
-        _playerB = AvMusicPlayer();
+        if (Platform.isWindows) {
+          _playerA = MpvMusicPlayer();
+          _playerB = MpvMusicPlayer();
+        } else {
+          _playerA = AvMusicPlayer();
+          _playerB = AvMusicPlayer();
+        }
         _active = _playerA;
         _playersReady = true;
       } catch (e) {
@@ -588,7 +599,7 @@ class MusicPlayerController extends GetxController
 
   // -- player plumbing ---------------------------------------------------------
 
-  void _attach(AvMusicPlayer player) {
+  void _attach(MusicPlayerAdapter player) {
     unawaited(_posSub?.cancel());
     unawaited(_durSub?.cancel());
     unawaited(_playingSub?.cancel());
@@ -624,7 +635,7 @@ class MusicPlayerController extends GetxController
   // (hardware buttons / Control Center). Every open re-asserts 1.0 so
   // a crossfade partner that was faded to 0 never stays silent.
   Future<void> _openOn(
-    AvMusicPlayer player,
+    MusicPlayerAdapter player,
     String url, {
     bool auto = false,
     int gen = -1,
@@ -1516,7 +1527,7 @@ class MusicPlayerController extends GetxController
 
   /// Play when a track is loaded; on a fresh launch (or after a
   /// failed load) nothing is in the player yet, so a bare play() is
-  /// a no-op — AvMusicPlayer.play() returns early without a source —
+  /// a no-op — the adapter's play() returns early without a source —
   /// and the tap does nothing (chen 2026-11-20: 刚进 app 点播放歌曲
   /// 不播放，要切到下一首歌才播放). Load the restored current song
   /// through the normal path instead. A load already in flight is
@@ -1600,7 +1611,7 @@ class MusicPlayerController extends GetxController
   /// play and is untouched. Called after every landing open on the
   /// active player ([_openOn] and the crossfade landing in
   /// [_loadCurrent]).
-  Future<void> _pauseIfSleepFired(AvMusicPlayer player) async {
+  Future<void> _pauseIfSleepFired(MusicPlayerAdapter player) async {
     if (_sleepFiredGen < 0) return;
     final firedForCurrent = _playGen == _sleepFiredGen;
     _sleepFiredGen = -1;

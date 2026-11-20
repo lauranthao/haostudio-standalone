@@ -35,11 +35,13 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/storage/hive_store.dart';
+import '../../features/music/mpv_music_player.dart';
 
 /// One user-saved custom preset (Beans `BeansEqualizerCustomPreset`).
 class EqualizerCustomPreset {
@@ -259,7 +261,20 @@ class EqualizerStore extends ChangeNotifier {
   /// (Android, Linux tests — MissingPluginException) or any other
   /// failure. A false here never blocks the UI: Hive already holds
   /// the truth and the next app start re-pushes.
+  ///
+  /// Windows: there is no MTAudioProcessingTap — the EQ goes to the
+  /// MPV music players as an `af` filter chain instead (see
+  /// MpvMusicPlayer.applyEqualizer). The push also remembers the
+  /// settings, so players opened later apply them in open().
   Future<bool> syncToNative() async {
+    if (Platform.isWindows) {
+      await MpvMusicPlayer.applyEqualizer(
+        enabled: enabled,
+        gains: bandGains,
+        preamp: preampGain,
+      );
+      return true;
+    }
     try {
       await _channel.invokeMethod<void>('updateSettings', {
         'enabled': enabled,

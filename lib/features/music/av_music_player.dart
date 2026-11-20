@@ -34,9 +34,10 @@ import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../services/music/music_models.dart';
+import 'music_player_adapter.dart';
 
 /// One AVPlayer-backed audio player (one half of the A/B crossfade pair).
-class AvMusicPlayer {
+class AvMusicPlayer implements MusicPlayerAdapter {
   final AudioPlayer _player = AudioPlayer();
 
   /// True on platforms where just_audio has a native AVPlayer
@@ -77,7 +78,8 @@ class AvMusicPlayer {
   /// empty) and the controller's error-stream fallback runs instead.
   var _hasSource = false;
 
-  AvMusicPlayerStreams get stream => AvMusicPlayerStreams(_player);
+  @override
+  MusicPlayerStreams get stream => AvMusicPlayerStreams(_player);
 
   /// Pre-buffer [url] without playing it: the standby player loads
   /// the next track's audio while the current track is still sounding,
@@ -88,6 +90,7 @@ class AvMusicPlayer {
   /// preload leaves nothing behind ([isPreloadedFor] stays false).
   var _preloadedUrl = '';
 
+  @override
   Future<bool> preload(String url) async {
     // No native audio on this platform (Linux tests): never touch
     // just_audio's platform channel — its setUrl throws
@@ -116,6 +119,7 @@ class AvMusicPlayer {
 
   /// True when this player already holds [url] buffered from
   /// [preload] (and nothing else was opened since).
+  @override
   bool isPreloadedFor(String url) =>
       _preloadedUrl.isNotEmpty && _preloadedUrl == url;
 
@@ -128,6 +132,7 @@ class AvMusicPlayer {
   /// controller's `_onPlayError` path). Returns true once a source was
   /// handed to the native player, even if the native load later fails:
   /// that failure IS reported on [stream.error], exactly as before.
+  @override
   Future<bool> open(String url, {bool play = true}) async {
     _hasSource = false;
     _preloadedUrl = '';
@@ -159,8 +164,10 @@ class AvMusicPlayer {
   /// the late error is delivered, because just_audio's error stream
   /// is an async pipe off the same playback events that update this
   /// state synchronously). See MusicPlayerController._onStreamError.
+  @override
   ProcessingState get processingState => _player.processingState;
 
+  @override
   Future<void> play() async {
     if (!_hasSource) return;
     try {
@@ -170,12 +177,14 @@ class AvMusicPlayer {
     } catch (_) {}
   }
 
+  @override
   Future<void> pause() async {
     try {
       await _player.pause();
     } catch (_) {}
   }
 
+  @override
   Future<void> seek(Duration position) async {
     if (!_hasSource) return;
     try {
@@ -184,6 +193,7 @@ class AvMusicPlayer {
   }
 
   /// Volume 0.0..1.0 (media_kit took 0..100).
+  @override
   Future<void> setVolume(double volume) async {
     try {
       await _player.setVolume(volume.clamp(0.0, 1.0));
@@ -191,12 +201,14 @@ class AvMusicPlayer {
   }
 
   /// Playback rate, 1.0 = normal (media_kit setRate).
+  @override
   Future<void> setRate(double rate) async {
     try {
       await _player.setSpeed(rate);
     } catch (_) {}
   }
 
+  @override
   Future<void> dispose() async {
     try {
       await _player.dispose();
@@ -207,21 +219,26 @@ class AvMusicPlayer {
 /// The media_kit-shaped stream bundle the controller subscribes to.
 /// just_audio's own streams are BehaviorSubject-backed (they replay the
 /// latest value to a new subscriber), so they delegate 1:1.
-class AvMusicPlayerStreams {
+class AvMusicPlayerStreams extends MusicPlayerStreams {
   AvMusicPlayerStreams(this._player);
 
   final AudioPlayer _player;
 
+  @override
   Stream<Duration> get position => _player.positionStream;
 
+  @override
   Stream<Duration> get duration =>
       _player.durationStream.map((d) => d ?? Duration.zero);
 
+  @override
   Stream<bool> get playing => _player.playingStream;
 
+  @override
   Stream<String> get error =>
       _player.errorStream.map((e) => e.message ?? 'play error');
 
+  @override
   Stream<bool> get completed => _player.playerStateStream
       .map((s) => s.processingState == ProcessingState.completed)
       .distinct();
