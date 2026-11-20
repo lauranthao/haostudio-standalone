@@ -191,15 +191,12 @@ void main() {
 
       // Fullscreen: the overlay bar is back at the screen bottom,
       // the below-video bar is gone (still exactly one bar), and
-      // the quality button renders in the overlay. Note: the 5 s
-      // auto-hide above left _controlsVisible false, so the
-      // overlay starts hidden — tap the video once to reveal it,
-      // exactly as a user would (pre-existing behaviour: entering
-      // fullscreen never re-showed hidden controls).
+      // the quality button renders in the overlay. The 5 s
+      // auto-hide above left _controlsVisible false, but entering
+      // fullscreen re-shows the controls immediately (the
+      // fullscreen-entry worker) — no video tap needed.
       await pumpFullscreen(tester);
       expect(find.byType(AppBar), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('fake-video')));
-      await tester.pump(const Duration(milliseconds: 400));
       expect(find.byTooltip('刷新'), findsOneWidget);
       expect(find.text('原画'), findsOneWidget);
       // The video fills the screen and the bar sits at its bottom
