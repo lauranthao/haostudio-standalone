@@ -568,7 +568,7 @@ class MusicPlayerController extends GetxController
     if (_disposed) return;
     switch (command) {
       case NowPlayingRemoteCommand.play:
-        if (!isPlaying.value) await _active.play();
+        await _playCurrentOrResume();
       case NowPlayingRemoteCommand.pause:
         if (isPlaying.value) await _active.pause();
       case NowPlayingRemoteCommand.toggle:
@@ -1507,8 +1507,28 @@ class MusicPlayerController extends GetxController
     if (isPlaying.value) {
       await _active.pause();
     } else {
-      await _active.play();
+      await _playCurrentOrResume();
     }
+  }
+
+  /// Play when a track is loaded; on a fresh launch (or after a
+  /// failed load) nothing is in the player yet, so a bare play() is
+  /// a no-op — AvMusicPlayer.play() returns early without a source —
+  /// and the tap does nothing (chen 2026-11-20: 刚进 app 点播放歌曲
+  /// 不播放，要切到下一首歌才播放). Load the restored current song
+  /// through the normal path instead. A load already in flight is
+  /// left alone (it plays when it lands); a loaded-but-paused track
+  /// still resumes without reloading.
+  Future<void> _playCurrentOrResume() async {
+    if (isPlaying.value) return;
+    if (_playersReady &&
+        _loadedIdentityKey.isEmpty &&
+        currentSong != null &&
+        !isResolving.value) {
+      await playIndex(currentIndex.value);
+      return;
+    }
+    await _active.play();
   }
 
   /// Pause playback if currently playing; no-op when already paused.
