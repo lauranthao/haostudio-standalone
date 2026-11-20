@@ -23,24 +23,52 @@ jobs:
       - name: flutter build windows --release
         run: flutter build windows --release
 
-      - name: Run the app and screenshot the home page
+      - name: Run the app and screenshot each tab
         shell: pwsh
         run: |
-          Start-Process build/windows/x64/runner/Release/standalone.exe
-          Start-Sleep -Seconds 25
           Add-Type -AssemblyName System.Drawing
           Add-Type -AssemblyName System.Windows.Forms
-          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
-          $g = [System.Drawing.Graphics]::FromImage($bmp)
-          $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-          $bmp.Save("shot-home.png", [System.Drawing.Imaging.ImageFormat]::Png)
-          Get-Item shot-home.png | Select-Object Name, Length
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Mouse {
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+            [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+            public static void Click(int x, int y) {
+              SetCursorPos(x, y);
+              mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+              mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+            }
+          }
+          "@
+          function Save-Shot($name) {
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save($name, [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose()
+            Get-Item $name | Select-Object Name, Length
+          }
+          Start-Process build/windows/x64/runner/Release/standalone.exe
+          Start-Sleep -Seconds 20
+          [Mouse]::Click(500, 15)
+          Start-Sleep -Seconds 2
+          Save-Shot "shot-home.png"
+          [Mouse]::Click(38, 250)
+          Start-Sleep -Seconds 8
+          Save-Shot "shot-music.png"
+          [Mouse]::Click(38, 181)
+          Start-Sleep -Seconds 10
+          Save-Shot "shot-live.png"
+          [Mouse]::Click(38, 320)
+          Start-Sleep -Seconds 5
+          Save-Shot "shot-settings.png"
           Stop-Process -Name standalone -ErrorAction SilentlyContinue
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         with:
           name: windows-screenshots
-          path: shot-home.png
+          path: shot-*.png
           retention-days: 90
