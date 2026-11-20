@@ -151,18 +151,34 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
   // System volume (MethodChannel): the vertical drag drives the
-  // device volume, not the player gain; the channel is the source
-  // of truth — there is no local level cache.
+  // device volume, not the player gain.
   final SystemVolume _systemVolume = SystemVolume();
   StreamSubscription<double>? _volumeSub;
+  // Per-side level caches (chen 2026-11-20: volume drag is choppy):
+  // the drag seeds from the cache of the side it starts on, so a
+  // mid-drag side change never re-reads the channel and never jumps
+  // the value. Volume stays live through the volumeChanges stream
+  // (+ an init-time read); brightness through an init-time read and
+  // the drag itself.
+  double _volumeLevel = 1.0;
+  double _brightnessLevel = 0.5;
   // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
   // the surface maps to a quarter of the level range per half-height
   // (see _applyDrag); the card hides 1 s after the last drag.
   bool _dragHudVisible = false;
   bool _dragIsBrightness = true;
-  double _dragValue = 1.0;
+  // The drag HUD value. A ValueNotifier, not a setState field — see
+  // the VOD player: pointer ticks rebuild only the HUD card, never
+  // the whole room page.
+  final ValueNotifier<double> _dragValueNotifier =
+      ValueNotifier<double>(1.0);
   Timer? _dragHudTimer;
   bool _dragInSystemZone = false;
+  // True once the drag-start seed has landed; updates arriving
+  // before that are dropped (the brightness seed awaits the channel
+  // for up to 300 ms — the VOD player drops them the same way, by
+  // leaving the drag side unset until the seed completes).
+  bool _dragSeedReady = false;
   // Fullscreen barrage pool (Pure Live PlayerDanmakuSurface +
   // LivePlayerFacade.floatingDanmaku): rendered over the video in
   // fullscreen only; the portrait list below stays the danmaku
@@ -269,6 +285,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // Keep the HUD on the real level when hardware keys / Control
     // Center move it. The drag itself reads the level live.
     _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
+    // Seed the per-side caches at entry (best-effort): the first drag
+    // must start from the real levels, not the 1.0 / 0.5 defaults —
+    // the old code re-read inside the drag update instead and raced
+    // with the drag itself, jumping the value mid-drag.
+    unawaited(_systemVolume.getVolume().then((v) => _volumeLevel = v));
+    unawaited(
+      ScreenBrightness.getBrightness().then((v) => _brightnessLevel = v),
+    );
   }
 
   Future<void> _loadRoom() async {
@@ -1078,11 +1102,35 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     return localPosition.dy >= size.height - zone;
   }
 
-  void _onVerticalDragStart(DragStartDetails details) {
+  Future<void> _onVerticalDragStart(DragStartDetails details) async {
     final size = _videoSurfaceKey.currentContext?.size;
     _dragInSystemZone =
         size != null &&
         _startsInSystemHomeGestureZone(details.localPosition, size);
+    _dragSeedReady = false;
+    if (_dragInSystemZone || _controlsLocked) return;
+    if (size == null || size.width <= 0) return;
+    // Seed the drag from the side's cache. Volume needs no re-read —
+    // the cache is live through the volumeChanges stream. Brightness
+    // gets a best-effort re-read with a short timeout, like the VOD
+    // player (a stale brightness seed would jump the screen back to
+    // the old level on the first move); updates arriving before it
+    // lands are dropped (see _dragSeedReady) instead of racing it.
+    final isBrightness = details.localPosition.dx <= size.width / 2;
+    if (isBrightness) {
+      try {
+        final v = await ScreenBrightness.getBrightness().timeout(
+          const Duration(milliseconds: 300),
+        );
+        if (!mounted) return;
+        _brightnessLevel = v.clamp(0.0, 1.0);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    _dragIsBrightness = isBrightness;
+    _dragValueNotifier.value =
+        isBrightness ? _brightnessLevel : _volumeLevel;
+    _dragSeedReady = true;
   }
 
   /// Hardware keys / Control Center changed the system volume:
@@ -1090,10 +1138,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// brightness HUD already on screen is left alone.
   void _onExternalVolume(double volume) {
     if (!mounted) return;
+    _volumeLevel = volume;
     if (_dragHudVisible && _dragIsBrightness) return;
+    // Own-set echoes never reach here (SystemVolume suppresses them);
+    // a genuine hardware-key / Control Center change updates the HUD
+    // value directly — no page rebuild beyond the pill visibility.
+    _dragValueNotifier.value = volume;
     setState(() {
       _dragIsBrightness = false;
-      _dragValue = volume;
     });
     _keepDragHudVisible();
   }
@@ -1101,40 +1153,48 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// Vertical drag: left half brightness, right half volume (Pure Live
   /// PlayerGestureLayer._apply, verbatim formula). Volume is the
   /// SYSTEM volume (SystemVolume channel).
-  Future<void> _onVerticalDragUpdate(DragUpdateDetails details) async {
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
     if (_dragInSystemZone || _controlsLocked) return;
+    if (!_dragSeedReady) return;
     final size = _videoSurfaceKey.currentContext?.size;
     if (size == null || size.height <= 0) return;
     final delta = details.delta;
     if (delta.distance < 0.5) return;
     final isBrightness = details.localPosition.dx <= size.width / 2;
-    if (_dragIsBrightness != isBrightness || !_dragHudVisible) {
+    // Side change mid-drag: seed from the new side's cache (no
+    // channel read) so the value continues from that side's real
+    // level instead of jumping. The old code awaited getVolume /
+    // getBrightness here and the re-read overwrote the drag value
+    // while later ticks were already applying deltas to it.
+    if (_dragIsBrightness != isBrightness) {
       _dragIsBrightness = isBrightness;
-      final observed = isBrightness
-          ? await ScreenBrightness.getBrightness()
-          : await _systemVolume.getVolume();
-      if (!mounted) return;
-      setState(() => _dragValue = observed.clamp(0.0, 1.0));
+      _dragValueNotifier.value =
+          isBrightness ? _brightnessLevel : _volumeLevel;
     }
-    if (!mounted) return;
     _keepDragHudVisible();
     // Full travel of the surface maps to a quarter of the level range
     // per half-height: target = value - dy / (height / 2) * 0.25.
-    final target = (_dragValue - delta.dy / (size.height / 2) * 0.25).clamp(
-      0.0,
-      1.0,
-    );
-    if ((target - _dragValue).abs() <= 0.001) return;
-    setState(() => _dragValue = target);
+    final target =
+        (_dragValueNotifier.value - delta.dy / (size.height / 2) * 0.25)
+            .clamp(0.0, 1.0);
+    if ((target - _dragValueNotifier.value).abs() <= 0.001) return;
+    // HUD first, through the notifier only — the page is NOT rebuilt
+    // per tick. The platform call is coalesced inside
+    // SystemVolume.setVolume, so a fast drag sends the latest value
+    // instead of a queue of stale ones.
+    _dragValueNotifier.value = target;
     if (isBrightness) {
+      _brightnessLevel = target;
       unawaited(ScreenBrightness.setBrightness(target));
     } else {
+      _volumeLevel = target;
       unawaited(_systemVolume.setVolume(target));
     }
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
     _dragInSystemZone = false;
+    _dragSeedReady = false;
   }
 
   void _keepDragHudVisible() {
@@ -1147,12 +1207,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   /// Drag HUD icon (Pure Live PlayerGestureLayerState._icon).
   IconData get _dragHudIcon {
+    final value = _dragValueNotifier.value;
     if (_dragIsBrightness) {
-      if (_dragValue <= 0) return Icons.brightness_low;
-      return _dragValue < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
+      if (value <= 0) return Icons.brightness_low;
+      return value < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
     }
-    if (_dragValue <= 0) return Icons.volume_mute;
-    return _dragValue < 0.5 ? Icons.volume_down : Icons.volume_up;
+    if (value <= 0) return Icons.volume_mute;
+    return value < 0.5 ? Icons.volume_down : Icons.volume_up;
   }
 
   void _lockControls() {
@@ -1294,6 +1355,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(ScreenBrightness.reset());
     _hideControlsTimer?.cancel();
     _dragHudTimer?.cancel();
+    _dragValueNotifier.dispose();
     _volumeSub?.cancel();
     _systemVolume.dispose();
     _barrageController.dispose();
@@ -1457,7 +1519,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               onVerticalDragStart: _onVerticalDragStart,
               onVerticalDragUpdate: _onVerticalDragUpdate,
               onVerticalDragEnd: _onVerticalDragEnd,
-              onVerticalDragCancel: () => _dragInSystemZone = false,
+              onVerticalDragCancel: () {
+                _dragInSystemZone = false;
+                _dragSeedReady = false;
+              },
             ),
           ),
           // Drag HUD (Pure Live PlayerGestureLayer card).
@@ -1472,41 +1537,47 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   // legible over any frame in every theme/mode.
                   child: DarkGlass(
                     radius: 16,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(_dragHudIcon, color: Colors.white),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 100,
-                                height: 20,
-                                child: LinearProgressIndicator(
-                                  value: _dragValue,
-                                  backgroundColor: Colors.white38,
-                                  valueColor: const AlwaysStoppedAnimation(
-                                    Colors.white,
+                    // Only this card listens to the drag value: ticks
+                    // rebuild the card, never the room page.
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _dragValueNotifier,
+                      builder: (context, value, _) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(_dragHudIcon, color: Colors.white),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SizedBox(
+                                  width: 100,
+                                  height: 20,
+                                  child: LinearProgressIndicator(
+                                    value: value,
+                                    backgroundColor: Colors.white38,
+                                    valueColor: const AlwaysStoppedAnimation(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          Text(
-                            '${(_dragValue * 100).round()}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                            Text(
+                              '${(value * 100).round()}%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

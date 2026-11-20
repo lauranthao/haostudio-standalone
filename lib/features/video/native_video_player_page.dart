@@ -193,7 +193,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // Brightness/volume drag (vertical swipe): left half brightness,
   // right half volume (Pure Live PlayerGestureLayer).
   _PlayerDragSide? _dragSide;
-  double _dragSystemValue = 0;
+  // The drag HUD value (brightness or volume, 0-1). A ValueNotifier,
+  // not a setState field: pointer ticks arrive at ~60-120 Hz and the
+  // HUD is a small subtree — rebuilding the whole player page per
+  // tick is what made the drag feel choppy (chen 2026-11-20). The
+  // page build only reads the notifier object; the hint pill rebuilds
+  // alone through the ValueListenableBuilder.
+  final ValueNotifier<double> _dragValueNotifier = ValueNotifier<double>(0);
   Timer? _dragHintTimer;
   Timer? _hideTimer;
   StreamSubscription<Duration>? _positionSub;
@@ -727,10 +733,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   void _onExternalVolume(double volume) {
     if (!mounted) return;
     if (_dragSide == _PlayerDragSide.brightness) return;
+    // Own-set echoes never reach here (SystemVolume suppresses them);
+    // a genuine hardware-key / Control Center change updates the HUD
+    // value directly — no page rebuild beyond showing the pill.
+    _dragValueNotifier.value = volume;
+    _volume = volume;
     setState(() {
       _dragSide = _PlayerDragSide.volume;
-      _dragSystemValue = volume;
-      _volume = volume;
     });
     _dragHintTimer?.cancel();
     _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
@@ -768,26 +777,29 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       _dragSide = isBrightness
           ? _PlayerDragSide.brightness
           : _PlayerDragSide.volume;
-      _dragSystemValue = seed;
       if (isBrightness) _brightness = seed;
     });
+    // The HUD value rides the notifier (no page rebuild); the side
+    // above is the only setState at drag start.
+    _dragValueNotifier.value = seed;
   }
 
   void _onSystemDragUpdate(DragUpdateDetails details) {
     final side = _dragSide;
     if (side == null) return;
-    setState(() {
-      _dragSystemValue = (_dragSystemValue - details.delta.dy / 300).clamp(
-        0.0,
-        1.0,
-      );
-    });
+    // HUD first, through the notifier only — the page is NOT rebuilt
+    // per tick (see _dragValueNotifier). The platform call is
+    // coalesced inside SystemVolume.setVolume, so a fast drag sends
+    // the latest value instead of a queue of stale ones.
+    final next = (_dragValueNotifier.value - details.delta.dy / 300)
+        .clamp(0.0, 1.0);
+    _dragValueNotifier.value = next;
     if (side == _PlayerDragSide.brightness) {
-      _brightness = _dragSystemValue;
-      unawaited(ScreenBrightness.setBrightness(_dragSystemValue));
+      _brightness = next;
+      unawaited(ScreenBrightness.setBrightness(next));
     } else {
-      _volume = _dragSystemValue;
-      unawaited(_systemVolume.setVolume(_dragSystemValue));
+      _volume = next;
+      unawaited(_systemVolume.setVolume(next));
     }
   }
 
@@ -1002,6 +1014,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     unawaited(ScreenBrightness.reset());
     _hideTimer?.cancel();
     _dragHintTimer?.cancel();
+    _dragValueNotifier.dispose();
     _positionSub?.cancel();
     _durationSub?.cancel();
     _statusSub?.cancel();
@@ -1356,7 +1369,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                 ),
               if (_dragSide != null)
                 Center(
-                  child: _SystemHint(side: _dragSide!, value: _dragSystemValue),
+                  // The pill alone listens to the drag value: pointer
+                  // ticks rebuild only this subtree, never the page.
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _dragValueNotifier,
+                    builder: (context, value, _) => _SystemHint(
+                      side: _dragSide!,
+                      value: value,
+                    ),
+                  ),
                 ),
               if (_longPressSpeeding)
                 const Center(child: _LongPressSpeedHint()),
