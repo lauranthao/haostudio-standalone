@@ -37,6 +37,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+import '../../../../core/logging/app_log.dart';
 import '../../../../core/models/live_models.dart';
 import '../../../../core/native/system_volume.dart';
 import '../../../../core/player/kernel/player_engine.dart';
@@ -236,6 +237,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _session = PlaybackSession(backendFactory: widget.backendFactory);
     _fullscreen = Get.put(FullscreenController());
     _recovery = LiveRecovery(site: _site, room: _room);
+    AppLog.info('进入直播间：${_room.platform} ${_room.roomId}');
     _danmakuFilter = DanmakuContentFilter();
     _readDanmakuSettings();
     _subscribeDanmakuSettings();
@@ -600,6 +602,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   void _onSessionError(String message) {
     if (!mounted) return;
+    AppLog.warn('直播异常：$message');
     // Order: next line first (no request), then fresh re-parse.
     // BOUND: after the recovery budget for this episode is spent, stop
     // and show the failure card. advanceLine() wraps around, so
@@ -614,6 +617,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (_consecutiveAutoFailures >=
         LiveRoomPage.autoRecoveryBudget(_recovery.lines.length)) {
       // Lines exhausted at this quality: show the failure card.
+      AppLog.error('直播失败：$message');
       // Pure Live never auto-downgrades — recovery is re-parse +
       // sweep at the same quality, and when the sweep is exhausted
       // the room fails visibly instead of silently dropping quality
@@ -642,6 +646,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// — whose list `fetchFresh` already replaced with fresh URLs, so it
   /// is still a fresh line, never the dead one.
   Future<void> _recoverWithFreshUrls(String message) async {
+    AppLog.info('直播恢复：重新解析播放地址');
     final fresh = _recovery.takeHeld() ?? await _recovery.fetchFresh();
     if (!mounted) return;
     if (fresh != null && fresh.urls.isNotEmpty) {

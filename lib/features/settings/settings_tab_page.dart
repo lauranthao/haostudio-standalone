@@ -60,6 +60,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/consts.dart';
+import '../../core/logging/app_log.dart';
 import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/video_fit.dart';
@@ -78,8 +79,8 @@ import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
 import 'accent_color_sheet.dart';
+import 'app_log_page.dart';
 import 'changelog_page.dart';
-import '../live/live_breadcrumb.dart';
 import '../music/av_music_player.dart';
 import '../music/equalizer_page.dart';
 import '../music/music_player_controller.dart';
@@ -526,11 +527,9 @@ class _SettingsTabPageState extends State<SettingsTabPage>
           ),
           const SizedBox(height: 12),
           _BeansRow(
-            icon: Icons.bug_report_outlined,
-            title: '直播崩溃记录',
-            subtitle: LiveBreadcrumb.current.isEmpty
-                ? '无记录'
-                : LiveBreadcrumb.current,
+            icon: Icons.article_outlined,
+            title: '日志',
+            onTap: () => Get.to(() => const AppLogPage()),
           ),
         ],
       ),
@@ -585,15 +584,21 @@ class _SettingsTabPageState extends State<SettingsTabPage>
     if (!context.mounted) return;
     switch (result) {
       case UpdateCheckResult.newerAvailable:
-        await _updateService.recordKnownUpdate(info!.version);
+        AppLog.info(
+          '发现新版本 v${info!.version} (build ${info.build})',
+        );
+        await _updateService.recordKnownUpdate(info.version);
         if (!context.mounted) return;
         await showUpdateDialog(context, info, service: _updateService);
       case UpdateCheckResult.skipped:
+        AppLog.debug('更新检查：已跳过该版本');
         Get.snackbar('提示', '已跳过该版本');
       case UpdateCheckResult.upToDate:
+        AppLog.debug('更新检查：已是最新版本');
         await _updateService.clearKnownUpdate();
         Get.snackbar('提示', '已是最新版本');
       case UpdateCheckResult.unavailable:
+        AppLog.warn('更新检查失败');
         Get.snackbar('提示', _updateFailureMessage());
     }
   }
