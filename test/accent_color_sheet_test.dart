@@ -171,8 +171,13 @@ void main() {
     expect(find.text('25%'), findsOneWidget);
     final color = TabBarAccentController.ensure().color.value;
     expect(color.a, closeTo(0.25, 0.02));
-    // The tab bar reads the same translucent colour.
-    expect(tabIconColor(tester, 0).a, closeTo(0.25, 0.02));
+    // The tab bar no longer follows the accent (Muse bar: all icons
+    // theme text) — the icon stays opaque theme text.
+    final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .textPrimary;
+    expect(tabIconColor(tester, 0), textPrimary);
   });
 
   testWidgets('preset + adds, persists, long-press deletes customs only',
@@ -224,7 +229,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(TabBarAccentController.ensure().color.value, blue);
-    expect(tabIconColor(tester, 0), blue);
+    // The tab bar no longer follows the accent (Muse bar: all icons
+    // theme text) — the pick still updates the stored accent.
+    final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .textPrimary;
+    expect(tabIconColor(tester, 0), textPrimary);
   });
 
   testWidgets('settings row opens the sheet', (tester) async {
