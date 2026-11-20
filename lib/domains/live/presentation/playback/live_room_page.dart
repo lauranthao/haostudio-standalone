@@ -138,6 +138,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   bool _controlsVisible = true;
   bool _controlsLocked = false;
   Timer? _hideControlsTimer;
+  // Fullscreen-entry worker: entering fullscreen always re-shows the
+  // bars and restarts the 5 s auto-hide (see the worker setup in
+  // initState). One worker on the flag covers every entry path —
+  // the [ ] buttons and the double-tap all funnel through
+  // FullscreenController.toggleFullscreen.
+  Worker? _fullscreenWorker;
   bool _playing = false;
   bool _paused = false;
   // Background audio-only: true while the app is backgrounded and the
@@ -236,6 +242,21 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _site = widget.site ?? Sites.of(widget.room.platform);
     _session = PlaybackSession(backendFactory: widget.backendFactory);
     _fullscreen = Get.put(FullscreenController());
+    // Entering fullscreen re-shows the bars and restarts the 5 s
+    // auto-hide from that moment: the portrait bar is page chrome
+    // (always visible when unlocked), so a hidden _controlsVisible
+    // is invisible in portrait — but the fullscreen overlay bar is
+    // gated on it, so without this, entering fullscreen after the
+    // 5 s auto-hide opens with no controls until the video is
+    // tapped. Exiting fullscreen leaves the bars alone. Locked
+    // stays locked: the overlay gate hides the bars and only the
+    // unlock button shows.
+    _fullscreenWorker = ever<bool>(
+      _fullscreen.isFullscreen,
+      (isFs) {
+        if (isFs && !_controlsLocked) _showControls();
+      },
+    );
     _recovery = LiveRecovery(site: _site, room: _room);
     AppLog.info('进入直播间：${_room.platform} ${_room.roomId}');
     _danmakuFilter = DanmakuContentFilter();
@@ -1440,6 +1461,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // survive to be re-applied on the next foreground return).
     unawaited(ScreenBrightness.reset());
     _hideControlsTimer?.cancel();
+    _fullscreenWorker?.dispose();
+    _fullscreenWorker = null;
     _dragHudTimer?.cancel();
     _dragValueNotifier.dispose();
     _volumeSub?.cancel();
