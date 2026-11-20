@@ -376,27 +376,12 @@ class GlassTabBarState extends State<GlassTabBar>
           borderRadius: BorderRadius.circular(999),
           boxShadow: glassTabBarShadow(context),
         ),
-        child: Stack(
-          children: [
-            GlassContainer(
-              // Capsule: radius far above half the height.
-              shape: const LiquidRoundedSuperellipse(borderRadius: 999),
-              padding: const EdgeInsets.all(_innerInset),
-              // Unified page (chen 2026-11-19): the chrome shares the
-              // page's own background colour instead of the demo's
-              // 53%-white ios27 tint, so the bar reads as part of the
-              // page, not a separate slab (see
-              // HaoLiquidGlass.chromeSettings). Optics are still the
-              // ios27 preset underneath. (useOwnLayer: true —
-              // per-widget settings are ignored in grouped mode
-              // without it). Premium: floating chrome (SKILL.md
-              // Rule 5).
-              settings: HaoLiquidGlass.chromeSettings(context),
-              useOwnLayer: true,
-              quality: GlassQuality.premium,
-              child: LayoutBuilder(
+        child: LayoutBuilder(
           builder: (context, constraints) {
-            final width = constraints.maxWidth;
+            // Full bar width minus the shell's 4pt inset on each side:
+            // the pill math below runs in this content space, and
+            // gesture x is shifted by the inset (see _contentX).
+            final width = constraints.maxWidth - _innerInset * 2;
             final count = _items.length;
             final cellW = width / count;
             final restWidth = cellW * _restWidthCells;
@@ -449,28 +434,30 @@ class GlassTabBarState extends State<GlassTabBar>
               pillRight = _pillRight!;
             }
             final pillCenter = (pillLeft + pillRight) / 2;
+            // Gesture x arrives in full-bar space (the detector wraps
+            // the whole 64pt bar); shift it into content space.
+            double contentX(double dx) => dx - _innerInset;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) {
-                _select(_indexForX(details.localPosition.dx, cellW));
+                _select(_indexForX(contentX(details.localPosition.dx), cellW));
               },
               onHorizontalDragStart: (details) {
                 // Drag starts on finger down (Beans minimumDistance 0);
                 // _isDragging only engages after 8pt of total movement
                 // from the start point, like Beans' translation check.
-                _dragStartX = details.localPosition.dx;
-                _dragX = null;
+                _dragStartX = contentX(details.localPosition.dx);
               },
               onHorizontalDragUpdate: (details) {
                 final startX = _dragStartX;
                 if (startX == null) return;
-                if (!_isDragging &&
-                    (details.localPosition.dx - startX).abs() < 8) {
+                final dx = contentX(details.localPosition.dx);
+                if (!_isDragging && (dx - startX).abs() < 8) {
                   return;
                 }
                 setState(() {
                   _isDragging = true;
-                  _dragX = details.localPosition.dx;
+                  _dragX = dx;
                   // Finger owns the pill now: stop both springs and
                   // track the finger directly (Kumone: pillX =
                   // dragX while dragging), at rest width — no stretch
@@ -487,7 +474,7 @@ class GlassTabBarState extends State<GlassTabBar>
                   _leftTarget = null;
                   _rightTarget = null;
                 });
-                _select(_indexForX(details.localPosition.dx, cellW));
+                _select(_indexForX(dx, cellW));
               },
               onHorizontalDragEnd: (_) {
                 if (_dragX != null) {
@@ -507,93 +494,137 @@ class GlassTabBarState extends State<GlassTabBar>
                 });
               },
               child: SizedBox(
-                height: _contentHeight,
-                // Clip the pill to the bar's capsule: the settle
-                // spring overshoots ~1-2%, so at an edge tab the
-                // leading edge can briefly pass the bar's end.
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        // Pill edges are owned by the two springs
-                        // (see _springTo) or, while dragging, by the
-                        // finger directly — never an ease curve.
-                        // The lens is a GROUPED GlassContainer
-                        // (useOwnLayer false, the default): it joins
-                        // the bar's own layer, so the bar + pill are
-                        // ONE refraction pass — never two nested
-                        // layers (standing rule). No settings: grouped
-                        // children inherit the bar's ios27 preset +
-                        // premium quality. The pill is a transparent
-                        // lens — no fill, no colour (chen: 不要胶囊
-                        // 黑色); the selection reads through the
-                        // icon/label colour below, which follows the
-                        // pill. The icons paint above the lens, so
-                        // the lens refracts the page behind the bar,
-                        // not the icons themselves (the icons must
-                        // stay above the glass to stay sharp — the
-                        // per-pixel magnification inside the lens is
-                        // not reproduced; see the report).
-                        left: pillLeft,
-                        top: 0,
-                        child: GlassContainer(
-                          key: GlassTabBarState.pillKey,
-                          shape: const LiquidRoundedSuperellipse(
-                            borderRadius: 999,
-                          ),
-                          quality: GlassQuality.premium,
-                          child: SizedBox(
-                            width: pillRight - pillLeft,
-                            height: _contentHeight,
+                height: _contentHeight + _innerInset * 2,
+                child: Stack(
+                  children: [
+                    // Bar shell: glass only (no child content). Its
+                    // backdrop is the page behind the bar; the icons
+                    // paint above it, the pill above them.
+                    Positioned.fill(
+                      child: GlassContainer(
+                        shape: const LiquidRoundedSuperellipse(
+                          borderRadius: 999,
+                        ),
+                        // Unified page (chen 2026-11-19): the chrome
+                        // shares the page's own background colour
+                        // instead of the demo's 53%-white ios27 tint,
+                        // so the bar reads as part of the page, not a
+                        // separate slab (see
+                        // HaoLiquidGlass.chromeSettings). Optics are
+                        // still the ios27 preset underneath.
+                        // (useOwnLayer: true — per-widget settings
+                        // are ignored in grouped mode without it).
+                        // Premium: floating chrome (SKILL.md Rule 5).
+                        settings: HaoLiquidGlass.chromeSettings(context),
+                        useOwnLayer: true,
+                        quality: GlassQuality.premium,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    // Icons + pill, inset like the old shell padding.
+                    // Clip the pill to the bar's capsule: the settle
+                    // spring overshoots ~1-2%, so at an edge tab the
+                    // leading edge can briefly pass the bar's end.
+                    Positioned(
+                      left: _innerInset,
+                      top: _innerInset,
+                      right: _innerInset,
+                      height: _contentHeight,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: Stack(
+                          children: [
+                            SizedBox(
+                              height: _contentHeight,
+                              child: Row(
+                                children: [
+                                  for (var i = 0; i < _items.length; i++)
+                                    Expanded(
+                                      child: _TabItem(
+                                        icon: _items[i].$1,
+                                        label: _items[i].$2,
+                                        selectedness: selectednessFor(
+                                          i,
+                                          pillCenter,
+                                          cellW,
+                                        ),
+                                        theme: theme,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Positioned(
+                              // Pill edges are owned by the two springs
+                              // (see _springTo) or, while dragging, by
+                              // the finger directly — never an ease
+                              // curve. The lens is its OWN layer
+                              // (useOwnLayer: true, indicator preset —
+                              // see HaoLiquidGlass.pillLensSettings)
+                              // sitting ABOVE the icon row, so its
+                              // shader samples the icons + labels and
+                              // magnifies / distorts them like
+                              // NetEase's lens (chen 2026-11-20:
+                              // "要做到和这样一样的动画"; reference
+                              // frames netease_pill_anim). A grouped
+                              // pill inside the shell's child can only
+                              // refract the page behind the bar — the
+                              // icons paint above the glass there —
+                              // which is why the old lens never
+                              // magnified them. The pill is a
+                              // transparent lens — no fill, no colour
+                              // (chen: 不要胶囊黑色); the selection
+                              // reads through the icon/label colour
+                              // below, which follows the pill. The
+                              // pill is a sibling of the shell, not
+                              // nested inside another glass container,
+                              // so the two layers are not nested
+                              // refractive glass.
+                              left: pillLeft,
+                              top: 0,
+                              child: GlassContainer(
+                                key: GlassTabBarState.pillKey,
+                                shape: const LiquidRoundedSuperellipse(
+                                  borderRadius: 999,
+                                ),
+                                settings:
+                                    HaoLiquidGlass.pillLensSettings(context),
+                                useOwnLayer: true,
+                                quality: GlassQuality.premium,
+                                child: SizedBox(
+                                  width: pillRight - pillLeft,
+                                  height: _contentHeight,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Kumone stroke overlay (GlassTabBar.swift:
+                    // .overlay strokeBorder white 0.22 light / 0.08
+                    // dark, 0.5pt) — drawn above the shader glass,
+                    // below nothing interactive (IgnorePointer).
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: Colors.white.withValues(
+                                alpha: isDark ? 0.08 : 0.22,
+                              ),
+                              width: 0.5,
+                            ),
                           ),
                         ),
                       ),
-                      Row(
-                        children: [
-                          for (var i = 0; i < _items.length; i++)
-                            Expanded(
-                              child: _TabItem(
-                                icon: _items[i].$1,
-                                label: _items[i].$2,
-                                selectedness: selectednessFor(
-                                  i,
-                                  pillCenter,
-                                  cellW,
-                                ),
-                                theme: theme,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             );
           },
-        ),
-            ),
-            // Kumone stroke overlay (GlassTabBar.swift: .overlay
-            // strokeBorder white 0.22 light / 0.08 dark, 0.5pt) —
-            // drawn above the shader glass, below nothing
-            // interactive (IgnorePointer).
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withValues(
-                        alpha: isDark ? 0.08 : 0.22,
-                      ),
-                      width: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

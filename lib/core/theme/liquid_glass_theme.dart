@@ -67,6 +67,26 @@ class HaoLiquidGlass {
   static LiquidGlassSettings ios27Settings(BuildContext context) =>
       LiquidGlassSettings.ios27(context);
 
+  /// Pill lens (chen 2026-11-20: NetEase tab-bar animation — the lens
+  /// magnifies / distorts the icons + labels passing under it).
+  ///
+  /// Base is the library's iOS 27 indicator preset
+  /// (`LiquidGlassSettings.ios27Indicator`: clear paraxial lens,
+  /// blur/frost 0, transparent glassColor, bright rim) with a
+  /// stronger lens so the magnification reads like NetEase's frames
+  /// (netease_pill_anim frame_005/011: the icon under the lens is
+  /// ~1.3-1.5x, warped at the rim): refractiveIndex 1.17 -> 1.35,
+  /// thickness 28 -> 36. Verified in the zz_pill_experiment goldens:
+  /// the grouped pill (old structure) shows no lens at all, the
+  /// own-layer pill above the icon row bends the grid + enlarges the
+  /// icon under it. On a real device (Impeller premium) the refraction
+  /// renders stronger than in the Skia test goldens.
+  static LiquidGlassSettings pillLensSettings(BuildContext context) =>
+      LiquidGlassSettings.ios27Indicator.copyWith(
+        refractiveIndex: 1.35,
+        thickness: 36,
+      );
+
   /// Floating-chrome glass (tab bar shell + mini player bar) for the
   /// unified page (chen 2026-11-19: "不要有那种分开的感觉，就是一个
   /// 页面连在一起的" — NetEase 漫游页参考：整页同一底色，顶栏 /
@@ -91,8 +111,10 @@ class HaoLiquidGlass {
   ///   or the dark-mode bar would read darker than its page.
   /// Theme-only (no appearance state): the same settings blend on a
   /// solid page and stay transparent over a wallpaper, so no reactive
-  /// rebuild is needed when the wallpaper toggles. The pill is
-  /// grouped inside the bar, so it inherits this preset.
+  /// rebuild is needed when the wallpaper toggles. The pill does NOT
+  /// inherit this preset any more: it is its own layer with
+  /// [pillLensSettings], so its shader can sample + magnify the icons
+  /// (bug 5, chen 2026-11-20).
   static LiquidGlassSettings chromeSettings(BuildContext context) {
     final base = LiquidGlassSettings.ios27(context);
     final page = HaoTheme.of(context).scaffoldBackground;
