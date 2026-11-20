@@ -12,11 +12,13 @@
 // for him to ask for the IPA. codemagic.yaml stays a draft.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'app/consts.dart';
 import 'core/logging/app_log.dart';
@@ -37,6 +39,20 @@ import 'services/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Windows desktop shell: the C++ runner opens 1280x800 titled
+  // "HAo Studio" (windows/runner/main.cpp); window_manager owns the
+  // runtime window (minimum size, show/focus). Mobile skips this
+  // entirely — no behaviour change there.
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+    await windowManager.setTitle('HAo Studio');
+    await windowManager.setMinimumSize(const Size(960, 600));
+    await windowManager.setSize(const Size(1280, 800));
+    await windowManager.waitUntilReadyToShow();
+    await windowManager.show();
+    await windowManager.focus();
+  }
 
   // Liquid glass shader pipeline: pre-warm fragment shaders before
   // runApp so the first glass frame has no white flash / jank

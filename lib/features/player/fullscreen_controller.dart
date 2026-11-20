@@ -19,9 +19,11 @@
 // and must not share this entry flag default.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:window_manager/window_manager.dart';
 
 class FullscreenController extends GetxController {
   final RxBool isFullscreen = false.obs;
@@ -35,8 +37,18 @@ class FullscreenController extends GetxController {
   /// button DOES rotate; the fault was the landscape DISPLAY, not the
   /// rotation. Pure Live has no such plugin.) The immersive switch is
   /// the mobile half of Pure Live's fullscreen presentation driver.
+  ///
+  /// Windows: there is no "landscape" — fullscreen means the whole
+  /// window goes fullscreen (window_manager). VOD tap-play and the
+  /// live [ ] button share this path, so both land in window
+  /// fullscreen on desktop; the isFullscreen state machine above is
+  /// untouched.
   Future<void> enterFullscreen() async {
     isFullscreen.value = true;
+    if (Platform.isWindows) {
+      await windowManager.setFullScreen(true);
+      return;
+    }
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -52,6 +64,10 @@ class FullscreenController extends GetxController {
   /// be set explicitly (Pure Live `doExitFullScreen` comment).
   Future<void> exitFullscreen() async {
     isFullscreen.value = false;
+    if (Platform.isWindows) {
+      await windowManager.setFullScreen(false);
+      return;
+    }
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
