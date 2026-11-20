@@ -136,6 +136,13 @@ class _SettingsTabPageState extends State<SettingsTabPage>
   void initState() {
     super.initState();
     _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
+    // Windows only has the MPV engine: a stored IJK/AVPlayer choice
+    // (e.g. restored from a mobile backup) is clamped so the picker
+    // below — which only offers MPV on Windows — always has a
+    // matching selection.
+    if (Platform.isWindows && _engineKey != PlayerEngine.mediaKit.key) {
+      _engineKey = PlayerEngine.mediaKit.key;
+    }
     // Engine section starts collapsed; the toggle state persists.
     _engineExpanded = HiveStore.getBool(HiveKeys.engineSectionExpanded, false);
     _playbackExpanded =
@@ -405,7 +412,14 @@ class _SettingsTabPageState extends State<SettingsTabPage>
                   setState(() => _engineKey = value);
                 },
                 child: Column(
-                  children: PlayerEngine.values.map((engine) {
+                // Windows only offers MPV (IJK/AVPlayer have no
+                // Windows native code — see
+                // PlayerEngineX.isAvailableOnPlatform).
+                children: PlayerEngine.values
+                    .where((e) =>
+                        !Platform.isWindows ||
+                        e == PlayerEngine.mediaKit)
+                    .map((engine) {
                     return RadioListTile<String>(
                       title: Text(
                         engine.displayName,
@@ -676,6 +690,12 @@ class _SettingsTabPageState extends State<SettingsTabPage>
           Get.find<ThemeController>().loadFromBox(HiveStore.box);
           setState(() {
             _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
+            // Same Windows clamp as initState (a restored backup may
+            // carry an IJK/AVPlayer choice).
+            if (Platform.isWindows &&
+                _engineKey != PlayerEngine.mediaKit.key) {
+              _engineKey = PlayerEngine.mediaKit.key;
+            }
             _engineExpanded =
                 HiveStore.getBool(HiveKeys.engineSectionExpanded, false);
             _playbackExpanded =

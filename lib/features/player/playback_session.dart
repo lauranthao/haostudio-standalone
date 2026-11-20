@@ -12,6 +12,7 @@
 // URLs do not expire like live anti-codes).
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -61,8 +62,21 @@ class PlaybackSession {
   PlaybackSession({
     PlayerEngine? preferred,
     BackendFactory? backendFactory,
-  })  : _preferred = preferred ?? _storedPreferredEngine,
+  })  : _preferred = _clampPreferred(preferred),
         _backendFactory = backendFactory ?? _defaultBackendFactory;
+
+  /// Windows only has the MPV engine (see
+  /// [PlayerEngineX.isAvailableOnPlatform]): an explicit preference
+  /// for IJK/AVPlayer — or a stored one (e.g. restored from a mobile
+  /// backup) — is clamped to MPV so the ladder never tries to build
+  /// a backend with no native code. Mobile behaviour unchanged.
+  static PlayerEngine _clampPreferred(PlayerEngine? preferred) {
+    final wanted = preferred ?? _storedPreferredEngine;
+    if (Platform.isWindows && wanted != PlayerEngine.mediaKit) {
+      return PlayerEngine.mediaKit;
+    }
+    return wanted;
+  }
 
   /// The engine the user picked in Settings (`videoPlayerKey`).
   ///
@@ -173,6 +187,10 @@ class PlaybackSession {
   /// The persistence write is fire-and-forget: an engine switch must
   /// never wait on storage I/O.
   Future<void> switchEngine(PlayerEngine engine, {bool isManual = false}) async {
+    // Windows has no IJK/AVPlayer native code: a switch to anything
+    // but MPV is a no-op there (the settings picker does not offer
+    // them on Windows either — this is the backstop).
+    if (Platform.isWindows && engine != PlayerEngine.mediaKit) return;
     _preferred = engine;
     unawaited(
       HiveStore.put(HiveKeys.videoPlayerKey, engine.key).catchError((_) {}),

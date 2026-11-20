@@ -5,6 +5,12 @@
 // AVPlayer = BetterPlayer on iOS (better_player_plus; Android ExoPlayer).
 // All three register on iOS (mobileOnlyEnginesAvailable = Android OR iOS);
 // mpv-only is the 4.x rewrite, not 3.x.
+// Windows: ONLY MPV has native code (media_kit ships a Windows
+// libmpv); IJK and AVPlayer have no Windows implementation, so on
+// Windows they must never be constructed or offered — see
+// [PlayerEngineX.isAvailableOnPlatform] and [candidatesFor].
+
+import 'dart:io';
 
 enum PlayerEngine {
   /// media_kit / libmpv. Priority 100. Default.
@@ -39,6 +45,17 @@ extension PlayerEngineX on PlayerEngine {
       case PlayerEngine.exo:
         return 'AVPlayer';
     }
+  }
+
+  /// Whether this engine has a native implementation on the current
+  /// platform. Windows only has MPV: flv_lzc (IJK) and
+  /// better_player_plus (AVPlayer) ship no Windows native code, so
+  /// constructing them on Windows would fail at open time. The
+  /// candidate list ([candidatesFor]) and the settings picker both
+  /// filter on this; the session also clamps its preferred engine.
+  bool get isAvailableOnPlatform {
+    if (Platform.isWindows) return this == PlayerEngine.mediaKit;
+    return true;
   }
 
   /// Registration priority (media_core player_adapter_selector.dart).

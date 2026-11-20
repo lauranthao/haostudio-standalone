@@ -122,7 +122,14 @@ dependencies:
   # interface is imported by test/playback_wakelock_test.dart's fake.
   wakelock_plus: ^1.7.0
   wakelock_plus_platform_interface: ^1.7.0
-  window_manager: ^0.6.0
+  # Windows desktop: window management (title/size/fullscreen).
+  # Pinned to the 0.5 line ON PURPOSE: 0.6+ moved to nativeapi,
+  # whose cnativeapi build hook needs GTK 3 / X11 / Xi dev packages
+  # (pkg-config gtk+-3.0) — not installed on the Linux test VM and
+  # apt is broken there, so `flutter test` cannot build native assets
+  # with 0.6. 0.5.2 has the same API we use (ensureInitialized,
+  # setTitle/setSize/setMinimumSize/setFullScreen) with no build hook.
+  window_manager: ^0.5.2
   win32: ^6.4.0
 
 # The Predidit media_kit_video fork pins wakelock_plus 1.3.3 exactly, while

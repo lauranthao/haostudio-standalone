@@ -143,7 +143,7 @@ List<PlayerEngine> candidatesFor({
 }) {
   final format = formatOf(url: url, declaredFormat: declaredFormat);
   final capable = PlayerEngine.values
-      .where((e) => engineCanPlay(e, format))
+      .where((e) => e.isAvailableOnPlatform && engineCanPlay(e, format))
       .toList()
     ..sort((a, b) {
       // Preferred first; ties broken by score, then priority.
