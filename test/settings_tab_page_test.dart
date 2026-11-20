@@ -3,7 +3,7 @@
 // - The 播放器引擎 group starts collapsed (only the current engine name
 //   shows as a summary); tapping the header expands / collapses it and
 //   the state persists in Hive (`engineSectionExpanded`).
-// - The 关于 section (版本 / 检查更新 / 直播崩溃记录) is the last
+// - The 关于 section (版本 / 检查更新 / 日志) is the last
 //   section on the page, after every other settings group.
 
 import 'dart:io';
@@ -18,6 +18,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
+import 'package:standalone/features/settings/app_log_page.dart';
 import 'package:standalone/features/settings/settings_tab_page.dart';
 
 void main() {
@@ -123,17 +124,27 @@ void main() {
     await pumpPage(tester);
 
     // 关于 sits below every other section's last row (缓存管理) and
-    // its own rows (版本 / 检查更新 / 直播崩溃记录) follow it.
+    // its own rows (版本 / 检查更新 / 日志) follow it.
     final aboutTop = tester.getTopLeft(find.text('关于')).dy;
     final cacheTop = tester.getTopLeft(find.text('缓存管理')).dy;
     final versionTop = tester.getTopLeft(find.text('版本')).dy;
     final updateTop = tester.getTopLeft(find.text('检查更新')).dy;
-    final crashTop = tester.getTopLeft(find.text('直播崩溃记录')).dy;
+    final logTop = tester.getTopLeft(find.text('日志')).dy;
 
     expect(aboutTop, greaterThan(cacheTop));
     expect(versionTop, greaterThan(aboutTop));
     expect(updateTop, greaterThan(versionTop));
-    expect(crashTop, greaterThan(updateTop));
+    expect(logTop, greaterThan(updateTop));
+  });
+
+  testWidgets('日志 row opens the app log page', (tester) async {
+    await pumpPage(tester);
+
+    await tester.tap(find.text('日志'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AppLogPage), findsOneWidget);
+    // The old display-only 直播崩溃记录 row is gone.
+    expect(find.text('直播崩溃记录'), findsNothing);
   });
 
   Future<void> expandPlayback(WidgetTester tester) async {

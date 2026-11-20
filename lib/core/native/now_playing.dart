@@ -22,8 +22,9 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../logging/app_log.dart';
 
 /// MethodChannel name shared with ios/Runner/NowPlayingPlugin.swift.
 const String nowPlayingChannelName = 'com.haostudio.standalone/now_playing';
@@ -84,7 +85,7 @@ class NowPlayingService {
         'playing': playing,
       });
     } catch (e) {
-      debugPrint('[HAo] now_playing updateTrack failed: $e');
+      AppLog.error('Now Playing 更新曲目失败：$e');
     }
   }
 
@@ -93,7 +94,7 @@ class NowPlayingService {
     try {
       await _channel.invokeMethod<void>('clearNowPlaying');
     } catch (e) {
-      debugPrint('[HAo] now_playing clear failed: $e');
+      AppLog.error('Now Playing 清除失败：$e');
     }
   }
 
@@ -109,7 +110,7 @@ class NowPlayingService {
       final opened = await _channel.invokeMethod<bool>('showAirPlayPicker');
       return opened ?? false;
     } catch (e) {
-      debugPrint('[HAo] now_playing showAirPlayPicker failed: $e');
+      AppLog.error('Now Playing 打开 AirPlay 失败：$e');
       return false;
     }
   }

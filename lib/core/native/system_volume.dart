@@ -13,8 +13,9 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../logging/app_log.dart';
 
 /// MethodChannel name shared with ios/Runner/SystemVolumePlugin.swift.
 const String systemVolumeChannelName =
@@ -93,7 +94,7 @@ class SystemVolume {
       _lastKnown = value.clamp(0.0, 1.0);
       return _lastKnown;
     } catch (e) {
-      debugPrint('[HAo] system_volume getVolume failed: $e');
+      AppLog.warn('读取系统音量失败：$e');
       return _lastKnown;
     }
   }
@@ -137,7 +138,7 @@ class SystemVolume {
       // sends a fresh value, and a stale one must never jump the
       // level after a newer one was already applied.
       _pendingSet = null;
-      debugPrint('[HAo] system_volume setVolume failed: $e');
+      AppLog.error('设置系统音量失败：$e');
     } finally {
       _setInFlight = false;
     }

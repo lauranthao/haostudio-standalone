@@ -18,6 +18,8 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'app/consts.dart';
+import 'core/logging/app_log.dart';
 import 'core/storage/hive_store.dart';
 import 'core/storage/local_paths.dart';
 import 'core/theme/appearance_store.dart';
@@ -57,9 +59,14 @@ Future<void> main() async {
   // this, a stale absolute index entry could not be repaired until
   // the first async directory call.
   await LocalPaths.ensureDocumentsPath();
+
+  // Runtime log: in-memory ring + persisted file (Settings → 日志).
+  await AppLog.init();
+  AppLog.info('HAo Studio 启动（版本 $kAppVersion build $kAppBuild）');
+
   final lastCrashStage = LiveBreadcrumb.current;
   if (lastCrashStage.isNotEmpty) {
-    debugPrint('[HAo] last live stage before crash/close: $lastCrashStage');
+    AppLog.debug('上次直播阶段：$lastCrashStage');
   }
 
   // "与其他音频同时播放" (Beans `configureAudioSession`): apply the
@@ -104,6 +111,7 @@ Future<void> main() async {
     Future<void>.delayed(const Duration(seconds: 2), () async {
       final info = await updateService.checkAuto();
       if (info == null) return;
+      AppLog.info('发现新版本 v${info.version} (build ${info.build})');
       await updateService.recordKnownUpdate(info.version);
       final context = Get.context;
       if (context == null || !context.mounted) return;
