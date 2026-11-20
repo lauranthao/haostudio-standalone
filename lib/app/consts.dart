@@ -28,6 +28,22 @@ const String kVersionUrl =
 const String kVersionUrlFallback =
     'https://chen-hao-shop-production.up.railway.app/version.json';
 
+/// Windows online-update manifest (primary). SEPARATE from the phone
+/// manifest (chen 2026-11-20: "windows单独") — the Windows app reads
+/// version-windows.json, never version.json, so a Windows release
+/// never offers the phone an IPA and a phone release never offers
+/// Windows an exe. Same hosting as the phone manifest: Gitee raw
+/// primary, shop server fallback. Fields: version / exeBuild /
+/// exeUrl / exeSize / changelog.
+const String kVersionWindowsUrl =
+    'https://gitee.com/chenhao030610/chen-hao-shop/raw/master/version-windows.json';
+
+/// Windows online-update manifest (fallback). The shop server copy of
+/// version-windows.json, updated at Windows release time alongside
+/// the Gitee copy — both must agree.
+const String kVersionWindowsUrlFallback =
+    'https://chen-hao-shop-production.up.railway.app/version-windows.json';
+
 /// Compare two dotted semver strings numerically, part by part.
 /// Missing parts count as 0; the first differing part decides; equal means
 /// not newer. Non-numeric input falls back to plain string comparison and

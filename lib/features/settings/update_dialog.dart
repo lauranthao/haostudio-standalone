@@ -4,10 +4,13 @@
 // check in main.dart: when a newer version is found, show version +
 // changelog with three actions — 下载 / 跳过此版本 / 稍后.
 //
-// 下载 opens info.ipaUrl in the external browser (Safari on iOS) via
-// url_launcher LaunchMode.externalApplication. iOS cannot silently
-// install an IPA from inside the app: the user downloads it in Safari
-// and installs via LCSign / TrollStore. Nothing here claims otherwise.
+// 下载 opens info.installUrl in the external browser (Safari on iOS,
+// the default browser on Windows) via url_launcher
+// LaunchMode.externalApplication. iOS cannot silently install an IPA
+// from inside the app: the user downloads it in Safari and installs
+// via LCSign / TrollStore. Windows downloads the zip (or the setup
+// exe) the same way and installs it by hand. Nothing here claims
+// otherwise.
 //
 // Theming: every colour comes from HaoTheme (all 4 themes x light/dark),
 // never a hardcoded colour; no purple anywhere. Frosted-glass card in
@@ -76,7 +79,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '发现新版本 v${info.version} (build ${info.build})',
+                    '发现新版本 v${info.effectiveVersion} (build ${info.effectiveBuild})',
                     style: TextStyle(
                       color: theme.textPrimary,
                       fontSize: 17,
@@ -101,7 +104,12 @@ Future<UpdateDialogAction?> showUpdateDialog(
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: () async {
-                      final uri = Uri.tryParse(info.ipaUrl);
+                      // The download URL for THIS platform (IPA on iOS,
+                      // exe/zip on Windows — never the other one).
+                      final installUrl = info.installUrl;
+                      final uri = installUrl == null
+                          ? null
+                          : Uri.tryParse(installUrl);
                       if (uri == null) {
                         Get.snackbar('下载失败', '下载链接无效');
                         return;

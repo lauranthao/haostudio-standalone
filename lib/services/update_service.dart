@@ -2,7 +2,10 @@
 //
 // Fetches version.json from Gitee raw FIRST (hosted in mainland China,
 // so the check works from chen's phone) and falls back to the shop
-// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9)
+// server (Railway US). Windows reads the SEPARATE
+// version-windows.json instead (chen 2026-11-20 "windows单独") —
+// same hosts, separate manifest, exe fields (exeUrl/exeBuild/exeSize)
+// instead of the IPA. Compares semver NUMERICALLY (1.0.10 beats 1.0.9)
 // AND the build number: a newer build of the same version IS an
 // update (1.1.5+22 beats 1.1.5+21 — the old version-only comparison
 // reported "already the latest" for every build bump of 1.1.5, chen
@@ -17,6 +20,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../app/consts.dart';
 import '../core/network/http_client.dart';
@@ -49,7 +53,8 @@ enum UpdateFetchError {
   /// Server answered with a non-2xx HTTP status ([UpdateService.lastHttpStatus]).
   http,
 
-  /// Response was not a usable manifest (bad JSON, missing version/ipaUrl).
+  /// Response was not a usable manifest (bad JSON, missing version /
+  /// this platform's download URL).
   parse,
 }
 
@@ -57,28 +62,74 @@ class UpdateInfo {
   const UpdateInfo({
     required this.version,
     required this.build,
-    required this.ipaUrl,
+    this.ipaUrl = '',
     this.size,
     this.changelog,
+    this.exeUrl,
+    this.exeSize,
+    this.exeVersion,
+    this.exeBuild,
   });
 
   final String version;
   final int build;
+
+  /// iOS IPA URL. Empty on a Windows manifest (no IPA there);
+  /// [installUrl] never reads it on Windows.
   final String ipaUrl;
   final int? size;
   final String? changelog;
 
-  /// Identity of this release for the skip check: version + build
-  /// ("1.1.5+22"). Skipping one build must not skip the next build
-  /// of the same version, so the skip key carries the build.
-  String get id => '$version+$build';
+  /// Windows exe release (separate manifest version-windows.json,
+  /// chen 2026-11-20 "windows单独"): the zip/installer URL, its byte
+  /// size, and its own version/build. All null on a phone manifest —
+  /// Windows then reports up to date instead of offering the iOS link.
+  final String? exeUrl;
+  final int? exeSize;
+  final String? exeVersion;
+  final int? exeBuild;
+
+  /// The version string this platform compares against [kAppVersion]:
+  /// the exe version on Windows, the shared version elsewhere.
+  String get effectiveVersion =>
+      defaultTargetPlatform == TargetPlatform.windows
+          ? (exeVersion ?? version)
+          : version;
+
+  /// The build this platform compares against [kAppBuild]: the exe
+  /// build on Windows, the shared build elsewhere.
+  int get effectiveBuild =>
+      defaultTargetPlatform == TargetPlatform.windows
+          ? (exeBuild ?? build)
+          : build;
+
+  /// The download URL this platform installs from: the exe on
+  /// Windows, the IPA URL elsewhere. Null on Windows when the
+  /// manifest carries no exe.
+  String? get installUrl =>
+      defaultTargetPlatform == TargetPlatform.windows ? exeUrl : ipaUrl;
+
+  /// Identity of this release for the skip check: effective version
+  /// + build ("1.1.5+24"). Skipping one build must not skip the next
+  /// build of the same version, so the skip key carries the build.
+  /// On iOS this is the shared version+build; on Windows the exe's.
+  String get id => '$effectiveVersion+$effectiveBuild';
 }
 
 class UpdateService {
   UpdateService({Dio? dio, String? versionUrl, String? fallbackUrl})
       : _dio = dio ?? sharedDio(),
-        _versionUrl = versionUrl ?? kVersionUrl,
-        _fallbackUrl = fallbackUrl ?? kVersionUrlFallback;
+        // Windows reads the separate Windows manifest
+        // (version-windows.json, chen 2026-11-20 "windows单独"), never
+        // the phone one.
+        _versionUrl = versionUrl ??
+            (defaultTargetPlatform == TargetPlatform.windows
+                ? kVersionWindowsUrl
+                : kVersionUrl),
+        _fallbackUrl = fallbackUrl ??
+            (defaultTargetPlatform == TargetPlatform.windows
+                ? kVersionWindowsUrlFallback
+                : kVersionUrlFallback);
 
   final Dio _dio;
 
@@ -172,20 +223,31 @@ class UpdateService {
       final data = res.data;
       if (data == null) return (null, UpdateFetchError.parse, status);
       final version = data['version']?.toString();
-      final ipaUrl = data['ipaUrl']?.toString();
+      // The download URL this platform needs: exeUrl on Windows
+      // (version-windows.json), ipaUrl elsewhere. A manifest without
+      // this platform's URL is a parse failure, not an update — the
+      // dialog must never offer the other platform's package.
+      final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+      final platformUrl = isWindows
+          ? data['exeUrl']?.toString()
+          : data['ipaUrl']?.toString();
       if (version == null ||
           version.isEmpty ||
-          ipaUrl == null ||
-          ipaUrl.isEmpty) {
+          platformUrl == null ||
+          platformUrl.isEmpty) {
         return (null, UpdateFetchError.parse, status);
       }
       return (
         UpdateInfo(
           version: version,
           build: (data['build'] as num?)?.toInt() ?? 0,
-          ipaUrl: ipaUrl,
+          ipaUrl: isWindows ? '' : platformUrl,
           size: (data['size'] as num?)?.toInt(),
           changelog: data['changelog']?.toString(),
+          exeUrl: data['exeUrl']?.toString(),
+          exeSize: (data['exeSize'] as num?)?.toInt(),
+          exeVersion: data['exeVersion']?.toString(),
+          exeBuild: (data['exeBuild'] as num?)?.toInt(),
         ),
         null,
         status,
@@ -243,10 +305,13 @@ class UpdateService {
   /// version is equal (neither side newer, so '1.1.05' equals
   /// '1.1.5') and its build is higher. The old version-only
   /// comparison reported upToDate for every 1.1.5 build bump.
+  /// Compared on the EFFECTIVE version/build (the exe's on Windows,
+  /// the shared ones on iOS) so the two platforms never compare
+  /// against each other's releases.
   bool _isNewer(UpdateInfo info) {
-    if (isNewerVersion(info.version, kAppVersion)) return true;
-    if (isNewerVersion(kAppVersion, info.version)) return false;
-    return info.build > kAppBuild;
+    if (isNewerVersion(info.effectiveVersion, kAppVersion)) return true;
+    if (isNewerVersion(kAppVersion, info.effectiveVersion)) return false;
+    return info.effectiveBuild > kAppBuild;
   }
 
   UpdateCheckResult _classify(UpdateInfo info) {
