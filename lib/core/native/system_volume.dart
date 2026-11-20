@@ -1,34 +1,136 @@
 // System volume bridge — Dart side of ios/Runner/SystemVolumePlugin.swift.
 //
-// The video / live players drive the DEVICE volume through this channel
+// The video / live players drive the DEVICE volume through this class
 // (`getVolume` / `setVolume`, 0-1), never the player gain: the player
 // gain (`PlaybackSession.setVolume`) leaves the system volume bar
 // untouched, which is the bug chen reported. The native side pushes
 // `volumeChanged` when the level moves outside the app (hardware keys,
 // Control Center), so the drag HUD stays on the real value.
 //
+// Two backends behind one public API (see [SystemVolumeBackend]):
+// - [MethodChannelSystemVolumeBackend]: the iOS MethodChannel (and
+//   Android, until its native side lands — a missing channel never
+//   throws, reads fall back to the last known level).
+// - Windows: [WindowsSystemVolumeBackend] (win32 COM,
+//   IAudioEndpointVolume — lib/core/native/windows_system_volume.dart).
+//   The public API, the echo suppression and the trailing-edge
+//   coalescing live here and are identical on both.
+//
 // Best-effort throughout: a missing native side (unit tests, Android
 // until its native side lands) never throws — reads fall back to the
 // last known level, writes are dropped.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 
 import '../logging/app_log.dart';
+import 'windows_system_volume.dart';
 
 /// MethodChannel name shared with ios/Runner/SystemVolumePlugin.swift.
 const String systemVolumeChannelName =
     'com.haostudio.standalone/system_volume';
 
-class SystemVolume {
-  SystemVolume({MethodChannel? channel})
+/// One way to read/write the device volume. Implementations never
+/// throw: [getVolume] returns null when the native side cannot
+/// answer, [setVolume] drops the write, and [setChangeListener]
+/// simply never fires.
+abstract class SystemVolumeBackend {
+  /// Current device volume, 0-1, or null when it cannot be read.
+  Future<double?> getVolume();
+
+  /// Set the device volume, 0-1 (clamped by the caller).
+  Future<void> setVolume(double volume);
+
+  /// Start (non-null) or stop (null) pushing external changes
+  /// (hardware keys, Control Center, the Windows mixer) to
+  /// [onChanged]. Called by [SystemVolume] when its
+  /// [SystemVolume.volumeChanges] stream gains / loses its last
+  /// listener, so a polling backend only polls while anyone listens.
+  void setChangeListener(void Function(double)? onChanged);
+
+  /// Release native resources (channel handler, COM objects, timers).
+  void dispose();
+}
+
+/// The iOS MethodChannel backend (and the fallback on Android / in
+/// tests, where the channel has no native side and every call fails
+/// soft). The native side pushes `volumeChanged` when the level moves
+/// outside the app.
+class MethodChannelSystemVolumeBackend implements SystemVolumeBackend {
+  MethodChannelSystemVolumeBackend({MethodChannel? channel})
       : _channel = channel ?? const MethodChannel(systemVolumeChannelName) {
     _channel.setMethodCallHandler(_onMethodCall);
   }
 
   final MethodChannel _channel;
-  final _controller = StreamController<double>.broadcast();
+  void Function(double)? _onChanged;
+
+  @override
+  Future<double?> getVolume() async {
+    try {
+      final value = await _channel.invokeMethod<double>('getVolume');
+      if (value == null) return null;
+      return value.clamp(0.0, 1.0);
+    } catch (e) {
+      AppLog.warn('读取系统音量失败：$e');
+      return null;
+    }
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    try {
+      await _channel.invokeMethod<void>('setVolume', <String, Object>{
+        'volume': volume.clamp(0.0, 1.0),
+      });
+    } catch (e) {
+      AppLog.error('设置系统音量失败：$e');
+    }
+  }
+
+  @override
+  void setChangeListener(void Function(double)? onChanged) {
+    _onChanged = onChanged;
+  }
+
+  Future<dynamic> _onMethodCall(MethodCall call) async {
+    if (call.method != 'volumeChanged') return null;
+    final args = call.arguments;
+    if (args is! Map) return null;
+    final raw = args['volume'];
+    if (raw is! num) return null;
+    _onChanged?.call(raw.toDouble().clamp(0.0, 1.0));
+    return null;
+  }
+
+  @override
+  void dispose() {
+    _channel.setMethodCallHandler(null);
+    _onChanged = null;
+  }
+}
+
+class SystemVolume {
+  /// [channel] injects a MethodChannel (tests); [backend] injects a
+  /// whole backend (tests). Otherwise the backend is picked by
+  /// platform: Windows gets the win32 COM backend, everything else
+  /// the MethodChannel one.
+  SystemVolume({MethodChannel? channel, SystemVolumeBackend? backend})
+      : _backend =
+            backend ??
+            (Platform.isWindows
+                ? WindowsSystemVolumeBackend()
+                : MethodChannelSystemVolumeBackend(channel: channel)) {
+    _controller = StreamController<double>.broadcast(
+      onListen: () => _backend.setChangeListener(_onBackendChange),
+      onCancel: () => _backend.setChangeListener(null),
+    );
+  }
+
+  final SystemVolumeBackend _backend;
+  late final StreamController<double> _controller;
 
   /// Last level the native side reported (or was set to). 1.0 until
   /// anything is known — the only safe neutral value.
@@ -88,15 +190,10 @@ class SystemVolume {
   /// Current system volume, 0-1. Falls back to the last known level
   /// when the native side cannot answer.
   Future<double> getVolume() async {
-    try {
-      final value = await _channel.invokeMethod<double>('getVolume');
-      if (value == null) return _lastKnown;
-      _lastKnown = value.clamp(0.0, 1.0);
-      return _lastKnown;
-    } catch (e) {
-      AppLog.warn('读取系统音量失败：$e');
-      return _lastKnown;
-    }
+    final value = await _backend.getVolume();
+    if (value == null) return _lastKnown;
+    _lastKnown = value.clamp(0.0, 1.0);
+    return _lastKnown;
   }
 
   /// Set the system volume, 0-1 (clamped). Best-effort: a missing
@@ -124,9 +221,7 @@ class SystemVolume {
     var current = target;
     try {
       while (true) {
-        await _channel.invokeMethod<void>('setVolume', <String, Object>{
-          'volume': current,
-        });
+        await _backend.setVolume(current);
         _lastKnown = current;
         final next = _pendingSet;
         _pendingSet = null;
@@ -144,25 +239,22 @@ class SystemVolume {
     }
   }
 
-  Future<dynamic> _onMethodCall(MethodCall call) async {
-    if (call.method != 'volumeChanged') return null;
-    final args = call.arguments;
-    if (args is! Map) return null;
-    final raw = args['volume'];
-    if (raw is! num) return null;
-    final value = raw.toDouble().clamp(0.0, 1.0);
-    // Echo of an own set (see _recentOwnSets): the caller already
-    // shows this value — forwarding it would yank the in-progress
-    // drag HUD back to a lagging, quantized level.
-    if (_isOwnEcho(value)) return null;
-    _lastKnown = value;
-    _controller.add(value);
-    return null;
+  /// An external change arrived from the backend (native push or the
+  /// Windows poller). Echoes of own sets are dropped (see
+  /// [_recentOwnSets]); the Windows backend already suppresses its
+  /// own echoes in the poller, this is the second line of defence.
+  void _onBackendChange(double value) {
+    final v = value.clamp(0.0, 1.0);
+    if (_isOwnEcho(v)) return;
+    _lastKnown = v;
+    if (!_controller.isClosed) _controller.add(v);
   }
 
-  /// Detach the channel handler. Call when the owner is disposed.
+  /// Detach the channel handler / release the backend. Call when the
+  /// owner is disposed.
   void dispose() {
-    _channel.setMethodCallHandler(null);
+    _backend.setChangeListener(null);
+    _backend.dispose();
     unawaited(_controller.close());
   }
 }

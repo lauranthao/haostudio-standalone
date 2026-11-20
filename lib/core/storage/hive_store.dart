@@ -96,6 +96,11 @@ class HiveKeys {
   /// Music (v1.0.4 music port). Values are JSON strings unless noted.
   /// Durations are stored in SECONDS (audit P0-3).
   static const String musicQuality = 'musicQuality'; // 'hires' default
+
+  /// Windows-only app-internal music gain, 0..1, default 1.0.
+  /// Multiplies the player volume (the target the controller sets on
+  /// the active player); the system volume is untouched by it.
+  static const String appVolume = 'appVolume';
   static const String musicLists = 'hao_lists'; // [UserPlaylist]
   static const String musicFav = 'hao_fav'; // [{key, song?}] — full Song
   // JSON is stored with each favourite (M-P0-7) so the favourites page

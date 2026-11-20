@@ -428,7 +428,7 @@ class MusicPlayerController extends GetxController
       }
     }
     if (_playersReady) {
-      unawaited(_active.setVolume(1.0));
+      unawaited(_active.setVolume(_targetVolume));
       unawaited(_active.setRate(speed.value));
       unawaited(_standby.setVolume(0));
       unawaited(_standby.setRate(speed.value));
@@ -653,7 +653,7 @@ class MusicPlayerController extends GetxController
       await _onPlayError(auto: auto, gen: gen);
       return;
     }
-    await player.setVolume(1.0);
+    await player.setVolume(_targetVolume);
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
@@ -1070,7 +1070,7 @@ class MusicPlayerController extends GetxController
     duration.value = Duration.zero;
     final start = DateTime.now();
     const step = Duration(milliseconds: 100);
-    const targetVol = 1.0;
+    final targetVol = _targetVolume;
     _fadeTimer = Timer.periodic(step, (timer) async {
       // A newer load owns the players now: stop touching them (no
       // volume fight, and never pause the newer song's player).
@@ -1579,6 +1579,36 @@ class MusicPlayerController extends GetxController
     if (!_playersReady) return;
     unawaited(_active.setRate(speed.value));
     unawaited(_standby.setRate(speed.value));
+  }
+
+  // -- app-internal gain (Windows only) --------------------------------------
+
+  /// The player-volume target: the Windows app-internal gain
+  /// (HiveKeys.appVolume, 0..1, default 1.0) on Windows; exactly 1.0
+  /// everywhere else — the music player has no volume control of its
+  /// own on mobile (volume is the system volume), so no stored value
+  /// can ever lower it there.
+  double get _targetVolume => Platform.isWindows
+      ? HiveStore.getDouble(HiveKeys.appVolume, 1.0).clamp(0.0, 1.0)
+      : 1.0;
+
+  /// Set the Windows app-internal gain (0..1). Takes effect
+  /// immediately on the active player (the standby stays at 0; a
+  /// crossfade in flight reads [_targetVolume] when it starts, so a
+  /// change mid-fade finishes at the old target and the next fade
+  /// uses the new one). Persists to Hive unless [persist] is false
+  /// (the Settings slider calls with persist: false per tick and
+  /// persists once on release).
+  Future<void> setAppVolume(double v, {bool persist = true}) async {
+    final value = v.clamp(0.0, 1.0);
+    if (persist) await HiveStore.put(HiveKeys.appVolume, value);
+    if (_playersReady) {
+      // Apply the live value (not the stored one): during a slider
+      // drag persist is false, so the stored value is still the old
+      // one. Off Windows the target is always 1.0 (see
+      // [_targetVolume]) — the slider is hidden there anyway.
+      unawaited(_active.setVolume(Platform.isWindows ? value : 1.0));
+    }
   }
 
   /// Cycle through the five play modes (顺序播放 → 列表循环 → 单曲循环 →

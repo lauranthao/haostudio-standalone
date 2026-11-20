@@ -131,6 +131,10 @@ dependencies:
   # setTitle/setSize/setMinimumSize/setFullScreen) with no build hook.
   window_manager: ^0.5.2
   win32: ^6.4.0
+  # Direct use in lib/core/native/windows_system_volume.dart (calloc /
+  # nullptr for the hand-rolled IAudioEndpointVolume); win32 brings it
+  # in transitively, but the lint requires a direct dependency.
+  ffi: ^2.2.0
 
 # The Predidit media_kit_video fork pins wakelock_plus 1.3.3 exactly, while
 # better_player_plus 1.4.1 needs wakelock_plus ^1.7.0. Pure Live resolves

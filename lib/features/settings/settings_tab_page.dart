@@ -120,6 +120,10 @@ class _SettingsTabPageState extends State<SettingsTabPage>
   late bool _autoResume;
   late bool _hapticsOn;
   late AudioQuality _quality;
+  // Windows-only app-internal music gain (0..1, HiveKeys.appVolume).
+  // Hidden on mobile: the music player has no volume control of its
+  // own there (volume is the system volume).
+  late double _appVolume;
   int? _sourceCount;
   // Appearance (stage 2 items 5-7): wallpaper on/off, background
   // colour on/off + hex, installed font display name. Refreshed
@@ -154,6 +158,7 @@ class _SettingsTabPageState extends State<SettingsTabPage>
     _autoResume = HiveStore.getBool(HiveKeys.autoResumeLastPlayback, false);
     _hapticsOn = HaoHaptics.enabled;
     _quality = MusicStore.quality;
+    _appVolume = HiveStore.getDouble(HiveKeys.appVolume, 1.0);
     _loadSourceCount();
     _loadAppearance();
   }
@@ -376,6 +381,17 @@ class _SettingsTabPageState extends State<SettingsTabPage>
               },
               sourceCount: _sourceCount,
               equalizerEnabled: EqualizerStore.ensure().enabled,
+              appVolume: _appVolume,
+              onAppVolumeChanged: (v) async {
+                // Drag tick: apply live, persist once on release
+                // (see onAppVolumeCommitted) — no Hive write per tick.
+                setState(() => _appVolume = v);
+                await _player.setAppVolume(v, persist: false);
+              },
+              onAppVolumeCommitted: (v) async {
+                setState(() => _appVolume = v);
+                await _player.setAppVolume(v);
+              },
               onOpenEqualizer: () async {
                 HaoHaptics.tap();
                 await Get.to(() => const EqualizerPage());
@@ -1068,6 +1084,9 @@ class _PlaybackPanel extends StatelessWidget {
     required this.sourceCount,
     required this.equalizerEnabled,
     required this.onOpenEqualizer,
+    required this.appVolume,
+    required this.onAppVolumeChanged,
+    required this.onAppVolumeCommitted,
   });
 
   final bool mixWithOthers;
@@ -1081,6 +1100,14 @@ class _PlaybackPanel extends StatelessWidget {
   final int? sourceCount;
   final bool equalizerEnabled;
   final VoidCallback onOpenEqualizer;
+
+  /// Windows-only app-internal music gain (0..1). The slider lives
+  /// only on Windows; [onAppVolumeChanged] fires per drag tick
+  /// (apply live, no persist), [onAppVolumeCommitted] once on
+  /// release (persist).
+  final double appVolume;
+  final ValueChanged<double> onAppVolumeChanged;
+  final ValueChanged<double> onAppVolumeCommitted;
 
   @override
   Widget build(BuildContext context) {
@@ -1137,6 +1164,64 @@ class _PlaybackPanel extends StatelessWidget {
             selected: quality,
             onSelected: onQualityChanged,
           ),
+          // Windows-only app-internal music gain (chen 2026-11-20:
+          // "app 内增益 + 系统音量，两个都做"). This is the gain
+          // slider, NOT the system volume: it scales the player
+          // output before it reaches the system mixer, so it never
+          // moves the Windows master volume. Hidden on mobile — the
+          // music player has no volume control of its own there.
+          if (Platform.isWindows) ...[
+            const _PanelDivider(),
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Icon(
+                    Icons.volume_up,
+                    size: 14,
+                    color: theme.accent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('应用音量', style: TextStyle(fontSize: 15)),
+                ),
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    '${(appVolume * 100).round()}%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: theme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: theme.accent,
+                inactiveTrackColor: theme.textSecondary.withValues(
+                  alpha: 0.25,
+                ),
+                thumbColor: theme.accent,
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 8,
+                ),
+                overlayShape: const RoundSliderOverlayShape(
+                  overlayRadius: 16,
+                ),
+              ),
+              child: Slider(
+                value: appVolume.clamp(0.0, 1.0),
+                onChanged: onAppVolumeChanged,
+                onChangeEnd: onAppVolumeCommitted,
+              ),
+            ),
+          ],
           const _PanelDivider(),
           _PanelSwitch(
             icon: Icons.vibration,
