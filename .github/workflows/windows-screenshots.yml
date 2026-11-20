@@ -61,13 +61,13 @@ jobs:
           [Win]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
           $left = $rect.Left; $top = $rect.Top
           Save-Shot "shot-home.png"
-          [Win]::Click(($left + 38), ($top + 250))
+          [Win]::Click(($left + 56), ($top + 442))
           Start-Sleep -Seconds 8
           Save-Shot "shot-music.png"
-          [Win]::Click(($left + 38), ($top + 181))
+          [Win]::Click(($left + 56), ($top + 371))
           Start-Sleep -Seconds 10
           Save-Shot "shot-live.png"
-          [Win]::Click(($left + 38), ($top + 320))
+          [Win]::Click(($left + 56), ($top + 512))
           Start-Sleep -Seconds 5
           Save-Shot "shot-settings.png"
           Stop-Process -Name standalone -ErrorAction SilentlyContinue
