@@ -39,7 +39,12 @@ DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; The choco-installed Inno Setup ships only Default.isl — the Chinese
+; translation is NOT in compiler:Languages. The official
+; ChineseSimplified.isl (jrsoftware/issrc) is bundled in this repo so
+; the CI build does not depend on a separate download:
+; windows/installer-languages/ChineseSimplified.isl
+Name: "chinesesimp"; MessagesFile: "installer-languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
