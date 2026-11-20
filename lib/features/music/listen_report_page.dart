@@ -20,7 +20,7 @@ import '../../core/theme/glass.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 
@@ -292,13 +292,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
               // every tap just to rebuild the same queue.
               final songs = topSongs.map((t) => t.song).toList();
               unawaited(_player.playQueue(songs, index));
-              unawaited(
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const MusicPlayerPage(),
-                  ),
-                ),
-              );
+              unawaited(openPlayerPage<void>(context));
             },
             onToggleFav: () async {
               await _player.toggleFav(top.song);

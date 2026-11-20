@@ -114,7 +114,6 @@ import 'listen_report_page.dart';
 import 'local_music_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
 import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
@@ -375,11 +374,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
   }
 
   void _openPlayer() {
-    unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage())),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   /// Open the player from the embedded mini player bar: the page

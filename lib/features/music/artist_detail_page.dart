@@ -21,7 +21,7 @@ import '../../services/music/music_store.dart';
 import 'album_detail_page.dart';
 import 'music_navigation.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
@@ -106,11 +106,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
     final songs = _detail?.songs ?? [];
     if (songs.isEmpty) return;
     unawaited(_player.playQueue(songs, 0, label: widget.artistName));
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-      ),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   Future<void> _share() async {
@@ -297,11 +293,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
       isFav: favIds.contains(song.identityKey),
       onPlay: () {
         unawaited(_player.playQueue(queue, index));
-        unawaited(
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage()),
-          ),
-        );
+        unawaited(openPlayerPage<void>(context));
       },
       onToggleFav: () async {
         await _player.toggleFav(song);

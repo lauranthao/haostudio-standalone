@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
 
+import 'music_navigation.dart';
 import 'music_player_sheet.dart';
 import 'widgets/mini_player_bar.dart';
 
@@ -18,6 +19,13 @@ import 'widgets/mini_player_bar.dart';
 ///   more sheet): the plain slide, exactly as before. There is no bar
 ///   to expand from, so no expansion.
 ///
+/// At most ONE player page: if one is already open (or being opened),
+/// this is a no-op returning null (see `claimPlayerPage` in
+/// music_navigation.dart). Without the guard, the async card taps
+/// (heartbeat / FM: search + first URL resolve before the push) stack
+/// a second player page when the user taps again, or taps the mini
+/// bar, during that window (chen 2026-11-20).
+///
 /// The route is pushed on the root Navigator. The context is resolved
 /// through Get's navigator key first: the overlay bar lives ABOVE the
 /// root Navigator (GetMaterialApp `builder`), so its context has no
@@ -26,19 +34,33 @@ import 'widgets/mini_player_bar.dart';
 /// Navigator"). Contexts below the Navigator (home bar) resolve the
 /// same state through the key, so one path serves both.
 Future<T?> openPlayerPage<T>(BuildContext context, {Rect? fromRect}) {
+  if (!claimPlayerPage()) return Future<T?>.value(null);
   final state = Get.key.currentState ??
       Navigator.of(context, rootNavigator: true);
-  if (fromRect != null) {
-    return state.push<T>(
-      PlayerExpandRoute<T>(
-        fromRect: fromRect,
-        child: const MusicPlayerPage(),
-      ),
-    );
+  Future<T?> pushed;
+  try {
+    if (fromRect != null) {
+      pushed = state.push<T>(
+        PlayerExpandRoute<T>(
+          fromRect: fromRect,
+          child: const MusicPlayerPage(),
+        ),
+      );
+    } else {
+      pushed = state.push<T>(
+        MaterialPageRoute<T>(builder: (_) => const MusicPlayerPage()),
+      );
+    }
+  } catch (_) {
+    // The push never started: release the claim so a later open works.
+    releasePlayerPage();
+    rethrow;
   }
-  return state.push<T>(
-    MaterialPageRoute<T>(builder: (_) => const MusicPlayerPage()),
-  );
+  // The claim is held until the route leaves the stack (pop / remove):
+  // the push future completes then, and only then may a new player
+  // page open.
+  unawaited(pushed.whenComplete(releasePlayerPage));
+  return pushed;
 }
 
 /// Kumone settle spring (GlassTabBar.swift:36 —

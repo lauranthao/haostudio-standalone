@@ -21,7 +21,7 @@ import '../../services/music/local_music_store.dart';
 import '../../services/music/music_models.dart';
 import '../../widgets/glass_dialog.dart';
 import 'music_player_controller.dart';
-import 'music_player_sheet.dart';
+import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 
 class LocalMusicPage extends StatefulWidget {
@@ -79,11 +79,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
   void _playSong(Song song) {
     final idx = _songs.indexWhere((s) => s.identityKey == song.identityKey);
     unawaited(_player.playQueue(_songs, idx < 0 ? 0 : idx, label: '本地文件'));
-    unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const MusicPlayerPage())),
-    );
+    unawaited(openPlayerPage<void>(context));
   }
 
   Future<void> _delete(Song song) async {
