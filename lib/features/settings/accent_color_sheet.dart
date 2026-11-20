@@ -14,10 +14,17 @@
 //   (adds the current colour to the presets, persisted; long-press
 //   a custom preset to delete it, the 5 defaults cannot be deleted).
 //
-// Every pick applies IMMEDIATELY to the tab-bar selected colour
-// (TabBarAccentController) — no confirm step; × closes. The colour
-// is stored with its opacity and controls ONLY the tab-bar selected
-// state (icon + label), nothing else.
+// Every pick applies IMMEDIATELY — to the tab-bar selected colour
+// (TabBarAccentController, with the picked opacity) AND to the
+// app-wide accent (ThemeController, opaque form): switches,
+// selected chips, play buttons, progress and highlights all follow.
+// No confirm step; × closes. "恢复默认" (bottom right) deletes the
+// stored colour: the tab bar returns to NetEase red and the theme
+// accent returns to the per-theme default. The colour is stored
+// with its opacity and controls the tab-bar selected state
+// (icon + label) plus every accent-role usage in the app —
+// semantic red (LIVE badge, recording dot, destructive confirms)
+// and brand/logo colours never read it and never change.
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -27,6 +34,7 @@ import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/screen_capture.dart';
 import '../../core/theme/tab_bar_accent.dart';
+import '../../core/theme/theme_controller.dart';
 import 'accent_dropper_page.dart';
 
 /// Open the accent-colour sheet from a settings row tap.
@@ -155,6 +163,28 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
       _opacity = opacity;
     });
     await TabBarAccentController.ensure().setColor(_color);
+    // App-wide accent follows the same pick (opaque form — the
+    // theme controller drops the opacity). Guarded: widget tests
+    // that pump the sheet without a ThemeController must not throw.
+    if (Get.isRegistered<ThemeController>()) {
+      Get.find<ThemeController>().setCustomAccent(_color);
+    }
+  }
+
+  /// Restore defaults: tab bar back to NetEase red, theme accent
+  /// back to the per-theme default, stored colour deleted.
+  Future<void> _resetToDefault() async {
+    HaoHaptics.select();
+    await TabBarAccentController.ensure().reset();
+    if (Get.isRegistered<ThemeController>()) {
+      Get.find<ThemeController>().clearCustomAccent();
+    }
+    if (!mounted) return;
+    setState(() {
+      final current = TabBarAccentController.ensure().color.value;
+      _hsv = HSVColor.fromColor(current);
+      _opacity = current.a;
+    });
   }
 
   Future<void> _applyColor(Color color) async {
@@ -333,6 +363,25 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          // Reset: tab bar back to NetEase red, theme accent back to
+          // the per-theme default. Plain secondary text, not an
+          // accent-role usage — it stays textSecondary.
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: const ValueKey('accent-reset-default'),
+              onPressed: _resetToDefault,
+              child: Text(
+                '恢复默认',
+                style: TextStyle(
+                  color: theme.textSecondary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ],
       ),

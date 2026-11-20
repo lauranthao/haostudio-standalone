@@ -21,7 +21,8 @@
 // - Accent mapping happens at the WIDGET level, where the API
 //   exposes it (e.g. `GlassSwitch.activeColor: theme.accent`). Our
 //   accent is black/grey/gold/teal per theme/mode — never the
-//   library's blue.
+//   library's blue — unless the user picked a custom accent
+//   (ThemeController), which replaces it app-wide.
 // - Tab bar optics follow the library demo (`GlassTabBar.bottom`
 //   passes no settings, so it renders the ambient ios27 defaults):
 //   per-widget `LiquidGlassSettings.ios27(context)` +
