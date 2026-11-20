@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
 import '../../core/network/http_client.dart';
@@ -21,6 +22,18 @@ const String kMusicUa =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
     'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 '
     'Safari/604.1';
+
+/// Kugou 分享歌单参数 — from a share/zlist.html landing URL
+/// (listid/uid/sign/_t/type/global_collection_id/chain).
+typedef KgShare = ({
+  String listid,
+  String uid,
+  String sign,
+  String t,
+  String type,
+  String collection,
+  String chain,
+});
 
 class MusicApi {
   MusicApi({Dio? dio}) : _dio = dio ?? sharedDio();
@@ -1631,8 +1644,115 @@ class MusicApi {
       }
       if (list.length < 100) break;
     }
+    final name = await _kgSpecialTitle(id);
     return (
-      name: '',
+      name: name.isEmpty ? '酷狗歌单 $id' : name,
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
+    );
+  }
+
+  /// Kugou 用户歌单 (`m.kugou.com/plist/list/<id>?json=true`, 10/page).
+  /// Public playlists need no login (dsh-kugou-music lib/kugou.js
+  /// fetchPlaylist). Name comes from the special-page title when it
+  /// exists, else `酷狗歌单 <id>` - the plist JSON carries no name.
+  Future<({String name, List<Song> tracks})> importKgPlist(String id) async {
+    final out = <Song>[];
+    var total = 0;
+    for (var p = 1; p <= 40; p++) {
+      final j = await _getJson(
+        'https://m.kugou.com/plist/list/$id',
+        headers: {'User-Agent': kMusicUa, 'Referer': 'https://www.kugou.com/'},
+        query: {'json': 'true', 'page': '$p', 'pagesize': '10'},
+        timeout: const Duration(seconds: 15),
+      );
+      final list = j?['list']?['list'] as Map<String, dynamic>?;
+      final info = _asList(list?['info']);
+      if (p == 1) total = (list?['total'] as num?)?.toInt() ?? info.length;
+      if (info.isEmpty) break;
+      for (final x in info) {
+        final fn = x['filename']?.toString() ?? '';
+        final sep = fn.indexOf(' - ');
+        out.add(
+          Song(
+            songId: (x['hash']?.toString() ?? '').toUpperCase(),
+            title: sep >= 0 ? fn.substring(sep + 3) : fn,
+            artist: sep >= 0 ? fn.substring(0, sep) : '',
+            cover: '',
+            platform: MusicPlatform.kg,
+            dur: (x['duration'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      }
+      if (out.length >= total || info.length < 10) break;
+    }
+    final name = await _kgSpecialTitle(id);
+    return (
+      name: name.isEmpty ? '酷狗歌单 $id' : name,
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
+    );
+  }
+
+  /// Kugou 新版分享歌单 (t1.kugou.com short link -> share/zlist.html).
+  /// m3ws.kugou.com/v2/zlist/list, signed with [kugouSign]; params come
+  /// from the share landing URL. No login. Up to 500 songs (100/page).
+  Future<({String name, List<Song> tracks})> importKgShared(
+    KgShare share,
+  ) async {
+    final out = <Song>[];
+    var name = '';
+    final now = DateTime.now().millisecondsSinceEpoch.toString();
+    for (var page = 1; page <= 10; page++) {
+      final params = <String, String>{
+        'srcappid': '2919',
+        'clientver': '20000',
+        'clienttime': now,
+        'mid': now,
+        'uuid': now,
+        'dfid': '-',
+        'listid': share.listid,
+        'type': share.type,
+        'uid': share.uid,
+        'sign': share.sign,
+        '_t': share.t,
+        'pagesize': '100',
+        'page': '$page',
+        'appid': '1014',
+        if (share.chain.isNotEmpty) 'chain': share.chain,
+        if (share.collection.isNotEmpty)
+          'global_collection_id': share.collection,
+      };
+      final j = await _getJson(
+        'https://m3ws.kugou.com/v2/zlist/list',
+        headers: {'User-Agent': kMusicUa, 'Referer': 'https://www.kugou.com/'},
+        query: {...params, 'signature': kugouSign(params)},
+        timeout: const Duration(seconds: 15),
+      );
+      final info = j?['list'] as Map<String, dynamic>?;
+      if (name.isEmpty) name = info?['name']?.toString() ?? '';
+      final arr = _asList(info?['info']);
+      if (arr.isEmpty) break;
+      for (final s in arr) {
+        final full = s['name']?.toString() ?? '';
+        final sep = full.indexOf(' - ');
+        out.add(
+          Song(
+            songId: (s['hash']?.toString() ?? '').toUpperCase(),
+            title: sep >= 0 ? full.substring(sep + 3) : full,
+            artist: sep >= 0 ? full.substring(0, sep) : '',
+            cover: '',
+            platform: MusicPlatform.kg,
+            dur: ((s['timelen'] as num?) ?? 0) ~/ 1000,
+          ),
+        );
+      }
+      if (arr.length < 100 || out.length >= 500) break;
+    }
+    return (
+      name: name,
       tracks: out
           .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
           .toList(),
@@ -1695,16 +1815,216 @@ class MusicApi {
     return parseNeteaseCharts(j);
   }
 
-  /// Import a playlist from a pasted public link (wy / kw / tx).
+  /// First http(s) URL inside pasted text (a share paste carries the
+  /// link between Chinese text, e.g. "分享…歌单《…》https://163cn.tv/xxx
+  /// (@网易云音乐)"). Trailing punctuation from the share text is
+  /// stripped. Null when the text holds no URL at all.
+  static String? extractUrlFromText(String input) {
+    final m = RegExp(r'https?://[^\s]+').firstMatch(input);
+    if (m == null) return null;
+    return m.group(0)!.replaceAll(RegExp(r'[)）\]》。，,;!！]+$'), '');
+  }
+
+  /// NetEase playlist id from any real long-form URL:
+  /// music.163.com/playlist?id=.., music.163.com/#/playlist?id=..,
+  /// y.music.163.com/m/playlist?..&id=.. (id anywhere in the query).
+  /// Null when it is not a NetEase playlist URL.
+  static String? wyPlaylistIdFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    if (!uri.host.endsWith('music.163.com')) return null;
+    var path = uri.path;
+    var query = uri.queryParameters;
+    // Desktop hash form: music.163.com/#/playlist?id=123
+    if (uri.fragment.startsWith('/playlist')) {
+      final frag = Uri.tryParse(uri.fragment);
+      if (frag == null) return null;
+      path = frag.path;
+      query = frag.queryParameters;
+    }
+    if (!path.contains('playlist')) return null;
+    final id = query['id'];
+    if (id == null || int.tryParse(id) == null) return null;
+    return id;
+  }
+
+  /// Follow HTTP redirects MANUALLY (up to 5 hops) and return every URL
+  /// visited, start URL first. Manual because the id often sits in an
+  /// INTERMEDIATE Location (163cn.tv -> y.music.163.com/m/playlist?
+  /// id=..), and the landing page itself may 404 for our UA while the
+  /// id is already known. Fail-soft: on any error return the hops
+  /// collected so far (at least the start URL). Never throws.
+  Future<List<String>> _followRedirects(String url) async {
+    final hops = <String>[url];
+    var current = url;
+    for (var i = 0; i < 5; i++) {
+      String? next;
+      try {
+        final res = await _dio.get<dynamic>(
+          current,
+          options: Options(
+            headers: {'User-Agent': kMusicUa},
+            followRedirects: false,
+            receiveTimeout: const Duration(seconds: 8),
+            responseType: ResponseType.plain,
+          ),
+        );
+        final loc = res.headers.value('location');
+        if (loc == null || loc.isEmpty) break;
+        next = Uri.parse(current).resolve(loc).toString();
+      } catch (_) {
+        break;
+      }
+      if (next == current) break;
+      hops.add(next);
+      current = next;
+    }
+    return hops;
+  }
+
+  /// Kugou 精选集 id from a desktop special URL:
+  /// `www.kugou.com/yy/special/single/<id>.html` (also matches a
+  /// specialid/global_collection_id/collection_id query param).
+  static String? kgSpecialIdFromUrl(String url) {
+    final m = RegExp(
+      r'kugou\.com/yy/special/single/(\d{4,})',
+      caseSensitive: false,
+    ).firstMatch(url);
+    if (m != null) return m.group(1);
+    final q = Uri.tryParse(url)?.queryParameters ?? const {};
+    for (final key in ['specialid', 'global_collection_id', 'collection_id']) {
+      final id = q[key];
+      if (id != null && int.tryParse(id) != null) return id;
+    }
+    return null;
+  }
+
+  /// Kugou 用户歌单 id from the mobile playlist page URL:
+  /// `m.kugou.com/plist/list/<id>` (or `plist/<id>`).
+  static String? kgPlistIdFromUrl(String url) {
+    final m = RegExp(
+      r'kugou\.com/plist/(?:list/)?(\d{4,})',
+      caseSensitive: false,
+    ).firstMatch(url);
+    return m?.group(1);
+  }
+
+  /// Kugou 分享歌单参数 from a share/zlist.html landing URL
+  /// (t1.kugou.com short links resolve to one). Null when the URL is
+  /// not a zlist share page.
+  static KgShare? kgShareParamsFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    if (!uri.path.contains('zlist')) return null;
+    final q = uri.queryParameters;
+    final listid = q['listid'] ?? '';
+    final uid = q['uid'] ?? '';
+    if (listid.isEmpty || uid.isEmpty) return null;
+    return (
+      listid: listid,
+      uid: uid,
+      sign: q['sign'] ?? '',
+      t: q['_t'] ?? '',
+      type: q['type'] ?? '0',
+      collection: q['global_collection_id'] ?? '',
+      chain: q['chain'] ?? '',
+    );
+  }
+
+  /// Kugou web-API signature (infSign rule, as documented in the public
+  /// dsh-kugou-music plugin, lib/kugou.js): md5(secret + sorted k=v
+  /// concat + secret). Verified live 2026-11-20: with a correct
+  /// signature m3ws answers 参数错误 (bad params) instead of 签名错误.
+  static String kugouSign(Map<String, String> params) {
+    const secret = 'NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt';
+    final keys = params.keys.toList()..sort();
+    final raw = keys.map((k) => '$k=${params[k]}').join();
+    return md5.convert(utf8.encode(secret + raw + secret)).toString();
+  }
+
+  /// Playlist name from the Kugou special page <title> (the JSON
+  /// playlist APIs do not return a name). Fail-soft: '' on any failure.
+  Future<String> _kgSpecialTitle(String id) async {
+    final html = await _getText(
+      'https://www.kugou.com/yy/special/single/$id.html',
+    );
+    if (html == null) return '';
+    final m = RegExp(
+      r'<title>([^<]*)</title>',
+      caseSensitive: false,
+    ).firstMatch(html);
+    if (m == null) return '';
+    return m
+        .group(1)!
+        .replaceAll(RegExp(r'_[^_]*_乐库频道_酷狗网$'), '')
+        .replaceAll(RegExp(r'_酷狗网$'), '')
+        .trim();
+  }
+
+  /// Import a playlist from a pasted public link (wy / kg / kw / tx).
   /// Returns null when the URL is not a recognised playlist link.
   Future<({String name, List<Song> tracks, MusicPlatform pf})?> importFromLink(
-    String url,
+    String input,
   ) async {
-    final wy = RegExp(r'music\.163\.com/(#\/)?playlist\?id=(\d+)')
-        .firstMatch(url);
-    if (wy != null) {
-      final r = await importWyPlaylist(wy.group(2)!);
+    final url = extractUrlFromText(input);
+    if (url == null) return null;
+    final host = Uri.tryParse(url)?.host ?? '';
+
+    // NetEase short link (163cn.tv/<code>): walk the redirects — the
+    // playlist id sits in an intermediate hop's URL.
+    if (host == '163cn.tv' || host.endsWith('.163cn.tv')) {
+      for (final hop in await _followRedirects(url)) {
+        final id = wyPlaylistIdFromUrl(hop);
+        if (id != null) {
+          final r = await importWyPlaylist(id);
+          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.wy);
+        }
+      }
+      return null;
+    }
+    // Kugou short link (t1.kugou.com/<code>): walk the redirects — the
+    // landing may be a zlist share page, a special page, or a plist page.
+    if (host == 't1.kugou.com' || host.endsWith('.t1.kugou.com')) {
+      for (final hop in await _followRedirects(url)) {
+        final share = kgShareParamsFromUrl(hop);
+        if (share != null) {
+          final r = await importKgShared(share);
+          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+        }
+        final special = kgSpecialIdFromUrl(hop);
+        if (special != null) {
+          final r = await importKgPlaylist(special);
+          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+        }
+        final plist = kgPlistIdFromUrl(hop);
+        if (plist != null) {
+          final r = await importKgPlist(plist);
+          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+        }
+      }
+      return null;
+    }
+
+    // Direct long forms (no redirect needed).
+    final wyId = wyPlaylistIdFromUrl(url);
+    if (wyId != null) {
+      final r = await importWyPlaylist(wyId);
       return (name: r.name, tracks: r.tracks, pf: MusicPlatform.wy);
+    }
+    final kgShare = kgShareParamsFromUrl(url);
+    if (kgShare != null) {
+      final r = await importKgShared(kgShare);
+      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+    }
+    final kgSpecial = kgSpecialIdFromUrl(url);
+    if (kgSpecial != null) {
+      final r = await importKgPlaylist(kgSpecial);
+      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+    }
+    final kgPlist = kgPlistIdFromUrl(url);
+    if (kgPlist != null) {
+      final r = await importKgPlist(kgPlist);
+      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
     }
     final kw = RegExp(r'kuwo\.cn/playlist_detail/(\d+)').firstMatch(url);
     if (kw != null) {

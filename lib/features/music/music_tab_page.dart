@@ -375,7 +375,7 @@ class _MusicTabPageState extends State<MusicTabPage> {
       if (r == null || r.tracks.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('导入失败：请粘贴网易云 / QQ / 酷我公开歌单链接')),
+          const SnackBar(content: Text('导入失败：请粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接')),
         );
         return;
       }
