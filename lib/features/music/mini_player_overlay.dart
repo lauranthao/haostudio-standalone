@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
+import '../../widgets/app_shell.dart';
 import 'music_navigation.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
@@ -93,7 +95,9 @@ class MiniPlayerOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      left: 0,
+      // Windows: the sidebar owns the left strip — the bar floats at
+      // the bottom of the CONTENT area, not under the rail.
+      left: Platform.isWindows ? AppShell.windowsSidebarWidth : 0,
       right: 0,
       // Above the home indicator, like the tab bar the home bar floats
       // over. The bar itself carries its own 8pt bottom margin.
@@ -101,8 +105,7 @@ class MiniPlayerOverlay extends StatelessWidget {
       child: ValueListenableBuilder<bool>(
         valueListenable: observer.isMusicSubPage,
         builder: (context, isMusic, _) {
-          final show =
-              isMusic && MediaQuery.of(context).viewInsets.bottom == 0;
+          final show = isMusic && MediaQuery.of(context).viewInsets.bottom == 0;
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: show
@@ -112,14 +115,10 @@ class MiniPlayerOverlay extends StatelessWidget {
                     // instances).
                     key: const ValueKey('overlayMiniPlayer'),
                     onOpenPlayer: (rect) {
-                      unawaited(
-                        openPlayerPage<void>(context, fromRect: rect),
-                      );
+                      unawaited(openPlayerPage<void>(context, fromRect: rect));
                     },
                   )
-                : const SizedBox.shrink(
-                    key: ValueKey('overlayHidden'),
-                  ),
+                : const SizedBox.shrink(key: ValueKey('overlayHidden')),
           );
         },
       ),

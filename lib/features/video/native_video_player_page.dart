@@ -23,6 +23,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -30,6 +31,7 @@ import '../../core/player/kernel/video_fit.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/glass.dart';
 import '../music/music_player_controller.dart';
+import '../player/desktop_shortcuts.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
 import '../player/screen_brightness.dart';
@@ -828,6 +830,65 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // mid-gesture.
   }
 
+  // -- Windows desktop keyboard + mouse wheel (step 2, phase 2). --
+
+  /// Keyboard: Space play/pause, ←/→ seek ∓10 s (VOD only — live is
+  /// real-time), ↑/↓ system volume, F fullscreen, Esc exit
+  /// fullscreen. Off Windows every key is ignored (see
+  /// desktop_shortcuts.dart).
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!Platform.isWindows) return KeyEventResult.ignored;
+    return handleDesktopPlayerKey(
+      event,
+      onTogglePlayPause: () => unawaited(_session.togglePlayPause()),
+      onSeekBackward: () => unawaited(_seekByKeyboard(-10)),
+      onSeekForward: () => unawaited(_seekByKeyboard(10)),
+      onToggleFullscreen: () => unawaited(_fullscreen.toggleFullscreen()),
+      onExitFullscreen: () {
+        if (_fullscreen.isFullscreen.value) {
+          unawaited(_fullscreen.exitFullscreen());
+        }
+      },
+      onVolumeStep: (direction) => _applyVolumeStep(direction / 16),
+    );
+  }
+
+  /// Mouse wheel over the video: system volume ±0.05 per notch
+  /// (scroll up = louder). Off Windows ignored.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (!Platform.isWindows) return;
+    if (event is PointerScrollEvent) {
+      handleDesktopWheel(event, _applyVolumeStep);
+    }
+  }
+
+  /// Seek ∓10 s from the current position, clamped to the video.
+  Future<void> _seekByKeyboard(int deltaSeconds) async {
+    final target = (_position + deltaSeconds).clamp(0.0, _duration);
+    try {
+      await _session.seekTo(Duration(milliseconds: (target * 1000).round()));
+    } catch (_) {}
+  }
+
+  /// Apply a system-volume step and show the same volume HUD as a
+  /// vertical drag (the drag HUD is the only volume readout on this
+  /// page, so a keyboard/wheel change without it would be silent).
+  void _applyVolumeStep(double delta) {
+    final next = (_volume + delta).clamp(0.0, 1.0);
+    _volume = next;
+    unawaited(_systemVolume.setVolume(next));
+    _dragHintTimer?.cancel();
+    if (!_showControls) {
+      setState(() => _showControls = true);
+    }
+    setState(() => _dragSide = _PlayerDragSide.volume);
+    _dragValueNotifier.value = next;
+    _dragHintTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _dragSide = null);
+    });
+    _armHideTimer();
+  }
+
   void _openEpisodeSheet() {
     final theme = HaoTheme.of(context);
     final eps = _detail.lines[_lineIdx].episodes;
@@ -1045,9 +1106,17 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) unawaited(_fullscreen.exitFullscreen());
       },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: GestureDetector(
+      // Windows desktop shortcuts (Focus + mouse wheel); on mobile
+      // the Focus never autofocuses and every key/wheel event is
+      // ignored, so the tree is untouched there.
+      child: Focus(
+        autofocus: Platform.isWindows,
+        onKeyEvent: _onKeyEvent,
+        child: Listener(
+          onPointerSignal: _onPointerSignal,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: _onSurfaceTap,
           onLongPressStart: _onLongPressStart,
@@ -1390,6 +1459,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
             ],
           ),
         ),
+      ),
+      ),
       ),
     );
   }

@@ -84,11 +84,15 @@
 // GlassTabBarState._thicknessController for the mechanism and the
 // library citations.
 
+import 'dart:async';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import '../core/native/system_volume.dart';
 import '../core/theme/appearance_store.dart';
 import '../core/theme/glass.dart';
 import '../core/theme/hao_themes.dart';
@@ -96,12 +100,26 @@ import '../core/theme/haptics.dart';
 import '../core/theme/liquid_glass_theme.dart';
 
 import '../domains/live/presentation/live_tab_page.dart';
+import '../features/music/music_player_controller.dart';
 import '../features/music/music_tab_page.dart';
+import '../features/player/desktop_shortcuts.dart';
 import '../features/settings/settings_tab_page.dart';
 import '../features/video/video_tab_page.dart';
 
+/// The 4 tabs (icon + label), shared by the mobile glass bar and the
+/// Windows sidebar. Order: 影视 / 直播 / 音乐 / 设置.
+const List<(IconData, String)> _navItems = [
+  (Icons.movie, '影视'),
+  (Icons.live_tv, '直播'),
+  (Icons.music_note, '音乐'),
+  (Icons.settings, '设置'),
+];
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
+
+  /// Width of the Windows left navigation rail (see [_WindowsSidebar]).
+  static const double windowsSidebarWidth = 76;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -113,6 +131,16 @@ class _AppShellState extends State<AppShell> {
   final _pageController = PageController();
   int _currentIndex = 0;
 
+  /// Windows-only: the device volume for the ↑/↓ keyboard shortcuts
+  /// on the music tab (VOD / live pages own their SystemVolume).
+  SystemVolume? _systemVolume;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isWindows) _systemVolume = SystemVolume();
+  }
+
   static const List<Widget> _pages = [
     VideoTabPage(),
     LiveTabPage(),
@@ -122,6 +150,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    _systemVolume?.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -144,8 +173,73 @@ class _AppShellState extends State<AppShell> {
     Get.closeAllSnackbars();
   }
 
+  /// One hardware-key step of the system volume, for the music tab's
+  /// ↑/↓ shortcuts (the music tab owns no SystemVolume of its own).
+  Future<void> _stepShellVolume(int direction) async {
+    final systemVolume = _systemVolume;
+    if (systemVolume == null) return;
+    final current = await systemVolume.getVolume();
+    await systemVolume.setVolume((current + direction / 16).clamp(0.0, 1.0));
+  }
+
+  /// Windows desktop layout (chen 2026-11-20: sidebar, not a bottom
+  /// bar; the phone-ratio window is only an intermediate step): a
+  /// left navigation rail + the content area. No bottom tab bar, no
+  /// bottom clearance, no swipe — tabs switch by click (or the
+  /// keyboard, see below). The pages are the same four widgets, so
+  /// every tab behaves exactly like on mobile.
+  ///
+  /// Keyboard (Windows only, music tab only — VOD / live are pushed
+  /// routes with their own shortcuts): Space toggles play/pause,
+  /// ←/→ previous/next track, ↑/↓ system volume. The Focus sits on
+  /// the content area so the keys work as soon as the tab is visible;
+  /// a pushed route takes focus from it while open.
+  Widget _buildWindows(BuildContext context) {
+    return Scaffold(
+      body: Row(
+        children: [
+          _WindowsSidebar(currentIndex: _currentIndex, onTap: _onTabTapped),
+          Expanded(
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                if (_currentIndex != 2) return KeyEventResult.ignored;
+                final controller = MusicPlayerController.ensure();
+                return handleDesktopPlayerKey(
+                  event,
+                  onTogglePlayPause: () =>
+                      unawaited(controller.togglePlayPause()),
+                  onPrevious: () => unawaited(controller.prev()),
+                  onNext: () => unawaited(controller.next()),
+                  onVolumeStep: _stepShellVolume,
+                );
+              },
+              child: Stack(
+                children: [
+                  const AppearanceBackgroundLayer(),
+                  PageView(
+                    controller: _pageController,
+                    // No swipe on desktop: tabs switch by click or
+                    // keyboard (the live swipe guard is subsumed).
+                    physics: const NeverScrollableScrollPhysics(),
+                    onPageChanged: (index) {
+                      _dismissOverlays();
+                      setState(() => _currentIndex = index);
+                    },
+                    children: _pages,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (Platform.isWindows) return _buildWindows(context);
     final isLiveTab = _currentIndex == liveTabIndex;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Scaffold(
@@ -193,6 +287,130 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Windows left navigation rail (desktop layout, chen 2026-11-20:
+/// sidebar, not a bottom bar). Same 4 tabs as the mobile bar, icon +
+/// label stacked; the selected item sits on a matte pill
+/// (theme.tabPill — the same selection mark as the mobile bar's
+/// resting pill, no colour change on select, no accent). Full height
+/// with a hairline right divider; hover gets a faint fill. The
+/// mobile bar's magnifying glass lens is not reproduced here — a
+/// desktop rail has no use for a sliding lens, and the lens degrades
+/// on Windows anyway.
+class _WindowsSidebar extends StatelessWidget {
+  const _WindowsSidebar({required this.currentIndex, required this.onTap});
+
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Container(
+      width: AppShell.windowsSidebarWidth,
+      decoration: BoxDecoration(
+        color: theme.surfaceStrong,
+        border: Border(
+          right: BorderSide(
+            color: theme.textSecondary.withValues(alpha: 0.12),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < _navItems.length; i++)
+            _SidebarItem(
+              icon: _navItems[i].$1,
+              label: _navItems[i].$2,
+              selected: i == currentIndex,
+              theme: theme,
+              onTap: () => onTap(i),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatefulWidget {
+  const _SidebarItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.theme,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final HaoTheme theme;
+  final VoidCallback onTap;
+
+  @override
+  State<_SidebarItem> createState() => _SidebarItemState();
+}
+
+class _SidebarItemState extends State<_SidebarItem> {
+  var _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          onTap: () {
+            HaoHaptics.select();
+            widget.onTap();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 60,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? theme.tabPill
+                  : _hovering
+                  ? theme.accent.withValues(alpha: 0.06)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  widget.icon,
+                  size: 23,
+                  color: theme.textPrimary,
+                  semanticLabel: widget.label,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: widget.selected
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                    color: widget.selected
+                        ? theme.textPrimary
+                        : theme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -254,10 +472,7 @@ class PillClipper extends CustomClipper<Path> {
 /// white-0.10/black-0.075 fill before it), while a matte fill is
 /// deterministic in both renderers. Never black, never faint.
 class RestPillPainter extends CustomPainter {
-  const RestPillPainter({
-    required this.color,
-    required this.opacity,
-  });
+  const RestPillPainter({required this.color, required this.opacity});
 
   final Color color;
   final double opacity;
@@ -266,10 +481,7 @@ class RestPillPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (opacity <= 0.0) return;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Offset.zero & size,
-        const Radius.circular(999),
-      ),
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(999)),
       Paint()..color = color.withValues(alpha: opacity),
     );
   }
@@ -411,9 +623,7 @@ class GlassTabBarState extends State<GlassTabBar>
       ..addListener(() => setState(() => _pillLeft = _leftController.value))
       ..addStatusListener((_) => _maybeReverseThickness());
     _rightController = AnimationController.unbounded(vsync: this)
-      ..addListener(
-        () => setState(() => _pillRight = _rightController.value),
-      )
+      ..addListener(() => setState(() => _pillRight = _rightController.value))
       ..addStatusListener((_) => _maybeReverseThickness());
     // The crossfade driver (see _thicknessController): its own
     // listener rebuilds the bar during the 180ms fade, when the
@@ -445,10 +655,7 @@ class GlassTabBarState extends State<GlassTabBar>
   /// of every move and the lens would never come up.
   void _maybeReverseThickness() {
     if (_isDragging) return;
-    const settled = [
-      AnimationStatus.completed,
-      AnimationStatus.dismissed,
-    ];
+    const settled = [AnimationStatus.completed, AnimationStatus.dismissed];
     if (!settled.contains(_leftController.status)) return;
     if (!settled.contains(_rightController.status)) return;
     if (_thicknessController.value > 0) {
@@ -514,19 +721,12 @@ class GlassTabBarState extends State<GlassTabBar>
     }
   }
 
-  static const List<(IconData, String)> _items = [
-    (Icons.movie, '影视'),
-    (Icons.live_tv, '直播'),
-    (Icons.music_note, '音乐'),
-    (Icons.settings, '设置'),
-  ];
-
   double? _dragX;
   double? _dragStartX;
   bool _isDragging = false;
 
   int _indexForX(double x, double cellW) =>
-      (x / cellW).floor().clamp(0, _items.length - 1);
+      (x / cellW).floor().clamp(0, _navItems.length - 1);
 
   void _select(int index) {
     if (index == widget.currentIndex) return;
@@ -555,14 +755,16 @@ class GlassTabBarState extends State<GlassTabBar>
             // the pill math below runs in this content space, and
             // gesture x is shifted by the inset (see _contentX).
             final width = constraints.maxWidth - _innerInset * 2;
-            final count = _items.length;
+            final count = _navItems.length;
             final cellW = width / count;
             final restWidth = cellW * _restWidthCells;
             // Rest rect: 1.5 cells centred on the selected cell,
             // clamped to the bar's content bounds (first/last tab).
             final restCenter = cellW * (widget.currentIndex + 0.5);
-            final restLeft =
-                (restCenter - restWidth / 2).clamp(0.0, width - restWidth);
+            final restLeft = (restCenter - restWidth / 2).clamp(
+              0.0,
+              width - restWidth,
+            );
             final restRight = restLeft + restWidth;
             // Pill edges: while dragging the pill follows the finger
             // (clamped so it never leaves the bar) — both edges are
@@ -583,8 +785,7 @@ class GlassTabBarState extends State<GlassTabBar>
                 _pillRight = restRight;
                 _leftTarget = restLeft;
                 _rightTarget = restRight;
-              } else if (_leftTarget != restLeft ||
-                  _rightTarget != restRight) {
+              } else if (_leftTarget != restLeft || _rightTarget != restRight) {
                 final targetLeft = restLeft;
                 final targetRight = restRight;
                 _leftTarget = targetLeft;
@@ -616,11 +817,11 @@ class GlassTabBarState extends State<GlassTabBar>
               height: _contentHeight,
               child: Row(
                 children: [
-                  for (var i = 0; i < _items.length; i++)
+                  for (var i = 0; i < _navItems.length; i++)
                     Expanded(
                       child: _TabItem(
-                        icon: _items[i].$1,
-                        label: _items[i].$2,
+                        icon: _navItems[i].$1,
+                        label: _navItems[i].$2,
                         theme: theme,
                       ),
                     ),
@@ -663,8 +864,8 @@ class GlassTabBarState extends State<GlassTabBar>
                   _leftController.stop();
                   _rightController.stop();
                   _springGeneration++;
-                  _pillLeft = _dragX!
-                          .clamp(restWidth / 2, width - restWidth / 2) -
+                  _pillLeft =
+                      _dragX!.clamp(restWidth / 2, width - restWidth / 2) -
                       restWidth / 2;
                   _pillRight = _pillLeft! + restWidth;
                   _leftTarget = null;
@@ -865,11 +1066,12 @@ class GlassTabBarState extends State<GlassTabBar>
                                 shape: const LiquidRoundedSuperellipse(
                                   borderRadius: 999,
                                 ),
-                                settings: HaoLiquidGlass.pillLensSettings(
-                                  context,
-                                ).copyWith(
-                                  visibility: _thicknessController.value,
-                                ),
+                                settings:
+                                    HaoLiquidGlass.pillLensSettings(
+                                      context,
+                                    ).copyWith(
+                                      visibility: _thicknessController.value,
+                                    ),
                                 useOwnLayer: true,
                                 quality: GlassQuality.premium,
                                 child: SizedBox(

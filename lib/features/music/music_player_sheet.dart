@@ -28,10 +28,12 @@ import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
 
+import '../../../core/native/system_volume.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_models.dart';
@@ -39,6 +41,7 @@ import '../../../services/music/music_quality.dart';
 import '../../../services/music/music_store.dart';
 import '../../../services/music/play_mode.dart';
 import '../../../services/music/sleep_timer.dart';
+import '../player/desktop_shortcuts.dart';
 import 'equalizer_page.dart';
 import 'music_player_controller.dart';
 import 'widgets/music_image.dart';
@@ -81,6 +84,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   double? _scrubFrac;
 
   MusicPlayerController get _c => MusicPlayerController.ensure();
+
+  /// Windows-only: the device volume for the ↑/↓ and mouse-wheel
+  /// shortcuts (the music player has no volume UI of its own — the
+  /// gain is the system volume, like on mobile).
+  final _systemVolume = SystemVolume();
 
   // Apple Music-style cover background: blurred cover + dominant-color
   // gradient. Updated when the song changes (currentIndex listener);
@@ -152,6 +160,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
 
   @override
   void dispose() {
+    _systemVolume.dispose();
     _lyricsResumeTimer?.cancel();
     _lyricScrollController.dispose();
     _songSub?.cancel();
@@ -406,7 +415,15 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _c.showQueuePanel.value = false;
         },
-        child: Scaffold(
+        // Windows desktop shortcuts (Focus + mouse wheel); on mobile
+        // the Focus never autofocuses and every key/wheel event is
+        // ignored, so the tree is untouched there.
+        child: Focus(
+          autofocus: Platform.isWindows,
+          onKeyEvent: _onKeyEvent,
+          child: Listener(
+            onPointerSignal: _onPointerSignal,
+            child: Scaffold(
           body: Stack(
             fit: StackFit.expand,
             children: [
@@ -499,6 +516,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               ),
             ],
           ),
+        ),
+        ),
         ),
       ),
     );
@@ -1254,6 +1273,39 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         );
       },
     );
+  }
+
+  // -- Windows desktop keyboard + mouse wheel (step 2, phase 2). --
+
+  /// Keyboard: Space play/pause, ←/→ previous/next track, ↑/↓
+  /// system volume. Off Windows every key is ignored (see
+  /// desktop_shortcuts.dart).
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!Platform.isWindows) return KeyEventResult.ignored;
+    return handleDesktopPlayerKey(
+      event,
+      onTogglePlayPause: () => unawaited(_c.togglePlayPause()),
+      onPrevious: () => unawaited(_c.prev()),
+      onNext: () => unawaited(_c.next()),
+      onVolumeStep: (direction) =>
+          unawaited(_stepVolume(direction / 16)),
+    );
+  }
+
+  /// Mouse wheel over the player: system volume ±0.05 per notch
+  /// (scroll up = louder). Off Windows ignored.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (!Platform.isWindows) return;
+    if (event is PointerScrollEvent) {
+      handleDesktopWheel(event, (delta) => unawaited(_stepVolume(delta)));
+    }
+  }
+
+  /// One system-volume step (the player has no volume control of its
+  /// own — the gain is the system volume).
+  Future<void> _stepVolume(double delta) async {
+    final current = await _systemVolume.getVolume();
+    await _systemVolume.setVolume((current + delta).clamp(0.0, 1.0));
   }
 
   /// Shuffle toggle. The controller has five modes (play_mode.dart)

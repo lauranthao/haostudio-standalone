@@ -34,6 +34,7 @@ import 'dart:io' show Platform;
 
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -50,6 +51,7 @@ import '../../../../features/settings/danmaku_settings_page.dart';
 import '../../../../shared/platforms/live_site.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../data/playback_header_resolver.dart';
+import '../../../../features/player/desktop_shortcuts.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../features/player/screen_brightness.dart';
@@ -1233,6 +1235,53 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _dragSeedReady = false;
   }
 
+  // -- Windows desktop keyboard + mouse wheel (step 2, phase 2). --
+
+  /// Keyboard: Space play/pause, ↑/↓ system volume, F fullscreen,
+  /// Esc exit fullscreen. NO ←/→ seek — live is real-time (the VOD
+  /// page has the seek keys). Off Windows every key is ignored (see
+  /// desktop_shortcuts.dart).
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!Platform.isWindows) return KeyEventResult.ignored;
+    return handleDesktopPlayerKey(
+      event,
+      onTogglePlayPause: () => unawaited(_session.togglePlayPause()),
+      onToggleFullscreen: () => unawaited(_fullscreen.toggleFullscreen()),
+      onExitFullscreen: () {
+        if (_fullscreen.isFullscreen.value) {
+          unawaited(_fullscreen.exitFullscreen());
+        }
+      },
+      onVolumeStep: (direction) => _applyVolumeStep(direction / 16),
+    );
+  }
+
+  /// Mouse wheel over the room: system volume ±0.05 per notch
+  /// (scroll up = louder). Off Windows ignored.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (!Platform.isWindows) return;
+    if (event is PointerScrollEvent) {
+      handleDesktopWheel(event, _applyVolumeStep);
+    }
+  }
+
+  /// Apply a system-volume step and show the same volume HUD as a
+  /// vertical drag (the drag HUD is the only volume readout in this
+  /// room, so a keyboard/wheel change without it would be silent).
+  /// Also re-shows the fullscreen controls, like any interaction.
+  void _applyVolumeStep(double delta) {
+    final next = (_volumeLevel + delta).clamp(0.0, 1.0);
+    _volumeLevel = next;
+    unawaited(_systemVolume.setVolume(next));
+    setState(() {
+      _dragIsBrightness = false;
+      _dragHudVisible = true;
+    });
+    _dragValueNotifier.value = next;
+    _keepDragHudVisible();
+    _showControls();
+  }
+
   void _keepDragHudVisible() {
     _dragHudTimer?.cancel();
     _dragHudTimer = Timer(const Duration(seconds: 1), () {
@@ -1872,7 +1921,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           // portrait; a blocked pop only exits fullscreen.
           unawaited(_fullscreen.exitFullscreen());
         },
-        child: Scaffold(
+        // Windows desktop shortcuts (Focus + mouse wheel); on mobile
+        // the Focus never autofocuses and every key/wheel event is
+        // ignored, so the tree is untouched there.
+        child: Focus(
+          autofocus: Platform.isWindows,
+          onKeyEvent: _onKeyEvent,
+          child: Listener(
+            onPointerSignal: _onPointerSignal,
+            child: Scaffold(
           backgroundColor: theme.scaffoldBackground,
           // Pure Live fullscreen has NO AppBar: the overlay top bar is
           // the exit path and the video fills the whole screen. Keeping
@@ -2329,6 +2386,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 ),
             ],
           ),
+        ),
+        ),
         ),
       );
     });
