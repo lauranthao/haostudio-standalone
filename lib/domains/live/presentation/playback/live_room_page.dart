@@ -30,6 +30,7 @@
 // UI. Prefetch a new URL ~100 s after issue.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
@@ -1143,6 +1144,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // the old level on the first move); updates arriving before it
     // lands are dropped (see _dragSeedReady) instead of racing it.
     final isBrightness = details.localPosition.dx <= size.width / 2;
+    // Windows: no screen-brightness API and no brightness UI — a
+    // vertical drag starting on the left half is a no-op here (not
+    // brightness, and never a fake HUD value). Right-half volume
+    // still works.
+    if (Platform.isWindows && isBrightness) return;
     if (isBrightness) {
       try {
         final v = await ScreenBrightness.getBrightness().timeout(
@@ -1186,7 +1192,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (size == null || size.height <= 0) return;
     final delta = details.delta;
     if (delta.distance < 0.5) return;
-    final isBrightness = details.localPosition.dx <= size.width / 2;
+    // Windows has no brightness zone: a drag wandering into the
+    // left half keeps doing volume instead of flipping to a fake
+    // brightness HUD.
+    final isBrightness =
+        !Platform.isWindows && details.localPosition.dx <= size.width / 2;
     // Side change mid-drag: seed from the new side's cache (no
     // channel read) so the value continues from that side's real
     // level instead of jumping. The old code awaited getVolume /

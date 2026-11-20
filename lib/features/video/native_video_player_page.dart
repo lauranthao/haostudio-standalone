@@ -21,6 +21,7 @@
 // resumed episode seeks to its saved position once after open.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -755,6 +756,11 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _dragHintTimer?.cancel();
     final width = MediaQuery.of(context).size.width;
     final isBrightness = details.globalPosition.dx < width / 2;
+    // Windows: no screen-brightness API and no brightness UI — a
+    // vertical drag starting on the left half is a no-op here (not
+    // brightness, and never a fake HUD value). Right-half volume
+    // still works.
+    if (Platform.isWindows && isBrightness) return;
     // Brightness seed: re-read at drag start, never the init-time
     // capture. _brightness goes stale the moment the user moves
     // brightness in Control Center (or the system does): anchoring

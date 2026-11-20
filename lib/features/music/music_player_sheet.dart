@@ -24,6 +24,7 @@
 // 仓库 2026-11-18 现状；设计值汇总见 research/kumone-player-study.md)。
 
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -1210,11 +1211,15 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 _c.next();
               },
             ),
-            _circleBtn(
-              icon: Icons.airplay,
-              iconSize: 15,
-              size: side,
-              onTap: () async {
+            // AirPlay is iOS-only (AVRoutePickerView): there is no
+            // route picker on Windows, so the button is hidden there
+            // instead of showing a toast that it cannot open.
+            if (!Platform.isWindows)
+              _circleBtn(
+                icon: Icons.airplay,
+                iconSize: 15,
+                size: side,
+                onTap: () async {
                 // Real AirPlay: ask iOS to open the system route picker
                 // (AVRoutePickerView). The picker itself shows the
                 // available routes — or just this iPhone when none are

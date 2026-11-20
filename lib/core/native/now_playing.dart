@@ -21,6 +21,7 @@
 // Lock Screen opens the app via the audio session + Now Playing info.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 
@@ -52,6 +53,12 @@ class NowPlayingService {
 
   final MethodChannel _channel;
 
+  /// False on Windows: there is no Now Playing / Dynamic Island /
+  /// Lock Screen bridge there, and the channel has no native side —
+  /// the calls below no-op instead of logging a
+  /// MissingPluginException on every track change.
+  static bool get isSupported => !Platform.isWindows;
+
   NowPlayingRemoteCommandHandler? onRemoteCommand;
 
   NowPlayingRemoteCommand? _lastNavCommand;
@@ -74,6 +81,7 @@ class NowPlayingService {
     Duration position = Duration.zero,
     required bool playing,
   }) async {
+    if (!isSupported) return;
     try {
       await _channel.invokeMethod<void>('updateNowPlaying', <String, Object>{
         'title': title,
@@ -91,6 +99,7 @@ class NowPlayingService {
 
   /// Clear the system Now Playing (no track loaded / player stopped).
   Future<void> clear() async {
+    if (!isSupported) return;
     try {
       await _channel.invokeMethod<void>('clearNowPlaying');
     } catch (e) {
@@ -106,6 +115,7 @@ class NowPlayingService {
   /// picker (no key window / picker button not found) or the channel
   /// call fails.
   Future<bool> showAirPlayPicker() async {
+    if (!isSupported) return false;
     try {
       final opened = await _channel.invokeMethod<bool>('showAirPlayPicker');
       return opened ?? false;

@@ -1091,31 +1091,39 @@ class _PlaybackPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _PanelSwitch(
-            icon: Icons.speaker,
-            title: '与其他音频同时播放',
-            value: mixWithOthers,
-            onChanged: onMixChanged,
-          ),
-          const _PanelDivider(),
-          // 120Hz: display-only row with a checkmark, exactly like
-          // Beans (no toggle; onAppear forces the keeper on). Ours is
-          // pinned in Info.plist + AppDelegate, so the checkmark is
-          // always on — a switch here would be fake.
-          Row(
-            children: [
-              SizedBox(
-                width: 28,
-                child: Icon(Icons.speed, size: 14, color: theme.accent),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text('120Hz 高刷新', style: TextStyle(fontSize: 15)),
-              ),
-              Icon(Icons.check_circle, size: 17, color: theme.accent),
-            ],
-          ),
-          const _PanelDivider(),
+          // iOS-only rows (hidden on Windows): "与其他音频同时播放"
+          // is the audio_session mix-with-others tap, which has no
+          // Windows implementation (Windows audio is shared-mode
+          // WASAPI by default, so the switch would be meaningless);
+          // the 120Hz row is pinned in Info.plist + AppDelegate,
+          // which do not exist on Windows either.
+          if (!Platform.isWindows) ...[
+            _PanelSwitch(
+              icon: Icons.speaker,
+              title: '与其他音频同时播放',
+              value: mixWithOthers,
+              onChanged: onMixChanged,
+            ),
+            const _PanelDivider(),
+            // 120Hz: display-only row with a checkmark, exactly like
+            // Beans (no toggle; onAppear forces the keeper on). Ours is
+            // pinned in Info.plist + AppDelegate, so the checkmark is
+            // always on — a switch here would be fake.
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Icon(Icons.speed, size: 14, color: theme.accent),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('120Hz 高刷新', style: TextStyle(fontSize: 15)),
+                ),
+                Icon(Icons.check_circle, size: 17, color: theme.accent),
+              ],
+            ),
+            const _PanelDivider(),
+          ],
           _PanelSwitch(
             icon: Icons.play_circle_outline,
             title: '启动时自动播放上次歌曲',
