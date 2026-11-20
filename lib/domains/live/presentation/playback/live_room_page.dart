@@ -1229,6 +1229,87 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _showControls();
   }
 
+  /// Bottom-bar buttons (Pure Live BottomActionBar): play/pause,
+  /// refresh, danmaku; fullscreen adds the quality + line selectors;
+  /// right lock + fullscreen toggle. Shared by the fullscreen
+  /// overlay (white on the black gradient) and the portrait
+  /// below-video bar (theme colour on the scaffold) — same buttons,
+  /// order, tooltips and handlers; only the colour changes. The
+  /// quality/line buttons render only in fullscreen (their Obx
+  /// returns a shrink in portrait — portrait has its own chip rows
+  /// below the video).
+  List<Widget> _bottomBarButtons(Color color) => [
+    IconButton(
+      icon: Icon(
+        _playing ? Icons.pause : Icons.play_arrow,
+        color: color,
+      ),
+      tooltip: _playing ? '暂停' : '播放',
+      onPressed: () => _session.togglePlayPause(),
+    ),
+    IconButton(
+      icon: Icon(Icons.refresh, color: color),
+      tooltip: '刷新',
+      onPressed: _manualRetry,
+    ),
+    IconButton(
+      icon: Icon(
+        _danmakuVisible ? Icons.chat_bubble_outline : Icons.chat_bubble,
+        color: color,
+      ),
+      tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
+      onPressed: () => setState(() => _danmakuVisible = !_danmakuVisible),
+    ),
+    Obx(() {
+      final fs = _fullscreen.isFullscreen.value;
+      if (!fs) return const SizedBox.shrink();
+      return TextButton(
+        onPressed: _qualities.isEmpty ? null : _openQualitySheet,
+        child: Text(
+          _qualities.isEmpty ? '清晰度' : _qualities[_currentQuality].quality,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }),
+    Obx(() {
+      final fs = _fullscreen.isFullscreen.value;
+      if (!fs) return const SizedBox.shrink();
+      return TextButton(
+        onPressed: _recovery.lines.length < 2 ? null : _openLineSheet,
+        child: Text(
+          '线路 ${_recovery.currentLineIndex + 1}',
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }),
+    const Spacer(),
+    IconButton(
+      icon: Icon(Icons.lock_open, color: color),
+      tooltip: '锁定控制条',
+      onPressed: _lockControls,
+    ),
+    IconButton(
+      icon: Obx(
+        () => Icon(
+          _fullscreen.isFullscreen.value
+              ? Icons.fullscreen_exit
+              : Icons.fullscreen,
+          color: color,
+        ),
+      ),
+      tooltip: '全屏',
+      onPressed: () => _fullscreen.toggleFullscreen(),
+    ),
+  ];
+
   /// Quality selector (Pure Live FullscreenStreamSelectorButton).
   void _openQualitySheet() {
     if (_qualities.isEmpty) return;
@@ -1631,11 +1712,31 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ),
             );
           }),
-          // Bottom bar (Pure Live BottomActionBar: left play/pause,
-          // refresh, danmaku; fullscreen adds the quality + line
-          // selectors; right lock + fullscreen toggle).
-          if (_controlsVisible && !_controlsLocked)
-            Positioned(
+          // Bottom bar — fullscreen overlay ONLY (Pure Live
+          // BottomActionBar: left play/pause, refresh, danmaku;
+          // fullscreen adds the quality + line selectors; right lock
+          // + fullscreen toggle). Portrait no longer overlays it: it
+          // sat on the video's bottom strip, colliding with the
+          // stream's own bottom HUD (chen 2026-11-20 — the game's
+          // skill buttons). In portrait the bar lives below the
+          // video (see the Column below), so the overlay only renders
+          // in fullscreen, where the video fills the screen and
+          // there is no "below" to move it to.
+          //
+          // The fullscreen gate MUST live in its own Obx (like the
+          // top bar above): videoSurface is built once per build()
+          // and reused by the outer Obx, so a plain `if` on
+          // isFullscreen would never re-evaluate on a fullscreen
+          // toggle — the overlay would stay mounted after exiting
+          // fullscreen (caught by
+          // live_room_portrait_control_bar_test: two '刷新' buttons
+          // after pumpPortrait).
+          Obx(() {
+            final fs = _fullscreen.isFullscreen.value;
+            if (!_controlsVisible || _controlsLocked || !fs) {
+              return const SizedBox.shrink();
+            }
+            return Positioned(
               bottom: 0,
               left: 0,
               right: 0,
@@ -1649,91 +1750,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       colors: [Colors.black54, Colors.transparent],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _playing ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
-                        ),
-                        tooltip: _playing ? '暂停' : '播放',
-                        onPressed: () => _session.togglePlayPause(),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.white),
-                        tooltip: '刷新',
-                        onPressed: _manualRetry,
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          _danmakuVisible
-                              ? Icons.chat_bubble_outline
-                              : Icons.chat_bubble,
-                          color: Colors.white,
-                        ),
-                        tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
-                        onPressed: () =>
-                            setState(() => _danmakuVisible = !_danmakuVisible),
-                      ),
-                      Obx(() {
-                        final fs = _fullscreen.isFullscreen.value;
-                        if (!fs) return const SizedBox.shrink();
-                        return TextButton(
-                          onPressed: _qualities.isEmpty
-                              ? null
-                              : _openQualitySheet,
-                          child: Text(
-                            _qualities.isEmpty
-                                ? '清晰度'
-                                : _qualities[_currentQuality].quality,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }),
-                      Obx(() {
-                        final fs = _fullscreen.isFullscreen.value;
-                        if (!fs) return const SizedBox.shrink();
-                        return TextButton(
-                          onPressed: _recovery.lines.length < 2
-                              ? null
-                              : _openLineSheet,
-                          child: Text(
-                            '线路 ${_recovery.currentLineIndex + 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.lock_open, color: Colors.white),
-                        tooltip: '锁定控制条',
-                        onPressed: _lockControls,
-                      ),
-                      IconButton(
-                        icon: Obx(
-                          () => Icon(
-                            _fullscreen.isFullscreen.value
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
-                            color: Colors.white,
-                          ),
-                        ),
-                        tooltip: '全屏',
-                        onPressed: () => _fullscreen.toggleFullscreen(),
-                      ),
-                    ],
-                  ),
+                  child: Row(children: _bottomBarButtons(Colors.white)),
                 ),
               ),
-            ),
+            );
+          }),
           // Locked: only the unlock button (Pure Live LockButton).
           if (_controlsLocked)
             Positioned(
@@ -1847,6 +1868,25 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 Expanded(child: videoSurface)
               else
                 AspectRatio(aspectRatio: 16 / 9, child: videoSurface),
+              // Portrait control bar BELOW the video (chen 2026-11-20):
+              // the overlaid bar sat on the video's bottom strip,
+              // colliding with the stream's own bottom HUD (the
+              // game's skill buttons in his screenshot). Page chrome
+              // now — below the video, on the scaffold, theme
+              // colours. Always visible when unlocked: it covers
+              // nothing, so auto-hiding it would only shift the
+              // layout up/down every 5 s. Locked hides it (the
+              // unlock button still shows over the video).
+              if (!fullscreen && !_controlsLocked)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: _bottomBarButtons(theme.textPrimary),
+                  ),
+                ),
               // Room info + quality / line controls below the video.
               // L05: the whole info bar is tappable — it opens the room
               // detail sheet (never covering the video).
