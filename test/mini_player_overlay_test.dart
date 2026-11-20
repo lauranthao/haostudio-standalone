@@ -132,10 +132,24 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  /// Tap a bottom tab by its label (the tab bar is the last thing in
-  /// the tree, so .last is the tab item, not page content).
+  /// Tap a bottom tab by its icon, scoped to the bar's unselected
+  /// clip (the bar is icon-only now — Muse bar — so there is no
+  /// label text to tap; the icon layer is split into two clips, and
+  /// the unselected copy holds every tab icon exactly once).
+  const tabIcons = {
+    '影视': Icons.movie,
+    '直播': Icons.live_tv,
+    '音乐': Icons.music_note,
+    '设置': Icons.settings,
+  };
+
   Future<void> tapTab(WidgetTester tester, String label) async {
-    await tester.tap(find.text(label).last);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(GlassTabBarState.unselectedClipKey),
+        matching: find.byIcon(tabIcons[label]!),
+      ),
+    );
     await settle(tester);
   }
 

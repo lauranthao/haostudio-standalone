@@ -1,21 +1,22 @@
 // Render test — GlassTabBar pill lens (chen 2026-11-20, bug 5:
-// NetEase tab-bar animation). NOT a regression test: it writes golden
-// PNGs (run with --update-goldens) of the real GlassTabBar so the lens
-// can be eyeballed against the NetEase reference frames
-// (~/workspace/preview/netease_pill_anim/frame_005 = mid-slide,
-// frame_011 = over 我的/搜索）.
+// Muse tab-bar animation, "一模一样"). NOT a regression test: it
+// writes golden PNGs (run with --update-goldens) of the real
+// GlassTabBar so the lens can be eyeballed against the Muse
+// reference frames (~/workspace/preview/tabbar_ref2/frame_007 =
+// mid-slide, frame_013 = rest on 目标， frame_019 = mid-slide
+// over 点子）.
 //
 // - rest: pill settled on 音乐 (index 2) — the lens visibility is 0
-//   (optics off, body opaque) and the solid resting pill shows; the
-//   selected icon+label are a single direct copy at normal scale
-//   (bug 6 v2).
+//   (optics off, body opaque) and the solid matte resting pill
+//   shows; the selected icon is a single direct copy at normal
+//   scale (bug 6 v2), icon-only, theme text colour.
 // - mid-slide: tap 设置 (scoped to the bar — an unscoped tap hit the
 //   music page's own 设置 row), shot 300ms into the spring (6x50ms
 //   pumps — a single big pump does not tick the spring in this
 //   harness) — the 180ms thickness forward has completed (lens fully
 //   up) while the settle spring is still mid-flight, the pill is
-//   stretched, and the icon + label under the lens must read
-//   magnified / warped, a single copy.
+//   stretched, and the icon under the lens must read magnified /
+//   warped, a single copy.
 // - settled: pill at rest on 设置 (index 3) — lens out, resting pill
 //   in again.
 // Light + dark. The list is scrolled to the bottom first, so song rows
@@ -33,7 +34,6 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
-import 'package:standalone/core/theme/tab_bar_accent.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_tab_page.dart';
 import 'package:standalone/services/music/music_api.dart';
@@ -216,20 +216,21 @@ void main() {
     );
   }
 
-  /// The tab-bar tab label, scoped to the GlassTabBar's unselected
+  /// The tab-bar tab icon, scoped to the GlassTabBar's unselected
   /// clip: an unscoped find.text('设置') matches the music page's own
   /// 设置 row first, so the old mid-slide/settled tests tapped the
   /// page instead of the tab and their goldens were meaningless
-  /// duplicates of rest-on-音乐 (both sha256 ad6c408f…).
+  /// duplicates of rest-on-音乐 (both sha256 ad6c408f…). The bar is
+  /// icon-only now (Muse bar), so tabs are found by icon, not label.
   /// Scoped to the unselected clip because the icon layer is split:
-  /// every label exists twice in the tree (unselected inverse clip +
+  /// every icon exists twice in the tree (unselected inverse clip +
   /// selected normal clip). The tap point is the cell centre either
   /// way — what matters is the position, not which copy the finder
   /// returns — and the unselected copy is the visible one for a
   /// not-yet-selected tab.
-  Finder barTab(String label) => find.descendant(
+  Finder barTab(IconData icon) => find.descendant(
         of: find.byKey(GlassTabBarState.unselectedClipKey),
-        matching: find.text(label),
+        matching: find.byIcon(icon),
       );
 
   /// Crossfade state (bug 6 v2, chen 2026-11-20): at rest the lens
@@ -345,7 +346,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab('设置'));
+    await tester.tap(barTab(Icons.settings));
     // The tap-triggered spring starts in a post-frame callback, so
     // it needs a starter pump before the clock advance (same as
     // glass_tab_bar_test.dart: "a tap-triggered spring needs two
@@ -374,7 +375,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab('设置'));
+    await tester.tap(barTab(Icons.settings));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
@@ -390,7 +391,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab('设置'));
+    await tester.tap(barTab(Icons.settings));
     // Same starter pump + small steps as mid-slide: a single big
     // pump does not tick the spring in this harness (the pill stays
     // on 音乐 and the golden would be a meaningless rest duplicate).
@@ -418,7 +419,7 @@ void main() {
                 .at(3),
           )
           .color,
-      TabBarAccentController.defaultColor,
+      HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!.textPrimary,
     );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_settled_light');
@@ -430,7 +431,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab('设置'));
+    await tester.tap(barTab(Icons.settings));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
@@ -448,7 +449,7 @@ void main() {
                 .at(3),
           )
           .color,
-      TabBarAccentController.defaultColor,
+      HaoThemes.of(HaoThemeId.appleGlass).dark.extension<HaoTheme>()!.textPrimary,
     );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
         'pill_settled_dark');

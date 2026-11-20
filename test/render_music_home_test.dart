@@ -188,12 +188,9 @@ void main() {
               left: 0,
               right: 0,
               bottom: 6,
-              // GlassTabBar is Material-free: its labels do not inherit
-              // the theme textTheme, so force the CJK font here.
-              child: DefaultTextStyle(
-                style: const TextStyle(fontFamily: 'NotoSansSC'),
-                child: GlassTabBar(currentIndex: 2, onTap: (_) {}),
-              ),
+              // The bar is icon-only (Muse bar), so no text font
+              // wrapper is needed here.
+              child: GlassTabBar(currentIndex: 2, onTap: (_) {}),
             ),
           ],
         ),

@@ -76,7 +76,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '发现新版本 v${info.version}',
+                    '发现新版本 v${info.version} (build ${info.build})',
                     style: TextStyle(
                       color: theme.textPrimary,
                       fontSize: 17,
@@ -144,7 +144,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
                           // dismiss timing depend on disk I/O).
                           onPressed: () {
                             Navigator.of(ctx).pop(UpdateDialogAction.skipped);
-                            unawaited(service.skipVersion(info.version));
+                            unawaited(service.skipVersion(info.id));
                           },
                           child: Text(
                             '跳过此版本',

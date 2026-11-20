@@ -15,13 +15,17 @@
 //   (tabBarClearance = 64 + 6 + 12)
 // - white stroke 0.22 light / 0.08 dark, 0.5pt + shadow black 0.10
 //   light / 0.28 dark, radius 12, y 4
-// - selection pill: iOS-27 `_UITabSelectionView` colorBurn painter
-//   (see RestPillPainter — the library's own resting pill), width
-//   1.5 cells, height = content height. Kumone's faint tint (white
-//   0.10 dark / black 0.075 light) was nearly invisible on the bar —
-//   NetEase at rest is a clearly visible solid dark oval.
-// - item: icon 23 semibold + label 10 semibold, VStack spacing 3;
-//   unselected = primary 0.8; selected = accent (ours: theme accent)
+// - selection pill: SOLID matte oval (theme.tabPill), width 1 cell,
+//   height = content height. The reference is the Muse app's own
+//   tab bar (chen 2026-11-20 "一模一样",
+//   ~/workspace/preview/tabbar_ref2/frame_013.png, measured: pill
+//   grey 228 on bar 249, ~1 cell wide, flat, clearly visible).
+//   The iOS-27 colorBurn painter (build 22) rendered nearly
+//   invisible in Skia — a matte fill is deterministic in both
+//   renderers. Never black, never faint.
+// - item: icon 23 only, NO label (the Muse bar is icon-only);
+//   unselected = selected = theme textPrimary (all icons the same
+//   colour — the pill alone marks the selection, no red, no accent).
 // - drag: DragGesture(minimumDistance: 0); <8pt horizontal movement
 //   does not start a drag; while dragging the pill follows the finger
 //   (clamped to the bar), crossing a cell switches the tab
@@ -70,11 +74,13 @@
 // motion) — NEVER an Opacity wrapper (build 21's Opacity fade made
 // the lens layer semi-transparent, so the direct icon row bled
 // through next to the refracted copy on every fade). At rest the
-// pill is a SOLID iOS-27 selection pill (colorBurn painter, see
-// RestPillPainter) with the selected icon+label at normal scale —
-// a single copy, like NetEase at rest. The icon layer itself is
-// split by the pill rect (inverse clip outside, normal clip
-// inside), like the library's own GlassTabBar. See
+// pill is a SOLID matte oval (theme.tabPill, see RestPillPainter)
+// with the selected icon at normal scale — a single copy, like the
+// Muse bar at rest (tabbar_ref2 frame_001/013). In motion the lens
+// refracts the icon AND the page content behind the bar, stretched
+// to ~1.7 cells (frames 007/019). The icon layer itself is split by
+// the pill rect (inverse clip outside, normal clip inside), like the
+// library's own GlassTabBar. See
 // GlassTabBarState._thicknessController for the mechanism and the
 // library citations.
 
@@ -88,7 +94,6 @@ import '../core/theme/glass.dart';
 import '../core/theme/hao_themes.dart';
 import '../core/theme/haptics.dart';
 import '../core/theme/liquid_glass_theme.dart';
-import '../core/theme/tab_bar_accent.dart';
 
 import '../domains/live/presentation/live_tab_page.dart';
 import '../features/music/music_tab_page.dart';
@@ -240,72 +245,38 @@ class PillClipper extends CustomClipper<Path> {
       inverse != oldClipper.inverse;
 }
 
-/// Paints the resting tab selection pill (`_UITabSelectionView` on
-/// iOS 27) — a port of the library's `_RestingSelectionPillPainter`
-/// (`liquid_glass_widgets` 1.17.5,
-/// lib/widgets/shared/animated_glass_indicator.dart, lines 752-820),
-/// which the library uses for the default tab selection
-/// (white 0.10 / black 0.10 indicatorColor) instead of a flat fill.
-///
-/// Native `_UITabSelectionView` applies a `CAColorMatrix` with linear
-/// slope and negative constant bias, so the selected pill darkens on
-/// both bright and mid-tone bars without muddying saturated
-/// backdrops. A 2-pass canvas draw (`BlendMode.colorBurn` followed by
-/// `BlendMode.srcOver` black in light mode; a single colorBurn pass
-/// in dark mode) reproduces it with zero `BackdropFilter` passes.
-/// Build 21's flat white-0.10/black-0.075 fill was nearly invisible
-/// on the bar — NetEase at rest (frame_001/021) is a clearly visible
-/// solid dark oval, and this painter is what makes ours read the same
-/// way. Never black: colorBurn darkens the bar beneath, it is not a
-/// black fill (chen).
+/// Paints the resting tab selection pill: a SOLID matte oval in the
+/// theme's tabPill colour (Muse app bar, chen 2026-11-20
+/// "一模一样" — tabbar_ref2 frame_013, measured pill grey 228 on
+/// bar 249, light mode; dark #3A3A3C, clearly lighter than every
+/// dark scaffold). Opaque on purpose: the build-22 iOS-27 colorBurn
+/// painter rendered nearly invisible in Skia (and the build-21 flat
+/// white-0.10/black-0.075 fill before it), while a matte fill is
+/// deterministic in both renderers. Never black, never faint.
 class RestPillPainter extends CustomPainter {
   const RestPillPainter({
-    required this.isDark,
+    required this.color,
     required this.opacity,
   });
 
-  final bool isDark;
+  final Color color;
   final double opacity;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (opacity <= 0.0) return;
-    final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(999),
-    );
-    if (isDark) {
-      // iOS 27.0 dark mode: single colorBurn pass (C_s = 0.70,
-      // alpha = 0.70) matches native _UITabSelectionView across black
-      // (32 -> 10), mid-gray (134 -> 98), and saturated vivid
-      // backdrops (255 -> 250).
-      canvas.drawRRect(
-        rrect,
-        Paint()
-          ..color = const Color(0xFFB3B3B3).withValues(alpha: 0.70 * opacity)
-          ..blendMode = BlendMode.colorBurn,
-      );
-      return;
-    }
-    // Light mode: m = 1.13, b = 0.20 -> burn gray 0xD2D2D2 + 0.07
-    // black srcOver.
     canvas.drawRRect(
-      rrect,
-      Paint()
-        ..color = const Color(0xFFD2D2D2).withValues(alpha: opacity)
-        ..blendMode = BlendMode.colorBurn,
-    );
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..color = Color.from(alpha: 0.07 * opacity, red: 0, green: 0, blue: 0)
-        ..blendMode = BlendMode.srcOver,
+      RRect.fromRectAndRadius(
+        Offset.zero & size,
+        const Radius.circular(999),
+      ),
+      Paint()..color = color.withValues(alpha: opacity),
     );
   }
 
   @override
   bool shouldRepaint(RestPillPainter oldDelegate) =>
-      oldDelegate.isDark != isDark || oldDelegate.opacity != opacity;
+      oldDelegate.color != color || oldDelegate.opacity != opacity;
 }
 
 /// Floating glass capsule tab bar (Beans `KumoneGlassTabBar`).
@@ -329,12 +300,12 @@ class GlassTabBarState extends State<GlassTabBar>
   static const double _innerInset = 4;
   static const double _contentHeight = 56;
 
-  /// Rest width of the pill: 1.5 cells (NetEase frames
-  /// netease_pill_rest / netease_sw_p2 — the pill at rest is centred
-  /// on the selected cell and spans it plus half of each neighbour).
+  /// Rest width of the pill: 1 cell (Muse bar, tabbar_ref2
+  /// frame_013, measured: pill 138px on a 144px cell; frame_001
+  /// the same on the first tab). Centred on the selected cell.
   /// Clamped to the bar's content bounds, so on the first/last tab
   /// the pill sits against the bar's edge instead of sticking out.
-  static const double _restWidthCells = 1.5;
+  static const double _restWidthCells = 1.0;
 
   /// Kumone settle spring (GlassTabBar.swift:36):
   /// `Animation.spring(response: 0.35, dampingFraction: 0.82)`.
@@ -352,11 +323,16 @@ class GlassTabBarState extends State<GlassTabBar>
   /// Trailing-edge stagger: the trailing edge starts this much
   /// later than the leading edge, on the same settle spring. The
   /// leading edge moves alone first, so the pill stretches
-  /// mid-flight (NetEase frames: ~1.7+ cells spanning from→to) and
-  /// the trailing edge catches up — both settle in ~0.35 + 0.06s,
-  /// instead of the trailing edge lagging on a slower spring (which
-  /// would stretch less and settle slower).
-  static const _trailDelay = Duration(milliseconds: 60);
+  /// mid-flight (Muse bar, tabbar_ref2 frames 007/019: ~1.7 cells
+  /// spanning from→to) and the trailing edge catches up — both
+  /// settle in ~0.35 + 0.11s, instead of the trailing edge lagging
+  /// on a slower spring (which would stretch less and settle
+  /// slower). The 110ms value is from the spring math, not feel:
+  /// a 1-cell slide on this spring (ω = 2π/0.35, ζ = 0.82) gains
+  /// a 39.5pt gap at 60ms (1.43 cells) but ~64pt at 110ms (1.70
+  /// cells) — the reference width. A 2-cell slide stretches
+  /// further on its own (~1.86 cells at 60ms).
+  static const _trailDelay = Duration(milliseconds: 110);
 
   /// Generation counter for the staggered trailing-edge start:
   /// incremented on every _springTo and on drag-start, so a delayed
@@ -397,12 +373,13 @@ class GlassTabBarState extends State<GlassTabBar>
   /// the body stays opaque through the whole fade and the direct
   /// copy stays hidden.
   ///
-  /// 0 = at rest (solid resting pill, lens optics off — NetEase frames
-  /// netease_pill_anim frame_001/021: the pill at rest is a solid
-  /// dark oval with the selected icon+label at NORMAL size, red,
-  /// single copy); 1 = in motion (lens fully visible, refracting
-  /// the whole tab item — icon + label — magnified/warped, NetEase
-  /// frames 005/011). Driven by _thicknessController (180ms): it
+  /// 0 = at rest (solid matte pill, lens optics off — Muse bar,
+  /// tabbar_ref2 frame_001/013: the pill at rest is a solid matte
+  /// oval with the selected icon at NORMAL size, same colour as the
+  /// others, single copy); 1 = in motion (lens fully visible,
+  /// refracting the icon AND the page content behind the bar,
+  /// magnified/warped, tabbar_ref2 frames 007/019). Driven by
+  /// _thicknessController (180ms): it
   /// forwards when a drag engages or a settle spring starts, and
   /// reverses when both springs have settled and the finger is off.
   late final AnimationController _thicknessController;
@@ -537,19 +514,6 @@ class GlassTabBarState extends State<GlassTabBar>
     }
   }
 
-  /// How selected cell [i] reads, from the pill centre's distance
-  /// to the cell centre (in cells): 1 inside a 0.25-cell dead zone,
-  /// fading to 0 at 0.75 cells. The dead zone absorbs the 0.25-cell
-  /// clamp offset at the first/last tab, so the selected tab is
-  /// fully coloured at rest and both neighbours read 0 — while
-  /// mid-slide both adjacent tabs read ~0.5 (NetEase frames: the
-  /// colour follows the pill, the cell the leading edge covers
-  /// turns red as the pill arrives).
-  static double selectednessFor(int i, double pillCenter, double cellW) {
-    final d = (pillCenter - cellW * (i + 0.5)).abs() / cellW;
-    return (1 - (d - 0.25) / 0.5).clamp(0.0, 1.0);
-  }
-
   static const List<(IconData, String)> _items = [
     (Icons.movie, '影视'),
     (Icons.live_tv, '直播'),
@@ -642,7 +606,6 @@ class GlassTabBarState extends State<GlassTabBar>
               pillLeft = _pillLeft!;
               pillRight = _pillRight!;
             }
-            final pillCenter = (pillLeft + pillRight) / 2;
             // The icon row, built once and painted twice: the
             // library's GlassTabBar splits it into two complementary
             // clips by the pill rect (see PillClipper), so the same
@@ -658,11 +621,6 @@ class GlassTabBarState extends State<GlassTabBar>
                       child: _TabItem(
                         icon: _items[i].$1,
                         label: _items[i].$2,
-                        selectedness: selectednessFor(
-                          i,
-                          pillCenter,
-                          cellW,
-                        ),
                         theme: theme,
                       ),
                     ),
@@ -772,24 +730,23 @@ class GlassTabBarState extends State<GlassTabBar>
                         borderRadius: BorderRadius.circular(999),
                         child: Stack(
                           children: [
-                            // Resting pill (bug 6 v2, chen 2026-11-20):
-                            // the library's iOS-27 selection pill
-                            // (RestPillPainter: colorBurn, see above)
+                            // Resting pill (Muse bar, chen
+                            // 2026-11-20 "一模一样"): a solid matte
+                            // oval (RestPillPainter, theme.tabPill)
                             // at the pill's current edges, crossfaded
                             // against the lens by _thicknessController
                             // (opacity 1 - thickness). It paints BELOW
                             // the icons (like the library's background
                             // indicator, layer 1.5), so the selected
-                            // icon+label draw crisply on top of the
-                            // darkened pill at normal scale — a single
-                            // copy, exactly like NetEase at rest
-                            // (frame_001/021: solid dark oval,
-                            // normal-size red icon+label). During
-                            // motion it fades out as the lens fades
-                            // in, at the same edges, so the swap is a
-                            // clean morph. Never black: colorBurn
-                            // darkens the bar beneath, it is not a
-                            // black fill (chen).
+                            // icon draws crisply on top of it at
+                            // normal scale — a single copy, exactly
+                            // like the Muse bar at rest
+                            // (tabbar_ref2 frame_001/013: solid matte
+                            // oval, normal-size icon, same colour as
+                            // the others). During motion it fades out
+                            // as the lens fades in, at the same edges,
+                            // so the swap is a clean morph. Never
+                            // black, never faint (chen).
                             Positioned(
                               left: pillLeft,
                               top: 0,
@@ -799,7 +756,7 @@ class GlassTabBarState extends State<GlassTabBar>
                                 child: CustomPaint(
                                   key: GlassTabBarState.restPillKey,
                                   painter: RestPillPainter(
-                                    isDark: isDark,
+                                    color: theme.tabPill,
                                     opacity: 1.0,
                                   ),
                                   size: Size(
@@ -851,21 +808,23 @@ class GlassTabBarState extends State<GlassTabBar>
                               // (useOwnLayer: true, indicator preset —
                               // see HaoLiquidGlass.pillLensSettings)
                               // sitting ABOVE the icon row, so its
-                              // shader samples the icons + labels and
-                              // magnifies / distorts them like
-                              // NetEase's lens (chen 2026-11-20:
-                              // "要做到和这样一样的动画"; reference
-                              // frames netease_pill_anim). A grouped
-                              // pill inside the shell's child can only
+                              // shader samples the icon AND the page
+                              // content behind the bar and magnifies /
+                              // distorts them like the Muse bar's lens
+                              // (chen 2026-11-20: "要这种底栏";
+                              // reference frames tabbar_ref2 007/019:
+                              // text and the cartoon behind the bar
+                              // warp inside the lens). A grouped pill
+                              // inside the shell's child can only
                               // refract the page behind the bar — the
                               // icons paint above the glass there —
                               // which is why the old lens never
                               // magnified them. The pill is a
                               // transparent lens — no fill, no colour
                               // (chen: 不要胶囊黑色); the selection
-                              // reads through the icon/label colour
-                              // below, which follows the pill. The
-                              // pill is a sibling of the shell, not
+                              // reads through the solid resting pill
+                              // below, not through a colour change.
+                              // The pill is a sibling of the shell, not
                               // nested inside another glass container,
                               // so the two layers are not nested
                               // refractive glass.
@@ -893,14 +852,12 @@ class GlassTabBarState extends State<GlassTabBar>
                               // stays opaque through the whole fade
                               // and the direct copy stays hidden — one
                               // copy at every fade value. In motion the
-                              // lens refracts the WHOLE tab item (icon
-                              // + label together, chen 2026-11-20)
-                              // — a single magnified/warped copy,
-                              // turning red as the pill covers it,
-                              // NetEase frames 005/011. The lens
-                              // settings are unchanged (RI 1.35,
-                              // thickness 36): the magnification is
-                              // NOT weakened to hide the doubling.
+                              // lens refracts the icon (a single
+                              // magnified/warped copy, tabbar_ref2
+                              // frames 007/019). The lens settings are
+                              // unchanged (RI 1.35, thickness 36): the
+                              // magnification is NOT weakened to hide
+                              // the doubling.
                               left: pillLeft,
                               top: 0,
                               child: GlassContainer(
@@ -955,57 +912,37 @@ class GlassTabBarState extends State<GlassTabBar>
   }
 }
 
+/// One tab item: icon ONLY, no label (Muse bar, chen 2026-11-20
+/// "一模一样" — tabbar_ref2 frame_013: five icon-only tabs, no
+/// text under any icon). The icon colour is theme.textPrimary for
+/// EVERY tab, selected and unselected alike — the pill alone marks
+/// the selection; there is no colour change on select, no red, no
+/// accent (the custom accent stays app-wide elsewhere: switches,
+/// buttons, selected states — only the tab bar stops using it).
+/// [label] is kept as the semantic label (screen readers) and is
+/// never drawn. The direct icon never moves (drawn at normal
+/// scale); the magnification happens in the LENS, which refracts
+/// the icon (tabbar_ref2 frames 007/019).
 class _TabItem extends StatelessWidget {
   const _TabItem({
     required this.icon,
     required this.label,
-    required this.selectedness,
     required this.theme,
   });
 
   final IconData icon;
   final String label;
-
-  /// 0..1, from the pill centre's distance to this cell's centre
-  /// (GlassTabBarState.selectednessFor): 1 = fully selected, 0 =
-  /// unselected. The icon + label colour is the lerp between the
-  /// unselected colour and the tab-bar accent (user-chosen, default
-  /// NetEase red) — so the colour follows the pill as it slides.
-  /// The direct icon/label never move (drawn at normal scale); the
-  /// magnification happens in the LENS, which refracts the whole tab
-  /// item — icon + label together (chen 2026-11-20; NetEase frames
-  /// 005/011: the label magnifies with the icon inside the lens,
-  /// turning red as the pill covers it). At rest the label is normal
-  /// size (NetEase frames 001/021) — the "labels magnify" is a
-  /// motion effect, not a rest state.
-  final double selectedness;
   final HaoTheme theme;
 
   @override
   Widget build(BuildContext context) {
-    final accent = TabBarAccentController.ensure();
-    return Obx(() {
-      final color = Color.lerp(
-        theme.textPrimary.withValues(alpha: 0.8),
-        accent.color.value,
-        selectedness,
-      )!;
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 23, color: color),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      );
-    });
+    return Center(
+      child: Icon(
+        icon,
+        size: 23,
+        color: theme.textPrimary,
+        semanticLabel: label,
+      ),
+    );
   }
 }

@@ -52,6 +52,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     required this.liveRed,
     required this.glassBlurSigma,
     required this.scaffoldBackground,
+    required this.tabPill,
   });
 
   /// Sophisticated theme accent for buttons / active states (never red).
@@ -87,6 +88,15 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
 
   final Color scaffoldBackground;
 
+  /// Solid matte colour of the tab-bar resting pill (Muse app bar,
+  /// chen 2026-11-20 "一模一样"): light #E4E4E4 measured off the
+  /// reference frames (pill 228 on bar 249), dark #3A3A3C, clearly
+  /// lighter than every dark scaffold (0–13). Opaque on purpose —
+  /// the old colorBurn painter rendered nearly invisible in Skia,
+  /// and a matte fill is deterministic in both renderers. Never
+  /// black, never faint.
+  final Color tabPill;
+
   static HaoTheme of(BuildContext context) =>
       Theme.of(context).extension<HaoTheme>()!;
 
@@ -104,6 +114,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     Color? liveRed,
     double? glassBlurSigma,
     Color? scaffoldBackground,
+    Color? tabPill,
   }) {
     return HaoTheme(
       accent: accent ?? this.accent,
@@ -118,6 +129,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       liveRed: liveRed ?? this.liveRed,
       glassBlurSigma: glassBlurSigma ?? this.glassBlurSigma,
       scaffoldBackground: scaffoldBackground ?? this.scaffoldBackground,
+      tabPill: tabPill ?? this.tabPill,
     );
   }
 
@@ -142,6 +154,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
         other.scaffoldBackground,
         t,
       )!,
+      tabPill: Color.lerp(tabPill, other.tabPill, t)!,
     );
   }
 }
@@ -168,6 +181,7 @@ ThemeData _buildThemeData({
   required Color textSecondary,
   required Color textMuted,
   required double glassBlurSigma,
+  required Color tabPill,
   // Custom font family (stage 2, Beans `FontManager`): null = system
   // default. Passed to the ThemeData constructor so it lands in the
   // default text themes (ThemeData.copyWith has NO fontFamily
@@ -411,6 +425,7 @@ ThemeData _buildThemeData({
         liveRed: liveRed,
         glassBlurSigma: glassBlurSigma,
         scaffoldBackground: scaffoldBackground,
+        tabPill: tabPill,
       ),
     ],
   );
@@ -472,6 +487,7 @@ class HaoThemes {
             // mode is untouched (7.31:1 already).
             textMuted: const Color(0xFF6B6B70),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
@@ -487,6 +503,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFD1D1D6),
             textMuted: const Color(0xFF98989D),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.darkGold:
@@ -508,6 +525,7 @@ class HaoThemes {
             // untouched (5.88:1 already).
             textMuted: const Color(0xFF7A6C4E),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
@@ -523,6 +541,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFD8C9A3),
             textMuted: const Color(0xFF9A8B6B),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.freshMint:
@@ -544,6 +563,7 @@ class HaoThemes {
             // mode untouched (6.95:1 already).
             textMuted: const Color(0xFF58746D),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
@@ -559,6 +579,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFB9D9D2),
             textMuted: const Color(0xFF7FA39B),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
       case HaoThemeId.polarIce:
@@ -580,6 +601,7 @@ class HaoThemes {
             // mode untouched (6.76:1 already).
             textMuted: const Color(0xFF4F6E84),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
             brightness: Brightness.dark,
@@ -595,6 +617,7 @@ class HaoThemes {
             textSecondary: const Color(0xFFB4D2E6),
             textMuted: const Color(0xFF7D9BB0),
             glassBlurSigma: 24,
+            tabPill: const Color(0xFF3A3A3C),
           ),
         );
     }

@@ -2,9 +2,13 @@
 //
 // Fetches version.json from Gitee raw FIRST (hosted in mainland China,
 // so the check works from chen's phone) and falls back to the shop
-// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9),
-// never against a changelog tag or the build number. Automatic check at
-// most once per 20 hours; a skipped version is never nagged about again.
+// server (Railway US). Compares semver NUMERICALLY (1.0.10 beats 1.0.9)
+// AND the build number: a newer build of the same version IS an
+// update (1.1.5+22 beats 1.1.5+21 — the old version-only comparison
+// reported "already the latest" for every build bump of 1.1.5, chen
+// 2026-11-20). A skipped version is never nagged about again — the
+// skip is recorded per version+build, so skipping one build never
+// skips the next build of the same version.
 //
 // Fetch failures are classified (timeout / network / HTTP / parse) instead
 // of being swallowed into a single null, so the manual check can show a
@@ -63,6 +67,11 @@ class UpdateInfo {
   final String ipaUrl;
   final int? size;
   final String? changelog;
+
+  /// Identity of this release for the skip check: version + build
+  /// ("1.1.5+22"). Skipping one build must not skip the next build
+  /// of the same version, so the skip key carries the build.
+  String get id => '$version+$build';
 }
 
 class UpdateService {
@@ -230,12 +239,22 @@ class UpdateService {
     return info;
   }
 
+  /// A release is newer when its version is newer, or when the
+  /// version is equal (neither side newer, so '1.1.05' equals
+  /// '1.1.5') and its build is higher. The old version-only
+  /// comparison reported upToDate for every 1.1.5 build bump.
+  bool _isNewer(UpdateInfo info) {
+    if (isNewerVersion(info.version, kAppVersion)) return true;
+    if (isNewerVersion(kAppVersion, info.version)) return false;
+    return info.build > kAppBuild;
+  }
+
   UpdateCheckResult _classify(UpdateInfo info) {
-    if (!isNewerVersion(info.version, kAppVersion)) {
+    if (!_isNewer(info)) {
       return UpdateCheckResult.upToDate;
     }
     final skipped = HiveStore.getString(HiveKeys.skippedVersion, '');
-    if (skipped == info.version) return UpdateCheckResult.skipped;
+    if (skipped == info.id) return UpdateCheckResult.skipped;
     return UpdateCheckResult.newerAvailable;
   }
 

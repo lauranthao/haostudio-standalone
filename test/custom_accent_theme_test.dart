@@ -314,7 +314,13 @@ void main() {
       final expected = HSVColor.fromAHSV(1.0, 0, 0.55, 0.6).toColor();
       expect(TabBarAccentController.ensure().color.value, expected);
       expect(themeController.customAccent.value, expected);
-      expect(tabIconColor(tester, 0), expected);
+      // The pick recolours the theme override — but the tab bar no
+      // longer reads the accent (Muse bar: all icons theme text).
+      final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
+          .light
+          .extension<HaoTheme>()!
+          .textPrimary;
+      expect(tabIconColor(tester, 0), textPrimary);
 
       await tester.tap(find.byKey(const ValueKey('accent-reset-default')));
       await tester.pumpAndSettle();
@@ -323,7 +329,7 @@ void main() {
         TabBarAccentController.defaultColor,
       );
       expect(themeController.customAccent.value, isNull);
-      expect(tabIconColor(tester, 0), TabBarAccentController.defaultColor);
+      expect(tabIconColor(tester, 0), textPrimary);
       expect(HiveStore.box.containsKey(HiveKeys.tabBarAccentColor),
           isFalse);
     });
