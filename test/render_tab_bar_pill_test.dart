@@ -5,9 +5,10 @@
 // (~/workspace/preview/netease_pill_anim/frame_005 = mid-slide,
 // frame_011 = over 我的/搜索）.
 //
-// - rest: pill settled on 音乐 (index 2) — the lens is fully faded
-//   out (Opacity 0) and the solid resting pill shows; the selected
-//   icon+label are a single direct copy at normal scale (bug 6).
+// - rest: pill settled on 音乐 (index 2) — the lens visibility is 0
+//   (optics off, body opaque) and the solid resting pill shows; the
+//   selected icon+label are a single direct copy at normal scale
+//   (bug 6 v2).
 // - mid-slide: tap 设置 (scoped to the bar — an unscoped tap hit the
 //   music page's own 设置 row), shot 300ms into the spring (6x50ms
 //   pumps — a single big pump does not tick the spring in this
@@ -27,6 +28,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
+    hide GlassTabBar;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
@@ -213,22 +216,35 @@ void main() {
     );
   }
 
-  /// The tab-bar tab label, scoped to the GlassTabBar: an unscoped
-  /// find.text('设置') matches the music page's own 设置 row first,
-  /// so the old mid-slide/settled tests tapped the page instead of
-  /// the tab and their goldens were meaningless duplicates of
-  /// rest-on-音乐 (both sha256 ad6c408f…).
+  /// The tab-bar tab label, scoped to the GlassTabBar's unselected
+  /// clip: an unscoped find.text('设置') matches the music page's own
+  /// 设置 row first, so the old mid-slide/settled tests tapped the
+  /// page instead of the tab and their goldens were meaningless
+  /// duplicates of rest-on-音乐 (both sha256 ad6c408f…).
+  /// Scoped to the unselected clip because the icon layer is split:
+  /// every label exists twice in the tree (unselected inverse clip +
+  /// selected normal clip). The tap point is the cell centre either
+  /// way — what matters is the position, not which copy the finder
+  /// returns — and the unselected copy is the visible one for a
+  /// not-yet-selected tab.
   Finder barTab(String label) => find.descendant(
-        of: find.byType(GlassTabBar),
+        of: find.byKey(GlassTabBarState.unselectedClipKey),
         matching: find.text(label),
       );
 
-  /// Crossfade state (bug 6, chen 2026-11-20): at rest the lens
-  /// Opacity is 0 (not painted — a single direct copy on the solid
-  /// resting pill) and the resting pill Opacity is 1; in motion the
-  /// lens is 1 and the resting pill 0.
-  double lensOpacity(WidgetTester tester) =>
-      tester.widget<Opacity>(find.byKey(GlassTabBarState.pillOpacityKey)).opacity;
+  /// Crossfade state (bug 6 v2, chen 2026-11-20): at rest the lens
+  /// visibility is 0 (optics off, body opaque — a single direct copy
+  /// on the solid resting pill) and the resting pill Opacity is 1;
+  /// in motion the lens visibility is 1 and the resting pill 0.
+  /// The lens is NEVER wrapped in Opacity (build 21 did that and it
+  /// doubled during every fade — the library fades via
+  /// settings.visibility instead).
+  double lensVisibility(WidgetTester tester) =>
+      tester
+          .widget<GlassContainer>(find.byKey(GlassTabBarState.pillKey))
+          .settings
+          ?.visibility ??
+      -1;
   double restPillOpacity(WidgetTester tester) =>
       tester.widget<Opacity>(
         find.byKey(GlassTabBarState.restPillOpacityKey),
@@ -236,13 +252,13 @@ void main() {
 
   void expectAtRest(WidgetTester tester) {
     expect(find.byKey(GlassTabBarState.restPillKey), findsOneWidget);
-    expect(lensOpacity(tester), 0.0);
+    expect(lensVisibility(tester), 0.0);
     expect(restPillOpacity(tester), 1.0);
   }
 
   void expectInMotion(WidgetTester tester) {
     expect(find.byKey(GlassTabBarState.pillKey), findsOneWidget);
-    expect(lensOpacity(tester), 1.0);
+    expect(lensVisibility(tester), 1.0);
     expect(restPillOpacity(tester), 0.0);
   }
 

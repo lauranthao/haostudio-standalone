@@ -15,9 +15,11 @@
 //   (tabBarClearance = 64 + 6 + 12)
 // - white stroke 0.22 light / 0.08 dark, 0.5pt + shadow black 0.10
 //   light / 0.28 dark, radius 12, y 4
-// - selection pill: white 0.10 dark / black 0.075 light, width
-//   cellW - 8, height = content height (Telegram faint tint, not a
-//   bright chip — chen: grey glass pill, not coloured)
+// - selection pill: iOS-27 `_UITabSelectionView` colorBurn painter
+//   (see RestPillPainter — the library's own resting pill), width
+//   1.5 cells, height = content height. Kumone's faint tint (white
+//   0.10 dark / black 0.075 light) was nearly invisible on the bar —
+//   NetEase at rest is a clearly visible solid dark oval.
 // - item: icon 23 semibold + label 10 semibold, VStack spacing 3;
 //   unselected = primary 0.8; selected = accent (ours: theme accent)
 // - drag: DragGesture(minimumDistance: 0); <8pt horizontal movement
@@ -63,13 +65,18 @@
 // the CURRENT page. The live room is a pushed route (no tab bar at all
 // while open — fix 17.3), separate from this guard.
 //
-// Pill crossfade (fix for the doubling, chen 2026-11-20, bug 6): the
-// lens is ONLY visible while the pill moves (Opacity = thickness);
-// at rest the pill is a SOLID faint-tint capsule (Kumone's white
-// 0.10 dark / black 0.075 light) with the selected icon+label at
-// normal scale — a single copy, like NetEase at rest. See
+// Pill crossfade (fix for the doubling, chen 2026-11-20, bug 6, v2):
+// the lens fades through `settings.visibility` (0 at rest, 1 in
+// motion) — NEVER an Opacity wrapper (build 21's Opacity fade made
+// the lens layer semi-transparent, so the direct icon row bled
+// through next to the refracted copy on every fade). At rest the
+// pill is a SOLID iOS-27 selection pill (colorBurn painter, see
+// RestPillPainter) with the selected icon+label at normal scale —
+// a single copy, like NetEase at rest. The icon layer itself is
+// split by the pill rect (inverse clip outside, normal clip
+// inside), like the library's own GlassTabBar. See
 // GlassTabBarState._thicknessController for the mechanism and the
-// library citation.
+// library citations.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -186,6 +193,121 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
+/// Clipper for the tab-bar pill region (bug 6 v2, chen 2026-11-20).
+///
+/// The library's own GlassTabBar
+/// (`liquid_glass_widgets` 1.17.5,
+/// lib/src/widgets/surfaces/tab_bar_searchable_internal.dart, layer 2)
+/// splits the icon layer into two complementary clips by the pill
+/// shape: the unselected row is inverse-clipped (everything EXCEPT
+/// the pill region) and the selected row is normal-clipped (ONLY the
+/// pill region). The library's clipper (JellyClipper) is driven by
+/// its own alignment/thickness model for a 1-cell pill; ours is a
+/// 1.5-cell pill with spring-driven edges, so this clipper takes the
+/// pill rect directly ([left]/[right], full content height, capsule
+/// radius) — same split, our geometry.
+class PillClipper extends CustomClipper<Path> {
+  const PillClipper({
+    required this.left,
+    required this.right,
+    this.inverse = false,
+  });
+
+  final double left;
+  final double right;
+  final bool inverse;
+
+  @override
+  Path getClip(Size size) {
+    final pill = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(left, 0, right, size.height),
+          const Radius.circular(999),
+        ),
+      );
+    if (!inverse) return pill;
+    return Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addPath(pill, Offset.zero);
+  }
+
+  @override
+  bool shouldReclip(PillClipper oldClipper) =>
+      left != oldClipper.left ||
+      right != oldClipper.right ||
+      inverse != oldClipper.inverse;
+}
+
+/// Paints the resting tab selection pill (`_UITabSelectionView` on
+/// iOS 27) — a port of the library's `_RestingSelectionPillPainter`
+/// (`liquid_glass_widgets` 1.17.5,
+/// lib/widgets/shared/animated_glass_indicator.dart, lines 752-820),
+/// which the library uses for the default tab selection
+/// (white 0.10 / black 0.10 indicatorColor) instead of a flat fill.
+///
+/// Native `_UITabSelectionView` applies a `CAColorMatrix` with linear
+/// slope and negative constant bias, so the selected pill darkens on
+/// both bright and mid-tone bars without muddying saturated
+/// backdrops. A 2-pass canvas draw (`BlendMode.colorBurn` followed by
+/// `BlendMode.srcOver` black in light mode; a single colorBurn pass
+/// in dark mode) reproduces it with zero `BackdropFilter` passes.
+/// Build 21's flat white-0.10/black-0.075 fill was nearly invisible
+/// on the bar — NetEase at rest (frame_001/021) is a clearly visible
+/// solid dark oval, and this painter is what makes ours read the same
+/// way. Never black: colorBurn darkens the bar beneath, it is not a
+/// black fill (chen).
+class RestPillPainter extends CustomPainter {
+  const RestPillPainter({
+    required this.isDark,
+    required this.opacity,
+  });
+
+  final bool isDark;
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (opacity <= 0.0) return;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(999),
+    );
+    if (isDark) {
+      // iOS 27.0 dark mode: single colorBurn pass (C_s = 0.70,
+      // alpha = 0.70) matches native _UITabSelectionView across black
+      // (32 -> 10), mid-gray (134 -> 98), and saturated vivid
+      // backdrops (255 -> 250).
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = const Color(0xFFB3B3B3).withValues(alpha: 0.70 * opacity)
+          ..blendMode = BlendMode.colorBurn,
+      );
+      return;
+    }
+    // Light mode: m = 1.13, b = 0.20 -> burn gray 0xD2D2D2 + 0.07
+    // black srcOver.
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = const Color(0xFFD2D2D2).withValues(alpha: opacity)
+        ..blendMode = BlendMode.colorBurn,
+    );
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = Color.from(alpha: 0.07 * opacity, red: 0, green: 0, blue: 0)
+        ..blendMode = BlendMode.srcOver,
+    );
+  }
+
+  @override
+  bool shouldRepaint(RestPillPainter oldDelegate) =>
+      oldDelegate.isDark != isDark || oldDelegate.opacity != opacity;
+}
+
 /// Floating glass capsule tab bar (Beans `KumoneGlassTabBar`).
 class GlassTabBar extends StatefulWidget {
   const GlassTabBar({
@@ -244,12 +366,18 @@ class GlassTabBarState extends State<GlassTabBar>
   /// Key for the sliding pill (tests assert its settled position).
   static const pillKey = ValueKey('glassTabBarPill');
 
-  /// Key for the resting pill (the solid faint-tint capsule shown at
-  /// rest, see below) and for the two Opacity wrappers that crossfade
+  /// Key for the resting pill (the solid iOS-27 selection pill shown
+  /// at rest, see below) and for the Opacity wrapper that crossfades
   /// it against the lens. Tests assert the crossfade state.
   static const restPillKey = ValueKey('glassTabBarRestPill');
   static const restPillOpacityKey = ValueKey('glassTabBarRestPillOpacity');
-  static const pillOpacityKey = ValueKey('glassTabBarPillOpacity');
+
+  /// Keys for the two complementary icon-layer clips (bug 6 v2, chen
+  /// 2026-11-20): the unselected row (inverse-clipped: everything
+  /// EXCEPT the pill region) and the selected row (normal-clipped:
+  /// ONLY the pill region). Tests assert the split by construction.
+  static const unselectedClipKey = ValueKey('glassTabBarUnselectedClip');
+  static const selectedClipKey = ValueKey('glassTabBarSelectedClip');
 
   /// Pill "thickness" — the motion value that crossfades the resting
   /// pill against the lens, following the library's own
@@ -257,10 +385,19 @@ class GlassTabBarState extends State<GlassTabBar>
   /// lib/widgets/shared/animated_glass_indicator.dart):
   /// `backgroundOpacity = 1 - thickness / 0.15` (solid pill at rest)
   /// and the glass lens crossfades in with `visibility = fade`
-  /// (`fade = thickness`, glass only when fade > 0.05). The library
-  /// also wraps the lens in `Opacity(opacity: fade, ...)`.
+  /// (`fade = thickness`). The library fades the glass "by setting
+  /// `visibility` on the settings rather than wrapping the widget in
+  /// `Opacity`" — build 21 wrapped the lens in `Opacity(thickness)`
+  /// instead, which composites the whole lens layer semi-transparent
+  /// during every 180ms fade, so the directly-drawn icon row bled
+  /// through next to the refracted copy: transient doubling on every
+  /// tap and drag. `visibility` scales glassColor, thickness, rim,
+  /// frost and light — but NOT the body alpha (shader:
+  /// `alpha = geometryData.a`, 1 in the interior, stock mode) — so
+  /// the body stays opaque through the whole fade and the direct
+  /// copy stays hidden.
   ///
-  /// 0 = at rest (solid resting pill, NO lens — NetEase frames
+  /// 0 = at rest (solid resting pill, lens optics off — NetEase frames
   /// netease_pill_anim frame_001/021: the pill at rest is a solid
   /// dark oval with the selected icon+label at NORMAL size, red,
   /// single copy); 1 = in motion (lens fully visible, refracting
@@ -506,6 +643,32 @@ class GlassTabBarState extends State<GlassTabBar>
               pillRight = _pillRight!;
             }
             final pillCenter = (pillLeft + pillRight) / 2;
+            // The icon row, built once and painted twice: the
+            // library's GlassTabBar splits it into two complementary
+            // clips by the pill rect (see PillClipper), so the same
+            // row widget is the child of both ClipPaths below. Two
+            // Element subtrees, one config — the direct rendering is
+            // pixel-identical to a single unclipped row.
+            final iconRow = SizedBox(
+              height: _contentHeight,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _items.length; i++)
+                    Expanded(
+                      child: _TabItem(
+                        icon: _items[i].$1,
+                        label: _items[i].$2,
+                        selectedness: selectednessFor(
+                          i,
+                          pillCenter,
+                          cellW,
+                        ),
+                        theme: theme,
+                      ),
+                    ),
+                ],
+              ),
+            );
             // Gesture x arrives in full-bar space (the detector wraps
             // the whole 64pt bar); shift it into content space.
             double contentX(double dx) => dx - _innerInset;
@@ -609,66 +772,76 @@ class GlassTabBarState extends State<GlassTabBar>
                         borderRadius: BorderRadius.circular(999),
                         child: Stack(
                           children: [
-                            SizedBox(
-                              height: _contentHeight,
-                              child: Row(
-                                children: [
-                                  for (var i = 0; i < _items.length; i++)
-                                    Expanded(
-                                      child: _TabItem(
-                                        icon: _items[i].$1,
-                                        label: _items[i].$2,
-                                        selectedness: selectednessFor(
-                                          i,
-                                          pillCenter,
-                                          cellW,
-                                        ),
-                                        theme: theme,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            // Resting pill (doubling fix, chen
-                            // 2026-11-20): a SOLID faint-tint capsule
+                            // Resting pill (bug 6 v2, chen 2026-11-20):
+                            // the library's iOS-27 selection pill
+                            // (RestPillPainter: colorBurn, see above)
                             // at the pill's current edges, crossfaded
                             // against the lens by _thicknessController
-                            // (opacity 1 - thickness). At rest the
-                            // lens is fully faded out (Opacity 0
-                            // skips painting it entirely) and only
-                            // this pill shows, with the selected
-                            // icon+label drawn directly on it at
-                            // normal scale — a single copy, exactly
-                            // like NetEase at rest (frame_001/021:
-                            // solid dark oval, normal-size red
-                            // icon+label). During motion it fades out
-                            // as the lens fades in, at the same edges,
-                            // so the swap is a clean morph. Tint is
-                            // Kumone's (see header): white 0.10 dark
-                            // / black 0.075 light — a faint grey,
-                            // never black (chen).
+                            // (opacity 1 - thickness). It paints BELOW
+                            // the icons (like the library's background
+                            // indicator, layer 1.5), so the selected
+                            // icon+label draw crisply on top of the
+                            // darkened pill at normal scale — a single
+                            // copy, exactly like NetEase at rest
+                            // (frame_001/021: solid dark oval,
+                            // normal-size red icon+label). During
+                            // motion it fades out as the lens fades
+                            // in, at the same edges, so the swap is a
+                            // clean morph. Never black: colorBurn
+                            // darkens the bar beneath, it is not a
+                            // black fill (chen).
                             Positioned(
                               left: pillLeft,
                               top: 0,
                               child: Opacity(
                                 key: GlassTabBarState.restPillOpacityKey,
                                 opacity: 1 - _thicknessController.value,
-                                child: DecoratedBox(
+                                child: CustomPaint(
                                   key: GlassTabBarState.restPillKey,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(999),
-                                    color: isDark
-                                        ? Colors.white.withValues(alpha: 0.10)
-                                        : Colors.black.withValues(
-                                            alpha: 0.075,
-                                          ),
+                                  painter: RestPillPainter(
+                                    isDark: isDark,
+                                    opacity: 1.0,
                                   ),
-                                  child: SizedBox(
-                                    width: pillRight - pillLeft,
-                                    height: _contentHeight,
+                                  size: Size(
+                                    pillRight - pillLeft,
+                                    _contentHeight,
                                   ),
                                 ),
                               ),
+                            ),
+                            // Icon layer, split by the pill rect (bug
+                            // 6 v2): the library's own GlassTabBar
+                            // (tab_bar_searchable_internal.dart) does
+                            // exactly this — the unselected row is
+                            // inverse-clipped (everything EXCEPT the
+                            // pill region) and the selected row is
+                            // normal-clipped (ONLY the pill region),
+                            // so the two clips are complementary: every
+                            // pixel of the row belongs to exactly one
+                            // copy. The lens above refracts this
+                            // merged layer. Both clips paint the same
+                            // iconRow, so the direct rendering is
+                            // pixel-identical to the old unclipped row;
+                            // the split only makes "one copy under the
+                            // lens" structural instead of assumed.
+                            ClipPath(
+                              key: GlassTabBarState.unselectedClipKey,
+                              clipper: PillClipper(
+                                left: pillLeft,
+                                right: pillRight,
+                                inverse: true,
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: iconRow,
+                            ),
+                            ClipPath(
+                              key: GlassTabBarState.selectedClipKey,
+                              clipper: PillClipper(
+                                left: pillLeft,
+                                right: pillRight,
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: iconRow,
                             ),
                             Positioned(
                               // Pill edges are owned by the two springs
@@ -697,34 +870,31 @@ class GlassTabBarState extends State<GlassTabBar>
                               // so the two layers are not nested
                               // refractive glass.
                               //
-                              // Doubling fix (chen 2026-11-20, bug 6):
-                              // the old pill was this lens permanently
-                              // ON, even at rest, sitting over the
-                              // directly-drawn icon row. On the phone
-                              // (Impeller premium) the see-through
-                              // lens body does not hide the direct
-                              // copy — the library's own shader says
-                              // it verbatim (liquid_glass_render.frag,
-                              // passthrough comment): "the icon layer
-                              // is also drawn directly, so a
-                              // see-through body reveals the crisp copy
-                              // next to the refracted one, i.e. doubled
-                              // labels" — so the direct (normal-scale)
-                              // icon+label showed through next to the
-                              // refracted (magnified) copy, the icon
-                              // pushed up and the label pushed down,
-                              // both clipped at the pill edges. The
-                              // fix follows the library's
-                              // AnimatedGlassIndicator and NetEase:
-                              // the lens is ONLY visible while the pill
-                              // moves (Opacity = thickness, 0 at rest,
-                              // 1 in motion). At rest it is not
-                              // painted at all and the solid resting
-                              // pill above shows instead — one copy,
-                              // normal scale. In motion it refracts the
-                              // WHOLE tab item (icon + label together,
-                              // chen 2026-11-20: the lens magnifies
-                              // the entire tab item, not just the icon)
+                              // Doubling fix v2 (chen 2026-11-20, bug
+                              // 6): build 21 wrapped this lens in
+                              // `Opacity(thickness)` — and the library
+                              // explicitly does NOT do that
+                              // (AnimatedGlassIndicator: "We fade the
+                              // glass in/out by setting `visibility`
+                              // on the settings rather than wrapping
+                              // the widget in `Opacity`"). Opacity
+                              // composites the whole lens layer
+                              // semi-transparent, so during every
+                              // 180ms fade the directly-drawn icon row
+                              // bled through next to the refracted
+                              // copy — transient doubling on every tap
+                              // and drag. The fade now goes through
+                              // `settings.visibility` (0 at rest, 1 in
+                              // motion): visibility scales glassColor,
+                              // thickness, rim, frost and light — but
+                              // NOT the body alpha (shader:
+                              // `alpha = geometryData.a`, 1 in the
+                              // interior, stock mode), so the body
+                              // stays opaque through the whole fade
+                              // and the direct copy stays hidden — one
+                              // copy at every fade value. In motion the
+                              // lens refracts the WHOLE tab item (icon
+                              // + label together, chen 2026-11-20)
                               // — a single magnified/warped copy,
                               // turning red as the pill covers it,
                               // NetEase frames 005/011. The lens
@@ -733,22 +903,21 @@ class GlassTabBarState extends State<GlassTabBar>
                               // NOT weakened to hide the doubling.
                               left: pillLeft,
                               top: 0,
-                              child: Opacity(
-                                key: GlassTabBarState.pillOpacityKey,
-                                opacity: _thicknessController.value,
-                                child: GlassContainer(
-                                  key: GlassTabBarState.pillKey,
-                                  shape: const LiquidRoundedSuperellipse(
-                                    borderRadius: 999,
-                                  ),
-                                  settings:
-                                      HaoLiquidGlass.pillLensSettings(context),
-                                  useOwnLayer: true,
-                                  quality: GlassQuality.premium,
-                                  child: SizedBox(
-                                    width: pillRight - pillLeft,
-                                    height: _contentHeight,
-                                  ),
+                              child: GlassContainer(
+                                key: GlassTabBarState.pillKey,
+                                shape: const LiquidRoundedSuperellipse(
+                                  borderRadius: 999,
+                                ),
+                                settings: HaoLiquidGlass.pillLensSettings(
+                                  context,
+                                ).copyWith(
+                                  visibility: _thicknessController.value,
+                                ),
+                                useOwnLayer: true,
+                                quality: GlassQuality.premium,
+                                child: SizedBox(
+                                  width: pillRight - pillLeft,
+                                  height: _contentHeight,
                                 ),
                               ),
                             ),
