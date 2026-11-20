@@ -12,6 +12,7 @@
 // Pure Live reference: features/history/history_page.dart,
 // history_sections.dart, history_refresh.dart, history_limit_dialog.dart.
 
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -100,7 +101,6 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
       title: '清空直播历史？',
       content: '将删除全部直播观看记录，此操作无法恢复。',
       confirmLabel: '清空',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirmed != true || !mounted) return;
     await LiveHistoryStore.clear();
@@ -147,7 +147,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                         selected: selected == p,
                         selectedColor: theme.accentSoft,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(HaoRadius.panel),
                         ),
                         side: BorderSide(
                           color: selected == p
@@ -171,7 +171,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                       selected: selected == 0,
                       selectedColor: theme.accentSoft,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(HaoRadius.panel),
                       ),
                       side: BorderSide(
                         color: selected == 0
@@ -294,15 +294,15 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                 filled: true,
                 fillColor: theme.surface,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   borderSide: BorderSide(color: theme.hairline),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   borderSide: BorderSide(color: theme.hairline),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   borderSide: BorderSide(color: theme.accent),
                 ),
                 contentPadding:
@@ -461,7 +461,7 @@ class _SectionHeader extends StatelessWidget {
             height: 14,
             decoration: BoxDecoration(
               color: theme.accent,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(HaoRadius.badge),
             ),
           ),
           const SizedBox(width: 8),
@@ -522,7 +522,7 @@ class _HistoryCardState extends State<_HistoryCard> {
             HaoHaptics.tap();
             widget.onTap();
           },
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -534,7 +534,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                     decoration: BoxDecoration(
                       // Theme surface (was hard-coded 0xFF1C1C1E).
                       color: theme.surfaceSolid,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(HaoRadius.standard),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Stack(

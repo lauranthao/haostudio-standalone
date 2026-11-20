@@ -17,45 +17,28 @@ import 'dart:io';
 
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
-import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/domains/live/presentation/playback/live_room_page.dart';
 import 'package:standalone/features/player/fullscreen_controller.dart';
 import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 
+import 'helpers/hive_test_setup.dart';
+
 void main() {
   late Directory hiveDir;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    hiveDir = await Directory.systemTemp.createTemp('hao-danmaku-test-');
-    // HiveStore.init() goes through path_provider; point it at a temp
-    // dir so LiveRoomPage / DanmakuSettings can use Hive in tests.
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return hiveDir.path;
-      }
-      return null;
-    });
-    await HiveStore.init();
+    hiveDir = await HiveTestSetup.init(prefix: 'hao-danmaku-test-');
   });
 
-  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
-  // fire-and-forget deletes never resolve in the widget-test fake zone, so
-  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
-  // dir is deleted right after anyway.
   tearDownAll(() async {
-    unawaited(HiveStore.box.close());
-    await hiveDir.delete(recursive: true);
+    await HiveTestSetup.dispose(hiveDir);
   });
 
   tearDown(() {
@@ -63,16 +46,6 @@ void main() {
   });
 
   group('DanmakuSettings in LiveRoomPage', () {
-    /// Let real async work drain: LiveRoomPage awaits Hive writes and
-    /// a widget test's fake clock never drains real async I/O on its
-    /// own. Without this, _loadRoom stalls and the room never resolves.
-    Future<void> settle(WidgetTester tester) async {
-      await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-      });
-      await tester.pump();
-    }
-
     Future<void> pumpRoom(WidgetTester tester, _FakeSite site) async {
       // Phone-tall viewport: the room Column (16:9 video + info +
       // quality row + danmaku) is ~600 px tall and overflows the
@@ -112,6 +85,10 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      // Drain the room's fire-and-forget Hive writes (history record,
+      // breadcrumbs incl. live-closed on dispose) before the test
+      // ends, or the next test's first Hive write hangs forever.
+      await drainHiveWrites(tester);
     }
 
     /// Danmaku settings writes are Hive I/O: they must run in the real
@@ -123,6 +100,11 @@ void main() {
       WidgetTester tester,
       bool value,
     ) async {
+      // Drain first: while the room is open its playback-progress
+      // breadcrumb writes sit in hive_ce's serial write queue, and a
+      // runAsync write queued behind them never completes (no pump
+      // runs while it is awaited).
+      await drainHiveWrites(tester);
       await tester.runAsync(
         () => DanmakuSettings.setEnabled('huya', value),
       );
@@ -134,6 +116,7 @@ void main() {
       double? fontSize,
       double? opacity,
     }) async {
+      await drainHiveWrites(tester);
       await tester.runAsync(() async {
         if (fontSize != null) {
           await DanmakuSettings.setFontSize(fontSize);
@@ -146,6 +129,7 @@ void main() {
     }
 
     Future<void> setDanmakuArea(WidgetTester tester, String value) async {
+      await drainHiveWrites(tester);
       await tester.runAsync(() => DanmakuSettings.setArea(value));
       await settle(tester);
     }

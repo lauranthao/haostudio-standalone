@@ -1,22 +1,22 @@
 // Tab pages stay alive across tab switches (stutter fix, chen
-// 2026-11-20).
+// 2026-11-20) — music only since P1-P3.
 //
 // Root cause: the bottom tab is a PageView with no AutomaticKeepAlive,
 // so every tab switch disposed the target page's State and the page
 // rebuilt from scratch (lists, images, Hive) on the UI thread while
 // the pill was dragging/springing — dropped frames, a choppy slide.
-// With AutomaticKeepAliveClientMixin on all four tab pages, a switch
+// With AutomaticKeepAliveClientMixin on the music tab page, a switch
 // is just a page flip: the off-screen page's State is kept in the
 // sliver's keep-alive bucket instead of being disposed, so nothing
 // rebuilds on return.
 //
-// The test pumps a PageView (music page + a dummy page), jumps away
-// and back, and asserts the music page's State is the SAME object —
-// i.e. it was never disposed. MusicTabPage is the representative
-// case (the heaviest page); the other three pages carry the identical
-// one-line mixin (live/video/settings), verified by code inspection +
-// analyze. The music page's section-collapse persistence is covered
-// separately by music_home_sections_persist_test.dart (Hive-backed).
+// P1-P3: ONLY the music page keeps KeepAlive (it owns the playback
+// state). Video / live / settings dropped it: they rebuild from the
+// Hive cache on every switch and no longer sit resident in memory —
+// scroll position is lost on switch, data is not. The mixin scope is
+// locked by tab_keep_alive_scope_test.dart; the music page's
+// section-collapse persistence is covered separately by
+// music_home_sections_persist_test.dart (Hive-backed).
 
 import 'dart:async';
 import 'dart:io';

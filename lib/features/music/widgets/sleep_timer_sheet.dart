@@ -13,6 +13,7 @@
 // [clampSleepCustomMinutes]; the value is persisted
 // (MusicStore.sleepCustomMinutes) so the next open remembers it.
 
+import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -184,7 +185,7 @@ class _SleepRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Row(

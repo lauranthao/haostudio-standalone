@@ -23,6 +23,7 @@
 // Kumone 数值来源见各处注释 (文件:行号均为 ~/workspace/research/kumone
 // 仓库 2026-11-18 现状；设计值汇总见 research/kumone-player-study.md)。
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -175,8 +176,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     }
     Color? tint;
     try {
-      final bytes = await fetchMusicImageBytes(song.cover);
-      tint = await dominantCoverColor(bytes);
+      // P1-P2: 200 px decode + URL-keyed tint cache (no re-decode when
+      // switching back to a song).
+      tint = await coverTintForUrl(song.cover);
     } catch (_) {
       tint = null;
     }
@@ -798,7 +800,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.45),
@@ -808,7 +810,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: song.cover.isEmpty
               ? placeholder
               : Image(
@@ -841,7 +843,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(HaoRadius.small),
           border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
         ),
         child: Obx(
@@ -960,7 +962,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                               height: 4,
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(2),
+                                borderRadius: BorderRadius.circular(HaoRadius.badge),
                               ),
                             ),
                             Container(
@@ -968,7 +970,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                               height: 4,
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(2),
+                                borderRadius: BorderRadius.circular(HaoRadius.badge),
                               ),
                             ),
                             // Thumb only while dragging (Kumone:

@@ -268,6 +268,54 @@ void main() {
       });
     });
 
+    test('a failed fetchFresh does not stamp the throttle (P1-L2)', () async {
+      final site = _FakeSite()..recoveryThrows = true;
+      final recovery = LiveRecovery(site: site, room: _room());
+      recovery.lines = const ['https://tx.flv.huya.com/src/1?wsSecret=OLD'];
+      final first = await recovery.fetchFresh();
+      expect(first, isNull);
+      expect(site.recoveryCalls, 1);
+      // The failure stamped nothing: a second fetch right away
+      // actually re-asks the platform instead of returning
+      // throttled-null — otherwise the caller would fall through to
+      // advanceLine() and re-open the same expired lines.
+      final second = await recovery.fetchFresh();
+      expect(second, isNull);
+      expect(site.recoveryCalls, 2);
+      expect(
+        recovery.lines,
+        const ['https://tx.flv.huya.com/src/1?wsSecret=OLD'],
+      );
+    });
+
+    test('fetchFresh(force: true) skips the throttle (P1-T2)', () async {
+      final site = _FakeSite();
+      final issued = DateTime.now();
+      site.recoveryResolution = LivePlayUrlResolution(
+        urls: const ['https://tx.flv.huya.com/src/1?wsSecret=NEW'],
+        issuedAt: issued,
+        refreshAt: issued.add(const Duration(seconds: 100)),
+        invalidAt: issued.add(const Duration(seconds: 125)),
+        streamFacts: const [LiveStreamFacts(format: 'flv')],
+      );
+      final recovery = LiveRecovery(site: site, room: _room());
+      final first = await recovery.fetchFresh();
+      expect(first, isNotNull);
+      expect(site.recoveryCalls, 1);
+      // Inside 60 s: a plain fetch is throttled to null, no site call.
+      final throttled = await recovery.fetchFresh();
+      expect(throttled, isNull);
+      expect(site.recoveryCalls, 1);
+      // A forced fetch (manual retry) re-asks at once — the 10 s
+      // timeout still applies (see the timeout test above), and the
+      // success stamps the throttle again.
+      final forced = await recovery.fetchFresh(force: true);
+      expect(forced, isNotNull);
+      expect(site.recoveryCalls, 2);
+      expect(await recovery.fetchFresh(), isNull);
+      expect(site.recoveryCalls, 2);
+    });
+
     test('isExpired at ~125 s after issue', () {
       final recovery = LiveRecovery(site: _FakeSite(), room: _room());
       recovery.issuedAt =
@@ -655,7 +703,13 @@ void main() {
         expect(notices, 0);
         expect(s.status, PlaybackStatus.playing);
         // Then it stalls for real: hint ~4 s after the last movement.
-        await Future<void>.delayed(const Duration(seconds: 2));
+        // 3 s (not 2 s) of margin: this is a real-clock test and the
+        // Timer + delayed chains drift under full-suite load — the
+        // 2 s margin flaked once in the build-25 full run (hint
+        // landed just after the check) while passing in isolation.
+        // The test still discriminates: without a reset the hint
+        // would already have fired by the 10 s check above.
+        await Future<void>.delayed(const Duration(seconds: 3));
         expect(notices, 1);
         await s.dispose();
       });
@@ -978,7 +1032,7 @@ void main() {
     });
 
     testWidgets(
-        'single line failure auto-recovers first; manual retry is fetch-throttled',
+        'single line failure auto-recovers first; manual retry fetches fresh (P1-T2)',
         (tester) async {
       final site = _FakeSite()
         ..urlsByQuality = const {
@@ -995,7 +1049,7 @@ void main() {
       expect(find.text('▶ 重试'), findsNothing);
       expect(site.recoveryCalls, 1);
       // 10 s with no new stream -> the fresh fetch times out, the
-      // failure card comes back.
+      // failure card comes back. (P1-L2: the timeout stamped nothing.)
       await tester.pump(const Duration(seconds: 10));
       await tester.pump();
       expect(find.text('▶ 重试'), findsOneWidget);
@@ -1004,11 +1058,15 @@ void main() {
       // mid-frame and needs a second frame to rebuild the failure card
       // away.
       await settle(tester);
-      // Manual retry resets the failure budget, but the 60 s fetch
-      // throttle (stamped by the auto attempt) means no new fetch runs
-      // — the card is back right away and no second site call is made.
+      // P1-T2: a manual retry is a deliberate user action — it skips
+      // the 60 s throttle and really re-fetches (a second site call),
+      // instead of showing the card back right away with no new fetch.
+      expect(site.recoveryCalls, 2);
+      // The forced fetch also never completes: 10 s later it times
+      // out and the failure card comes back.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pump();
       expect(find.text('▶ 重试'), findsOneWidget);
-      expect(site.recoveryCalls, 1);
       await disposeRoom(tester, log);
     });
 

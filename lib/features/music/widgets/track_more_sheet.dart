@@ -15,6 +15,7 @@
 // song row in the lists — see [openTrackMoreSheet], which shows the
 // sheet and handles the chosen action in one call.
 
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -77,7 +78,7 @@ Future<void> openSongQuickMenu(BuildContext rowContext, Song song) async {
     position: anchor,
     color: theme.surfaceSolid,
     shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(HaoRadius.large),
       side: BorderSide(color: theme.hairline),
     ),
     items: [
@@ -348,7 +349,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
               child: Row(
                 children: [
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(HaoRadius.standard),
                     child: song.cover.isEmpty
                         ? Container(
                             width: 44,
@@ -604,7 +605,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(HaoRadius.large),
                 child: song.cover.isEmpty
                     ? Container(
                         width: 64,

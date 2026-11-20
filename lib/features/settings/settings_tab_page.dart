@@ -49,6 +49,7 @@
 // the shell and structure changed. Every borrowed setting is wired
 // to real behaviour (see the playback section).
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -65,6 +66,7 @@ import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/video_fit.dart';
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
@@ -101,14 +103,11 @@ class SettingsTabPage extends StatefulWidget {
   State<SettingsTabPage> createState() => _SettingsTabPageState();
 }
 
-/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
-/// Safe here: a static settings list, no timers, streams or polling.
-class _SettingsTabPageState extends State<SettingsTabPage>
-    with AutomaticKeepAliveClientMixin {
+/// No KeepAlive (P1-P3): a static settings list, no timers, streams
+/// or polling. State re-reads Hive in initState on every tab switch.
+class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _engineKey;
 
-  @override
-  bool get wantKeepAlive => true;
   late bool _engineExpanded;
   late bool _playbackExpanded;
   late bool _autoNext;
@@ -179,7 +178,6 @@ class _SettingsTabPageState extends State<SettingsTabPage>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
@@ -427,7 +425,7 @@ class _SettingsTabPageState extends State<SettingsTabPage>
           _BeansRow(
             icon: Icons.upload,
             title: '导出备份',
-            subtitle: '导出全部本地数据',
+            subtitle: '导出全部本地数据（含音乐/壁纸文件）',
             onTap: () => _exportBackup(context),
           ),
           const SizedBox(height: 12),
@@ -621,22 +619,27 @@ class _SettingsTabPageState extends State<SettingsTabPage>
     }
   }
 
-  /// Export: write the whole-box JSON to a temp file and open the
-  /// system share sheet (share_plus) so the user can save it to Files,
-  /// send it, or AirDrop it. No cloud, no fixed directory.
+  /// Export: write the whole backup (Hive JSON + downloaded music,
+  /// local music, wallpapers, fonts — P1-L3 zip) to a temp file and
+  /// open the system share sheet (share_plus) so the user can save
+  /// it to Files, send it, or AirDrop it. No cloud, no fixed
+  /// directory.
   Future<void> _exportBackup(BuildContext context) async {
     try {
       final dir = await getTemporaryDirectory();
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final file = File('${dir.path}/hao-backup-$stamp.json');
-      final json = BackupService(box: HiveStore.box).exportJson();
-      await file.writeAsString(json);
+      final file = File('${dir.path}/hao-backup-$stamp.zip');
+      final docs = Directory(await LocalPaths.ensureDocumentsPath());
+      final zip = await BackupService(
+        box: HiveStore.box,
+      ).exportZip(documentsDir: docs);
+      await file.writeAsBytes(zip);
       if (!context.mounted) return;
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path)],
           subject: 'HAo Studio 备份',
-          text: 'HAo Studio 备份（全部本地数据）',
+          text: 'HAo Studio 备份（全部本地数据，含音乐/壁纸文件）',
         ),
       );
     } catch (_) {
@@ -645,30 +648,56 @@ class _SettingsTabPageState extends State<SettingsTabPage>
     }
   }
 
-  /// Import: pick a *.json file with the system file picker, then
-  /// restore it. Validation happens inside BackupService before any
-  /// write, so an invalid file changes nothing.
+  /// Import: pick a *.zip (new) or *.json (legacy) backup with the
+  /// system file picker, then restore it. Validation happens inside
+  /// BackupService before any write, so an invalid file changes
+  /// nothing.
   Future<void> _importBackup(BuildContext context) async {
     try {
       final picked = await FilePicker.pickFiles(
         dialogTitle: '选择备份文件',
         type: FileType.custom,
-        allowedExtensions: ['json'],
+        allowedExtensions: ['zip', 'json'],
       );
       if (picked.isEmpty) return; // user cancelled
       final file = picked.first;
-      final String json;
-      if (file.path != null) {
-        json = await File(file.path!).readAsString();
+      final isZip = (file.name.toLowerCase().endsWith('.zip')) ||
+          (file.path != null &&
+              file.path!.toLowerCase().endsWith('.zip'));
+      final docs = Directory(await LocalPaths.ensureDocumentsPath());
+      final service = BackupService(box: HiveStore.box);
+      final BackupImportResult result;
+      final int count;
+      var files = 0;
+      if (isZip) {
+        final List<int> bytes;
+        if (file.path != null) {
+          bytes = await File(file.path!).readAsBytes();
+        } else {
+          bytes = await file.xFile.readAsBytes();
+        }
+        final r = await service.importZip(bytes, documentsDir: docs);
+        result = r.$1;
+        count = r.$2;
+        files = r.$3;
       } else {
-        json = await file.xFile.readAsString();
+        final String json;
+        if (file.path != null) {
+          json = await File(file.path!).readAsString();
+        } else {
+          json = await file.xFile.readAsString();
+        }
+        final r = await service.importJson(json);
+        result = r.$1;
+        count = r.$2;
       }
-      final (result, count) = BackupService(box: HiveStore.box)
-          .importJson(json);
       if (!context.mounted) return;
       switch (result) {
         case BackupImportResult.ok:
-          Get.snackbar('恢复成功', '已恢复 $count 项数据');
+          Get.snackbar(
+            '恢复成功',
+            files > 0 ? '已恢复 $count 项数据，$files 个文件' : '已恢复 $count 项数据',
+          );
           // The import rewrote the whole box — every piece of state
           // this page caches from Hive is stale, not just the engine
           // key: reload the theme (its Obx rows follow the Rx values)
@@ -689,11 +718,13 @@ class _SettingsTabPageState extends State<SettingsTabPage>
             _quality = MusicStore.quality;
           });
         case BackupImportResult.invalidJson:
-          Get.snackbar('恢复失败', '文件不是有效的备份 JSON');
+          Get.snackbar('恢复失败', '文件不是有效的备份文件');
         case BackupImportResult.wrongSchema:
           Get.snackbar('恢复失败', '备份版本不受支持');
         case BackupImportResult.emptyData:
           Get.snackbar('恢复失败', '备份文件没有数据');
+        case BackupImportResult.writeFailed:
+          Get.snackbar('恢复失败', '导入中断，已恢复原数据');
       }
     } catch (_) {
       if (!context.mounted) return;
@@ -861,7 +892,7 @@ class _BeansRow extends StatelessWidget {
                     HaoHaptics.tap();
                     onTap!();
                   },
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
             child: Row(
               children: [
                 SizedBox(
@@ -983,7 +1014,7 @@ class _ExpandableHeader extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
             child: Row(
               children: [
                 SizedBox(
@@ -1126,7 +1157,7 @@ class _PlaybackPanel extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onOpenEqualizer,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(HaoRadius.large),
               child: Row(
                 children: [
                   SizedBox(

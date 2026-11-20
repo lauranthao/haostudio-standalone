@@ -85,7 +85,6 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       title: '删除「${source.name}」？',
       content: '删除后该源不再参与搜索与播放，可通过「恢复默认」找回预置源。',
       confirmLabel: '删除',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirm != true || !mounted) return;
     _sources = _sources.where((s) => s.idKey != source.idKey).toList();
@@ -192,7 +191,6 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       title: '恢复默认影视源？',
       content: '将恢复 17 个预置源，删除自定义源，并清除开关与排序修改。',
       confirmLabel: '恢复',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (confirm != true || !mounted) return;
     await VideoSourcesStore.resetToDefaults();

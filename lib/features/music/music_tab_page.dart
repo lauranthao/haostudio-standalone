@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -935,7 +936,7 @@ class _MusicTabPageState extends State<MusicTabPage>
         HaoHaptics.tap();
         onTap();
       },
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(HaoRadius.standard),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
@@ -978,7 +979,7 @@ class _MusicTabPageState extends State<MusicTabPage>
       height: 32,
       decoration: BoxDecoration(
         color: theme.accentSoft,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(HaoRadius.small),
       ),
       child: Icon(icon, size: 20, color: theme.accent),
     );
@@ -1036,7 +1037,7 @@ class _MusicTabPageState extends State<MusicTabPage>
   Widget _playlistCover(HaoTheme theme, UserPlaylist list) {
     if (list.cover.isEmpty) return _coverlessTile(theme);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(HaoRadius.small),
       child: Image(
         image: MusicImageProvider(list.cover),
         width: 32,
@@ -1052,7 +1053,7 @@ class _MusicTabPageState extends State<MusicTabPage>
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(HaoRadius.small),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1189,14 +1190,14 @@ class _FeatureCard extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.12),
           width: 0.5,
         ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -1204,7 +1205,7 @@ class _FeatureCard extends StatelessWidget {
               HaoHaptics.tap();
               tile.onTap();
             },
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(HaoRadius.large),
             child: Stack(
               children: [
                 Positioned.fill(
@@ -1310,7 +1311,7 @@ class _FeatureCard extends StatelessWidget {
               HaoHaptics.tap();
               tile.onTap();
             },
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(HaoRadius.large),
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(

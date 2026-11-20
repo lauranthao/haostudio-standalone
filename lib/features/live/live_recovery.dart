@@ -124,18 +124,30 @@ class LiveRecovery {
   /// URLs: recovery must RE-PARSE, never retry the same URL. Returns null
   /// when throttled, timed out, or the room is offline / parse failed.
   /// A null result means: show the failure card, do not loop.
-  Future<LivePlayUrlResolution?> fetchFresh() async {
+  /// Only a SUCCESSFUL fetch stamps the 60 s throttle (P1-L2): a
+  /// failed re-parse must not consume the throttle window while the
+  /// lines stay old — otherwise the next failure falls through to
+  /// advanceLine() and re-opens the same expired lines (Huya's
+  /// anti-code is shared across ALL lines of a room).
+  /// [force] skips the throttle check (P1-T2): a manual retry is a
+  /// deliberate user action, so it re-parses at once even inside the
+  /// 60 s window. The 10 s fetch timeout still applies, and a
+  /// successful forced fetch still stamps the throttle for later
+  /// automatic attempts. Automatic recovery and prefetch never pass
+  /// force.
+  Future<LivePlayUrlResolution?> fetchFresh({bool force = false}) async {
     final now = _now();
-    if (_lastFreshFetchAt != null &&
+    if (!force &&
+        _lastFreshFetchAt != null &&
         now.difference(_lastFreshFetchAt!) < freshFetchThrottle) {
       return null;
     }
-    _lastFreshFetchAt = now;
     try {
       final resolution = await site
           .resolvePlayUrlsForRecovery(liveRoom: room, quality: quality)
           .timeout(freshFetchTimeout);
       if (resolution.urls.isEmpty) return null;
+      _lastFreshFetchAt = now;
       // Capture the previously playing URL BEFORE replacing the list:
       // currentUrl reads from [lines], so evaluating it after the
       // assignment would return a new-list URL at the old index — the

@@ -181,7 +181,6 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       title: '删除音源脚本',
       content: '将删除「$name」，该脚本的音源不再参与搜索与播放。',
       confirmLabel: '删除',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (ok != true || !mounted) return;
     await LxScriptEngine.instance.removeScript(id);

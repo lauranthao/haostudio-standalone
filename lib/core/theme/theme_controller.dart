@@ -10,6 +10,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../storage/hive_store.dart';
 import 'hao_themes.dart';
+import 'tab_bar_accent.dart';
 
 class ThemeController extends GetxController {
   static const String _themeKey = 'haoThemeId';
@@ -72,7 +73,8 @@ class ThemeController extends GetxController {
     // takes the opaque form.
     final savedAccent = box.get(HiveKeys.tabBarAccentColor);
     if (savedAccent is int) {
-      customAccent.value = Color(savedAccent).withValues(alpha: 1.0);
+      customAccent.value =
+          clampAccentHue(Color(savedAccent)).withValues(alpha: 1.0);
     }
   }
 
@@ -102,13 +104,28 @@ class ThemeController extends GetxController {
     if (box != null) _persist(box);
   }
 
+  /// The accent actually in effect right now: the custom override
+  /// when one is set, else the current theme's own accent for
+  /// [brightness]. The ring and the colour picker read this when no
+  /// custom colour is stored, so a fresh install never shows an
+  /// invented colour (P0-5).
+  Color effectiveAccent(Brightness brightness) {
+    final custom = customAccent.value;
+    if (custom != null) return custom;
+    final themes = HaoThemes.of(themeId.value);
+    final data = brightness == Brightness.dark ? themes.dark : themes.light;
+    return data.extension<HaoTheme>()!.accent;
+  }
+
   /// Apply a custom accent colour immediately everywhere (the root
   /// Obx in HAoApp rebuilds GetMaterialApp when this Rx changes).
   /// Null clears the override and restores the per-theme accent.
   /// Does NOT persist: the sheet persists through
   /// TabBarAccentController (shared key, stored with opacity).
   void setCustomAccent(Color? color) {
-    customAccent.value = color?.withValues(alpha: 1.0);
+    // P1-U6: purple/magenta hues clamp to the 260° blue boundary.
+    customAccent.value =
+        color == null ? null : clampAccentHue(color).withValues(alpha: 1.0);
   }
 
   /// Clear the in-memory override (per-theme accent returns). The

@@ -9,6 +9,7 @@
 // Room entry is unchanged: tap opens LiveRoomPage in portrait with an
 // inline 16:9 video; only the [ ] button in the room goes landscape.
 
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:ui';
 
@@ -39,22 +40,16 @@ class LiveTabPage extends StatefulWidget {
   State<LiveTabPage> createState() => _LiveTabPageState();
 }
 
-/// Stutter fix (chen 2026-11-20): the bottom tab is a PageView, and
-/// without keep-alive a tab switch disposes the page State — the
-/// target page then rebuilds from scratch (room list, images) on the
-/// UI thread while the pill is dragging/springing, which drops frames.
-/// Keeping it alive means the list stays built and a switch is just
-/// a page flip. Safe here: initState loads once, there are no timers,
-/// streams or polling in this State that would keep running while
-/// hidden (the scroll listener only fires on scroll).
-class _LiveTabPageState extends State<LiveTabPage>
-    with AutomaticKeepAliveClientMixin {
+/// No KeepAlive (P1-P3): the bottom tab is a PageView, so a tab
+/// switch disposes this State and it rebuilds on return (room list
+/// reloads from the controller). Only the music tab keeps KeepAlive,
+/// so the four tabs no longer all sit resident in memory. The scroll
+/// listener only fires on scroll; there are no timers, streams or
+/// polling in this State that would keep running while hidden.
+class _LiveTabPageState extends State<LiveTabPage> {
   late final LiveTabController _controller;
   late final bool _ownsController;
   final _scrollController = ScrollController();
-
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -88,7 +83,6 @@ class _LiveTabPageState extends State<LiveTabPage>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
@@ -262,7 +256,7 @@ class _PlatformRow extends StatelessWidget {
               selected: selected,
               selectedColor: theme.accentSoft,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(HaoRadius.panel),
               ),
               side: BorderSide(
                 color: selected ? theme.accent : theme.hairline,
@@ -331,7 +325,7 @@ class _CategoryRow extends StatelessWidget {
         selected: isSelected,
         selectedColor: theme.accentSoft,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
         ),
         side: BorderSide(
           color: isSelected ? theme.accent : theme.hairline,
@@ -373,13 +367,13 @@ class _RoomCardState extends State<_RoomCard> {
       children: [
         InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: Container(
             decoration: BoxDecoration(
               // Tile under the artwork: theme surface so it adapts to
               // all 4 themes x light/dark (was hard-coded 0xFF1C1C1E).
               color: theme.surfaceSolid,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(HaoRadius.panel),
               border: Border.all(color: theme.hairline),
               boxShadow: [
                 BoxShadow(
@@ -436,7 +430,7 @@ class _RoomCardState extends State<_RoomCard> {
                       decoration: BoxDecoration(
                         // Red is reserved for the LIVE badge — see hao_themes.
                         color: theme.liveRed,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(HaoRadius.small),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.30),
@@ -615,11 +609,11 @@ class _SkeletonGrid extends StatelessWidget {
         return Container(
           decoration: BoxDecoration(
             color: theme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(HaoRadius.large),
             border: Border.all(color: theme.hairline),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(HaoRadius.large),
             child: BackdropFilter(
               filter: ImageFilter.blur(
                 sigmaX: theme.glassBlurSigma,

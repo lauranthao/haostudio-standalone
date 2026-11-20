@@ -46,22 +46,29 @@ class CmsException implements Exception {
 }
 
 /// Fetch one CMS JSON document. Throws [CmsTimeoutException] on timeout,
-/// [CmsException] on non-2xx / bad JSON.
+/// [CmsException] on non-2xx / bad JSON. A cancelled request
+/// ([CancelToken] cancelled by the caller) rethrows the Dio
+/// [DioException] with type [DioExceptionType.cancel] — cancellation is
+/// the caller's decision, never a source failure, so it must not be
+/// recorded as one.
 typedef CmsFetcher = Future<Map<String, dynamic>> Function(
   String url, {
   Duration timeout,
+  CancelToken? cancelToken,
 });
 
 /// Production fetcher over the shared Dio instance.
 Future<Map<String, dynamic>> defaultCmsFetcher(
   String url, {
   Duration timeout = const Duration(seconds: 8),
+  CancelToken? cancelToken,
 }) async {
   final dio = sharedDio();
   late Response<dynamic> res;
   try {
     res = await dio.get<dynamic>(
       toHttps(url),
+      cancelToken: cancelToken,
       options: Options(
         headers: <String, String>{
           'User-Agent': kDirectVideoUa,
@@ -72,6 +79,7 @@ Future<Map<String, dynamic>> defaultCmsFetcher(
       ),
     );
   } on DioException catch (e) {
+    if (e.type == DioExceptionType.cancel) rethrow;
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.sendTimeout) {
@@ -281,10 +289,12 @@ class CmsClient {
     String query, {
     int page = 1,
     Duration timeout = const Duration(seconds: 5),
+    CancelToken? cancelToken,
   }) async {
     final json = await _fetcher(
       '${source.apiUrl}?ac=videolist&wd=${Uri.encodeComponent(query)}&pg=$page',
       timeout: timeout,
+      cancelToken: cancelToken,
     );
     final list = (json['list'] as List<dynamic>? ?? const []);
     return list
@@ -316,13 +326,22 @@ class CmsClient {
     var anyOk = false;
 
     Future<void> fanOut(Duration perSource, Duration overall) async {
-      final jobs = _sources.map<Future<void>>((s) async {
+      // One token per source job (P1-P5): when the overall cap fires,
+      // the in-flight jobs are cancelled instead of running on in the
+      // background. Cancellation is not a failure — the jobs' errors
+      // are swallowed below and no source is penalised for it.
+      final tokens = <CancelToken>[
+        for (var i = 0; i < _sources.length; i++) CancelToken(),
+      ];
+      final jobs = _sources.indexed.map<Future<void>>((e) async {
+        final s = e.$2;
         try {
           final items = await searchOne(
             s,
             query,
             page: page,
             timeout: perSource,
+            cancelToken: tokens[e.$1],
           );
           anyOk = true;
           results.addAll(items);
@@ -330,7 +349,12 @@ class CmsClient {
           // One source failing never kills the search.
         }
       }).toList();
-      await Future.wait(jobs).timeout(overall, onTimeout: () => <void>[]);
+      await Future.wait(jobs).timeout(overall, onTimeout: () {
+        for (final t in tokens) {
+          t.cancel();
+        }
+        return <void>[];
+      });
     }
 
     if (page == 1) {
@@ -461,7 +485,19 @@ class CmsClient {
       }
     }
 
-    Timer(const Duration(seconds: 15), closeOnce);
+    // P1-T1: the 15 s cap used to be an orphan Timer — it stayed
+    // pending after the listener cancelled (the race in
+    // VideoDetailService settles at 7 s and cancels the
+    // subscription), which failed widget tests at teardown ("A Timer
+    // is still pending") and kept the scan worker alive in prod.
+    // Cancelling the subscription now cancels the timer and stops
+    // the worker (in-flight fetches still run to their own 5 s
+    // timeout, but their results are dropped once closed).
+    final capTimer = Timer(const Duration(seconds: 15), closeOnce);
+    controller.onCancel = () {
+      capTimer.cancel();
+      closed = true;
+    };
 
     Future<void> worker() async {
       while (!closed && cursor < _sources.length && emitted < maxAlts) {
@@ -676,7 +712,17 @@ class CmsClient {
   /// `directVideoHome` (app.js:1443): first 12 types (priority order),
   /// EACH raced against its own 8 s timeout; keep rows with items;
   /// sort rows by count desc, take top 10. Throws when empty.
+  ///
+  /// Total budget 9 s (P1-P6): typeMap alone can take 6 s (its own
+  /// cap) and the rows 8 s each in parallel, so without a total cap
+  /// a cold home load stacked to ~14 s. The row phase gets whatever
+  /// is left of the 9 s; rows that arrive in time are returned
+  /// (sorted, top 10) — a slow or throwing row contributes nothing
+  /// and no longer holds the whole load hostage. True per-row
+  /// streaming to the UI is a separate step (the tab already renders
+  /// the Hive cache first, so there is no blank screen to fix).
   Future<VideoHomeData> home() async {
+    final started = DateTime.now();
     final map = await typeMap();
     final names = map.keys.toList()
       ..sort((a, b) {
@@ -687,15 +733,25 @@ class CmsClient {
         if (ib >= 0) return 1;
         return 0;
       });
-    final results = await Future.wait(
-      names.take(12).map(
-        (nm) => homeRowOne(nm, map[nm]!).timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => null,
-        ),
-      ),
-    );
-    final got = results.whereType<VideoHomeRow>().where((r) => r.items.isNotEmpty).toList();
+    final got = <VideoHomeRow>[];
+    final rowBudget =
+        const Duration(seconds: 9) - DateTime.now().difference(started);
+    if (rowBudget > Duration.zero) {
+      Future<void> loadRow(String nm) async {
+        try {
+          final row = await homeRowOne(nm, map[nm]!).timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => null,
+          );
+          if (row != null && row.items.isNotEmpty) got.add(row);
+        } catch (_) {
+          // One bad row never kills the home load.
+        }
+      }
+
+      final futures = names.take(12).map(loadRow).toList();
+      await Future.wait(futures).timeout(rowBudget, onTimeout: () => <void>[]);
+    }
     got.sort((a, b) => b.count.compareTo(a.count));
     final rows = got.take(10).toList();
     if (rows.isEmpty) throw CmsException('video source unreachable');

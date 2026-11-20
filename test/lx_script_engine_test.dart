@@ -56,6 +56,20 @@ send(EVENT_NAMES.showConfigView, { title: 'Cfg' });
 send(EVENT_NAMES.inited, { status: true, sources: { wy: { name: 'wy', type: 'music', actions: ['musicUrl'], qualitys: ['128k', '320k'] } } });
 ''';
 
+/// Script reporting a `{url, quality}` map instead of a bare URL
+/// (P1-L1): at a master request it reports a flac-tier file, so the
+/// resolver must label it hires, never master.
+const String _mapScript = '''
+// @name MapScript
+// @version 1.0.0
+const { EVENT_NAMES, request, on, send } = globalThis.lx;
+on(EVENT_NAMES.request, ({ action, source, info }) => {
+  if (action === 'musicUrl') return Promise.resolve({url: 'https://example.com/m.flac', quality: 'flac'});
+  return Promise.reject(new Error('nope'));
+});
+send(EVENT_NAMES.inited, { status: true, sources: { wy: { name: 'wy', type: 'music', actions: ['musicUrl'], qualitys: ['128k', '320k', 'flac', 'master'] } } });
+''';
+
 /// Fake HTTP answers for every host the 4 scripts + tests touch.
 Map<String, dynamic> _respond(String url) {
   // ikun update check (fires at load) — returns an update payload so
@@ -97,6 +111,9 @@ Map<String, dynamic> _respond(String url) {
   // Custom-script download.
   if (url == 'https://example.com/custom.js') {
     return {'status': 200, 'body': _tinyScript};
+  }
+  if (url == 'https://example.com/map.js') {
+    return {'status': 200, 'body': _mapScript};
   }
   if (url == 'https://example.com/bad.js') {
     return {'status': 200, 'body': 'this is not js {{{'};
@@ -744,6 +761,39 @@ void main() {
       expect(engine.scripts.where((s) => s.isCustom), isEmpty);
     });
 
+    test('script reporting a non-master tier at master is hires (P1-L1)',
+        () async {
+      final log = <String>[];
+      final engine = LxScriptEngine(
+        dio: buildFakeDio(respond: _respond, log: log),
+      );
+      addTearDown(engine.dispose);
+      final info = await engine.addCustomScript(
+        'https://example.com/map.js',
+      );
+      expect(info.loaded, isTrue);
+      final r = await engine.getMusicUrlWithTier(
+        scriptId: info.id,
+        platform: 'wy',
+        song: Song(songId: '1', title: 'x', platform: MusicPlatform.wy),
+        quality: AudioQuality.master,
+      );
+      expect(r, isNotNull);
+      expect(r!.url, 'https://example.com/m.flac');
+      // The script said flac: hires, never master.
+      expect(r.actualQuality, AudioQuality.hires);
+      // The plain-URL form still returns the URL itself.
+      expect(
+        await engine.getMusicUrl(
+          scriptId: info.id,
+          platform: 'wy',
+          song: Song(songId: '1', title: 'x', platform: MusicPlatform.wy),
+          quality: AudioQuality.master,
+        ),
+        'https://example.com/m.flac',
+      );
+    });
+
     test('non-http URL is rejected', () async {
       final log = <String>[];
       final engine = LxScriptEngine(
@@ -793,6 +843,59 @@ void main() {
         throwsA(isA<LxScriptException>()),
       );
       expect(engine.scripts.where((s) => s.isCustom), isEmpty);
+    });
+  });
+
+  // P1-L1 tier check on a script-reported tier string — pure logic,
+  // runs on the Linux host too (no JS runtime needed).
+  group('reportedTierFor', () {
+    test('master request: only a literal master report keeps master',
+        () {
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: 'master',
+          requested: AudioQuality.master,
+        ),
+        AudioQuality.master,
+      );
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: 'flac',
+          requested: AudioQuality.master,
+        ),
+        AudioQuality.hires,
+      );
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: '320k',
+          requested: AudioQuality.master,
+        ),
+        AudioQuality.hires,
+      );
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: null,
+          requested: AudioQuality.master,
+        ),
+        isNull,
+      );
+    });
+
+    test('non-master requests keep the declared label', () {
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: 'flac',
+          requested: AudioQuality.hires,
+        ),
+        isNull,
+      );
+      expect(
+        LxScriptEngine.reportedTierFor(
+          reported: 'master',
+          requested: AudioQuality.hires,
+        ),
+        isNull,
+      );
     });
   });
 

@@ -10,6 +10,7 @@
 // All colours come from the active theme (HaoTheme), so the page follows
 // all 4 themes in light and dark mode.
 
+import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -216,7 +217,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(HaoRadius.standard),
             child: song.cover.isEmpty
                 ? Container(
                     width: 44,
@@ -431,7 +432,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
           style: OutlinedButton.styleFrom(
             side: BorderSide(color: theme.accent),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(HaoRadius.panel),
             ),
           ),
           child: Text('加载更多', style: TextStyle(color: theme.accent, fontWeight: FontWeight.w600)),

@@ -10,6 +10,7 @@
 // the top; scrolled down, a "有新日志" pill appears instead (tapping it
 // jumps to the top) so reading never jumps under the finger.
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -227,7 +228,7 @@ class _FilterBar extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: theme.surfaceStrong,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         border: Border.all(color: theme.hairline),
       ),
       child: Row(
@@ -240,7 +241,7 @@ class _FilterBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 7),
                 decoration: BoxDecoration(
                   color: selected ? theme.surfaceSolid : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(HaoRadius.standard),
                 ),
                 alignment: Alignment.center,
                 child: Text(
@@ -275,7 +276,7 @@ class _LogEntryCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: theme.surfaceStrong,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         border: Border.all(color: theme.hairline),
       ),
       child: Row(
@@ -333,7 +334,7 @@ class _LevelBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: _color(HaoTheme.of(context)),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(HaoRadius.standard),
       ),
       child: Text(
         level.label,

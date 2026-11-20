@@ -8,11 +8,9 @@
 // Page: grouped sections render, filter box filters, single delete
 // works, clear-all confirms, refresh shows LIVE / 已下播 / 状态未知.
 
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:standalone/core/models/live_models.dart';
@@ -22,6 +20,8 @@ import 'package:standalone/domains/live/live_history_store.dart';
 import 'package:standalone/domains/live/live_status.dart';
 import 'package:standalone/domains/live/presentation/live_history_page.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
+
+import 'helpers/hive_test_setup.dart';
 
 LiveRoom _room(String roomId, {String platform = 'bilibili'}) =>
     LiveRoom(
@@ -80,36 +80,43 @@ void main() {
   late Directory hiveDir;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    hiveDir = await Directory.systemTemp.createTemp('hao-live-hist-test-');
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          if (call.method == 'getApplicationDocumentsDirectory') {
-            return hiveDir.path;
-          }
-          return null;
-        });
-    await HiveStore.init();
+    hiveDir = await HiveTestSetup.init(prefix: 'hao-live-hist-test-');
   });
 
-  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
-  // fire-and-forget deletes never resolve in the widget-test fake zone, so
-  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
-  // dir is deleted right after anyway.
   tearDownAll(() async {
-    unawaited(HiveStore.box.close());
-    await hiveDir.delete(recursive: true);
+    await HiveTestSetup.dispose(hiveDir);
   });
 
-  tearDown(() async {
+  tearDown(() {
     Get.reset();
+  });
+
+  /// Hive writes are real disk I/O: awaiting them inside the
+  /// fake-async zone never resolves. Run them on the real clock.
+  /// Plain `test`s run on the real clock already, so they delete
+  /// directly; widget tests go through these helpers.
+  Future<void> clearHistoryKeys() async {
     await HiveStore.delete(HiveKeys.liveHistory);
     await HiveStore.delete(HiveKeys.liveHistoryLimit);
-  });
+  }
+
+  Future<void> resetHistory(WidgetTester tester) =>
+      tester.runAsync(clearHistoryKeys);
+
+  Future<void> recordHistory(WidgetTester tester, LiveHistoryEntry e) =>
+      tester.runAsync(() => LiveHistoryStore.recordEntry(e));
+
+  /// Drain the Dio receive-timeout timers left by RefererImage cover
+  /// fetches (10 s). The cards fetch real poster URLs that never
+  /// answer in a widget test, so the timeout Timer stays pending on
+  /// the fake clock and the binding fails the test at the end ("A
+  /// Timer is still pending"). Must run inside the test body.
+  Future<void> drainImageTimers(WidgetTester tester) =>
+      pumpFor(tester, const Duration(seconds: 11));
 
   group('LiveHistoryStore', () {
     test('record dedups and moves re-entry to the front', () async {
+      await clearHistoryKeys();
       await LiveHistoryStore.record(_room('1'));
       await LiveHistoryStore.record(_room('2'));
       await LiveHistoryStore.record(
@@ -164,6 +171,7 @@ void main() {
     });
 
     test('remove deletes one entry, clear deletes all', () async {
+      await clearHistoryKeys();
       await LiveHistoryStore.record(_room('1'));
       await LiveHistoryStore.record(_room('2'));
       await LiveHistoryStore.remove('bilibili', '1');
@@ -176,6 +184,7 @@ void main() {
     });
 
     test('limit: shrink deletes oldest, unlimited keeps all', () async {
+      await clearHistoryKeys();
       expect(LiveHistoryStore.limit, LiveHistoryStore.defaultLimit);
       await LiveHistoryStore.record(_room('1'));
       await LiveHistoryStore.record(_room('2'));
@@ -239,13 +248,17 @@ void main() {
 
     testWidgets('groups entries by day, newest first', (tester) async {
       final now = DateTime.now();
-      await LiveHistoryStore.recordEntry(
+      await resetHistory(tester);
+      await recordHistory(
+        tester,
         _entry('old', at: now.subtract(const Duration(days: 10))),
       );
-      await LiveHistoryStore.recordEntry(
+      await recordHistory(
+        tester,
         _entry('today', at: now.subtract(const Duration(hours: 1))),
       );
-      await LiveHistoryStore.recordEntry(
+      await recordHistory(
+        tester,
         _entry('yest', at: now.subtract(const Duration(days: 1))),
       );
       await pumpHistory(tester);
@@ -256,49 +269,61 @@ void main() {
       expect(find.text('标题 today'), findsOneWidget);
       expect(find.text('标题 yest'), findsOneWidget);
       expect(find.text('标题 old'), findsOneWidget);
+      await drainImageTimers(tester);
     });
 
     testWidgets('filter box narrows by anchor', (tester) async {
-      await LiveHistoryStore.recordEntry(_entry('1', nick: '小明'));
-      await LiveHistoryStore.recordEntry(_entry('2', nick: '小红'));
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('1', nick: '小明'));
+      await recordHistory(tester, _entry('2', nick: '小红'));
       await pumpHistory(tester);
 
       await tester.enterText(find.byType(TextField), '小明');
       await tester.pump();
       expect(find.text('小明 · 哔哩哔哩'), findsOneWidget);
       expect(find.text('小红 · 哔哩哔哩'), findsNothing);
+      await drainImageTimers(tester);
     });
 
     testWidgets('single delete removes only that card', (tester) async {
-      await LiveHistoryStore.recordEntry(_entry('1'));
-      await LiveHistoryStore.recordEntry(_entry('2'));
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('1'));
+      await recordHistory(tester, _entry('2'));
       await pumpHistory(tester);
 
-      // Newest first: the first card is entry 2.
+      // Newest first: the first card is entry 2. The delete handler
+      // awaits the Hive remove; drain the whole queue (a single
+      // settle only drains one queued write and leaves the rest to
+      // poison the next test) — the page's setState after `await
+      // remove()` only runs once the write completes.
       await tester.tap(find.byIcon(Icons.close).first);
-      await tester.pump();
+      await drainHiveWrites(tester);
       expect(LiveHistoryStore.getAll().length, 1);
       expect(find.text('标题 2'), findsNothing);
       expect(find.text('标题 1'), findsOneWidget);
+      await drainImageTimers(tester);
     });
 
     testWidgets('clear-all confirms then empties', (tester) async {
-      await LiveHistoryStore.recordEntry(_entry('1'));
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('1'));
       await pumpHistory(tester);
 
       await tester.tap(find.byIcon(Icons.delete_outline));
       await tester.pump();
       expect(find.text('清空直播历史？'), findsOneWidget);
       await tester.tap(find.text('清空'));
-      await tester.pump();
+      await drainHiveWrites(tester);
       expect(find.text('还没有直播观看记录'), findsOneWidget);
       expect(LiveHistoryStore.getAll(), isEmpty);
+      await drainImageTimers(tester);
     });
 
     testWidgets('refresh shows LIVE / 已下播 / 状态未知', (tester) async {
-      await LiveHistoryStore.recordEntry(_entry('live'));
-      await LiveHistoryStore.recordEntry(_entry('off'));
-      await LiveHistoryStore.recordEntry(_entry('boom'));
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('live'));
+      await recordHistory(tester, _entry('off'));
+      await recordHistory(tester, _entry('boom'));
       await pumpHistory(
         tester,
         siteOf: (_) => FakeStatusSite(
@@ -314,21 +339,25 @@ void main() {
       expect(find.text('已下播'), findsOneWidget);
       expect(find.text('状态未知'), findsOneWidget);
       expect(find.text('1 个状态获取失败'), findsOneWidget);
+      await drainImageTimers(tester);
     });
 
     testWidgets('empty state is honest', (tester) async {
+      await resetHistory(tester);
       await pumpHistory(tester);
       expect(find.text('还没有直播观看记录'), findsOneWidget);
     });
 
     testWidgets('tapping a card opens the room', (tester) async {
       final opened = <String>[];
-      await LiveHistoryStore.recordEntry(_entry('1'));
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('1'));
       await pumpHistory(tester, opened: opened);
 
       await tester.tap(find.text('标题 1'));
       await tester.pump();
       expect(opened, ['1']);
+      await drainImageTimers(tester);
     });
   });
 }

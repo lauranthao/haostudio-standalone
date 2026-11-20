@@ -24,6 +24,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../../../core/cache/disk_image_cache.dart';
 import '../../../core/network/http_client.dart';
 
 final Map<String, Uint8List> _musicImageBytesCache = <String, Uint8List>{};
@@ -47,9 +48,18 @@ String musicImageReferer(String url) {
   return '';
 }
 
+/// Fetch cover bytes: memory cache -> disk cache (P1-P1) -> network.
+/// A network hit is written to the disk cache (fire-and-forget) so the
+/// next cold start does not re-download it.
 Future<Uint8List> fetchMusicImageBytes(String url) async {
   final cached = _musicImageBytesCache[url];
   if (cached != null) return cached;
+  final onDisk = await DiskImageCache.get(url);
+  if (onDisk != null && onDisk.isNotEmpty) {
+    final bytes = Uint8List.fromList(onDisk);
+    _cacheMusicImageBytes(url, bytes);
+    return bytes;
+  }
   final dio = sharedDio();
   final referer = musicImageReferer(url);
   DioException? lastError;
@@ -75,6 +85,7 @@ Future<Uint8List> fetchMusicImageBytes(String url) async {
       if (code >= 200 && code < 300 && data != null && data.isNotEmpty) {
         final bytes = Uint8List.fromList(data);
         _cacheMusicImageBytes(url, bytes);
+        unawaited(DiskImageCache.put(url, bytes));
         return bytes;
       }
       lastError = DioException(
@@ -93,9 +104,19 @@ Future<Uint8List> fetchMusicImageBytes(String url) async {
 /// estimate, no new dependency). Skips near-black / near-white /
 /// transparent pixels so the tint reads as the cover's color. Returns null
 /// when the bytes cannot be decoded or no pixel qualifies.
-Future<Color?> dominantCoverColor(Uint8List bytes) async {
+///
+/// P1-P2: the decode is downsampled to [targetWidth] (200 px) first —
+/// a tint needs no more than that, and decoding the full 800x800 cover
+/// on the UI thread on every track change was the hot path.
+Future<Color?> dominantCoverColor(
+  Uint8List bytes, {
+  int targetWidth = 200,
+}) async {
   try {
-    final codec = await ui.instantiateImageCodec(bytes);
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: targetWidth,
+    );
     final frame = await codec.getNextFrame();
     final image = frame.image;
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -137,14 +158,57 @@ Future<Color?> dominantCoverColor(Uint8List bytes) async {
   }
 }
 
+/// Tint cache, keyed by cover URL (P1-P2): switching back to a song
+/// reuses its tint instead of re-decoding the cover. Only successful
+/// tints are cached — a failed fetch must retry next time.
+final Map<String, Color> _coverTintCache = <String, Color>{};
+const int _kCoverTintCacheMax = 80;
+
+/// Dominant color for a cover URL: bytes come from the shared image
+/// cache (no second download), the decode is downsampled to 200 px
+/// wide, and the result is cached by URL. Returns null on any failure.
+Future<Color?> coverTintForUrl(String url) async {
+  final cached = _coverTintCache[url];
+  if (cached != null) return cached;
+  Color? tint;
+  try {
+    final bytes = await fetchMusicImageBytes(url);
+    tint = await dominantCoverColor(bytes);
+  } catch (_) {
+    tint = null;
+  }
+  if (tint != null) {
+    while (_coverTintCache.length >= _kCoverTintCacheMax) {
+      _coverTintCache.remove(_coverTintCache.keys.first);
+    }
+    _coverTintCache[url] = tint;
+  }
+  return tint;
+}
+
 class MusicImageProvider extends ImageProvider<MusicImageProvider> {
-  const MusicImageProvider(this.url);
+  const MusicImageProvider(this.url, {this.cacheWidth, this.cacheHeight});
 
   final String url;
 
+  /// Downsample target in physical pixels (P1-P1): set from the
+  /// layout size in [obtainKey], so a 48 px avatar never decodes the
+  /// full 800 px cover. Null = decode at full resolution.
+  final int? cacheWidth;
+  final int? cacheHeight;
+
   @override
   Future<MusicImageProvider> obtainKey(ImageConfiguration configuration) {
-    return SynchronousFuture<MusicImageProvider>(this);
+    final size = configuration.size;
+    if (size == null) return SynchronousFuture<MusicImageProvider>(this);
+    final dpr = configuration.devicePixelRatio ?? 1.0;
+    return SynchronousFuture<MusicImageProvider>(
+      MusicImageProvider(
+        url,
+        cacheWidth: (size.width * dpr).ceil(),
+        cacheHeight: (size.height * dpr).ceil(),
+      ),
+    );
   }
 
   @override
@@ -163,23 +227,55 @@ class MusicImageProvider extends ImageProvider<MusicImageProvider> {
     MusicImageProvider key,
     ImageDecoderCallback decode,
   ) async {
-    assert(key == this);
     final bytes = await fetchMusicImageBytes(key.url);
     if (bytes.lengthInBytes == 0) {
       throw StateError('music image empty: ${key.url}');
     }
     final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    return decode(buffer);
+    // Downsample to the layout size (P1-P1): this Flutter's decode
+    // callback takes a getTargetSize, not cacheWidth/cacheHeight
+    // (same contract as ResizeImage). Fit inside the layout box,
+    // preserving aspect, never upscale.
+    return decode(
+      buffer,
+      getTargetSize: (intrinsicWidth, intrinsicHeight) {
+        final cw = key.cacheWidth;
+        final ch = key.cacheHeight;
+        if (cw == null && ch == null) {
+          return const ui.TargetImageSize();
+        }
+        final aspectRatio = intrinsicWidth / intrinsicHeight;
+        final maxWidth = cw ?? intrinsicWidth;
+        final maxHeight = ch ?? intrinsicHeight;
+        var targetWidth = intrinsicWidth;
+        var targetHeight = intrinsicHeight;
+        if (targetWidth > maxWidth) {
+          targetWidth = maxWidth;
+          targetHeight = targetWidth ~/ aspectRatio;
+        }
+        if (targetHeight > maxHeight) {
+          targetHeight = maxHeight;
+          targetWidth = (targetHeight * aspectRatio).floor();
+        }
+        return ui.TargetImageSize(
+          width: targetWidth,
+          height: targetHeight,
+        );
+      },
+    );
   }
 
   @override
   bool operator ==(Object other) {
     if (other.runtimeType != runtimeType) return false;
-    return other is MusicImageProvider && other.url == url;
+    return other is MusicImageProvider &&
+        other.url == url &&
+        other.cacheWidth == cacheWidth &&
+        other.cacheHeight == cacheHeight;
   }
 
   @override
-  int get hashCode => url.hashCode;
+  int get hashCode => Object.hash(url, cacheWidth, cacheHeight);
 
   @override
   String toString() => 'MusicImageProvider("$url")';

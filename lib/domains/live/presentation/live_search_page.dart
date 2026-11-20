@@ -30,6 +30,7 @@
 // cancels the previous one (stale results cannot overwrite the new
 // query), and honest loading / error / empty states — never a blank.
 
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -285,7 +286,7 @@ class _PlatformRow extends StatelessWidget {
               selected: selected,
               selectedColor: theme.accentSoft,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(HaoRadius.panel),
               ),
               side: BorderSide(
                 color: selected ? theme.accent : theme.hairline,
@@ -401,11 +402,11 @@ class _RoomRow extends StatelessWidget {
             HaoHaptics.tap();
             onTap();
           },
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
           child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(HaoRadius.standard),
               child: SizedBox(
                 width: 112,
                 height: 63,
@@ -456,7 +457,7 @@ class _RoomRow extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: theme.liveRed,
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(HaoRadius.badge),
                           ),
                           child: const Text(
                             'LIVE',

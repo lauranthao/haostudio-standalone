@@ -250,9 +250,34 @@ class MusicStore {
     await _writeMap(HiveKeys.musicCoverCache, map);
   }
 
-  // ---- Listen log (hao_listen, max 3000, dur in SECONDS) ----
-  static List<ListenEvent> getListenLog() =>
-      _readList(HiveKeys.musicListen).map(ListenEvent.fromJson).toList();
+  // ---- Listen log (hao_listen_YYYY-MM shards, max 3000 per shard,
+  // dur in SECONDS) ----
+  //
+  // P1-P4: the old single `hao_listen` list was read + JSON-rewritten
+  // whole (up to 3000 entries) on EVERY finished session — the write
+  // sat on the track-change hot path. Events now shard by month:
+  // a write only reads + rewrites the CURRENT month's shard (small),
+  // and [getListenLog] merges the shards (plus the frozen legacy
+  // `hao_listen` list, never written again) newest-first. Readers
+  // only ever use recent windows (report ranges, daily's 30 days),
+  // so the merge order by `at` is what they already assumed.
+  static String _listenShardKey(int atMs) {
+    final d = DateTime.fromMillisecondsSinceEpoch(atMs);
+    return '${HiveKeys.musicListen}_${d.year}-${d.month.toString().padLeft(2, '0')}';
+  }
+
+  static List<ListenEvent> getListenLog() {
+    final out =
+        _readList(HiveKeys.musicListen).map(ListenEvent.fromJson).toList();
+    for (final key in HiveStore.box.keys) {
+      if (key is String &&
+          key.startsWith('${HiveKeys.musicListen}_')) {
+        out.addAll(_readList(key).map(ListenEvent.fromJson));
+      }
+    }
+    out.sort((a, b) => b.at.compareTo(a.at));
+    return out;
+  }
 
   /// Persist a FINISHED listen session (real listened seconds — see
   /// ListenSessionTracker). This replaces the old recordListen(song),
@@ -261,12 +286,62 @@ class MusicStore {
   /// minutes, and every retry / re-open counted the full song again,
   /// so the report's total time was inflated and "not real".
   static Future<void> recordListenEvent(ListenEvent event) async {
-    final log = getListenLog();
+    final key = _listenShardKey(event.at);
+    final log = _readList(key).map(ListenEvent.fromJson).toList();
     log.insert(0, event);
     await _writeList(
-      HiveKeys.musicListen,
+      key,
       log.take(3000).map((e) => e.toJson()).toList(),
     );
+  }
+
+  // ---- Lyrics cache (hao_lyrics, max 100 songs) ----
+  //
+  // P1-P7: lyrics were re-fetched on EVERY song load, even for a song
+  // played minutes ago. Memory cache (this session) + Hive cache
+  // (across restarts), keyed by identityKey. Only non-empty results
+  // are cached — an empty fetch may be a transient failure, or a song
+  // that genuinely has no lyrics yet.
+  static final Map<String, List<LyricLine>> _lyricsMem = {};
+  static const int _kLyricsCacheMax = 100;
+
+  static List<LyricLine>? getLyrics(String identityKey) {
+    final mem = _lyricsMem[identityKey];
+    if (mem != null) return mem;
+    final map = _readMap(HiveKeys.musicLyrics);
+    final raw = map[identityKey];
+    if (raw is List) {
+      final lines = raw
+          .whereType<Map<String, dynamic>>()
+          .map(LyricLine.fromJson)
+          .toList();
+      if (lines.isNotEmpty) {
+        while (_lyricsMem.length >= _kLyricsCacheMax) {
+          _lyricsMem.remove(_lyricsMem.keys.first);
+        }
+        _lyricsMem[identityKey] = lines;
+        return lines;
+      }
+    }
+    return null;
+  }
+
+  static Future<void> putLyrics(
+    String identityKey,
+    List<LyricLine> lines,
+  ) async {
+    if (lines.isEmpty) return;
+    while (_lyricsMem.length >= _kLyricsCacheMax) {
+      _lyricsMem.remove(_lyricsMem.keys.first);
+    }
+    _lyricsMem[identityKey] = lines;
+    final map = _readMap(HiveKeys.musicLyrics);
+    map.remove(identityKey);
+    map[identityKey] = lines.map((l) => l.toJson()).toList();
+    while (map.length > _kLyricsCacheMax) {
+      map.remove(map.keys.first);
+    }
+    await _writeMap(HiveKeys.musicLyrics, map);
   }
 
   // ---- Daily picks cache (hao_daily_YYYY-MM-DD) ----

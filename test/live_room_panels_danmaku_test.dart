@@ -23,7 +23,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:standalone/core/models/live_models.dart';
@@ -41,30 +40,17 @@ import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/shared/platforms/douyu/douyu_danmaku.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 
+import 'helpers/hive_test_setup.dart';
+
 void main() {
   late Directory hiveDir;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    hiveDir = await Directory.systemTemp.createTemp('hao-panels-test-');
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return hiveDir.path;
-      }
-      return null;
-    });
-    await HiveStore.init();
+    hiveDir = await HiveTestSetup.init(prefix: 'hao-panels-test-');
   });
 
-  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
-  // fire-and-forget deletes never resolve in the widget-test fake zone, so
-  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
-  // dir is deleted right after anyway.
   tearDownAll(() async {
-    unawaited(HiveStore.box.close());
-    await hiveDir.delete(recursive: true);
+    await HiveTestSetup.dispose(hiveDir);
   });
 
   tearDown(() {
@@ -440,13 +426,6 @@ void main() {
   // -- Widget tests: S2 / S4 / L04 / L05 -------------------------------
 
   group('LiveRoomPage panels + danmaku', () {
-    Future<void> settle(WidgetTester tester) async {
-      await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-      });
-      await tester.pump();
-    }
-
     Future<void> resetRoomSettings(WidgetTester tester) async {
       await tester.runAsync(() async {
         await DanmakuSettings.setEnabled('huya', true);
@@ -503,6 +482,10 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      // Drain the room's fire-and-forget Hive writes (history record,
+      // breadcrumbs incl. live-closed on dispose) before the test
+      // ends, or the next test's first Hive write hangs forever.
+      await drainHiveWrites(tester);
     }
 
     testWidgets('S2: show-username off hides the sender name', (
@@ -515,6 +498,10 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Alice: hello'), findsOneWidget);
+      // Drain first: a runAsync write queued behind the room's
+      // pending breadcrumb writes never completes (no pump runs
+      // while it is awaited).
+      await drainHiveWrites(tester);
       await tester.runAsync(
         () => DanmakuSettings.setShowUsernames(false),
       );
@@ -569,17 +556,20 @@ void main() {
         const LiveMessage(userName: 'Alice', message: 'hello'),
       );
       await tester.pump();
-      // The highlight is the theme accent wash (accentSoft). Match that
-      // exact color: the room also has other colored containers (the
-      // black video surface from the v1.0.6 landscape fix), so "any
-      // non-transparent color" counts those too.
+      // The highlight is the theme accent wash (accentSoft) on the
+      // danmaku row container. Match that exact color AND the row's
+      // vertical-2 padding: the room has another accentSoft container
+      // (a 40x40 control) that a color-only predicate also matches.
       final highlightColor =
           HaoTheme.of(tester.element(find.byType(LiveRoomPage))).accentSoft;
       await tester.tap(find.text('Alice: hello'));
       await tester.pump();
       expect(
         find.byWidgetPredicate(
-          (w) => w is Container && w.color == highlightColor,
+          (w) =>
+              w is Container &&
+              w.color == highlightColor &&
+              w.padding == const EdgeInsets.symmetric(vertical: 2),
         ),
         findsOneWidget,
       );
@@ -587,7 +577,10 @@ void main() {
       await tester.pump();
       expect(
         find.byWidgetPredicate(
-          (w) => w is Container && w.color == highlightColor,
+          (w) =>
+              w is Container &&
+              w.color == highlightColor &&
+              w.padding == const EdgeInsets.symmetric(vertical: 2),
         ),
         findsNothing,
       );
@@ -608,12 +601,12 @@ void main() {
       );
       await tester.pump();
       await tester.longPress(find.text('Alice: hello'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 500));
       expect(find.text('屏蔽该用户 (Alice)'), findsOneWidget);
       expect(find.text('屏蔽这句话'), findsOneWidget);
       await tester.tap(find.text('屏蔽该用户 (Alice)'));
       await tester.pump();
-      await settle(tester);
+      await drainHiveWrites(tester);
       expect(find.text('Alice: hello'), findsNothing);
       expect(find.text('Alice: again'), findsNothing);
       expect(find.text('Bob: hi'), findsOneWidget);
@@ -638,10 +631,10 @@ void main() {
       );
       await tester.pump();
       await tester.longPress(find.text('Alice: buy now'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 500));
       await tester.tap(find.text('屏蔽这句话'));
       await tester.pump();
-      await settle(tester);
+      await drainHiveWrites(tester);
       expect(find.text('Alice: buy now'), findsNothing);
       // Same keyword in another message is removed too.
       expect(find.text('Bob: buy now!'), findsNothing);
@@ -663,7 +656,7 @@ void main() {
       );
       await pumpRoom(tester, playlist: [other]);
       await tester.tap(find.byIcon(Icons.swap_horiz));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 500));
       expect(find.text('切换直播间'), findsOneWidget);
       expect(find.text('关注'), findsOneWidget);
       expect(find.text('当前列表'), findsOneWidget);
@@ -693,16 +686,33 @@ void main() {
     ) async {
       await resetRoomSettings(tester);
       await pumpRoom(tester);
-      await tester.tap(find.text('详情'));
-      await tester.pumpAndSettle();
+      // L05: the whole room-info bar opens the detail sheet — there
+      // is no '详情' text button in the product (the bar shows the
+      // anchor nick). Tap the nick.
+      await tester.tap(find.text('tester'));
+      // The sheet's entrance animation controller is created during
+      // the frame that installs the route, so a single pump(500ms)
+      // advances the clock BEFORE the animation exists and the sheet
+      // stays fully below the screen (y=1679). Pump once to install
+      // the route, then advance time so the animation can settle.
+      await tester.pump();
+      await pumpFor(tester, const Duration(milliseconds: 700));
       expect(find.text('房间号 660000'), findsOneWidget);
       expect(find.text('复制'), findsOneWidget);
       expect(find.text('分享'), findsOneWidget);
       expect(find.textContaining('App 中打开'), findsOneWidget);
       expect(find.text('关注'), findsOneWidget);
+      // The sheet is tall (scroll-controlled) and the follow button
+      // sits below the fold in the 800x1600 test viewport — scroll
+      // it into view before tapping, or the tap misses off-screen.
+      // ensureVisible, not scrollUntilVisible: the page has several
+      // Scrollables (danmaku list + sheet), and scrollUntilVisible
+      // without an explicit scrollable throws "Too many elements".
+      await tester.ensureVisible(find.text('关注'));
+      await tester.pump();
       await tester.tap(find.text('关注'));
       await tester.pump();
-      await settle(tester);
+      await drainHiveWrites(tester);
       expect(find.text('已关注'), findsOneWidget);
       expect(
         LiveFollowStore.isFollowedRoom(
@@ -712,7 +722,7 @@ void main() {
       );
       await tester.tap(find.text('已关注'));
       await tester.pump();
-      await settle(tester);
+      await drainHiveWrites(tester);
       expect(find.text('关注'), findsOneWidget);
       expect(
         LiveFollowStore.isFollowedRoom(

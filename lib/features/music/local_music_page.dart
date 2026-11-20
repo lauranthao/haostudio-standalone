@@ -7,6 +7,7 @@
 // uses file_picker (mp3/m4a/flac/wav/ogg/aac, multiple). Empty state
 // is honest: "还没有导入本地音频".
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -92,7 +93,6 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
       title: '删除本地文件',
       content: '将删除「${song.title}」的音频文件，此操作无法恢复。',
       confirmLabel: '删除',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (ok != true || !mounted) return;
     await _store.remove(song);
@@ -171,7 +171,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                               height: 48,
                               decoration: BoxDecoration(
                                 color: theme.accentSoft,
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(HaoRadius.standard),
                               ),
                               child: Icon(
                                 Icons.audio_file,

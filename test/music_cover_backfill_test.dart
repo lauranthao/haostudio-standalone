@@ -48,7 +48,11 @@ class FakeCoverApi extends MusicApi {
   Map<String, List<Song>> answers = {};
 
   @override
-  Future<List<Song>> searchWy(String q, int limit) async {
+  Future<List<Song>> searchWy(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async {
     calls.add(q);
     if (throwOnQuery.contains(q)) throw StateError('boom');
     if (delay > Duration.zero) {
