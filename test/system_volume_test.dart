@@ -302,9 +302,14 @@ void main() {
       // Right half of the 16:9 surface (800 wide, 450 tall under the
       // AppBar): upward 100 px. The drag recognizer eats the
       // dead-zone travel (~20 px), so the exact landing depends on
-      // the harness — assert direction + range instead of 0.711:
-      // the drag must raise the system level from 0.6, and the HUD
-      // must show exactly the value sent to the system channel.
+      // the harness — assert direction + range instead of an exact
+      // value: the drag must raise the system level from 0.6, and
+      // the HUD must show exactly the value sent to the system
+      // channel. P1-U2: the live room now shares the VOD
+      // sensitivity (300 px = the full 0-1 range), so 100 px up
+      // lands near 0.6 + 80/300 ≈ 0.87 — not the old live-room
+      // ~0.71. The 0.95 cap allows the dead zone to vary 0-20 px
+      // (0.87-0.93) with margin.
       await tester.dragFrom(
         const Offset(600, 200),
         const Offset(0, -100),
@@ -319,7 +324,7 @@ void main() {
       final lastSet =
           (systemSets.last.arguments as Map)['volume'] as double;
       expect(lastSet, greaterThan(0.6));
-      expect(lastSet, lessThanOrEqualTo(0.72));
+      expect(lastSet, lessThanOrEqualTo(0.95));
       // The player session is never touched by the drag.
       expect(backend.setVolumes, isEmpty);
       // The HUD shows the system value.

@@ -35,6 +35,8 @@ import 'package:standalone/domains/live/presentation/playback/live_room_page.dar
 import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
 
+import 'helpers/hive_test_setup.dart' show drainHiveWrites;
+
 void main() {
   late Directory hiveDir;
 
@@ -164,6 +166,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     await settle(tester);
+    // Drain this room's entry/dispose writes before the next switch
+    // (or the next test) awaits any Hive write — see the file header
+    // note in helpers/hive_test_setup.dart for why one settle is not
+    // enough (each settle drains ~1 queued write).
+    await drainHiveWrites(tester);
   }
 
   group('live room switching (production entry)', () {
@@ -185,6 +192,7 @@ void main() {
       expect(find.text('进入 room A').hitTestable(), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      await drainHiveWrites(tester);
     });
 
     testWidgets('three consecutive switches land on the right room',
@@ -207,6 +215,7 @@ void main() {
       expect(find.text('进入 room A').hitTestable(), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      await drainHiveWrites(tester);
     });
 
     testWidgets('fullscreen toggle still works in the switched room',
@@ -246,6 +255,7 @@ void main() {
       expect(find.byIcon(Icons.fullscreen_exit), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      await drainHiveWrites(tester);
     });
 
     testWidgets('back to list, then enter another room', (tester) async {
@@ -269,6 +279,7 @@ void main() {
       expect(site.danmaku.startCount, greaterThanOrEqualTo(1));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      await drainHiveWrites(tester);
     });
 
     testWidgets('switching releases the old room session', (tester) async {
@@ -286,6 +297,7 @@ void main() {
       expect(site.danmaku.stopCount, 1);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
+      await drainHiveWrites(tester);
     });
   });
 }

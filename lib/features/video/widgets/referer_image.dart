@@ -16,12 +16,14 @@
 // Non-Douban URLs are fetched without a Referer (the header would be
 // meaningless — and possibly harmful — for other hosts).
 
+import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/cache/disk_image_cache.dart';
 import '../../../core/network/http_client.dart';
 
 /// In-memory bytes cache: home/history lists rebuild + dispose cards on
@@ -90,6 +92,15 @@ class _RefererImageState extends State<RefererImage> {
       if (mounted) setState(() => _bytes = cached);
       return;
     }
+    // Disk cache (P1-P1): a poster fetched in a previous session
+    // must not be re-downloaded on every cold start / scroll-back.
+    final onDisk = await DiskImageCache.get(url);
+    if (onDisk != null && onDisk.isNotEmpty) {
+      final bytes = Uint8List.fromList(onDisk);
+      _cacheVideoImageBytes(url, bytes);
+      if (mounted && widget.url == url) setState(() => _bytes = bytes);
+      return;
+    }
     try {
       final isDouban =
           Uri.tryParse(url)?.host.contains('doubanio.com') ?? false;
@@ -116,6 +127,7 @@ class _RefererImageState extends State<RefererImage> {
       }
       final bytes = Uint8List.fromList(data);
       _cacheVideoImageBytes(url, bytes);
+      unawaited(DiskImageCache.put(url, bytes));
       setState(() => _bytes = bytes);
     } catch (_) {
       if (mounted && widget.url == url) setState(() => _failed = true);
@@ -133,6 +145,17 @@ class _RefererImageState extends State<RefererImage> {
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
+      // Downsample the decode to the displayed size (P1-P1): a grid
+      // card never needs the full-resolution poster decoded.
+      cacheWidth: _cacheDimension(widget.width),
+      cacheHeight: _cacheDimension(widget.height),
     );
+  }
+
+  int? _cacheDimension(double? logical) {
+    if (logical == null) return null;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final px = (logical * dpr).ceil();
+    return px > 0 ? px : null;
   }
 }

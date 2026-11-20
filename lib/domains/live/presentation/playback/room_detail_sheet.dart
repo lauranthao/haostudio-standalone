@@ -20,6 +20,7 @@
 // at the top of the room stays visible. Deep links need a real-device
 // test per platform (see live_room_links.dart).
 
+import '../../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -250,7 +251,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     decoration: BoxDecoration(
                       // Red ONLY for the LIVE badge (standing rule).
                       color: theme.liveRed,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(HaoRadius.small),
                     ),
                     child: const Text(
                       'LIVE',
@@ -270,7 +271,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     ),
                     decoration: BoxDecoration(
                       color: theme.surface,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(HaoRadius.small),
                     ),
                     child: Text(
                       '已下播',
@@ -348,7 +349,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       side: BorderSide(color: theme.hairline),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                       ),
                       textStyle: const TextStyle(
                         fontWeight: FontWeight.w600,
@@ -368,7 +369,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       side: BorderSide(color: theme.hairline),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                       ),
                       textStyle: const TextStyle(
                         fontWeight: FontWeight.w600,

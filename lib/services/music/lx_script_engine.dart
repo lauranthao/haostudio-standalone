@@ -1228,6 +1228,44 @@ class LxScriptEngine {
     required AudioQuality quality,
     Map<String, dynamic>? musicInfo,
   }) async {
+    final r = await getMusicUrlWithTier(
+      scriptId: scriptId,
+      platform: platform,
+      song: song,
+      quality: quality,
+      musicInfo: musicInfo,
+    );
+    return r?.url;
+  }
+
+  /// Pure tier check for a script-reported tier string (P1-L1): at
+  /// a master request, only a literal `'master'` report keeps master;
+  /// any other report is hires. Other requests keep the declared
+  /// label (null). Kept separate so it is unit-testable without a JS
+  /// runtime.
+  static AudioQuality? reportedTierFor({
+    required String? reported,
+    required AudioQuality requested,
+  }) {
+    if (requested != AudioQuality.master || reported == null) return null;
+    return reported == 'master' ? AudioQuality.master : AudioQuality.hires;
+  }
+
+  /// Play URL + the tier the script actually served, for the resolver
+  /// loop's Master gate (P1-L1). Most scripts return a bare URL
+  /// string — no tier signal — so the job only exists when the script
+  /// declares the tier (see [scriptJobsFor]) and the declared label
+  /// stands (`actualQuality` null). A script that returns a
+  /// `{url, quality}` / `{url, type}` map is held to the tier it
+  /// reports: at a master request anything but `'master'` is hires,
+  /// never master. Other tiers keep the declared label.
+  Future<({String url, AudioQuality? actualQuality})?> getMusicUrlWithTier({
+    required String scriptId,
+    required String platform,
+    required Song song,
+    required AudioQuality quality,
+    Map<String, dynamic>? musicInfo,
+  }) async {
     final info = _scripts[scriptId];
     if (info == null || !info.loaded) return null;
     final src = info.sourceFor(platform);
@@ -1255,7 +1293,20 @@ class LxScriptEngine {
         source: platform,
         info: {'musicInfo': mi, 'type': qStr},
       );
-      if (v is String && v.isNotEmpty) return toHttps(v);
+      if (v is String && v.isNotEmpty) {
+        return (url: toHttps(v), actualQuality: null);
+      }
+      if (v is Map) {
+        final rawUrl = v['url']?.toString() ?? '';
+        if (rawUrl.isEmpty) return null;
+        final reported =
+            v['quality']?.toString() ?? v['type']?.toString();
+        return (
+          url: toHttps(rawUrl),
+          actualQuality:
+              reportedTierFor(reported: reported, requested: quality),
+        );
+      }
       return null;
     } catch (_) {
       return null;
@@ -1364,13 +1415,21 @@ class LxScriptEngine {
   /// that serves [platform] at [quality], as (key, name, fn).
   /// A script job only exists when the script declares the quality —
   /// a script that lists only 128k/320k never gets a hires job.
-  List<({String key, String name, Future<String> Function() fn})>
+  /// The fn reports the tier the script actually served when the
+  /// script reports one (see [getMusicUrlWithTier], P1-L1).
+  List<
+    ({
+      String key,
+      String name,
+      Future<({String url, AudioQuality? actualQuality})> Function() fn,
+    })
+  >
       scriptJobsFor(
     MusicPlatform platform,
     AudioQuality quality,
     Song song,
   ) {
-    final out = <({String key, String name, Future<String> Function() fn})>[];
+    final out = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>[];
     for (final info in _scripts.values) {
       if (!info.loaded) continue;
       if (!LxScriptSourcesStore.isEnabled(info.id)) continue;
@@ -1382,13 +1441,13 @@ class LxScriptEngine {
           key: 'lx:${info.id}',
           name: info.name,
           fn: () async =>
-              await getMusicUrl(
+              await getMusicUrlWithTier(
                 scriptId: info.id,
                 platform: platform.code,
                 song: song,
                 quality: quality,
               ) ??
-              '',
+              (url: '', actualQuality: null),
         ),
       );
     }

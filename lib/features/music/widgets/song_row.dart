@@ -10,6 +10,7 @@
 // - Tapping the row (cover or meta) plays; heart toggles favourite
 //   without playing; tapping the artist name opens the artist page.
 
+import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/glass.dart';
@@ -66,7 +67,7 @@ class SongRow extends StatelessWidget {
     // the glass row below keeps its own values.
     final titleSize = compact ? 16.0 : 15.0;
     final titleWeight = compact ? FontWeight.w500 : FontWeight.w600;
-    final coverRadius = compact ? 6.0 : 10.0;
+    final coverRadius = compact ? HaoRadius.small : HaoRadius.standard;
     final durationSize = compact ? 11.0 : 12.0;
     final row = Material(
       color: Colors.transparent,
@@ -81,7 +82,9 @@ class SongRow extends StatelessWidget {
                 HaoHaptics.medium();
                 onLongPress!(context);
               },
-        borderRadius: BorderRadius.circular(compact ? 8 : 16),
+        borderRadius: BorderRadius.circular(
+          compact ? HaoRadius.standard : HaoRadius.large,
+        ),
         child: Row(
           children: [
             if (leading != null) ...[leading!, const SizedBox(width: 8)],
@@ -140,7 +143,7 @@ class SongRow extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: theme.accentSoft,
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(HaoRadius.small),
                           ),
                           child: Text(
                             song.platform.badgeName,

@@ -30,6 +30,8 @@
 
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import '../../features/settings/source_stores.dart';
 import 'lx_script_engine.dart';
 import 'music_api.dart';
@@ -158,6 +160,12 @@ class SongSearchService {
   var _generation = 0;
   StreamController<SearchStreamUpdate>? _current;
 
+  /// CancelTokens of the in-flight platform legs of the current
+  /// search (P1-P5). A new search cancels the previous search's
+  /// tokens (see [searchAllStream]) so superseded legs abort their
+  /// Dio requests instead of running on in the background.
+  final _activeTokens = <CancelToken>{};
+
   /// Streaming aggregated search: one [SearchStreamUpdate] per settled
   /// leg, in arrival order; the stream closes when every leg has
   /// settled (or the search was superseded).
@@ -201,11 +209,19 @@ class SongSearchService {
   }) {
     final gen = ++_generation;
     // Supersede the previous search: close its stream so the page's
-    // loop ends at once instead of waiting out its legs.
+    // loop ends at once instead of waiting out its legs, and cancel
+    // its in-flight Dio requests (P1-P5) — a superseded search must
+    // not keep burning network in the background. Cancellation is
+    // not a failure: the old legs' errors are swallowed and nothing
+    // is recorded against the platforms.
     final prev = _current;
     final controller = StreamController<SearchStreamUpdate>();
     _current = controller;
     unawaited(prev?.close());
+    for (final t in _activeTokens) {
+      t.cancel();
+    }
+    _activeTokens.clear();
 
     final platforms = onlyPlatform != null
         ? [onlyPlatform]
@@ -283,20 +299,31 @@ class SongSearchService {
 
     Future<void> runPlatformLeg(MusicPlatform pf) async {
       List<Song> songs;
+      // One token per leg (P1-P5): the 5 s cap cancels the Dio
+      // request itself, so a dead leg stops burning network the
+      // moment it is given up on. A cancelled leg contributes
+      // nothing and is not recorded as a platform failure.
+      final token = CancelToken();
+      _activeTokens.add(token);
       try {
         songs = await _api
-            .searchOne(pf, query)
+            .searchOne(pf, query, cancelToken: token)
             // 2026-11-17: per-leg 5 s cap. searchOne's own timeouts
             // are 10 s and kg/kw retry — a dead leg used to hold the
             // whole aggregated search 10–21 s. A leg that cannot
             // answer in 5 s contributes nothing.
             .timeout(
               const Duration(seconds: 5),
-              onTimeout: () => <Song>[],
+              onTimeout: () {
+                token.cancel();
+                return <Song>[];
+              },
             )
             .catchError((_) => <Song>[]);
       } catch (_) {
         songs = const [];
+      } finally {
+        _activeTokens.remove(token);
       }
       if (!isLive()) return;
       try {

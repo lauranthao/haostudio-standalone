@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Song search (fix 12).
@@ -160,7 +161,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () => Navigator.of(ctx).pop(pf),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
@@ -968,7 +969,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       color: Colors.transparent,
                       child: ListTile(
                         leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(HaoRadius.standard),
                           child: p.cover.isEmpty
                               ? Container(
                                   width: 48,
@@ -1150,7 +1151,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       color: Colors.transparent,
                       child: ListTile(
                         leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(HaoRadius.standard),
                           child: a.cover.isEmpty
                               ? Container(
                                   width: 46,

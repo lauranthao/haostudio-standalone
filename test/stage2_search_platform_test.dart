@@ -6,6 +6,7 @@
 // (fake API legs per platform, fakeAsync timing like
 // music_search_stream_test.dart).
 
+import 'package:dio/dio.dart';
 import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
@@ -27,7 +28,7 @@ class _FakeApi extends MusicApi {
   final Map<MusicPlatform, List<Song>> results;
 
   @override
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) async {
+  Future<List<Song>> searchOne(MusicPlatform pf, String q, {CancelToken? cancelToken}) async {
     return List.of(results[pf] ?? const []);
   }
 }

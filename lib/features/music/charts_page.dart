@@ -7,6 +7,7 @@
 // frequency + track count, the only honest per-chart metadata the
 // toplist API returns.
 
+import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -179,13 +180,13 @@ class _ChartsPageState extends State<ChartsPage> {
                         ),
                       );
                     },
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(HaoRadius.sheet),
                     child: Padding(
                       padding: EdgeInsets.zero,
                       child: Row(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(HaoRadius.large),
                             child: c.cover.isEmpty
                                 ? Container(
                                     width: 52,

@@ -596,6 +596,18 @@ class LyricLine {
   /// Translation line (NetEase `tlyric`, Beans shows it under the
   /// focused line when present). Null when the source has none.
   final String? translation;
+
+  Map<String, dynamic> toJson() => {
+        't': t,
+        'text': text,
+        if (translation != null) 'translation': translation,
+      };
+
+  factory LyricLine.fromJson(Map<String, dynamic> j) => LyricLine(
+        t: (j['t'] as num?)?.toDouble() ?? 0,
+        text: j['text']?.toString() ?? '',
+        translation: j['translation']?.toString(),
+      );
 }
 
 /// One listen event (hao_listen). `dur` is the seconds actually

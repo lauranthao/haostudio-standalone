@@ -9,6 +9,7 @@
 // "还没有观看记录". Clear-all lives in the AppBar and also clears the
 // saved resume positions, so a cleared video offers no stale resume.
 
+import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -164,7 +165,7 @@ class _HistoryRow extends StatelessWidget {
                     // hole in light modes). The progress scrim below
                     // stays black — it sits ON the artwork.
                     color: theme.surfaceStrong,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(HaoRadius.large),
                     border: Border.all(color: theme.hairline),
                   ),
                   clipBehavior: Clip.antiAlias,

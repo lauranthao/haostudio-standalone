@@ -104,6 +104,7 @@ class HiveKeys {
   static const String musicListen = 'hao_listen'; // [ListenEvent] max 3000
   static const String musicSearchHist = 'hao_music_search_hist'; // [String] max 20
   static const String musicCoverCache = 'hao_cover_cache'; // {normTitle|normArtist: coverUrl} max 500
+  static const String musicLyrics = 'hao_lyrics'; // {identityKey: [LyricLine]} max 100 (P1-P7)
   static const String musicPlazaPf = 'musicPlazaPf'; // 'wy' default
   static const String musicSpeed = 'musicSpeed'; // double 0.6..2.0, default 1.0 (M-P0-2)
   static const String musicQueue = 'musicQueue'; // {songs: [Song], index: int} (M-P0-4)
@@ -170,7 +171,8 @@ class HiveKeys {
 
   /// Tab-bar selected colour (icon + label of the selected tab),
   /// user-chosen in settings → 自定义强调色. Int ARGB, stored with
-  /// its opacity; default NetEase red (see TabBarAccentController).
+  /// its opacity; absent = no custom colour, the theme's own accent
+  /// shows (see TabBarAccentController).
   /// Only the tab-bar selected state reads it — nothing else.
   static const String tabBarAccentColor = 'hao_tabbar_accent';
 

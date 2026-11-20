@@ -1,3 +1,4 @@
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Floating play-queue panel (fix 15) — Apple Music "Up Next" style.
@@ -207,7 +208,7 @@ class PlayQueuePanel extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 4),
                                   ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(HaoRadius.standard),
                                     child: song.cover.isEmpty
                                         ? Container(
                                             width: 40,

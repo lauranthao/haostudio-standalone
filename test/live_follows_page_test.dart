@@ -9,11 +9,9 @@
 // - Unfollow removes the follow; tapping a card opens the room.
 // - A failed status check is 状态未知 and never counted as live.
 
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:standalone/core/models/live_models.dart';
@@ -22,6 +20,8 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/domains/live/live_follow_store.dart';
 import 'package:standalone/domains/live/presentation/live_follows_page.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
+
+import 'helpers/hive_test_setup.dart';
 
 LiveRoom _room(String roomId, {String platform = 'bilibili'}) => LiveRoom(
   roomId: roomId,
@@ -55,32 +55,29 @@ void main() {
   late Directory hiveDir;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    hiveDir = await Directory.systemTemp.createTemp('hao-live-follow-test-');
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-          if (call.method == 'getApplicationDocumentsDirectory') {
-            return hiveDir.path;
-          }
-          return null;
-        });
-    await HiveStore.init();
+    hiveDir = await HiveTestSetup.init(prefix: 'hao-live-follow-test-');
   });
 
-  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
-  // fire-and-forget deletes never resolve in the widget-test fake zone, so
-  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
-  // dir is deleted right after anyway.
   tearDownAll(() async {
-    unawaited(HiveStore.box.close());
-    await hiveDir.delete(recursive: true);
+    await HiveTestSetup.dispose(hiveDir);
   });
 
-  tearDown(() async {
+  tearDown(() {
     Get.reset();
-    await HiveStore.delete(HiveKeys.liveFollows);
   });
+
+  /// Hive writes are real disk I/O: they hang inside the fake-async
+  /// zone, so run them on the real clock. The in-memory box updates
+  /// synchronously, but the returned Future only resolves on real
+  /// time — awaiting it in the test body stalls the test.
+  Future<void> addFollow(WidgetTester tester, LiveRoom room) =>
+      tester.runAsync(() => LiveFollowStore.add(room));
+
+  /// Per-test isolation: the store persists across tests in the same
+  /// file, and counts/chips assert exact numbers. Clear on the real
+  /// clock at the start of every test that seeds follows.
+  Future<void> resetFollows(WidgetTester tester) =>
+      tester.runAsync(() => HiveStore.delete(HiveKeys.liveFollows));
 
   Future<void> pumpFollows(
     WidgetTester tester, {
@@ -103,8 +100,9 @@ void main() {
   }
 
   testWidgets('tabs show live / not-live counts', (tester) async {
-    await LiveFollowStore.add(_room('live'));
-    await LiveFollowStore.add(_room('off'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('live'));
+    await addFollow(tester, _room('off'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(liveIds: {'live'}),
@@ -119,8 +117,9 @@ void main() {
 
   testWidgets('tapping the not-live tab shows offline follows',
       (tester) async {
-    await LiveFollowStore.add(_room('live'));
-    await LiveFollowStore.add(_room('off'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('live'));
+    await addFollow(tester, _room('off'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(liveIds: {'live'}),
@@ -134,7 +133,8 @@ void main() {
   });
 
   testWidgets('tapping a tab re-refreshes statuses', (tester) async {
-    await LiveFollowStore.add(_room('a'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('a'));
     final site = FakeStatusSite(liveIds: {});
     await pumpFollows(tester, site: site);
     expect(find.text('已开播 (0)'), findsOneWidget);
@@ -149,8 +149,9 @@ void main() {
   });
 
   testWidgets('platform chips filter the list', (tester) async {
-    await LiveFollowStore.add(_room('b1', platform: 'bilibili'));
-    await LiveFollowStore.add(_room('d1', platform: 'douyu'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('b1', platform: 'bilibili'));
+    await addFollow(tester, _room('d1', platform: 'douyu'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(liveIds: {'b1', 'd1'}),
@@ -167,7 +168,8 @@ void main() {
   });
 
   testWidgets('no replay tab is faked', (tester) async {
-    await LiveFollowStore.add(_room('live'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('live'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(liveIds: {'live'}),
@@ -178,7 +180,8 @@ void main() {
 
   testWidgets('failed check is unknown, never counted as live',
       (tester) async {
-    await LiveFollowStore.add(_room('boom'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('boom'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(throwIds: {'boom'}),
@@ -195,6 +198,7 @@ void main() {
 
   testWidgets('empty state is honest with a go-browse action',
       (tester) async {
+    await resetFollows(tester);
     final browsed = <bool>[];
     await pumpFollows(
       tester,
@@ -210,7 +214,8 @@ void main() {
 
   testWidgets('per-group empty state when nobody is live',
       (tester) async {
-    await LiveFollowStore.add(_room('off'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('off'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(),
@@ -223,7 +228,8 @@ void main() {
   testWidgets('unfollow removes the follow, card tap opens the room',
       (tester) async {
     final opened = <String>[];
-    await LiveFollowStore.add(_room('live'));
+    await resetFollows(tester);
+    await addFollow(tester, _room('live'));
     await pumpFollows(
       tester,
       site: FakeStatusSite(liveIds: {'live'}),
@@ -235,15 +241,21 @@ void main() {
     expect(opened, ['live']);
 
     await tester.tap(find.byIcon(Icons.favorite).first);
-    await tester.pump();
+    // The unfollow handler awaits the Hive remove; drain the whole
+    // queue — a single settle only drains one queued write and the
+    // remove is issued on the last pump, after the settle's real-zone
+    // yield, so it would otherwise poison the next test.
+    await drainHiveWrites(tester);
     expect(LiveFollowStore.getAll(), isEmpty);
     expect(find.text('还没有关注的主播'), findsOneWidget);
   });
 
   test('follow store: add / toggle / platforms', () async {
+    await HiveStore.delete(HiveKeys.liveFollows);
     expect(LiveFollowStore.isFollowed('bilibili', '1'), isFalse);
     expect(await LiveFollowStore.toggle(_room('1')), isTrue);
     expect(await LiveFollowStore.toggle(_room('1')), isFalse);
+    // Plain test: real clock here, direct awaits are fine.
     await LiveFollowStore.add(_room('b1', platform: 'bilibili'));
     await LiveFollowStore.add(_room('d1', platform: 'douyu'));
     expect(LiveFollowStore.followedPlatforms(), ['douyu', 'bilibili']);

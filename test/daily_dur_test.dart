@@ -14,6 +14,7 @@
 // earlier); the report's TOTAL time still sums `dur` (heard seconds)
 // — that split is the point, and the sibling test below pins it.
 
+import 'package:dio/dio.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -28,10 +29,18 @@ import 'package:standalone/services/music/music_store.dart';
 /// list is exactly the "because you listened" rows from the log.
 class _EmptyApi extends MusicApi {
   @override
-  Future<List<Song>> searchWy(String q, int limit) async => [];
+  Future<List<Song>> searchWy(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async => [];
 
   @override
-  Future<List<Song>> searchTx(String q, int limit) async => [];
+  Future<List<Song>> searchTx(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async => [];
 
   @override
   Future<List<PlaylistSummary>> plaza(MusicPlatform pf) async => [];

@@ -15,7 +15,6 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:standalone/app/consts.dart';
@@ -23,6 +22,8 @@ import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/settings/update_dialog.dart';
 import 'package:standalone/services/update_service.dart';
+
+import 'helpers/hive_test_setup.dart';
 
 Map<String, dynamic> _manifest(String version, [int build = 6]) => {
       'version': version,
@@ -77,32 +78,25 @@ void main() {
   late Directory hiveDir;
 
   setUpAll(() async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    hiveDir = await Directory.systemTemp.createTemp('hao-update-test-');
-    // HiveStore.init() goes through path_provider; point it at a temp
-    // dir (same pattern as live_quality_line_test.dart).
-    const channel = MethodChannel('plugins.flutter.io/path_provider');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'getApplicationDocumentsDirectory') {
-        return hiveDir.path;
-      }
-      return null;
-    });
-    await HiveStore.init();
+    hiveDir = await HiveTestSetup.init(prefix: 'hao-update-test-');
   });
 
-  // NOTE: do NOT await the Hive box close here. Pending Hive writes from
-  // fire-and-forget deletes never resolve in the widget-test fake zone, so
-  // awaiting close() hangs tearDownAll forever. Fire-and-forget: the temp
-  // dir is deleted right after anyway.
   tearDownAll(() async {
-    unawaited(HiveStore.box.close());
-    await hiveDir.delete(recursive: true);
+    await HiveTestSetup.dispose(hiveDir);
   });
 
-  setUp(() async {
-    await HiveStore.box.clear();
+  // P1-T1: awaiting box.clear() in setUp hangs every widget test —
+  // the clear's disk-write Future never resolves in the fake-async
+  // zone. It is ALSO wrong unawaited: box.clear() only clears the
+  // in-memory box AFTER `await backend.clear()` resolves, so an
+  // unawaited clear lands after the test body's own Hive puts and
+  // wipes them (proven by the Skip-logic tests: skipVersion's put
+  // vanished before checkManual read it). Delete only the key these
+  // tests use: HiveStore.delete applies to memory synchronously
+  // (beginTransaction runs before the first await), and no other key
+  // in this file needs isolating between tests.
+  setUp(() {
+    unawaited(HiveStore.delete(HiveKeys.skippedVersion));
   });
 
   tearDown(() {
@@ -246,10 +240,16 @@ void main() {
   });
 
   group('showUpdateDialog', () {
-    const info = UpdateInfo(
-      version: '1.0.5',
+    // The dialog must offer a version NEWER than the app: checkManual
+    // classifies anything older as upToDate, so the old hard-coded
+    // '1.0.5' made the skip test's final checkManual return upToDate
+    // instead of skipped once the app passed 1.0.5 (same staleness
+    // _newerVersion was written for above).
+    final dialogVersion = _newerVersion();
+    final info = UpdateInfo(
+      version: dialogVersion,
       build: 6,
-      ipaUrl: 'https://example.com/hao-1.0.5.ipa',
+      ipaUrl: 'https://example.com/hao-$dialogVersion.ipa',
       changelog: '新功能：测试更新日志',
     );
 
@@ -279,15 +279,15 @@ void main() {
         ),
       );
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
     }
 
     testWidgets('shows version + changelog and all three buttons',
         (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       await pumpDialog(tester, service: service);
 
-      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsOneWidget);
+      expect(find.text('发现新版本 v$dialogVersion (build 6)'), findsOneWidget);
       expect(find.text('新功能：测试更新日志'), findsOneWidget);
       expect(find.text('下载'), findsOneWidget);
       expect(find.text('跳过此版本'), findsOneWidget);
@@ -296,7 +296,7 @@ void main() {
 
     testWidgets('下载 opens the IPA URL and returns download',
         (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       final opened = <Uri>[];
       UpdateDialogAction? action;
       await tester.pumpWidget(
@@ -323,19 +323,19 @@ void main() {
         ),
       );
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
       await tester.tap(find.text('下载'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
 
-      expect(opened, [Uri.parse('https://example.com/hao-1.0.5.ipa')]);
+      expect(opened, [Uri.parse('https://example.com/hao-$dialogVersion.ipa')]);
       expect(action, UpdateDialogAction.download);
       // Dialog dismissed after a successful open.
-      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsNothing);
+      expect(find.text('发现新版本 v$dialogVersion (build 6)'), findsNothing);
     });
 
     testWidgets('下载 failure keeps the dialog open and shows a hint',
         (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       await tester.pumpWidget(
         GetMaterialApp(
           theme: HaoThemes.of(HaoThemeId.appleGlass).light,
@@ -357,25 +357,35 @@ void main() {
         ),
       );
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
       await tester.tap(find.text('下载'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('无法打开下载链接，请检查网络后重试'), findsOneWidget);
-      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsOneWidget);
+      expect(find.text('发现新版本 v$dialogVersion (build 6)'), findsOneWidget);
 
       // Close the snackbar before the test ends: Get.snackbar leaves a
       // pending 3 s auto-dismiss timer and an active animation ticker;
-      // leaving them behind fails teardown ("Timer is still pending")
-      // and poisons the next test's pumps with a stale ticker.
+      // leaving them behind fails teardown (Overlay disposed with an
+      // active ticker) and poisons the next test's pumps with a stale
+      // ticker. Pump until it is actually gone — the exit animation
+      // outlives a single 500 ms pump.
       Get.closeAllSnackbars();
-      await tester.pumpAndSettle();
+      for (var i = 0;
+          i < 10 &&
+              find
+                  .text('无法打开下载链接，请检查网络后重试')
+                  .evaluate()
+                  .isNotEmpty;
+          i++) {
+        await pumpFor(tester, const Duration(milliseconds: 300));
+      }
     });
 
     testWidgets('跳过此版本 records the skip and returns skipped',
         (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       UpdateDialogAction? action;
       await tester.pumpWidget(
         GetMaterialApp(
@@ -397,12 +407,12 @@ void main() {
         ),
       );
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
       await tester.tap(find.text('跳过此版本'));
       // The dialog pops synchronously on tap now (the skip is
-      // recorded in the background), so pumpAndSettle deterministically
+      // recorded in the background), so a bounded pump deterministically
       // closes it and `action` is set — no disk I/O in this path.
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
 
       expect(action, UpdateDialogAction.skipped);
       // The background Hive write still needs real time to land
@@ -413,16 +423,21 @@ void main() {
       });
       expect(
         HiveStore.getString(HiveKeys.skippedVersion, ''),
-        '1.0.5+6',
+        '$dialogVersion+6',
       );
       // Skipped version is now classified as skipped by checkManual.
-      final (result, _) = await service.checkManual();
-      expect(result, UpdateCheckResult.skipped);
+      // runAsync: checkManual awaits a Dio fetch guarded by a 30 s
+      // .timeout Timer — both live on the fake clock in a widget
+      // test, and Dio's event-queue work never progresses without a
+      // pump, so awaiting it in the test body hangs forever.
+      // (runAsync returns T?, so destructure after a null check.)
+      final checked = await tester.runAsync(() => service.checkManual());
+      expect(checked?.$1, UpdateCheckResult.skipped);
     });
 
     testWidgets('稍后 dismisses without recording anything',
         (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       UpdateDialogAction? action;
       await tester.pumpWidget(
         GetMaterialApp(
@@ -444,17 +459,17 @@ void main() {
         ),
       );
       await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
       await tester.tap(find.text('稍后'));
-      await tester.pumpAndSettle();
+      await pumpFor(tester, const Duration(milliseconds: 300));
 
       expect(action, UpdateDialogAction.later);
       expect(HiveStore.getString(HiveKeys.skippedVersion, ''), '');
-      expect(find.text('发现新版本 v1.0.5 (build 6)'), findsNothing);
+      expect(find.text('发现新版本 v$dialogVersion (build 6)'), findsNothing);
     });
 
     testWidgets('renders in all 4 themes x light/dark', (tester) async {
-      final service = UpdateService(dio: _stubDio(_manifest('1.0.5')));
+      final service = UpdateService(dio: _stubDio(_manifest(dialogVersion)));
       for (final id in HaoThemeId.values) {
         for (final mode in [ThemeMode.light, ThemeMode.dark]) {
           final pair = HaoThemes.of(id);
@@ -480,15 +495,15 @@ void main() {
             ),
           );
           await tester.tap(find.text('open'));
-          await tester.pumpAndSettle();
+          await pumpFor(tester, const Duration(milliseconds: 300));
           expect(
-            find.text('发现新版本 v1.0.5 (build 6)'),
+            find.text('发现新版本 v$dialogVersion (build 6)'),
             findsOneWidget,
             reason: 'theme $id mode $mode',
           );
           expect(find.text('下载'), findsOneWidget, reason: 'theme $id');
           await tester.tap(find.text('稍后'));
-          await tester.pumpAndSettle();
+          await pumpFor(tester, const Duration(milliseconds: 300));
         }
       }
     });

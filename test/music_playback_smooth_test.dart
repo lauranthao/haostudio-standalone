@@ -42,7 +42,7 @@ class _HangingApi extends MusicApi {
   _HangingApi() : super(dio: Dio());
 
   @override
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) =>
+  Future<List<Song>> searchOne(MusicPlatform pf, String q, {CancelToken? cancelToken}) =>
       Completer<List<Song>>().future;
 }
 
@@ -60,6 +60,7 @@ class _DeferredResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) =>
       completer.future;
 }
@@ -75,6 +76,7 @@ class _NullResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async =>
       null;
 }
@@ -90,6 +92,7 @@ class _UrlResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async =>
       PlayUrlResult(
         url: 'https://example.com/a.flac',

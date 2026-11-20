@@ -11,7 +11,7 @@
 //   (the tab bar keeps the translucency); loadFromBox restores it;
 //   clearCustomAccent restores the per-theme defaults.
 // - The sheet's 恢复默认 deletes the stored colour and clears the
-//   override (tab bar back to NetEase red).
+//   override (no custom colour: the theme's own accent shows).
 //
 // Harness mirrors tab_bar_accent_test.dart (temp Hive dir +
 // in-memory test box); the sheet section mirrors
@@ -245,7 +245,8 @@ void main() {
   });
 
   group('TabBarAccentController.reset', () {
-    test('deletes the stored colour and restores NetEase red', () async {
+    test('deletes the stored colour and leaves no choice (null)',
+        () async {
       const blue = Color(0xFF2563EB);
       final controller = TabBarAccentController.ensure();
       await controller.setColor(blue);
@@ -254,7 +255,7 @@ void main() {
         blue.toARGB32(),
       );
       await controller.reset();
-      expect(controller.color.value, TabBarAccentController.defaultColor);
+      expect(controller.color.value, isNull);
       expect(HiveStore.box.containsKey(HiveKeys.tabBarAccentColor),
           isFalse);
     });
@@ -326,12 +327,70 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         TabBarAccentController.ensure().color.value,
-        TabBarAccentController.defaultColor,
+        isNull,
       );
       expect(themeController.customAccent.value, isNull);
       expect(tabIconColor(tester, 0), textPrimary);
       expect(HiveStore.box.containsKey(HiveKeys.tabBarAccentColor),
           isFalse);
+    });
+  });
+
+  group('P1-U6: no purple/magenta custom accent', () {
+    double hueOf(Color c) => HSVColor.fromColor(c).hue;
+
+    test('clampAccentHue: 260-320 band clamps to 260 blue', () {
+      final purple = HSVColor.fromAHSV(1, 280, 0.8, 0.9).toColor();
+      expect(hueOf(clampAccentHue(purple)), closeTo(260, 0.5));
+      final magenta = HSVColor.fromAHSV(1, 300, 1, 1).toColor();
+      expect(hueOf(clampAccentHue(magenta)), closeTo(260, 0.5));
+      // Boundaries and outside the band pass through.
+      expect(
+        hueOf(clampAccentHue(HSVColor.fromAHSV(1, 260, 0.8, 0.9).toColor())),
+        closeTo(260, 0.5),
+      );
+      expect(
+        hueOf(clampAccentHue(HSVColor.fromAHSV(1, 240, 0.8, 0.9).toColor())),
+        closeTo(240, 0.5),
+      );
+      expect(
+        hueOf(clampAccentHue(HSVColor.fromAHSV(1, 330, 0.8, 0.9).toColor())),
+        closeTo(330, 0.5),
+      );
+      expect(
+        hueOf(clampAccentHue(HSVColor.fromAHSV(1, 0, 0.8, 0.9).toColor())),
+        closeTo(0, 0.5),
+      );
+    });
+
+    test('setCustomAccent clamps a purple pick to blue', () {
+      final controller = ThemeController();
+      controller.setCustomAccent(
+        HSVColor.fromAHSV(1, 285, 0.9, 0.9).toColor(),
+      );
+      expect(hueOf(controller.customAccent.value!), closeTo(260, 0.5));
+    });
+
+    test('setColor stores the clamped colour, not the purple', () async {
+      final controller = TabBarAccentController.ensure();
+      await controller.setColor(
+        HSVColor.fromAHSV(1, 300, 1, 1).toColor(),
+      );
+      expect(hueOf(controller.color.value!), closeTo(260, 0.5));
+      expect(
+        hueOf(Color(HiveStore.getInt(HiveKeys.tabBarAccentColor, 0))),
+        closeTo(260, 0.5),
+      );
+    });
+
+    test('loadFromBox clamps a stored purple from before the fix', () {
+      HiveStore.box.put(
+        HiveKeys.tabBarAccentColor,
+        HSVColor.fromAHSV(1, 290, 0.9, 0.9).toColor().toARGB32(),
+      );
+      final controller = ThemeController();
+      controller.loadFromBox(HiveStore.box);
+      expect(hueOf(controller.customAccent.value!), closeTo(260, 0.5));
     });
   });
 }

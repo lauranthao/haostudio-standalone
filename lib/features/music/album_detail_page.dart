@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Album detail page — Apple Music reference (memory 2026-11-16).
@@ -321,7 +322,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final size = MediaQuery.of(context).size.width * 0.62;
     return Center(
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(HaoRadius.panel),
         child: cover.isEmpty
             ? Container(
                 width: size,
@@ -387,7 +388,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         HaoHaptics.tap();
         onTap();
       },
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(HaoRadius.sheet),
       child: GlassCard(
         radius: 999,
         quality: GlassCardQuality.standard,

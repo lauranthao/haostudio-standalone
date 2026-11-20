@@ -1,5 +1,6 @@
-// Tab-bar accent colour: default NetEase red, set() persists to
-// Hive and applies immediately through the Rx.
+// Tab-bar accent colour: no choice stored (null — the theme's own
+// accent shows), set() persists to Hive and applies immediately
+// through the Rx.
 
 import 'dart:async';
 import 'dart:io';
@@ -47,13 +48,12 @@ void main() {
     Get.delete<TabBarAccentController>(force: true);
   });
 
-  test('default is NetEase red when nothing is stored', () {
+  test('no stored colour means no choice (null), not a fake red',
+      () {
     final controller = TabBarAccentController.ensure();
-    expect(controller.color.value, TabBarAccentController.defaultColor);
-    expect(
-      TabBarAccentController.defaultColor,
-      const Color(0xFFFA2D2D),
-    );
+    // P0-5: a fresh install shows the theme's own accent — the
+    // controller holds no colour at all until the user picks one.
+    expect(controller.color.value, isNull);
   });
 
   test('setColor persists and applies immediately', () async {

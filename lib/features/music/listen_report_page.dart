@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Listen report (audit P0-3 + fix 17.2).
@@ -234,7 +235,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
                         color: report.perDay[i].plays > 0
                             ? theme.accent
                             : theme.accentSoft,
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(HaoRadius.badge),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -363,7 +364,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
               height: 8,
               decoration: BoxDecoration(
                 color: theme.accentSoft,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(HaoRadius.badge),
               ),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
@@ -371,7 +372,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
                 child: Container(
                   decoration: BoxDecoration(
                     color: theme.accent,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(HaoRadius.badge),
                   ),
                 ),
               ),

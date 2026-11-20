@@ -420,6 +420,7 @@ class MusicDownloadService {
         song.platform,
         quality,
         song.title,
+        artist: song.artist,
       );
       if (r == null || r.url.isEmpty) {
         status[song.identityKey] = DownloadStatus.failed;

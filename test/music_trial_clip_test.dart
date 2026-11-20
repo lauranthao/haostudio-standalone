@@ -89,6 +89,7 @@ class _FakeResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     return altResult;
   }

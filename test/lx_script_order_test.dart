@@ -40,10 +40,10 @@ class _FakeOrderEngine extends LxScriptEngine {
           assetLoader: (_) async => throw StateError('no assets'),
         );
 
-  final List<({String key, String name, Future<String> Function() fn})> jobs;
+  final List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})> jobs;
 
   @override
-  List<({String key, String name, Future<String> Function() fn})>
+  List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>
       scriptJobsFor(
     MusicPlatform platform,
     AudioQuality quality,
@@ -72,7 +72,7 @@ Dio _emptyDio() {
   return dio;
 }
 
-List<({String key, String name, Future<String> Function() fn})> _jobs(
+List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})> _jobs(
   List<String> calls,
 ) => [
       (
@@ -80,7 +80,7 @@ List<({String key, String name, Future<String> Function() fn})> _jobs(
         name: 'AAA',
         fn: () async {
           calls.add('aaa');
-          return 'https://example.com/a.mp3';
+          return (url: 'https://example.com/a.mp3', actualQuality: null);
         },
       ),
       (
@@ -88,7 +88,7 @@ List<({String key, String name, Future<String> Function() fn})> _jobs(
         name: 'BBB',
         fn: () async {
           calls.add('bbb');
-          return 'https://example.com/b.mp3';
+          return (url: 'https://example.com/b.mp3', actualQuality: null);
         },
       ),
     ];
@@ -233,14 +233,15 @@ void main() {
     test('cooled script job goes last despite manual order', () async {
       await LxScriptSourcesStore.saveScriptOrder(['bbb', 'aaa']);
       final calls = <String>[];
-      final hanging = Completer<String>();
-      final jobs = <({String key, String name, Future<String> Function() fn})>[
+      final hanging =
+          Completer<({String url, AudioQuality? actualQuality})>();
+      final jobs = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>[
         (
           key: 'lx:aaa',
           name: 'AAA',
           fn: () async {
             calls.add('aaa');
-            return 'https://example.com/a.mp3';
+            return (url: 'https://example.com/a.mp3', actualQuality: null);
           },
         ),
         (

@@ -118,7 +118,14 @@ void main() {
     HaoHaptics.debugEnabledOverride = false;
     await HiveStore.delete(HiveKeys.featureCoverPlaza);
     await HiveStore.delete(HiveKeys.featureCoverCharts);
+    // Listen log is sharded by month (P1-P4): clear the legacy key
+    // AND every shard, not just `hao_listen`.
     await HiveStore.delete(HiveKeys.musicListen);
+    for (final key in HiveStore.box.keys.toList()) {
+      if (key is String && key.startsWith('${HiveKeys.musicListen}_')) {
+        await HiveStore.delete(key);
+      }
+    }
     Get.put(MusicPlayerController());
   });
 
