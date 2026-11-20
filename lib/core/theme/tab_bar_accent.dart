@@ -1,10 +1,16 @@
-// Tab-bar selected colour (icon + label of the selected tab).
+// Tab-bar selected colour (icon + label of the selected tab) —
+// and, since 1.1.5+21, the source of the app-wide custom accent.
 //
-// User-chosen via the colour picker (settings → 自定义强调色). It
-// controls ONLY the tab-bar selected state — nothing else in the app
-// reads it. The pill itself stays a transparent liquid-glass lens
-// (never coloured, never black); the bar background stays theme
-// glass. Default is NetEase red (chen: the tab bar copies NetEase).
+// User-chosen via the colour picker (settings → 自定义强调色). The
+// tab bar reads this controller directly (with the stored opacity —
+// a translucent selected tab is a look). The theme reads the SAME
+// stored colour through ThemeController (opaque form): every
+// accent-role usage (switches, selected chips, play buttons,
+// progress, highlights) follows it, so the picked colour is the
+// accent everywhere. The pill itself stays a transparent
+// liquid-glass lens (never coloured, never black); the bar
+// background stays theme glass. Default is NetEase red (chen: the
+// tab bar copies NetEase).
 //
 // The colour is stored with its opacity (Hive int ARGB) and applied
 // as-is, so a 50%-opacity pick reads as a translucent selected tab.
@@ -49,6 +55,16 @@ class TabBarAccentController extends GetxController {
     color.value = next;
     try {
       await HiveStore.put(HiveKeys.tabBarAccentColor, next.toARGB32());
+    } catch (_) {}
+  }
+
+  /// Restore the default (NetEase red) and delete the stored colour,
+  /// so the theme accent returns to the per-theme default too. The
+  /// sheet's reset calls this and clears ThemeController as well.
+  Future<void> reset() async {
+    color.value = defaultColor;
+    try {
+      await HiveStore.delete(HiveKeys.tabBarAccentColor);
     } catch (_) {}
   }
 }
