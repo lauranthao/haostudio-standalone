@@ -7,19 +7,26 @@ jobs:
   shots:
     runs-on: windows-latest
     steps:
-      - name: Download the built Windows package
-        uses: actions/download-artifact@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.47.0
+        uses: subosito/flutter-action@v2
         with:
-          name: HAoStudio-standalone-v1.1.5-windows-zip
-          run-id: 44743654478
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: pkg
+          flutter-version: "3.47.0"
+          channel: "stable"
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter build windows --release
+        run: flutter build windows --release
 
       - name: Run the app and screenshot the home page
         shell: pwsh
         run: |
-          Expand-Archive -Path pkg/HAoStudio-standalone-v1.1.5-windows.zip -DestinationPath app
-          Start-Process app/standalone.exe
+          Start-Process build/windows/x64/runner/Release/standalone.exe
           Start-Sleep -Seconds 25
           Add-Type -AssemblyName System.Drawing
           Add-Type -AssemblyName System.Windows.Forms
