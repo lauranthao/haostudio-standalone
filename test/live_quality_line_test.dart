@@ -47,6 +47,9 @@ import 'package:standalone/features/player/playback_session.dart';
 import 'package:standalone/shared/platforms/douyu/douyu_utils.dart';
 import 'package:standalone/shared/platforms/huya/huya_request_params.dart';
 import 'package:standalone/shared/platforms/live_site.dart';
+import 'package:standalone/widgets/hao_toast.dart';
+
+import 'helpers/hive_test_setup.dart';
 
 void main() {
   late Directory hiveDir;
@@ -804,6 +807,12 @@ void main() {
     Future<void> disposeRoom(WidgetTester tester, _BackendLog log) async {
       log.cancelAllTickers();
       Get.closeAllSnackbars();
+      // HaoToast.show arms a 2.5 s auto-dismiss Timer; the pumps below
+      // only advance 1 s, so a toast shown by the test (ack / switch
+      // toasts) would still be pending at dispose and fail the test
+      // with "A Timer is still pending". Dismiss it first — this only
+      // cancels the toast timer, it advances no other timers.
+      HaoToast.dismiss();
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
@@ -988,6 +997,66 @@ void main() {
       expect(log.opens.length, 1); // no reload
       expect(chip(tester, '原画').selected, isTrue);
       expect(chip(tester, '高清').selected, isFalse);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets(
+        'quality switch open failure: keeps old picture, no card (1.1.6)',
+        (tester) async {
+      final site = _FakeSite();
+      final log = _BackendLog();
+      final configs = freshConfigs();
+      // Both new-quality lines are dead: the ladder + fresh rounds
+      // all fail, so session.open returns false.
+      for (final config in configs.values) {
+        config.failUrls.addAll(site.recoveryUrlsByQuality['400']!);
+      }
+      await pumpRoom(tester, site, log, configs);
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      // Toast says the old quality was kept; the chip still says 原画.
+      expect(find.textContaining('切换失败，已保持原清晰度'), findsOneWidget);
+      expect(chip(tester, '原画').selected, isTrue);
+      expect(chip(tester, '高清').selected, isFalse);
+      // No failure card over the still-playing old stream.
+      expect(find.text('▶ 重试'), findsNothing);
+      // Preference was NOT moved to the failed quality.
+      expect(HiveStore.getString(HiveKeys.preferResolution, ''), '原画');
+      // The recovery plan is the OLD one: switching lines re-opens
+      // the old quality's line 2, not the dead new lines.
+      await tester.tap(find.text('线路 2'));
+      await settle(tester);
+      expect(
+        log.opens.last.url,
+        'https://al.huya.com/src/660000.m3u8?wsSecret=A1',
+      );
+      expect(chip(tester, '线路 2').selected, isTrue);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets(
+        'quality switch capped by server persists the acked quality',
+        (tester) async {
+      final site = _FakeSite();
+      // Requested 高清 (400), server confirmed 流畅 (250) and
+      // returned the 流畅 stream — same shape as the existing cap
+      // test, plus the persistence assertion.
+      site.recoveryUrlsByQuality['400'] = const [
+        'https://tx.flv.huya.com/src/660000.flv?wsSecret=C2',
+      ];
+      site.recoveryFactsByQuality['400'] = const [
+        LiveStreamFacts(format: 'flv'),
+      ];
+      site.ackByQuality['400'] = '250';
+      final log = _BackendLog();
+      await pumpRoom(tester, site, log, freshConfigs());
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      expect(chip(tester, '流畅').selected, isTrue);
+      // Preference stores the CONFIRMED quality, not the requested
+      // one — the next entry asks for 流畅 directly, not 高清-then-cap.
+      await drainHiveWrites(tester);
+      expect(HiveStore.getString(HiveKeys.preferResolution, ''), '流畅');
       await disposeRoom(tester, log);
     });
 
@@ -1469,6 +1538,11 @@ class _FakeBackendConfig {
   bool openSucceeds = true;
   bool firstFrameSucceeds = true;
   bool emitPositions = true;
+
+  /// URLs whose open() throws (per-URL failure): the ladder tries
+  /// every engine on them and still fails, so session.open returns
+  /// false while the previously playing backend stays untouched.
+  final Set<String> failUrls = {};
 }
 
 /// Fake native backend: instant open/first-frame, controllable failure,
@@ -1527,7 +1601,9 @@ class _FakeBackend implements PlayerBackend {
         headers: headers,
       ),
     );
-    if (!config.openSucceeds) throw StateError('fake open failed');
+    if (!config.openSucceeds || config.failUrls.contains(url)) {
+      throw StateError('fake open failed');
+    }
     if (config.emitPositions) {
       _positionTimer?.cancel();
       _positionTimer = Timer.periodic(const Duration(seconds: 1), (_) {

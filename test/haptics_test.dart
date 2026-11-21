@@ -84,5 +84,25 @@ void main() {
       // true (Hive read throws, caught in the getter).
       expect(HaoHaptics.enabled, isTrue);
     });
+
+    test('sliderEnd: tap mid-range, selection click at either end',
+        () async {
+      HaoHaptics.debugEnabledOverride = true;
+
+      HaoHaptics.sliderEnd(0.5, 0, 1);
+      await flush();
+      expect(calls, hasLength(1));
+      expect(calls.single.arguments, 'HapticFeedbackType.lightImpact');
+
+      calls.clear();
+      HaoHaptics.sliderEnd(0, 0, 1);
+      await flush();
+      expect(calls.single.arguments, 'HapticFeedbackType.selectionClick');
+
+      calls.clear();
+      HaoHaptics.sliderEnd(1, 0, 1);
+      await flush();
+      expect(calls.single.arguments, 'HapticFeedbackType.selectionClick');
+    });
   });
 }

@@ -19,7 +19,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -136,10 +136,10 @@ void main() {
   /// icon-only, so there is no label text to tap; each icon exists
   /// exactly once in the tree).
   const tabIcons = {
-    '影视': Icons.movie,
-    '直播': Icons.live_tv,
-    '音乐': Icons.music_note,
-    '设置': Icons.settings,
+    '影视': CupertinoIcons.film,
+    '直播': CupertinoIcons.tv,
+    '音乐': CupertinoIcons.music_note,
+    '设置': CupertinoIcons.settings,
   };
 
   Future<void> tapTab(WidgetTester tester, String label) async {

@@ -6,6 +6,7 @@ import 'dart:async';
 // page renders the same list. Songs are removed with a swipe (Dismissible)
 // — the song row itself keeps heart + play only (fix 10).
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -71,7 +72,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
           children: [
             Text(
               '重命名歌单',
-              style: TextStyle(color: theme.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -85,11 +86,11 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text('取消', style: TextStyle(color: theme.textSecondary)),
+                  child: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.textSecondary)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(nameController.text.trim()),
-                  child: Text('保存', style: TextStyle(color: theme.accent)),
+                  child: Text('保存', style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.accent)),
                 ),
               ],
             ),
@@ -141,9 +142,9 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     final list = _list;
     if (list == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('我的歌单')),
+        appBar: AppBar(title: const Text('我的歌单'), flexibleSpace: const HaoAppBarGlass()),
         body: Center(
-          child: Text('这个歌单找不到了', style: TextStyle(color: theme.textMuted)),
+          child: Text('这个歌单找不到了', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted)),
         ),
       );
     }
@@ -153,10 +154,11 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     final favIds = MusicStore.getFavIds();
     return Scaffold(
       appBar: AppBar(
-        title: Text(list.name, maxLines: 1),
+        title: Text(list.name, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+        flexibleSpace: const HaoAppBarGlass(),
         actions: [
-          IconButton(icon: const Icon(Icons.edit), onPressed: _rename),
-          IconButton(icon: const Icon(Icons.delete), onPressed: _deleteList),
+          IconButton(icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.edit), onPressed: _rename),
+          IconButton(icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete), onPressed: _deleteList),
         ],
       ),
       body: Column(
@@ -169,6 +171,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                   // Audit P0-1: count is tracks.length.
                   '${list.trackCount} 首歌曲',
                   style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textSecondary,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -192,7 +195,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                 ? Center(
                     child: Text(
                       '歌单为空，搜一首歌加进来吧',
-                      style: TextStyle(color: theme.textMuted),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                     ),
                   )
                 : ListView.builder(
@@ -212,6 +215,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
                           child: Icon(
+                            shadows: HaoTheme.legibilityShadows(ctx),
                             Icons.delete,
                             color: theme.textSecondary,
                           ),
@@ -243,7 +247,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                             setState(() {});
                           },
                           onOpenArtist: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
+                            CupertinoPageRoute<void>(
                               settings: const RouteSettings(
                                   name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(

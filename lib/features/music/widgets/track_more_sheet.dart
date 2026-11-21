@@ -18,13 +18,17 @@
 import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/hao_settle_spring.dart';
+import '../../../core/theme/haptics.dart';
 import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../widgets/glass_dialog.dart';
+import '../../../services/music/bookmarks_store.dart';
 import '../../../services/music/music_downloads.dart';
 import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
@@ -50,6 +54,8 @@ enum TrackMoreAction {
   // Personal FM only: "不喜欢" (skip + never recommend again).
   dislike,
   download,
+  // Bookmarks (1.1.6): saved positions in this song.
+  bookmark,
   equalizer,
   cancel,
 }
@@ -157,9 +163,9 @@ class _QuickRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: theme.textPrimary, size: 20),
+        Icon(shadows: HaoTheme.legibilityShadows(context), icon, color: theme.textPrimary, size: 20),
         const SizedBox(width: 12),
-        Text(label, style: TextStyle(color: theme.textPrimary, fontSize: 15)),
+        Text(label, style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 15)),
       ],
     );
   }
@@ -195,7 +201,7 @@ Future<void> handleTrackMoreAction(
       if (context.mounted) {
         unawaited(
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            CupertinoPageRoute<void>(
               settings: const RouteSettings(name: musicSubPageRouteName),
               builder: (_) => SongCommentsPage(song: song),
             ),
@@ -255,7 +261,7 @@ Future<void> handleTrackMoreAction(
       if (context.mounted) {
         unawaited(
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            CupertinoPageRoute<void>(
               builder: (_) => const EqualizerPage(),
             ),
           ),
@@ -274,6 +280,11 @@ Future<void> handleTrackMoreAction(
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(ok ? '已下载，可离线播放' : '下载失败，换一首试试')),
         );
+      }
+    case TrackMoreAction.bookmark:
+      // Bookmarks (1.1.6): list / add / jump / delete for this song.
+      if (context.mounted) {
+        await showBookmarksDialog(context, song);
       }
     case TrackMoreAction.cancel:
       break;
@@ -307,7 +318,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
       child: Text(
         label,
-        style: TextStyle(
+        style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
           color: theme.textMuted,
           fontSize: 12,
           fontWeight: FontWeight.w600,
@@ -317,6 +328,14 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
   );
   return showModalBottomSheet<TrackMoreAction>(
     context: context,
+    // N-10: iOS grabber + settle-spring rise (same spring as the
+    // player close), so the sheet reads as draggable and lands
+    // instead of braking dead.
+    showDragHandle: true,
+    sheetAnimationStyle: const AnimationStyle(
+      curve: HaoSettleSpringCurve(),
+      reverseCurve: HaoSettleSpringCurve(),
+    ),
     // isScrollControlled: without it the sheet is capped at ~half the
     // screen height and tall content is clipped — the 取消 row was cut
     // off at the bottom edge on chen's phone (v1.0.6). With it the sheet
@@ -328,12 +347,14 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
     builder: (ctx) => GlassContainer(
       // Kumone redo: library glass (standard — dense action list,
       // never premium shader) instead of the self-made
-      // GlassSheetBackground. Top corners 20, bottom square: the
-      // sheet sits on the screen edge. The transparent Material
-      // keeps ListTile ink ripples working above the glass fill
-      // (same reason GlassSheetBackground had one).
+      // GlassSheetBackground. Top corners 14 (D-7), bottom square: the
+      // sheet sits on the screen edge. The transparent Material is
+      // the text-style ancestor above the glass fill (a route with
+      // no Material ancestor falls back to the debug text style);
+      // its ink ripples are off by the theme's NoSplash (N-16), so
+      // rows dim on press instead of rippling.
       shape: const LiquidVerticalRoundedSuperellipse(
-        topRadius: 20,
+        topRadius: HaoRadius.sheet,
         bottomRadius: 0,
       ),
       // Intensity-scaled optics (chen 2026-11-21): explicit settings
@@ -359,7 +380,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                             width: 44,
                             height: 44,
                             color: theme.accentSoft,
-                            child: Icon(
+                            child: Icon(shadows: HaoTheme.legibilityShadows(context),
                               Icons.music_note,
                               color: theme.textMuted,
                             ),
@@ -373,7 +394,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                               width: 44,
                               height: 44,
                               color: theme.accentSoft,
-                              child: Icon(
+                              child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                 Icons.music_note,
                                 color: theme.textMuted,
                               ),
@@ -390,7 +411,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                           song.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
@@ -400,7 +421,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                           song.artist,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textSecondary,
                             fontSize: 13,
                           ),
@@ -417,27 +438,31 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             section('播放'),
             // M-P0-4: insert right after the current track.
             ListTile(
-              leading: Icon(Icons.queue_play_next, color: theme.textPrimary),
-              title: Text('下一首播放', style: TextStyle(color: theme.textPrimary)),
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_play_next, color: theme.textPrimary),
+              title: Text('下一首播放', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playNext),
             ),
-            // Personal FM only: "不喜欢" skips the song and never
-            // recommends it again (FmService.dislike).
-            if (FmService.ensure().isFM.value)
+            // Personal FM / heartbeat: "不喜欢" skips the song and
+            // never recommends it again (FmService.dislike). The
+            // handler below has no mode guard and dislike() works on
+            // the heartbeat queue too (build 28), so the entry shows
+            // in both recommendation modes.
+            if (FmService.ensure().isFM.value ||
+                FmService.ensure().isHeartbeat.value)
               ListTile(
-                leading: Icon(Icons.thumb_down, color: theme.textPrimary),
-                title: Text('不喜欢', style: TextStyle(color: theme.textPrimary)),
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.thumb_down, color: theme.textPrimary),
+                title: Text('不喜欢', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.dislike),
               ),
             Obx(
               () => ListTile(
-                leading: Icon(
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context),
                   playModeIcon(controller.mode),
                   color: theme.textPrimary,
                 ),
                 title: Text(
                   controller.mode.label,
-                  style: TextStyle(color: theme.textPrimary),
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                 ),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playMode),
               ),
@@ -453,13 +478,13 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.speed, color: theme.textPrimary),
+                        Icon(shadows: HaoTheme.legibilityShadows(context), Icons.speed, color: theme.textPrimary),
                         const SizedBox(width: 16),
-                        Text('倍速', style: TextStyle(color: theme.textPrimary)),
+                        Text('倍速', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                         const Spacer(),
                         Text(
                           '${speed.toStringAsFixed(2)}×',
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textSecondary,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -485,6 +510,9 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                         divisions: 28,
                         label: '${speed.toStringAsFixed(2)}×',
                         onChanged: (v) => unawaited(controller.setSpeed(v)),
+                        // N-13: light tap on release, click at either end.
+                        onChangeEnd: (v) =>
+                            HaoHaptics.sliderEnd(v, 0.6, 2.0),
                       ),
                     ),
                   ],
@@ -498,30 +526,43 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             AnimatedBuilder(
               animation: EqualizerStore.ensure(),
               builder: (context, _) => ListTile(
-                leading: Icon(Icons.tune, color: theme.textPrimary),
-                title: Text('均衡器', style: TextStyle(color: theme.textPrimary)),
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune, color: theme.textPrimary),
+                title: Text('均衡器', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 trailing: Text(
                   EqualizerStore.ensure().enabled ? '已开启' : '已关闭',
-                  style: TextStyle(color: theme.textSecondary, fontSize: 13),
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
                 ),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.equalizer),
               ),
             ),
             ListTile(
-              leading: Icon(Icons.info_outline, color: theme.textPrimary),
-              title: Text('歌曲信息', style: TextStyle(color: theme.textPrimary)),
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.info_outline, color: theme.textPrimary),
+              title: Text('歌曲信息', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.info),
             ),
             ListTile(
-              leading: Icon(Icons.comment_outlined, color: theme.textPrimary),
-              title: Text('评论', style: TextStyle(color: theme.textPrimary)),
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.comment_outlined, color: theme.textPrimary),
+              title: Text('评论', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.comments),
+            ),
+            // Bookmarks (1.1.6): one row, opens the list / add /
+            // jump / delete dialog. The count reads at open time.
+            ListTile(
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark_outline, color: theme.textPrimary),
+              title: Text('书签', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              trailing: Text(
+                BookmarksStore.countFor(song.identityKey) == 0
+                    ? '添加书签'
+                    : '${BookmarksStore.countFor(song.identityKey)} 个',
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+              ),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.bookmark),
             ),
             const Divider(height: 1),
             section('列表'),
             ListTile(
-              leading: Icon(Icons.queue_music, color: theme.textPrimary),
-              title: Text('播放列表', style: TextStyle(color: theme.textPrimary)),
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_music, color: theme.textPrimary),
+              title: Text('播放列表', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.queue),
             ),
             Obx(() {
@@ -535,11 +576,11 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                   ? '剩余 ${SleepTimer.formatRemaining(remaining)}'
                   : option.label;
               return ListTile(
-                leading: Icon(Icons.timer, color: theme.textPrimary),
-                title: Text('睡眠定时', style: TextStyle(color: theme.textPrimary)),
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.timer, color: theme.textPrimary),
+                title: Text('睡眠定时', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 trailing: Text(
                   subtitle,
-                  style: TextStyle(color: theme.textSecondary, fontSize: 13),
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
                 ),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.sleepTimer),
               );
@@ -556,24 +597,24 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                 DownloadStatus.notDownloaded => '保存到本机，离线播放',
               };
               return ListTile(
-                leading: Icon(
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context),
                   st == DownloadStatus.downloaded
                       ? Icons.download_done
                       : Icons.download,
                   color: theme.textPrimary,
                 ),
-                title: Text('下载', style: TextStyle(color: theme.textPrimary)),
+                title: Text('下载', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 trailing: Text(
                   subtitle,
-                  style: TextStyle(color: theme.textSecondary, fontSize: 13),
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
                 ),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.download),
               );
             }),
             const Divider(height: 1),
             ListTile(
-              leading: Icon(Icons.close, color: theme.textPrimary),
-              title: Text('取消', style: TextStyle(color: theme.textPrimary)),
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textPrimary),
+              title: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.cancel),
             ),
             const SizedBox(height: 8),
@@ -582,6 +623,105 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
       ),
     ),
     ),
+    ),
+  );
+}
+
+/// Bookmarks dialog (1.1.6): this song's saved positions.
+///
+/// Tap a row to jump there (loads the song first when it is not
+/// playing), × deletes that bookmark. 添加书签 saves the current
+/// position — it only shows for the song now playing, because any
+/// other song has no position to save. Bookmarks are never cleared
+/// by finishing the track (unlike the automatic resume position).
+Future<void> showBookmarksDialog(BuildContext context, Song song) async {
+  final theme = HaoTheme.of(context);
+  final controller = MusicPlayerController.ensure();
+  await showGlassDialog<void>(
+    context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        final marks = controller.bookmarksFor(song);
+        final isCurrent =
+            controller.currentSong?.identityKey == song.identityKey;
+        final pos = controller.position.value.inSeconds;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '书签',
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              song.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                color: theme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (isCurrent && pos > 0)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark_add_outlined, color: theme.textPrimary),
+                title: Text(
+                  '添加书签（${BookmarksStore.formatLabel(pos)}）',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
+                ),
+                onTap: () async {
+                  await controller.addBookmark(song);
+                  setState(() {});
+                },
+              ),
+            if (marks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(
+                  '暂无书签',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
+                ),
+              ),
+            for (final mark in marks)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark, color: theme.textPrimary),
+                title: Text(
+                  mark.label,
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
+                ),
+                trailing: IconButton(
+                  icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textSecondary, size: 20),
+                  onPressed: () async {
+                    await controller.deleteBookmark(song, mark);
+                    setState(() {});
+                  },
+                ),
+                onTap: () async {
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  await controller.jumpToBookmark(song, mark.position);
+                },
+              ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text('关闭', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     ),
   );
 }
@@ -615,7 +755,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
                         width: 64,
                         height: 64,
                         color: theme.accentSoft,
-                        child: Icon(Icons.music_note, color: theme.textMuted),
+                        child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.music_note, color: theme.textMuted),
                       )
                     : Image(
                         image: MusicImageProvider(song.cover),
@@ -626,7 +766,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
                           width: 64,
                           height: 64,
                           color: theme.accentSoft,
-                          child: Icon(Icons.music_note, color: theme.textMuted),
+                          child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.music_note, color: theme.textMuted),
                         ),
                       ),
               ),
@@ -638,7 +778,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
                   children: [
                     Text(
                       song.title,
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -646,7 +786,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
                     ),
                     Text(
                       song.artist,
-                      style: TextStyle(color: theme.textSecondary),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
                     ),
                   ],
                 ),
@@ -660,11 +800,11 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(label, style: TextStyle(color: theme.textMuted)),
+                  Text(label, style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted)),
                   Flexible(
                     child: Text(
                       value,
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontWeight: FontWeight.w600,
                       ),
@@ -680,7 +820,7 @@ Future<void> showSongInfoDialog(BuildContext context, Song song) async {
             children: [
               TextButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('关闭', style: TextStyle(color: theme.accent)),
+                child: Text('关闭', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
               ),
             ],
           ),

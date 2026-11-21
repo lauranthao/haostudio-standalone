@@ -17,6 +17,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -136,10 +137,10 @@ void main() {
       // Kumone classic has no centre "正在播放" text (removed 2026-11-18);
       // the top bar is collapse + sound-effects + lyrics-toggle circles.
       expect(find.text('正在播放'), findsNothing);
-      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.chevron_down), findsOneWidget);
       expect(find.byIcon(Icons.format_quote), findsOneWidget);
       // PL-P1-6: tune only in the top bar now (one, not two).
-      expect(find.byIcon(Icons.tune), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.slider_horizontal_3), findsOneWidget);
       final screen = tester.getSize(find.byType(Scaffold).first);
       for (final icon in [
         Icons.skip_previous,
@@ -1013,7 +1014,7 @@ void main() {
         );
         // Star + more sit on the title row's right (44x44 each).
         expect(find.byIcon(Icons.star_border), findsOneWidget);
-        expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+        expect(find.byIcon(CupertinoIcons.ellipsis), findsOneWidget);
       },
     );
 
@@ -1070,7 +1071,7 @@ void main() {
         // Cycle order: sequential -> listLoop -> singleLoop -> shuffle.
         // Each tap on the mode row pops the sheet, so reopen it per tap.
         for (final label in ['顺序播放', '列表循环', '单曲循环']) {
-          await tester.tap(find.byIcon(Icons.more_horiz));
+          await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 500));
           await tester.tap(find.text(label));
@@ -1145,7 +1146,7 @@ void main() {
       tester,
     ) async {
       await pumpPlayer(tester);
-      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.text('睡眠定时'));
@@ -1154,6 +1155,11 @@ void main() {
       // on-screen and its 取消 button is hittable.
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('睡眠定时'), findsOneWidget);
+      // 1.1.6 added two options + a 160px custom-minutes wheel, so
+      // the sheet is taller than a 912pt screen and 取消 starts
+      // below the fold: scroll it into view before tapping.
+      await tester.ensureVisible(find.text('取消'));
+      await tester.pump();
       await tester.tap(find.text('取消'));
       // Exit transition: first tick only sets the animation baseline,
       // so it needs 500 ms + 500 ms + a bare removal-frame pump.
@@ -1172,7 +1178,7 @@ void main() {
       tester,
     ) async {
       await pumpPlayer(tester);
-      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.text('睡眠定时'));
@@ -1200,7 +1206,7 @@ void main() {
       tester,
     ) async {
       await pumpPlayer(tester);
-      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
       await tester.pump();
       // Entry animation (~300 ms): the track sheet is the tallest of
       // the three — at 100 ms its 取消 sits below the viewport (hit
@@ -1367,7 +1373,7 @@ void main() {
       // no overlap); both right-hand keys are present.
       final titleRect = tester.getRect(find.text(longTitle));
       final starRect = tester.getRect(find.byIcon(Icons.star_border));
-      final moreRect = tester.getRect(find.byIcon(Icons.more_horiz));
+      final moreRect = tester.getRect(find.byIcon(CupertinoIcons.ellipsis));
       expect(titleRect.right, lessThanOrEqualTo(starRect.left));
       expect(starRect.right, lessThanOrEqualTo(moreRect.left));
       expect(tester.takeException(), isNull);

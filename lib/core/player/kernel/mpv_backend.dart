@@ -6,18 +6,22 @@
 // hwdec videotoolbox, ao default — no iOS-specific tuning.
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../super_resolution.dart';
+import '../vod_controls.dart';
+import 'frame_capable_backend.dart';
 import 'mpv_properties.dart';
 import 'player_backend.dart';
 import 'player_engine.dart';
 import 'player_kernel.dart';
 import 'video_fit.dart';
 
-class MpvBackend implements PlayerBackend {
+class MpvBackend implements TrackCapableBackend, FrameCapableBackend {
   MpvBackend() {
     // Defensive: the native media_kit library must be initialised
     // before Player() is created. main() does this, but backends can
@@ -92,11 +96,25 @@ class MpvBackend implements PlayerBackend {
     // contain — the room is portrait 16:9 and must never stretch.
     // A change applies LIVE: media_kit Video re-applies fit in
     // didUpdateWidget, and the VOD page rebuilds after cycling.
+    //
+    // subtitleViewConfiguration visible:false (1.1.6, ROUTE A): the
+    // built-in Flutter SubtitleView lives INSIDE Video, so it can
+    // never paint above the danmaku layer — the VOD page draws the
+    // text subtitles itself in a page-level overlay above danmaku,
+    // fed by [subtitleStream]. Anything mpv draws into the frame
+    // itself is untouched by this flag. (Fork note: with
+    // libass=false the fork also sets sub-visibility=no, so bitmap
+    // PGS subtitles most likely do not render at all today — that
+    // is pre-existing behaviour, untested on a real device, not
+    // something this flag changes.)
     return Video(
       controller: _videoController,
       wakelock: false,
       controls: (_) => const SizedBox.shrink(),
       fit: VideoFitMode.current.boxFit,
+      subtitleViewConfiguration: const SubtitleViewConfiguration(
+        visible: false,
+      ),
     );
   }
 
@@ -122,6 +140,14 @@ class MpvBackend implements PlayerBackend {
     for (final entry in sourceProps.entries) {
       await _setProperty(entry.key, entry.value);
     }
+    // Anime4K super-resolution (build 28): VOD only — live never
+    // reaches this branch, so the live room is untouched. Applied at
+    // open(): a switch change takes effect on the next episode, line
+    // switch or kernel reopen, never mid-playback.
+    if (!isLive) {
+      await _applySuperResolution();
+      await _applyVodEnhancement();
+    }
     await _player.open(
       Media(url, httpHeaders: headers),
       play: true,
@@ -133,6 +159,101 @@ class MpvBackend implements PlayerBackend {
     final platform = _player.platform;
     if (platform is NativePlayer) {
       await platform.setProperty(key, value);
+    }
+  }
+
+  Future<void> _command(List<String> args) async {
+    final platform = _player.platform;
+    if (platform is NativePlayer) {
+      await platform.command(args);
+    }
+  }
+
+  /// FrameCapableBackend (1.1.6, danmaku occlusion avoidance): one
+  /// JPEG snapshot of the current video frame for Vision person
+  /// segmentation. Best-effort: null (never a throw) when not opened,
+  /// disposed, or the native snapshot fails — the occlusion loop
+  /// treats null as "skip this frame".
+  @override
+  Future<Uint8List?> captureFrameJpeg() async {
+    if (_disposed || !_opened) return null;
+    try {
+      return await _player.screenshot(format: 'image/jpeg');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mounts the Anime4K efficiency chain when the gate passes.
+  /// Decoration only: ANY failure (switch read, unpack, missing
+  /// chain file, change-list rejection) is swallowed here — the film
+  /// plays on without super-resolution and the failure never reaches
+  /// the recovery ladder.
+  Future<void> _applySuperResolution() async {
+    try {
+      if (!shouldApplySuperResolution(
+        isLive: _isLive,
+        engine: engine,
+        switchOn: superResolutionSwitchOn(),
+      )) {
+        return;
+      }
+      final files = await unpackAnime4kShaders();
+      if (files == null) return;
+      await _command(glslShadersChangeListCommand(files));
+    } catch (_) {}
+  }
+
+  /// Frame interpolation / SDR→HDR (1.1.6): the other two branches
+  /// of the mutually-exclusive trio, applied at open() like
+  /// super-resolution (a switch change takes effect on the next
+  /// episode / line switch / kernel reopen, never mid-playback).
+  /// Order is super-res → interpolation → SDR→HDR and only the
+  /// FIRST passing branch runs, so a phone GPU never runs two of
+  /// them at once. Decoration only, like [_applySuperResolution]:
+  /// ANY failure setting a property is swallowed per property — the
+  /// film plays on without the enhancement and the failure never
+  /// reaches the recovery ladder or blocks playback.
+  ///
+  /// Effect is UNVERIFIED on a real device (vo=libmpv may silently
+  /// disable interpolation; inverse-tone-mapping is marked
+  /// vo=gpu-next only): if chen's phone shows no effect, the
+  /// switch is dropped — this method only decides whether the
+  /// properties are SET.
+  Future<void> _applyVodEnhancement() async {
+    try {
+      final superResOn = superResolutionSwitchOn();
+      final interpolationOn = vodInterpolationSwitchOn();
+      final sdrToHdrOn = vodSdrToHdrSwitchOn();
+      if (shouldApplyFrameInterpolation(
+        isLive: _isLive,
+        engine: engine,
+        switchOn: interpolationOn,
+        superResolutionOn: superResOn,
+        sdrToHdrOn: sdrToHdrOn,
+      )) {
+        await _setPropertiesDefensively(kVodInterpolationProperties);
+      } else if (shouldApplySdrToHdr(
+        isLive: _isLive,
+        engine: engine,
+        switchOn: sdrToHdrOn,
+        superResolutionOn: superResOn,
+        interpolationOn: interpolationOn,
+      )) {
+        await _setPropertiesDefensively(kVodSdrToHdrProperties);
+      }
+    } catch (_) {}
+  }
+
+  /// Best-effort property writes: one rejected property must not
+  /// abort the rest, and a failure here must never break playback.
+  Future<void> _setPropertiesDefensively(
+    Map<String, String> properties,
+  ) async {
+    for (final entry in properties.entries) {
+      try {
+        await _setProperty(entry.key, entry.value);
+      } catch (_) {}
     }
   }
 
@@ -226,6 +347,123 @@ class MpvBackend implements PlayerBackend {
 
   @override
   Future<void> setRate(double rate) => _player.setRate(rate);
+
+  /// TrueHD / DTS-HD fallback is PCM decode, not passthrough — and
+  /// there is nothing to configure for it:
+  ///
+  /// - Routing: the capability gate (player_kernel.dart) already
+  ///   excludes TrueHD / DTS from AVPlayer, so such streams reach
+  ///   MPV (preferred) or IJK; the track list below enumerates them
+  ///   and the player page's audio picker switches them.
+  /// - Decode: mpv decodes to multichannel PCM by default. The
+  ///   bundled libmpv links ffmpeg's `ff_truehd_decoder` and
+  ///   `ff_dca_decoder` (verified on the VM 2026-11-22 via strings on
+  ///   the media_kit prebuilt libmpv.so.2 — the iOS xcframework
+  ///   itself is not on this VM, so the iOS binary is still
+  ///   待真机验证). No SPDIF passthrough is configured anywhere
+  ///   (`audio-spdif` is never set) and no channel cap
+  ///   (`audio-channels` is never set), so on an iPhone the
+  ///   multichannel PCM downmixes to stereo in the OS. There is no
+  ///   passthrough to enable on iOS.
+  /// - Still unverified on a real film: actual sound output and
+  ///   channel behaviour on a TrueHD / DTS-HD track (待真机验证).
+  @override
+  Future<List<PlaybackTrack>> audioTracks() async {
+    // media_kit always seeds the list with the 'auto'/'no' pseudo
+    // tracks — a picker must never show those as real tracks.
+    return _player.state.tracks.audio
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .map(
+          (t) => PlaybackTrack(
+            id: t.id,
+            title: t.title,
+            language: t.language,
+            codec: t.codec,
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Future<List<PlaybackTrack>> subtitleTracks() async {
+    return _player.state.tracks.subtitle
+        .where((t) => t.id != 'auto' && t.id != 'no')
+        .map(
+          (t) => PlaybackTrack(
+            id: t.id,
+            title: t.title,
+            language: t.language,
+            codec: t.codec,
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Future<void> setAudioTrack(String id) async {
+    try {
+      await _player.setAudioTrack(
+        id == 'auto' ? AudioTrack.auto() : AudioTrack(id, null, null),
+      );
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setSubtitleTrack(String id) async {
+    try {
+      if (id == 'no') {
+        await _player.setSubtitleTrack(SubtitleTrack.no());
+        return;
+      }
+      await _player.setSubtitleTrack(
+        id == 'auto'
+            ? SubtitleTrack.auto()
+            : SubtitleTrack(id, null, null),
+      );
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setSubtitleDelay(double seconds) async {
+    // mpv `sub-delay` (seconds, may be negative): a runtime
+    // setProperty, so it applies immediately without reopening.
+    // Defensive like the track setters: a rejected write must never
+    // break playback.
+    try {
+      await _setProperty('sub-delay', seconds.toStringAsFixed(1));
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setSubtitleAppearance({
+    required int fontSize,
+    required String color,
+    required double position,
+  }) async {
+    // mpv `sub-font-size` / `sub-color` / `sub-pos`: runtime
+    // setProperty calls, same defensive pattern as `sub-delay`.
+    // `sub-pos` is a float (0 = top, 100 = bottom); the caller
+    // passes the tier value from vod_controls.dart.
+    try {
+      await _setProperty('sub-font-size', fontSize.toString());
+      await _setProperty('sub-color', color);
+      await _setProperty('sub-pos', position.toStringAsFixed(0));
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setSecondarySubtitleTrack(String id) async {
+    // mpv `secondary-sid`: the second track renders as toptitle
+    // above the main track. 'no' turns dual subtitles off. Bitmap
+    // subtitles as the secondary track overlap the main track
+    // (mpv behaviour) — the picker must say so, not crash.
+    try {
+      await _setProperty('secondary-sid', id);
+    } catch (_) {}
+  }
+
+  @override
+  Stream<List<String>> get subtitleStream => _player.stream.subtitle;
 
   @override
   Stream<Duration> get positionStream => _player.stream.position;

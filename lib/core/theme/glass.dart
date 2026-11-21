@@ -240,11 +240,26 @@ class GlassCard extends StatelessWidget {
       clipBehavior: tint == null ? Clip.none : Clip.antiAlias,
       child: content,
     );
+    // b28 (after scheme A — the helper above must exist first, or
+    // clearing this shadow makes standard/premium cards harder to
+    // read at 0%): the outer Beans shadow scales with the glass
+    // intensity, like the frosted branch — at 0% the card is fully
+    // clear, with no leftover shadow. At 1.0 the alpha is ×1.0, so
+    // today's look is unchanged.
+    final intensity =
+        HaoTheme.ofOrDefault(context).glassIntensity.clamp(0.0, 1.0);
+    final shadows = _shadowFor(context)
+        ?.map(
+          (s) => s.copyWith(
+            color: s.color.withValues(alpha: s.color.a * intensity),
+          ),
+        )
+        .toList();
     return Container(
       margin: margin,
       decoration: BoxDecoration(
         borderRadius: borderRadius,
-        boxShadow: _shadowFor(context),
+        boxShadow: shadows,
       ),
       child: glass,
     );

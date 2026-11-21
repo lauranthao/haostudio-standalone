@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.1.5+27
+version: 1.1.6+28
 
 environment:
   sdk: ^3.13.0
@@ -167,6 +167,11 @@ flutter:
     - assets/lx_scripts/
     - assets/logo.png
     - assets/logos/
+    # Anime4K super-resolution shaders (build 28, VOD + MPV only):
+    # the efficiency chain, MIT (bloc97/Anime4K) — see
+    # assets/anime4k/LICENSE-Anime4K. Unpacked at runtime to the app
+    # support directory; mpv needs real file paths, not asset paths.
+    - assets/anime4k/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

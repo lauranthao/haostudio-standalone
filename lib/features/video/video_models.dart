@@ -7,8 +7,8 @@
 // - Detail: {ok, meta, lines}; line = {name, episodes: [{name, url}]}
 // - Douban is the SOLE metadata source (TMDB is OUT of the standalone
 //   entirely — no TMDB calls, logo, or ratings anywhere here).
-// - Video ceiling is 1080p — NO 4K (no true 4K in free Apple CMS sources;
-//   never label 4K).
+// - CMS video ceiling is 1080p — NO 4K labels on CMS titles (no true 4K
+//   in free Apple CMS sources). Emby is exempt: real 4K files label 4K.
 // - VOD has NO quality tiers (one URL per episode) and therefore NO
 //   quality selector anywhere in the video UI (live only — hard rule).
 
@@ -83,6 +83,16 @@ class VideoItem {
     this.total = '',
     this.remarks = '',
     this.hits = 0,
+    this.progressSeconds = 0,
+    this.progressFraction = 0,
+    this.played = false,
+    this.isFavorite = false,
+    this.likes,
+    this.mediaType = '',
+    this.seriesId = '',
+    this.seriesName = '',
+    this.seasonIndex,
+    this.episodeIndex,
   });
 
   factory VideoItem.fromJson(Map<String, dynamic> json) => VideoItem(
@@ -99,6 +109,18 @@ class VideoItem {
         total: (json['total'] as String?) ?? '',
         remarks: (json['remarks'] as String?) ?? '',
         hits: (json['hits'] as num?)?.toInt() ?? 0,
+        progressSeconds:
+            (json['progressSeconds'] as num?)?.toDouble() ?? 0,
+        progressFraction:
+            (json['progressFraction'] as num?)?.toDouble() ?? 0,
+        played: json['played'] as bool? ?? false,
+        isFavorite: json['isFavorite'] as bool? ?? false,
+        likes: json['likes'] as bool?,
+        mediaType: (json['mediaType'] as String?) ?? '',
+        seriesId: (json['seriesId'] as String?) ?? '',
+        seriesName: (json['seriesName'] as String?) ?? '',
+        seasonIndex: (json['seasonIndex'] as num?)?.toInt(),
+        episodeIndex: (json['episodeIndex'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -115,6 +137,16 @@ class VideoItem {
         'total': total,
         'remarks': remarks,
         'hits': hits,
+        'progressSeconds': progressSeconds,
+        'progressFraction': progressFraction,
+        'played': played,
+        'isFavorite': isFavorite,
+        'likes': likes,
+        'mediaType': mediaType,
+        'seriesId': seriesId,
+        'seriesName': seriesName,
+        'seasonIndex': seasonIndex,
+        'episodeIndex': episodeIndex,
       };
 
   final dynamic source;
@@ -133,6 +165,43 @@ class VideoItem {
   final String remarks;
   final int hits;
 
+  /// Server-side playback state (Emby UserData; CMS leaves all of
+  /// these at their defaults). Read-only here: the server owns them,
+  /// the client only displays them and reports progress back.
+  /// [progressSeconds] is the resume position in seconds
+  /// (UserData.PlaybackPositionTicks / 10,000,000).
+  final double progressSeconds;
+
+  /// 0..1 watched fraction (UserData.PlayedPercentage / 100, or
+  /// progressSeconds / runtime when the percentage is absent).
+  final double progressFraction;
+
+  /// UserData.Played — the server considers this item finished.
+  final bool played;
+
+  /// UserData.IsFavorite.
+  final bool isFavorite;
+
+  /// UserData.Likes: true = liked, false = disliked, null = no rating.
+  final bool? likes;
+
+  /// Emby item type: 'Movie' | 'Series' | 'Episode' ('' on CMS).
+  final String mediaType;
+
+  /// Series id this episode belongs to ('' when not an episode).
+  final String seriesId;
+
+  /// Series name this episode belongs to ('' when not an episode).
+  final String seriesName;
+
+  /// Season number (ParentIndexNumber) / episode number (IndexNumber)
+  /// of an episode; null when the server did not supply one.
+  final int? seasonIndex;
+  final int? episodeIndex;
+
+  double get serverProgressFraction =>
+      progressFraction.clamp(0.0, 1.0);
+
   String get sourceKey => source.toString();
 
   /// `source|vodId` — the identity key for history / favourites / cache.
@@ -149,6 +218,11 @@ class VideoItem {
     String? type,
     String? area,
     String? year,
+    double? progressSeconds,
+    double? progressFraction,
+    bool? played,
+    bool? isFavorite,
+    bool? likes,
   }) =>
       VideoItem(
         source: source,
@@ -164,25 +238,213 @@ class VideoItem {
         total: total,
         remarks: remarks,
         hits: hits,
+        progressSeconds: progressSeconds ?? this.progressSeconds,
+        progressFraction: progressFraction ?? this.progressFraction,
+        played: played ?? this.played,
+        isFavorite: isFavorite ?? this.isFavorite,
+        likes: likes ?? this.likes,
+        mediaType: mediaType,
+        seriesId: seriesId,
+        seriesName: seriesName,
+        seasonIndex: seasonIndex,
+        episodeIndex: episodeIndex,
       );
 }
 
 /// One episode inside a play line.
+///
+/// [isMissing] marks a synthetic union entry: this episode number
+/// exists on another source but NOT on this line's own source, so
+/// the episode list can render it as a grey "other source" chip
+/// (number only, never a poster/placeholder image) and tapping it
+/// switches source instead of playing a local URL. A missing
+/// episode's [url] is '' — it must never be opened directly.
+///
+/// [introStart]/[introEnd]/[creditsStart] (seconds, 1.1.6) ride the
+/// skip-intro/outro markers: Emby fills them from `Chapters`
+/// (IntroStart/IntroEnd/CreditsStart); CMS leaves them null (no
+/// markers — per-episode custom seconds apply instead). Null = no
+/// marker; old caches without the fields read as null.
 class PlayEpisode {
-  const PlayEpisode({required this.name, required this.url});
+  const PlayEpisode({
+    required this.name,
+    required this.url,
+    this.isMissing = false,
+    this.introStart,
+    this.introEnd,
+    this.creditsStart,
+  });
 
   factory PlayEpisode.fromJson(Map<String, dynamic> json) => PlayEpisode(
         name: (json['name'] as String?) ?? '正片',
         url: (json['url'] as String?) ?? '',
+        isMissing: json['isMissing'] as bool? ?? false,
+        introStart: (json['introStart'] as num?)?.toDouble(),
+        introEnd: (json['introEnd'] as num?)?.toDouble(),
+        creditsStart: (json['creditsStart'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'name': name,
         'url': url,
+        if (isMissing) 'isMissing': true,
+        if (introStart != null) 'introStart': introStart,
+        if (introEnd != null) 'introEnd': introEnd,
+        if (creditsStart != null) 'creditsStart': creditsStart,
       };
 
   final String name;
   final String url;
+  final bool isMissing;
+  final double? introStart;
+  final double? introEnd;
+  final double? creditsStart;
+
+  /// Episode number parsed from [name] (see [parseEpisodeNumber]);
+  /// null when the name carries no parseable number — such an
+  /// episode never takes part in cross-source matching (never guessed).
+  int? get episodeNumber => parseEpisodeNumber(name);
+}
+
+/// Parse an episode number out of an episode name. Strict, never
+/// guessing: a name that does not match one of the shapes below
+/// yields null, and the caller must treat it as unmatchable.
+///
+/// Accepted shapes (in priority order):
+/// - `第(\d+)集/话/期` — e.g. `第1集`, `第01集`, `第12话`;
+/// - `(\d+)集/话` at the start — e.g. `01集`;
+/// - `E(\d+)` / `EP(\d+)` (case-insensitive) — e.g. `E05`, `EP12`,
+///   including `S02E05` (the E-part wins);
+/// - the whole name is 1–3 bare digits — e.g. `01`, `1`, `001`.
+///
+/// The number must be 1..999: 0 is never an episode, and 4+ digit
+/// runs are years/resolutions, never episode numbers (`2024`,
+/// `1080P` and `正片` all yield null).
+int? parseEpisodeNumber(String name) {
+  final s = name.trim();
+  if (s.isEmpty) return null;
+  int? take(int? n) {
+    if (n == null || n < 1 || n > 999) return null;
+    return n;
+  }
+
+  final cn = RegExp(r'第\s*0*(\d{1,3})\s*[集话期]').firstMatch(s);
+  if (cn != null) return take(int.tryParse(cn.group(1)!));
+  final bareWithUnit = RegExp(r'^0*(\d{1,3})\s*[集话]$').firstMatch(s);
+  if (bareWithUnit != null) {
+    return take(int.tryParse(bareWithUnit.group(1)!));
+  }
+  final e = RegExp(r'[Ee][Pp]?0*(\d{1,3})\b').firstMatch(s);
+  if (e != null) return take(int.tryParse(e.group(1)!));
+  final bare = RegExp(r'^0*(\d{1,3})$').firstMatch(s);
+  if (bare != null) return take(int.tryParse(bare.group(1)!));
+  return null;
+}
+
+/// Find an episode by exact number across all lines of a detail.
+/// Returns null when no episode carries [episodeNumber] — the caller
+/// must NOT fall back to a neighbour episode for an automatic
+/// continuation (a neighbour is a different episode, not the same
+/// one). Name equality is never consulted here: cross-source names
+/// differ in format (`第1集` vs `01`), the number is the identity.
+({int lineIdx, int epIdx})? findEpisodeByNumber(
+  List<PlayLine> lines,
+  int episodeNumber,
+) {
+  for (var li = 0; li < lines.length; li++) {
+    final eps = lines[li].episodes;
+    for (var ei = 0; ei < eps.length; ei++) {
+      if (eps[ei].episodeNumber == episodeNumber) {
+        return (lineIdx: li, epIdx: ei);
+      }
+    }
+  }
+  return null;
+}
+
+/// One entry of the multi-source episode union: where episode
+/// [episodeNumber] can be played.
+class EpisodeUnionTarget {
+  const EpisodeUnionTarget({
+    required this.episodeNumber,
+    required this.source,
+    required this.vodId,
+    required this.lineIdx,
+    required this.epIdx,
+    required this.inBase,
+  });
+
+  /// Episode number (the union key).
+  final int episodeNumber;
+
+  /// Source/vodId that carries this episode.
+  final dynamic source;
+  final String vodId;
+
+  /// Line/episode index inside that source's detail.
+  final int lineIdx;
+  final int epIdx;
+
+  /// True when the BASE detail (the one the user opened) carries it;
+  /// false = only an alt source has it (render as a missing chip).
+  final bool inBase;
+}
+
+/// Build the multi-source episode union for one title: the base
+/// detail's episodes plus every alt detail's episodes, keyed by
+/// exact episode number. Unparseable episode names are excluded
+/// (never guessed into the union). The base detail wins a number
+/// when several sources carry it; alts fill the gaps in the order
+/// given. The result is the data behind the "missing episode" chips:
+/// numbers present in the union but absent from the base are the
+/// episodes the user can only watch by switching source.
+Map<int, EpisodeUnionTarget> buildEpisodeUnion({
+  required VideoDetail base,
+  required List<VideoDetail> alts,
+}) {
+  final union = <int, EpisodeUnionTarget>{};
+  void add(VideoDetail detail, bool inBase) {
+    for (var li = 0; li < detail.lines.length; li++) {
+      final eps = detail.lines[li].episodes;
+      for (var ei = 0; ei < eps.length; ei++) {
+        final ep = eps[ei];
+        if (ep.isMissing) continue;
+        final num = ep.episodeNumber;
+        if (num == null) continue;
+        union.putIfAbsent(
+          num,
+          () => EpisodeUnionTarget(
+            episodeNumber: num,
+            source: detail.source,
+            vodId: detail.vodId,
+            lineIdx: li,
+            epIdx: ei,
+            inBase: inBase,
+          ),
+        );
+      }
+    }
+  }
+
+  add(base, true);
+  for (final alt in alts) {
+    add(alt, false);
+  }
+  return union;
+}
+
+/// Episode numbers the union has that the base detail does not —
+/// the missing episodes, ascending. Numbers no source carries never
+/// appear here (the union never invents episode counts).
+List<int> missingEpisodeNumbers(
+  Map<int, EpisodeUnionTarget> union,
+) {
+  final out = union.values
+      .where((t) => !t.inBase)
+      .map((t) => t.episodeNumber)
+      .toList()
+    ..sort();
+  return out;
 }
 
 /// One play line (`vod_play_from` name + its episodes).
@@ -529,6 +791,58 @@ class DoubanDetail {
   final String? episodes;
 }
 
+/// Next-episode info for a history write (1.1.6, browse A3 §4):
+/// total episodes of the CURRENT line + the next episode's name.
+/// Same-line next first; when the line is exhausted, [allowCrossLine]
+/// (Emby seasons only — CMS lines are play lines, not seasons) falls
+/// through to the next line's first episode. Never guesses a name:
+/// `nextEpName` is '' when there is no next episode or the lines are
+/// unknown. The caller (player record) passes its live lines; the
+/// home page never fetches a detail to fill these in.
+({int totalEpisodes, String nextEpName}) historyNextEpisode({
+  required List<PlayLine> lines,
+  required int lineIdx,
+  required int epIdx,
+  required bool allowCrossLine,
+}) {
+  if (lines.isEmpty || lineIdx < 0 || lineIdx >= lines.length) {
+    return (totalEpisodes: 0, nextEpName: '');
+  }
+  final eps = lines[lineIdx].episodes;
+  if (epIdx + 1 < eps.length) {
+    return (totalEpisodes: eps.length, nextEpName: eps[epIdx + 1].name);
+  }
+  if (allowCrossLine) {
+    for (var li = lineIdx + 1; li < lines.length; li++) {
+      if (lines[li].episodes.isNotEmpty) {
+        return (
+          totalEpisodes: eps.length,
+          nextEpName: lines[li].episodes.first.name,
+        );
+      }
+    }
+  }
+  return (totalEpisodes: eps.length, nextEpName: '');
+}
+
+/// Find an episode by exact name across all lines (1.1.6: the
+/// 下一集 card opens the detail page at the stored next-episode name).
+/// Null when the name is absent — the caller falls back to the normal
+/// open, never to a guessed index.
+({int lineIdx, int epIdx})? findEpisodeByName(
+  List<PlayLine> lines,
+  String name,
+) {
+  if (name.isEmpty) return null;
+  for (var li = 0; li < lines.length; li++) {
+    final eps = lines[li].episodes;
+    for (var ei = 0; ei < eps.length; ei++) {
+      if (eps[ei].name == name) return (lineIdx: li, epIdx: ei);
+    }
+  }
+  return null;
+}
+
 /// Continue Watching entry (local history, `hao_video_hist` shape).
 class WatchHistoryEntry {
   const WatchHistoryEntry({
@@ -543,6 +857,8 @@ class WatchHistoryEntry {
     this.epName = '',
     this.position = 0,
     this.duration = 0,
+    this.totalEpisodes,
+    this.nextEpName = '',
     required this.at,
   });
 
@@ -561,6 +877,11 @@ class WatchHistoryEntry {
         epName: (json['epName'] as String?) ?? '',
         position: (json['position'] as num?)?.toDouble() ?? 0,
         duration: (json['duration'] as num?)?.toDouble() ?? 0,
+        // 1.1.6 (browse A3 §4): optional — rows written before this
+        // carry neither key and read back as null / '' (never a
+        // crash, never a guessed next episode).
+        totalEpisodes: (json['totalEpisodes'] as num?)?.toInt(),
+        nextEpName: (json['nextEpName'] as String?) ?? '',
         at: DateTime.fromMillisecondsSinceEpoch(
           (json['at'] as num?)?.toInt() ?? 0,
         ),
@@ -578,6 +899,8 @@ class WatchHistoryEntry {
         'epName': epName,
         'position': position,
         'duration': duration,
+        'totalEpisodes': totalEpisodes,
+        'nextEpName': nextEpName,
         'at': at.millisecondsSinceEpoch,
       };
 
@@ -596,6 +919,19 @@ class WatchHistoryEntry {
   final String epName;
   final double position;
   final double duration;
+
+  /// Total episodes of the line being watched (1.1.6). Written by
+  /// the player at record time; null on older rows.
+  final int? totalEpisodes;
+
+  /// Name of the next episode (1.1.6). '' when there is no next
+  /// episode, the title is a movie, or the row predates the field —
+  /// such rows never enter the 下一集栏 until re-recorded.
+  final String nextEpName;
+
+  /// True only when a next episode is KNOWN (never guessed).
+  bool get hasNextEpisode => nextEpName.isNotEmpty;
+
   final DateTime at;
 
   String get sourceKey => source.toString();

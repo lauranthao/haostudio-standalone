@@ -128,9 +128,13 @@ class LiveSourcesStore {
 // The live room reads these keys (live_room_page.dart) and honours
 // them: per-platform on/off gates the transport, font size + opacity
 // style the list, and a Hive listenable applies changes while the room
-// is open, no restart. Speed / area have no control at all: a list has
-// no scroll speed and no overlay area to size, so they are shown as
-// explanatory text, not sliders.
+// is open, no restart. Speed / stroke / colour only affect the
+// fullscreen flying danmaku (BarrageConfig): the portrait list is a
+// chat list of plain Text — it has no scroll speed, no stroke and no
+// flying area to size — so the settings page must say "仅全屏飞弹幕生效"
+// next to those controls, like it already does for area. Maximum
+// count caps both sides: the portrait list drops its oldest items
+// past the cap, and the flying side takes min(cap, engine pool 72).
 class DanmakuSettings {
   static const double defaultFontSize = 14;
   static const double minFontSize = 12;
@@ -140,7 +144,15 @@ class DanmakuSettings {
   static const double minOpacity = 0.3;
   static const double maxOpacity = 1.0;
 
-  /// Per-platform danmaku on/off. Absent entry = enabled.
+  /// VOD ("影视弹幕") key in the same `hao_danmaku_enabled` map.
+  /// Not a live platform — it is listed separately in the settings
+  /// page. Unlike the live platforms it defaults to OFF (opt-in):
+  /// VOD danmaku comes from a title guess, so a wrong guess would
+  /// float another show's spoilers over the picture.
+  static const String vodSiteId = 'vod';
+
+  /// Per-platform danmaku on/off. Absent entry = enabled, except
+  /// [vodSiteId] which is absent = disabled (opt-in, see above).
   static Map<String, bool> enabledMap({Box<dynamic>? box}) {
     final b = _safeBox(box);
     if (b == null) return const {};
@@ -159,8 +171,11 @@ class DanmakuSettings {
     return const {};
   }
 
-  static bool isEnabled(String siteId, {Box<dynamic>? box}) =>
-      enabledMap(box: box)[siteId] ?? true;
+  static bool isEnabled(String siteId, {Box<dynamic>? box}) {
+    final map = enabledMap(box: box);
+    if (map.containsKey(siteId)) return map[siteId]!;
+    return siteId != vodSiteId;
+  }
 
   static Future<void> setEnabled(
     String siteId,
@@ -430,6 +445,145 @@ class DanmakuSettings {
     await b.put(
       HiveKeys.danmakuArea,
       areaFractions.containsKey(value) ? value : areaFull,
+    );
+  }
+
+  // -- Fullscreen flying-danmaku fine settings (1.1.6) --------------
+  //
+  // Speed / stroke / colour apply ONLY to the fullscreen flying
+  // danmaku (BarrageConfig) — the portrait list is plain Text and
+  // has none of these. The settings page must say "仅全屏飞弹幕生效"
+  // next to each of these controls, like it already does for area.
+  // Maximum count caps both sides: the portrait list drops its
+  // oldest items past the cap, and the flying side takes
+  // min(cap, engine pool ceiling 72) — see [flyingMaxVisibleCount].
+
+  static const bool defaultStroke = true;
+
+  static const double defaultStrokeWidth = 1.0;
+  static const double minStrokeWidth = 0.5;
+  static const double maxStrokeWidth = 2.0;
+
+  static const double defaultSpeed = 1.0;
+  static const double minSpeed = 0.5;
+  static const double maxSpeed = 2.0;
+
+  /// Engine default for BarrageConfig.baseSpeed (px/s at speed 1.0).
+  static const double baseSpeedPxPerSecond = 120.0;
+
+  static const int defaultMaxCount = 80;
+  static const int minMaxCount = 20;
+  static const int maxMaxCount = 200;
+
+  /// Engine object-pool ceiling (BarrageConfig.barragePoolMaxSize in
+  /// the live room): the flying danmaku can never show more than
+  /// this many items at once, however high [maxCount] is set.
+  static const int enginePoolMaxSize = 72;
+
+  static const String colorModeUniform = 'uniform';
+  static const String colorModePlatform = 'platform';
+
+  /// Flying-danmaku stroke on/off. Default true (engine default).
+  /// 仅全屏飞弹幕生效 (the portrait list is plain Text).
+  static bool stroke({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = b?.get(HiveKeys.danmakuStroke);
+    if (v is bool) return v;
+    return defaultStroke;
+  }
+
+  static Future<void> setStroke(bool value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuStroke, value);
+  }
+
+  /// Flying-danmaku stroke width, 0.5..2.0, default 1.0.
+  /// 仅全屏飞弹幕生效. Stroke colour is fixed black (see HiveKeys).
+  static double strokeWidth({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = (b?.get(HiveKeys.danmakuStrokeWidth) as num?)?.toDouble();
+    if (v == null) return defaultStrokeWidth;
+    return v.clamp(minStrokeWidth, maxStrokeWidth);
+  }
+
+  static Future<void> setStrokeWidth(
+    double value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuStrokeWidth,
+      value.clamp(minStrokeWidth, maxStrokeWidth),
+    );
+  }
+
+  /// Flying-danmaku speed multiplier, 0.5..2.0, default 1.0.
+  /// 仅全屏飞弹幕生效. This is NOT playback rate — live has no
+  /// speed control and playbackRate stays 1.0.
+  static double speed({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = (b?.get(HiveKeys.danmakuSpeed) as num?)?.toDouble();
+    if (v == null) return defaultSpeed;
+    return v.clamp(minSpeed, maxSpeed);
+  }
+
+  static Future<void> setSpeed(double value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(HiveKeys.danmakuSpeed, value.clamp(minSpeed, maxSpeed));
+  }
+
+  /// Flying speed in px/s: BarrageConfig.baseSpeed = 120 * [speed].
+  static double flyingBaseSpeed({Box<dynamic>? box}) =>
+      baseSpeedPxPerSecond * speed(box: box);
+
+  /// Maximum danmaku count, 20..200, default 80 (the engine's
+  /// maxVisibleCount default). Caps the portrait list AND the
+  /// fullscreen flying danmaku (flying side additionally clamped
+  /// to [enginePoolMaxSize] — see [flyingMaxVisibleCount]).
+  static int maxCount({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final v = (b?.get(HiveKeys.danmakuMaxCount) as num?)?.toInt();
+    if (v == null) return defaultMaxCount;
+    return v.clamp(minMaxCount, maxMaxCount);
+  }
+
+  static Future<void> setMaxCount(int value, {Box<dynamic>? box}) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuMaxCount,
+      value.clamp(minMaxCount, maxMaxCount),
+    );
+  }
+
+  /// Flying-danmaku visible cap: the stored [maxCount], clamped to
+  /// the engine object-pool ceiling ([enginePoolMaxSize]).
+  static int flyingMaxVisibleCount({Box<dynamic>? box}) =>
+      maxCount(box: box).clamp(minMaxCount, enginePoolMaxSize);
+
+  /// 'uniform' (default — theme text in the portrait list, white
+  /// flying danmaku) or 'platform' (the platform's own colour from
+  /// LiveMessage.color, where the adapter provides one).
+  /// 仅全屏飞弹幕 + 竖屏列表正文生效；用户名在两种模式下都保持主题色。
+  static String colorMode({Box<dynamic>? box}) {
+    final b = _safeBox(box);
+    final raw = b?.get(HiveKeys.danmakuColorMode);
+    if (raw is String && raw == colorModePlatform) return colorModePlatform;
+    return colorModeUniform;
+  }
+
+  static Future<void> setColorMode(
+    String value, {
+    Box<dynamic>? box,
+  }) async {
+    final b = _safeBox(box);
+    if (b == null) return;
+    await b.put(
+      HiveKeys.danmakuColorMode,
+      value == colorModePlatform ? colorModePlatform : colorModeUniform,
     );
   }
 }

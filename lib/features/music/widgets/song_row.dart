@@ -12,6 +12,7 @@
 
 import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
+import '../../../widgets/hao_pressable.dart';
 
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/hao_themes.dart';
@@ -71,7 +72,7 @@ class SongRow extends StatelessWidget {
     final durationSize = compact ? 11.0 : 12.0;
     final row = Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: HaoPressable(
         onTap: () {
           HaoHaptics.tap();
           onPlay();
@@ -95,7 +96,7 @@ class SongRow extends StatelessWidget {
                       width: 48,
                       height: 48,
                       color: theme.accentSoft,
-                      child: Icon(Icons.music_note, color: theme.textMuted),
+                      child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.music_note, color: theme.textMuted),
                     )
                   : Image(
                       // 200px thumb (coverThumb): the full coverHi URL
@@ -108,7 +109,7 @@ class SongRow extends StatelessWidget {
                         width: 48,
                         height: 48,
                         color: theme.accentSoft,
-                        child: Icon(Icons.music_note, color: theme.textMuted),
+                        child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.music_note, color: theme.textMuted),
                       ),
                     ),
             ),
@@ -127,7 +128,7 @@ class SongRow extends StatelessWidget {
                           song.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: titleSize,
                             fontWeight: titleWeight,
@@ -147,7 +148,7 @@ class SongRow extends StatelessWidget {
                           ),
                           child: Text(
                             song.platform.badgeName,
-                            style: TextStyle(
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                               color: theme.accent,
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -167,7 +168,7 @@ class SongRow extends StatelessWidget {
                             song.artist,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                               color: onOpenArtist != null
                                   ? theme.accent
                                   : theme.textSecondary,
@@ -179,7 +180,7 @@ class SongRow extends StatelessWidget {
                       if (song.album.isNotEmpty) ...[
                         Text(
                           ' · ',
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 13,
                           ),
@@ -191,7 +192,7 @@ class SongRow extends StatelessWidget {
                               song.album,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textSecondary,
                                 fontSize: 13,
                               ),
@@ -203,7 +204,7 @@ class SongRow extends StatelessWidget {
                         const SizedBox(width: 6),
                         Text(
                           formatDuration(song.dur),
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: durationSize,
                           ),
@@ -221,7 +222,7 @@ class SongRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   IconButton(
-                    icon: Icon(
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                       isFav ? Icons.favorite : Icons.favorite_border,
                       color: isFav ? theme.accent : theme.textMuted,
                       size: 22,
@@ -237,7 +238,7 @@ class SongRow extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                       Icons.play_arrow,
                       color: theme.textPrimary,
                       size: 26,

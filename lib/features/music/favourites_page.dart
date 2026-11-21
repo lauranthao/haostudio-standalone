@@ -8,6 +8,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -55,7 +56,7 @@ class _FavouritesPageState extends State<FavouritesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('我的收藏')),
+      appBar: AppBar(title: const Text('我的收藏'), flexibleSpace: const HaoAppBarGlass()),
       body: _songs.isEmpty
           ? Center(
               child: Text(
@@ -95,7 +96,7 @@ class _FavouritesPageState extends State<FavouritesPage> {
                         },
                         onOpenArtist: () => unawaited(
                           Navigator.of(context).push(
-                            MaterialPageRoute<void>(
+                            CupertinoPageRoute<void>(
                               settings: const RouteSettings(
                                   name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(

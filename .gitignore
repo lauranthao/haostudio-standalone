@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Release binaries live in the shop's public/ dir, never in the repo.
+*.ipa
+*.apk
+*.exe
+*.zip
+
+# Transient golden-failure images written by flutter test runs.
+test/failures/

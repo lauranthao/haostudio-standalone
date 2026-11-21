@@ -13,6 +13,8 @@ import 'dart:async';
 // falls back to searching the album name on the platform and filtering
 // to the artist — the same intentional workaround as Kuwo album tracks.
 
+import 'package:flutter/cupertino.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -163,6 +165,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             Text(
               '选择歌单',
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(ctx),
                 color: theme.textPrimary,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -174,7 +177,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   l.name,
-                  style: TextStyle(color: theme.textPrimary),
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.textPrimary),
                 ),
                 onTap: () => Navigator.of(ctx).pop(l),
               ),
@@ -214,10 +217,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final favIds = MusicStore.getFavIds();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.albumName, maxLines: 1),
+        title: Text(widget.albumName, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share),
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share),
             onPressed: () => ClipboardService.copyWithFeedback(
               context,
               '${widget.albumName} - ${widget.artistName}',
@@ -227,7 +230,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _failed
               ? Center(
                   child: Column(
@@ -235,7 +238,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                     children: [
                       Text(
                         '专辑加载失败',
-                        style: TextStyle(color: theme.textPrimary),
+                        style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                       ),
                       const SizedBox(height: 12),
                       ElevatedButton(
@@ -267,6 +270,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       _detail!.name.isEmpty ? widget.albumName : _detail!.name,
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
@@ -279,6 +283,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                           : _detail!.artist,
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textSecondary,
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -288,7 +293,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                     Text(
                       _metaLine(),
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: theme.textMuted, fontSize: 13),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
                     ),
                     const SizedBox(height: 20),
                     _actions(theme),
@@ -327,7 +332,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 width: size,
                 height: size,
                 color: theme.accentSoft,
-                child: Icon(Icons.album, color: theme.textMuted, size: 72),
+                child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.album, color: theme.textMuted, size: 72),
               )
             : Image(
                 image: MusicImageProvider(cover),
@@ -338,7 +343,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   width: size,
                   height: size,
                   color: theme.accentSoft,
-                  child: Icon(Icons.album, color: theme.textMuted, size: 72),
+                  child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.album, color: theme.textMuted, size: 72),
                 ),
               ),
       ),
@@ -382,7 +387,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     String label,
     VoidCallback onTap,
   ) {
-    return InkWell(
+    return HaoPressable(
       onTap: () {
         HaoHaptics.tap();
         onTap();
@@ -395,7 +400,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         child: SizedBox(
           width: 48,
           height: 48,
-          child: Icon(icon, color: theme.textPrimary, size: 22),
+          child: Icon(shadows: HaoTheme.legibilityShadows(context), icon, color: theme.textPrimary, size: 22),
         ),
       ),
     );
@@ -416,6 +421,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       leading: Text(
         '${index + 1}',
         style: TextStyle(
+          shadows: HaoTheme.legibilityShadows(context),
           color: theme.textMuted,
           fontSize: 15,
           fontWeight: FontWeight.w700,

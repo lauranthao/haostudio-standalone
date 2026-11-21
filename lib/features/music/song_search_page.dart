@@ -14,10 +14,13 @@ import 'dart:async';
 // platform. Playback resolving is NOT filtered: it still asks all
 // sources serially and plays the first playable URL (chen's 铁律).
 
+import 'package:flutter/cupertino.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/haptics.dart';
 import '../../services/music/hot_search_service.dart';
 import '../../services/music/music_api.dart';
@@ -38,6 +41,8 @@ import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 import '../../widgets/platform_logo.dart';
+import '../../widgets/hao_search_field.dart';
+import '../../widgets/hao_segmented_control.dart';
 
 enum _SearchType { song, playlist, artist, album }
 
@@ -127,12 +132,26 @@ class _SongSearchPageState extends State<SongSearchPage> {
     HaoHaptics.tap();
     final picked = await showModalBottomSheet<MusicPlatform>(
       context: context,
+      // N-10: iOS grabber + settle-spring rise (same spring as the
+      // player close). The picker is a floating card, so the handle
+      // floats just above it — same as the live sheets.
+      showDragHandle: true,
+      sheetAnimationStyle: const AnimationStyle(
+        curve: HaoSettleSpringCurve(),
+        reverseCurve: HaoSettleSpringCurve(),
+      ),
+      // isScrollControlled: without it the sheet height is capped at
+      // 9/16 of the screen, and the 48px the framework reserves above
+      // the content for the drag handle would overflow this
+      // non-scrollable floating card on <=667pt screens (56px at a
+      // 600pt viewport). With it the sheet sizes to its content.
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final theme = HaoTheme.of(ctx);
         final options = SearchPlatformStore.options();
         return GlassCard(
-          radius: 24,
+          radius: HaoRadius.sheet,
           shadow: GlassShadow.panel,
           quality: GlassCardQuality.premium,
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -143,7 +162,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             children: [
               Text(
                 '选择平台',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 19,
                   fontWeight: FontWeight.w700,
@@ -159,7 +178,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     shadow: GlassShadow.none,
                     child: Material(
                       color: Colors.transparent,
-                      child: InkWell(
+                      child: HaoPressable(
                         onTap: () => Navigator.of(ctx).pop(pf),
                         borderRadius: BorderRadius.circular(HaoRadius.large),
                         child: Padding(
@@ -176,7 +195,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                               const SizedBox(width: 10),
                               Text(
                                 pf.displayName,
-                                style: TextStyle(
+                                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textPrimary,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w500,
@@ -184,7 +203,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                               ),
                               const Spacer(),
                               if (pf == _platform)
-                                Icon(
+                                Icon(shadows: HaoTheme.legibilityShadows(context),
                                   Icons.check_circle,
                                   size: 18,
                                   color: theme.accent,
@@ -577,10 +596,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
           const SizedBox(
             width: 14,
             height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: CupertinoActivityIndicator(radius: 7),
           ),
           const SizedBox(width: 8),
-          Text(_pendingLabel, style: TextStyle(color: theme.textMuted)),
+          Text(_pendingLabel, style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted)),
         ],
       ),
     );
@@ -596,139 +615,90 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('搜歌')),
+      appBar: AppBar(title: Text('搜歌', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: GlassCard(
-              radius: 18,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 15,
-                vertical: 6,
-              ),
-              shadow: GlassShadow.small,
-              child: Row(
-                children: [
-                  Icon(Icons.search, size: 15, color: theme.textMuted),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SizedBox(
-                      height: 32,
-                      child: TextField(
-                        controller: _queryController,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) {
-                          HaoHaptics.tap();
-                          _search();
-                        },
-                        decoration: InputDecoration(
-                          hintText: '搜索歌曲 / 歌手…',
-                          hintStyle: TextStyle(color: theme.textMuted),
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 20,
-                    height: 22,
-                    child: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.all(3),
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : ValueListenableBuilder<TextEditingValue>(
-                            valueListenable: _queryController,
-                            builder: (ctx, value, _) {
-                              if (value.text.isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              return IconButton(
-                                icon: Icon(
-                                  Icons.cancel,
-                                  color: theme.textMuted,
-                                  size: 15,
-                                ),
-                                padding: EdgeInsets.zero,
-                                onPressed: () {
-                                  HaoHaptics.tap();
-                                  _clearSearch();
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(width: 6),
-                  GlassPressScale(
-                    pressedScale: 0.9,
-                    child: GlassCard(
-                      radius: 999,
-                      padding: EdgeInsets.zero,
-                      shadow: GlassShadow.none,
-                      quality: GlassCardQuality.premium,
-                      child: SizedBox(
-                        width: 54,
-                        height: 30,
-                        child: TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  HaoHaptics.tap();
-                                  _search();
-                                },
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            '搜索',
-                            style: TextStyle(
-                              color: theme.accent,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+            child: Row(
+              children: [
+                Expanded(
+                  child: HaoSearchField(
+                    controller: _queryController,
+                    hintText: '搜索歌曲 / 歌手…',
+                    onSubmitted: (_) {
+                      HaoHaptics.tap();
+                      _search();
+                    },
+                    onClear: _clearSearch,
+                    onCancel: _clearSearch,
+                    trailing: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 22,
+                            child: Padding(
+                              padding: EdgeInsets.all(3),
+                              child: CupertinoActivityIndicator(radius: 7),
                             ),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GlassPressScale(
+                  pressedScale: 0.9,
+                  child: GlassCard(
+                    radius: 999,
+                    padding: EdgeInsets.zero,
+                    shadow: GlassShadow.none,
+                    quality: GlassCardQuality.premium,
+                    child: SizedBox(
+                      width: 54,
+                      height: 30,
+                      child: TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                HaoHaptics.tap();
+                                _search();
+                              },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          '搜索',
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           // Type tabs (Beans `typeTabs` capsule segmented control):
-          // 歌曲 / 歌单 / 歌手 / 专辑 under the field, full width. The
-          // SegmentedButton styling comes from the theme.
+          // 歌曲 / 歌单 / 歌手 / 专辑 under the field, full width.
+          // HaoSegmentedControl: sliding pill + select haptic.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               children: [
                 Expanded(
-                  child: SegmentedButton<_SearchType>(
+                  child: HaoSegmentedControl<_SearchType>(
                     segments: const [
-                      ButtonSegment(value: _SearchType.song, label: Text('歌曲')),
-                      ButtonSegment(
-                        value: _SearchType.playlist,
-                        label: Text('歌单'),
-                      ),
-                      ButtonSegment(
-                        value: _SearchType.artist,
-                        label: Text('歌手'),
-                      ),
-                      ButtonSegment(
-                        value: _SearchType.album,
-                        label: Text('专辑'),
-                      ),
+                      HaoSegment(value: _SearchType.song, label: '歌曲'),
+                      HaoSegment(value: _SearchType.playlist, label: '歌单'),
+                      HaoSegment(value: _SearchType.artist, label: '歌手'),
+                      HaoSegment(value: _SearchType.album, label: '专辑'),
                     ],
-                    selected: {_type},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (s) => _onTypeChanged(s.first),
+                    value: _type,
+                    onChanged: _onTypeChanged,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -761,7 +731,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
       _SearchType.album => _albums.isEmpty,
     };
     if (_loading && listEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CupertinoActivityIndicator());
     }
     if (!_searched) {
       final history = MusicStore.getSearchHistory();
@@ -821,15 +791,23 @@ class _SongSearchPageState extends State<SongSearchPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.search_off, size: 44, color: theme.textMuted),
+              Icon(shadows: HaoTheme.legibilityShadows(context), Icons.search_off, size: 44, color: theme.textMuted),
               const SizedBox(height: 12),
               Text(
                 _error,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: theme.textSecondary, fontSize: 15),
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: _search, child: const Text('重试')),
+              OutlinedButton(
+                onPressed: _search,
+                child: Text(
+                  '重试',
+                  style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -852,15 +830,15 @@ class _SongSearchPageState extends State<SongSearchPage> {
                     // Count only — the platform is already in the
                     // switch capsule above, so no "找到 N 首 · 平台" echo.
                     '${_songs.length} 首',
-                    style: TextStyle(color: theme.textMuted, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 12),
                   ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: _songs.isEmpty
                         ? null
                         : () => _playSong(_songs.first, _songs),
-                    icon: const Icon(Icons.play_arrow, size: 16),
-                    label: const Text('播放全部', style: TextStyle(fontSize: 12)),
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.play_arrow, size: 16),
+                    label: Text('播放全部', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), fontSize: 12)),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       minimumSize: Size.zero,
@@ -890,12 +868,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
                             const SizedBox(
                               width: 14,
                               height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CupertinoActivityIndicator(radius: 7),
                             ),
                             const SizedBox(width: 8),
                             Text(
                               _pendingLabel,
-                              style: TextStyle(color: theme.textMuted),
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                             ),
                           ],
                         ),
@@ -911,7 +889,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       child: Text(
                         '已加载全部',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: theme.textMuted),
+                        style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                       ),
                     );
                   }
@@ -946,7 +924,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   Text(
                     // Count only (see the song header above).
                     '${_playlists.length} 个',
-                    style: TextStyle(color: theme.textMuted, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -974,7 +952,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                                   width: 48,
                                   height: 48,
                                   color: theme.accentSoft,
-                                  child: Icon(
+                                  child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                     Icons.music_note,
                                     color: theme.textMuted,
                                   ),
@@ -988,7 +966,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                                     width: 48,
                                     height: 48,
                                     color: theme.accentSoft,
-                                    child: Icon(
+                                    child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.music_note,
                                       color: theme.textMuted,
                                     ),
@@ -999,7 +977,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           p.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -1009,13 +987,13 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           '${p.platform.displayName} · ${p.creator} · ${p.playCount}次播放',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textSecondary,
                             fontSize: 13,
                           ),
                         ),
-                        trailing: Icon(
-                          Icons.chevron_right,
+                        trailing: Icon(shadows: HaoTheme.legibilityShadows(context),
+                          CupertinoIcons.chevron_right,
                           color: theme.textMuted,
                         ),
                         onTap: () {
@@ -1040,7 +1018,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   Text(
                     // Count only (see the song header above).
                     '${_artists.length} 位',
-                    style: TextStyle(color: theme.textMuted, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -1067,12 +1045,12 @@ class _SongSearchPageState extends State<SongSearchPage> {
                               : MusicImageProvider(a.cover),
                           backgroundColor: theme.accentSoft,
                           child: a.cover.isEmpty
-                              ? Icon(Icons.person, color: theme.textMuted)
+                              ? Icon(shadows: HaoTheme.legibilityShadows(context), Icons.person, color: theme.textMuted)
                               : null,
                         ),
                         title: Text(
                           a.name,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -1080,19 +1058,19 @@ class _SongSearchPageState extends State<SongSearchPage> {
                         ),
                         subtitle: Text(
                           '${a.platform.displayName} · ${a.musicSize} 首 · ${a.albumSize} 张专辑',
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textSecondary,
                             fontSize: 13,
                           ),
                         ),
-                        trailing: Icon(
-                          Icons.chevron_right,
+                        trailing: Icon(shadows: HaoTheme.legibilityShadows(context),
+                          CupertinoIcons.chevron_right,
                           color: theme.textMuted,
                         ),
                         onTap: () {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
-                            MaterialPageRoute<void>(
+                            CupertinoPageRoute<void>(
                               settings: const RouteSettings(
                                   name: musicSubPageRouteName),
                               builder: (_) => ArtistDetailPage(
@@ -1126,7 +1104,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   Text(
                     // Count only (see the song header above).
                     '${_albums.length} 张',
-                    style: TextStyle(color: theme.textMuted, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -1156,7 +1134,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                                   width: 46,
                                   height: 46,
                                   color: theme.accentSoft,
-                                  child: Icon(
+                                  child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                     Icons.album,
                                     color: theme.textMuted,
                                   ),
@@ -1170,7 +1148,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                                     width: 46,
                                     height: 46,
                                     color: theme.accentSoft,
-                                    child: Icon(
+                                    child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.album,
                                       color: theme.textMuted,
                                     ),
@@ -1181,7 +1159,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           a.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -1191,19 +1169,19 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textSecondary,
                             fontSize: 13,
                           ),
                         ),
-                        trailing: Icon(
-                          Icons.chevron_right,
+                        trailing: Icon(shadows: HaoTheme.legibilityShadows(context),
+                          CupertinoIcons.chevron_right,
                           color: theme.textMuted,
                         ),
                         onTap: () {
                           HaoHaptics.tap();
                           Navigator.of(context).push(
-                            MaterialPageRoute<void>(
+                            CupertinoPageRoute<void>(
                               settings: const RouteSettings(
                                   name: musicSubPageRouteName),
                               builder: (_) => AlbumDetailPage(
@@ -1230,7 +1208,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openArtist(Song song) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      CupertinoPageRoute<void>(
         settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => ArtistDetailPage(
           platform: song.platform,
@@ -1243,7 +1221,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openAlbum(Song song) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      CupertinoPageRoute<void>(
         settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => AlbumDetailPage(
           platform: song.platform,
@@ -1257,7 +1235,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
 
   void _openPlazaDetail(PlaylistSummary p) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      CupertinoPageRoute<void>(
         settings: const RouteSettings(name: musicSubPageRouteName),
         builder: (_) => PlazaDetailPage(playlist: p),
       ),
@@ -1296,7 +1274,7 @@ class _SearchHistory extends StatelessWidget {
           children: [
             Text(
               '搜索历史',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -1305,10 +1283,10 @@ class _SearchHistory extends StatelessWidget {
             const Spacer(),
             TextButton.icon(
               onPressed: onClear,
-              icon: Icon(Icons.delete_outline, size: 14, color: theme.textMuted),
+              icon: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.delete, size: 14, color: theme.textMuted),
               label: Text(
                 '清除',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textMuted,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
@@ -1343,13 +1321,13 @@ class _SearchHistory extends StatelessWidget {
                         shadow: GlassShadow.none,
                         child: Material(
                           color: Colors.transparent,
-                          child: InkWell(
+                          child: HaoPressable(
                             onTap: () => onTap(q),
                             borderRadius: BorderRadius.circular(999),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                Icon(shadows: HaoTheme.legibilityShadows(context),
                                   Icons.history,
                                   size: 10,
                                   color: theme.textPrimary,
@@ -1357,7 +1335,7 @@ class _SearchHistory extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Text(
                                   q,
-                                  style: TextStyle(
+                                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textPrimary,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
@@ -1375,17 +1353,17 @@ class _SearchHistory extends StatelessWidget {
                       height: 16,
                       child: Material(
                         color: Colors.transparent,
-                        child: InkWell(
+                        child: HaoPressable(
                           onTap: () => onRemove(q),
-                          customBorder: const CircleBorder(),
+                          borderRadius: BorderRadius.circular(999),
                           child: Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: theme.surfaceStrong,
                               border: Border.all(color: theme.hairline),
                             ),
-                            child: Icon(
-                              Icons.clear,
+                            child: Icon(shadows: HaoTheme.legibilityShadows(context),
+                              CupertinoIcons.clear,
                               size: 9,
                               color: theme.textMuted.withValues(alpha: 0.8),
                             ),
@@ -1440,7 +1418,7 @@ class _HotSearch extends StatelessWidget {
       children: [
         Text(
           title,
-          style: TextStyle(
+          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
             color: theme.textPrimary,
             fontSize: 21,
             fontWeight: FontWeight.w700,
@@ -1463,7 +1441,7 @@ class _HotSearch extends StatelessWidget {
                   shadow: GlassShadow.none,
                   child: Material(
                     color: Colors.transparent,
-                    child: InkWell(
+                    child: HaoPressable(
                       onTap: () => onTap(words[i]),
                       borderRadius: BorderRadius.circular(999),
                       child: Row(
@@ -1477,7 +1455,7 @@ class _HotSearch extends StatelessWidget {
                                 shape: BoxShape.circle,
                                 color: theme.accent,
                               ),
-                              child: Icon(
+                              child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                 _topIcons[i],
                                 size: 10,
                                 color: Theme.of(
@@ -1492,7 +1470,7 @@ class _HotSearch extends StatelessWidget {
                               child: Center(
                                 child: Text(
                                   '${i + 1}',
-                                  style: TextStyle(
+                                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textMuted,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
@@ -1503,7 +1481,7 @@ class _HotSearch extends StatelessWidget {
                           const SizedBox(width: 7),
                           Text(
                             words[i],
-                            style: TextStyle(
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                               color: i < 3
                                   ? theme.textPrimary
                                   : theme.textSecondary,
@@ -1556,7 +1534,7 @@ class _PlatformCapsule extends StatelessWidget {
         shadow: GlassShadow.none,
         child: Material(
           color: Colors.transparent,
-          child: InkWell(
+          child: HaoPressable(
             onTap: () {
               HaoHaptics.tap();
               onTap();
@@ -1569,15 +1547,15 @@ class _PlatformCapsule extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   platform.displayName,
-                  style: TextStyle(
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 2),
-                Icon(
-                  Icons.keyboard_arrow_down,
+                Icon(shadows: HaoTheme.legibilityShadows(context),
+                  CupertinoIcons.chevron_down,
                   size: 16,
                   color: theme.textSecondary,
                 ),

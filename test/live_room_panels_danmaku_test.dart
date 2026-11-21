@@ -21,10 +21,12 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
@@ -47,6 +49,16 @@ void main() {
 
   setUpAll(() async {
     hiveDir = await HiveTestSetup.init(prefix: 'hao-panels-test-');
+    // Memory-backed box: a Hive file write issued inside a widget
+    // test's fake-async zone never completes there and wedges the
+    // box's serialized write queue, so a later test's first Hive
+    // write hangs until the 10-min timeout (L04 hung here in v2).
+    // Same pattern as emby_tab_persistence_test.dart.
+    final memBox = await Hive.openBox<dynamic>(
+      'test_settings',
+      bytes: Uint8List(0),
+    );
+    HiveStore.setTestBox(memBox);
   });
 
   tearDownAll(() async {
@@ -438,6 +450,13 @@ void main() {
         await DanmakuSettings.setBlockEmoteOnly(false);
         await DanmakuSettings.setBlockLong(false);
         await DanmakuSettings.setDouyuBotFilter(false);
+        // 1.1.6 fine settings back to defaults (burst / max-count
+        // tests below change them).
+        await DanmakuSettings.setStroke(true);
+        await DanmakuSettings.setStrokeWidth(1.0);
+        await DanmakuSettings.setSpeed(1.0);
+        await DanmakuSettings.setMaxCount(80);
+        await DanmakuSettings.setColorMode('uniform');
         await HiveStore.put(HiveKeys.danmakuBlockList, '[]');
         await LiveHistoryStore.clear();
         await LiveFollowStore.clear();
@@ -639,6 +658,100 @@ void main() {
       // Same keyword in another message is removed too.
       expect(find.text('Bob: buy now!'), findsNothing);
       expect(DanmakuBlockStore.keywords(), contains('buy now'));
+      await disposeRoom(tester);
+    });
+
+    testWidgets('burst throttle: 40 chat messages keep 30 (1.1.6)', (
+      tester,
+    ) async {
+      await resetRoomSettings(tester);
+      final site = await pumpRoom(tester);
+      for (var i = 0; i < 40; i++) {
+        site.danmaku.emit(LiveMessage(message: 'burst $i'));
+      }
+      await tester.pump();
+      // Stick-to-bottom: the last KEPT item is visible; items past
+      // the 30/s quota never entered the list.
+      expect(find.text('burst 29'), findsOneWidget);
+      expect(find.text('burst 39'), findsNothing);
+      // The first item survived too: drag the vertical danmaku
+      // ListView (not scrollUntilVisible — the room has several
+      // scrollables and it cannot pick one) back to the top.
+      final danmakuList = find.byWidgetPredicate(
+        (w) => w is ListView && w.scrollDirection == Axis.vertical,
+      );
+      expect(danmakuList, findsOneWidget);
+      await tester.drag(danmakuList, const Offset(0, 600));
+      await tester.pump();
+      await tester.drag(danmakuList, const Offset(0, 600));
+      await tester.pump();
+      expect(find.text('burst 0'), findsOneWidget);
+      await disposeRoom(tester);
+    });
+
+    testWidgets('burst throttle: super-chat is exempt from the quota', (
+      tester,
+    ) async {
+      await resetRoomSettings(tester);
+      final site = await pumpRoom(tester);
+      for (var i = 0; i < 35; i++) {
+        site.danmaku.emit(
+          LiveMessage(
+            message: 'gift $i',
+            type: LiveMessageType.superChat,
+          ),
+        );
+      }
+      await tester.pump();
+      // Count, not visibility: 35 super-chat messages in one second
+      // must ALL be in the list (the quota counts chat only). The
+      // vertical danmaku ListView's delegate childCount is the list
+      // length — no scrolling needed to prove it.
+      final danmakuList = find.byWidgetPredicate(
+        (w) => w is ListView && w.scrollDirection == Axis.vertical,
+      );
+      expect(danmakuList, findsOneWidget);
+      final listView = tester.widget<ListView>(danmakuList);
+      final delegate =
+          listView.childrenDelegate as SliverChildBuilderDelegate;
+      expect(delegate.childCount, 35);
+      await disposeRoom(tester);
+    });
+
+    testWidgets('max count caps the portrait list at the setting', (
+      tester,
+    ) async {
+      await resetRoomSettings(tester);
+      // The setting clamps to 20..200 (unit test
+      // live_116_danmaku_quality_test.dart), so 10 would silently
+      // become 20 — use the minimum 20 and emit 25.
+      await tester.runAsync(() => DanmakuSettings.setMaxCount(20));
+      await settle(tester);
+      final site = await pumpRoom(tester);
+      for (var i = 0; i < 25; i++) {
+        site.danmaku.emit(LiveMessage(message: 'cap $i'));
+      }
+      await tester.pump();
+      // Only the last 20 survive: the delegate childCount is the list
+      // length, so it proves the cap without depending on scrolling.
+      final danmakuList = find.byWidgetPredicate(
+        (w) => w is ListView && w.scrollDirection == Axis.vertical,
+      );
+      expect(danmakuList, findsOneWidget);
+      final listView = tester.widget<ListView>(danmakuList);
+      final delegate =
+          listView.childrenDelegate as SliverChildBuilderDelegate;
+      expect(delegate.childCount, 20);
+      // Stick-to-bottom: the last kept item is visible.
+      expect(find.text('cap 24'), findsOneWidget);
+      // Drag back to the top: the oldest kept item is there, the
+      // dropped one is not (same pattern as the burst test above).
+      await tester.drag(danmakuList, const Offset(0, 600));
+      await tester.pump();
+      await tester.drag(danmakuList, const Offset(0, 600));
+      await tester.pump();
+      expect(find.text('cap 5'), findsOneWidget);
+      expect(find.text('cap 4'), findsNothing);
       await disposeRoom(tester);
     });
 

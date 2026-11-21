@@ -4,7 +4,7 @@
 // in the app must use one of these — no ad-hoc numbers. Mapping from the
 // old scattered values (fixed 2026-11-21, do not invent new steps):
 // 2 -> badge, 4 -> badge, 6 -> small, 8 -> standard, 9 -> standard,
-// 10 -> standard, 12 -> large, 14 -> large, 16 -> large, 18 -> panel,
+// 10 -> standard, 12 -> large, 16 -> large, 18 -> panel,
 // 20 -> panel, 22 -> panel, 24 -> sheet, 28 -> sheet, 999 (pill) stays
 // a literal 999 wherever it appears.
 
@@ -27,6 +27,7 @@ class HaoRadius {
   /// Panels, cards, floating bars (also the `GlassCard` default).
   static const double panel = 20;
 
-  /// Bottom sheets.
-  static const double sheet = 24;
+  /// Bottom sheets (D-7, 2026-11-22: unified top corner 14 — the iOS
+  /// card-sheet radius, down from 24).
+  static const double sheet = 14;
 }

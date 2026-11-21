@@ -730,15 +730,66 @@ void main() {
 <img src="https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg">
 </body></html>''';
       final mp = parseDoubanMPage(html);
+      // F1 (build 28): the page only embeds the s tier, so the
+      // returned poster is the s URL rewritten to the l tier.
       expect(
         mp.poster,
-        'https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg',
+        'https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg',
       );
       expect(mp.overview, '太阳即将毁灭，人类开启流浪计划。');
       expect(mp.score, '8.3');
     });
 
-    test('mobile page falls back to raw og:image when no s_ratio match',
+    test('mobile page poster: l preferred, m/s embedded URLs rewrite to l',
+        () {
+      // An embedded l URL is used as-is.
+      const lHtml = '''
+<html><head>
+<meta property="og:image" content="https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg">
+</head><body>
+<img src="https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg">
+</body></html>''';
+      expect(
+        parseDoubanMPage(lHtml).poster,
+        'https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg',
+      );
+      // Only an m URL is embedded: it is rewritten to the l tier.
+      const mHtml = '''
+<html><head>
+<meta property="og:image" content="https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg">
+</head><body>
+<img src="https://img9.doubanio.com/view/photo/m_ratio_poster/public/p2916835424.jpg">
+</body></html>''';
+      expect(
+        parseDoubanMPage(mHtml).poster,
+        'https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg',
+      );
+      // Only an s URL is embedded (the real m page case): rewritten
+      // to l as well — the host and p-id are untouched.
+      const sHtml = '''
+<html><head>
+<meta property="og:image" content="https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg">
+</head><body>
+<img src="https://img9.doubanio.com/view/photo/s_ratio_poster/public/p2916835424.jpg">
+</body></html>''';
+      expect(
+        parseDoubanMPage(sHtml).poster,
+        'https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg',
+      );
+      // No ratio poster for the og:image id: any embedded ratio URL
+      // in the page is picked in l > m > s order, then rewritten to l.
+      const anyHtml = '''
+<meta property="og:image" content="https://img1.doubanio.com/view/photo/m/public/p123.jpg">
+<img src="https://img1.doubanio.com/view/photo/s_ratio_poster/public/p888.jpg">
+<img src="https://img1.doubanio.com/view/photo/m_ratio_poster/public/p999.jpg">
+''';
+      expect(
+        parseDoubanMPage(anyHtml).poster,
+        'https://img1.doubanio.com/view/photo/l_ratio_poster/public/p999.jpg',
+      );
+    });
+
+    test('mobile page falls back to raw og:image when no ratio_poster match',
         () {
       const html = '''
 <meta property="og:image" content="https://img1.doubanio.com/view/photo/m/public/p123.jpg">
@@ -942,7 +993,12 @@ void main() {
       expect(d, isNotNull);
       expect(d!.id, '35267208');
       expect(d.score, '8.3');
-      expect(d.poster, contains('p2916835424.jpg'));
+      // F1 (build 28): the m page only embeds the s tier, so the
+      // poster comes back rewritten to the l tier.
+      expect(
+        d.poster,
+        'https://img9.doubanio.com/view/photo/l_ratio_poster/public/p2916835424.jpg',
+      );
       expect(d.overview, '太阳即将毁灭。');
       expect(d.director, '郭帆');
     });

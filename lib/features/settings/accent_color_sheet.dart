@@ -27,11 +27,14 @@
 // brand/logo colours never read it and never change.
 
 import '../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/screen_capture.dart';
@@ -44,14 +47,21 @@ Future<void> showAccentColorSheet(BuildContext context) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    // N-10: iOS grabber + settle-spring rise (same spring as the
+    // player close).
+    showDragHandle: true,
+    sheetAnimationStyle: const AnimationStyle(
+      curve: HaoSettleSpringCurve(),
+      reverseCurve: HaoSettleSpringCurve(),
+    ),
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => GlassContainer(
-      // App sheet pattern (track_more_sheet): top corners 28,
+      // App sheet pattern (track_more_sheet): top corners 14 (D-7),
       // bottom square — the sheet sits on the screen edge. Standard
       // glass (dense content, never premium shader).
       shape: const LiquidVerticalRoundedSuperellipse(
-        topRadius: 28,
+        topRadius: HaoRadius.sheet,
         bottomRadius: 0,
       ),
       // Intensity-scaled optics (chen 2026-11-21): explicit settings
@@ -238,7 +248,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
       return;
     }
     final picked = await Navigator.of(context).push<Color?>(
-      MaterialPageRoute<Color>(
+      CupertinoPageRoute<Color>(
         builder: (_) => AccentDropperPage(image: image),
       ),
     );
@@ -313,7 +323,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
             children: [
               Text(
                 '不透明度',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textSecondary,
                   fontSize: 13,
                 ),
@@ -345,7 +355,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
                 ),
                 child: Text(
                   '${(_opacity * 100).round()}%',
-                  style: TextStyle(
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -411,7 +421,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
               onPressed: _resetToDefault,
               child: Text(
                 '恢复默认',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textSecondary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -437,12 +447,12 @@ class _CircleButton extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: HaoPressable(
         onTap: () {
           HaoHaptics.tap();
           onTap();
         },
-        customBorder: const CircleBorder(),
+        borderRadius: BorderRadius.circular(999),
         child: Container(
           width: 44,
           height: 44,
@@ -450,7 +460,7 @@ class _CircleButton extends StatelessWidget {
             shape: BoxShape.circle,
             color: theme.surfaceStrong,
           ),
-          child: Icon(icon, size: 20, color: theme.textPrimary),
+          child: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: 20, color: theme.textPrimary),
         ),
       ),
     );
@@ -486,7 +496,7 @@ class _Segments extends StatelessWidget {
             ),
             child: Text(
               label,
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: selected ? theme.textPrimary : theme.textMuted,
                 fontSize: 15,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -742,7 +752,7 @@ class _SlidersPicker extends StatelessWidget {
               width: 48,
               child: Text(
                 label,
-                style: TextStyle(color: theme.textSecondary, fontSize: 13),
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
               ),
             ),
             Expanded(
@@ -758,7 +768,7 @@ class _SlidersPicker extends StatelessWidget {
               child: Text(
                 value,
                 textAlign: TextAlign.right,
-                style: TextStyle(color: theme.textSecondary, fontSize: 12),
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 12),
               ),
             ),
           ],
@@ -989,7 +999,7 @@ class _PresetAddButton extends StatelessWidget {
           color: theme.surfaceSolid,
           border: Border.all(color: theme.hairline),
         ),
-        child: Icon(Icons.add, size: 20, color: theme.textPrimary),
+        child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add, size: 20, color: theme.textPrimary),
       ),
     );
   }

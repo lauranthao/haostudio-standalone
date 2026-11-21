@@ -28,6 +28,7 @@
 // - Next/previous advance exactly one track (fix 14 Dart-side rule).
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -38,6 +39,8 @@ import '../../core/logging/app_log.dart';
 import '../../core/native/now_playing.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/storage/local_paths.dart';
+import '../../services/music/bookmarks_store.dart';
+import '../../services/music/equalizer_store.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
@@ -46,6 +49,7 @@ import '../../services/music/music_resolvers.dart';
 import '../../services/music/music_store.dart';
 import '../../services/music/play_mode.dart';
 import '../../services/music/sleep_timer.dart';
+import '../../widgets/hao_toast.dart';
 
 const Duration _crossfadeDuration = Duration(milliseconds: 2500);
 
@@ -125,6 +129,36 @@ class MusicPlayerController extends GetxController
   /// Last custom sleep minutes (stage 2, persisted — default 30).
   final RxInt sleepCustomMinutes = 30.obs;
 
+  /// "播完 N 首后停止" target + progress (1.1.6). Default N = 3.
+  /// Synced from the SleepTimer by [_syncSleepState] so the sheet
+  /// can show them honestly.
+  final RxInt sleepTrackCount = 3.obs;
+  final RxInt sleepTracksCompleted = 0.obs;
+
+  /// Volume normalisation (1.1.6, strategy A — attenuation only).
+  /// Defaults: off, standard strength. Read from Hive in onInit
+  /// (the settings rows live with the settings group; these are the
+  /// read/write API they use).
+  final RxBool normalizationEnabled = false.obs;
+  final RxInt normalizationStrength = 1.obs;
+
+  /// Per-track measured loudness in LUFS, keyed by identityKey
+  /// (in-memory mirror of the Hive cache — see
+  /// [noteMeasuredLoudness] / [parseLoudnessCache]; loaded from
+  /// Hive in onInit so the second-play effect survives restart).
+  final Map<String, double> _measuredLufs = {};
+
+  /// Attenuation actually sounding right now (1.0 = none). Updated
+  /// whenever a track's open lands, so a crossfade can fade the
+  /// outgoing track out from the volume it is really at.
+  var _currentNormGain = 1.0;
+
+  /// Bookmark jump waiting for its song to load (1.1.6): jumping to
+  /// a bookmark of a song that is not loaded yet starts the load,
+  /// and the seek lands once the duration is known (consumed in
+  /// [_loadCurrent]; a newer load for another song drops it).
+  ({String key, int seconds})? _pendingBookmarkSeek;
+
   Song? get currentSong {
     final i = currentIndex.value;
     if (i < 0 || i >= queue.length) return null;
@@ -202,8 +236,8 @@ class MusicPlayerController extends GetxController
   // -- failure / notice state (chen 2026-11-18: no silent skips) --------
   /// Latest notice shown to the user (skip / failure reasons). The
   /// player sheet observes [loadError] for its retry UI; [lastNotice]
-  /// is the single source of truth tests assert on. Get.snackbar is a
-  /// best-effort side effect on top (it throws without a GetMaterialApp
+  /// is the single source of truth tests assert on. HaoToast is a
+  /// best-effort side effect on top (it no-ops without a GetMaterialApp
   /// in tests, so the call is guarded).
   final RxString lastNotice = ''.obs;
   final Rx<({Song song, String reason})?> loadError =
@@ -273,58 +307,32 @@ class MusicPlayerController extends GetxController
   var _loadFailed = false;
 
   /// Surface a playback notice to the user: always recorded in
-  /// [lastNotice] (observable + testable); Get.snackbar on top,
+  /// [lastNotice] (observable + testable); HaoToast banner on top,
   /// best-effort. [withActions] adds 重试 / 下一首 buttons for a
   /// manual-load failure (the song stays put; the user decides).
   void _notice(String message, {bool withActions = false}) {
     lastNotice.value = message;
     try {
       // No overlay (unit tests) or no binding yet: the recorded
-      // notice is enough. Get.overlayContext itself throws when the
-      // binding is not initialized, so the check lives in the try.
-      if (Get.overlayContext == null) return;
-      // Get.snackbar's mainButton only takes a single TextButton, so
-      // the two actions (重试 / 下一首) ride in messageText instead.
-      final color = Get.theme.colorScheme.onSurface;
-      Get.snackbar(
-        '播放提示',
-        withActions ? '' : message,
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Get.theme.colorScheme.surface,
-        colorText: color,
+      // notice is enough. HaoToast.show swallows that case itself.
+      HaoToast.show('播放提示', message: 
+        message,
+        // The old Get.snackbar call passed 4s explicitly; keep 4s
+        // here so a load failure stays readable while the user
+        // decides. Every other call site uses the 2.5s default.
         duration: const Duration(seconds: 4),
-        messageText: withActions
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(message, style: TextStyle(color: color)),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          if (Get.isSnackbarOpen) {
-                            Get.closeCurrentSnackbar();
-                          }
-                          unawaited(retryCurrent());
-                        },
-                        child: const Text('重试'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          if (Get.isSnackbarOpen) {
-                            Get.closeCurrentSnackbar();
-                          }
-                          unawaited(next());
-                        },
-                        child: const Text('下一首'),
-                      ),
-                    ],
-                  ),
-                ],
-              )
-            : null,
+        actions: withActions
+            ? [
+                HaoToastAction(
+                  label: '重试',
+                  onTap: () => unawaited(retryCurrent()),
+                ),
+                HaoToastAction(
+                  label: '下一首',
+                  onTap: () => unawaited(next()),
+                ),
+              ]
+            : const [],
       );
     } catch (_) {
       // No GetMaterialApp (unit tests): the recorded notice is enough.
@@ -436,6 +444,41 @@ class MusicPlayerController extends GetxController
     try {
       sleepCustomMinutes.value = MusicStore.sleepCustomMinutes;
     } catch (_) {}
+    // Normalisation prefs (1.1.6, strategy A): off + standard
+    // strength unless the user turned it on. Hive may be
+    // uninitialised in unit tests — then the field defaults stand.
+    try {
+      normalizationEnabled.value = HiveStore.getBool(
+        HiveKeys.musicNormalizationEnabled,
+        false,
+      );
+      normalizationStrength.value = HiveStore.getInt(
+        HiveKeys.musicNormalizationStrength,
+        1,
+      ).clamp(0, 2);
+    } catch (_) {}
+    // Measured-loudness cache (1.1.6): the EQ tap writes it during
+    // playback (see [noteMeasuredLoudness]); reading it back here
+    // makes the second-play effect survive a restart. Same
+    // try/catch as the prefs above (uninitialised Hive in tests).
+    try {
+      _measuredLufs.addAll(
+        parseLoudnessCache(
+          HiveStore.box.get(HiveKeys.musicLoudnessCache),
+        ),
+      );
+    } catch (_) {}
+    // Native tap loudness reports land here via the equalizer
+    // method channel (EqualizerStore owns the channel; this
+    // controller consumes the reports). Registered here — not in
+    // main — because playback only exists once this controller
+    // does; cleared in onClose so a stale callback can never feed
+    // a disposed controller. Best-effort: no Hive / no native
+    // engine only loses measurement, never playback.
+    try {
+      EqualizerStore.ensure().onLoudnessMeasured =
+          (key, lufs) => noteMeasuredLoudness(key, lufs);
+    } catch (_) {}
     // Publish on track change / play / pause; elapsed time is
     // throttled to 1 s while playing (see _publishNowPlayingThrottled).
     ever(currentIndex, (_) => _publishNowPlaying());
@@ -461,6 +504,11 @@ class MusicPlayerController extends GetxController
   @override
   void onClose() {
     _disposed = true;
+    // Drop the tap loudness registration (see onInit): a report
+    // arriving after close must not touch this controller.
+    try {
+      EqualizerStore.ensure().onLoudnessMeasured = null;
+    } catch (_) {}
     _sleepTimer.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
@@ -619,10 +667,13 @@ class MusicPlayerController extends GetxController
     });
   }
 
-  // Player volume is always full (1.0): the music player has no volume
-  // control of its own (chen 2026-11-17) — volume is the system volume
-  // (hardware buttons / Control Center). Every open re-asserts 1.0 so
-  // a crossfade partner that was faded to 0 never stays silent.
+  // Player volume is full (1.0) unless normalisation (1.1.6,
+  // strategy A) attenuates a measured-loud track: the music player
+  // has no volume control of its own (chen 2026-11-17) — volume is
+  // the system volume (hardware buttons / Control Center). Every
+  // open re-asserts the track's gain so a crossfade partner that was
+  // faded to 0 never stays silent. Normalisation is an automatic
+  // per-track attenuation, not a volume control: no slider, no UI.
   Future<void> _openOn(
     AvMusicPlayer player,
     String url, {
@@ -634,6 +685,12 @@ class MusicPlayerController extends GetxController
     // gen -1 (trial retry) leaves the stamp alone — the retry opens
     // for the current load, whose gen is already stamped.
     if (gen >= 0) _activeGen = gen;
+    // Stamp the native EQ tap before the open creates its item
+    // (see [_pushLoudnessTrackKey]): currentSong IS the song being
+    // opened here — the alt branch replaced the queue slot before
+    // calling, the trial retry is guarded to the same song, and a
+    // candidate retry is the same song on another URL.
+    _pushLoudnessTrackKey(currentSong?.identityKey ?? '');
     // open() returns false only when the URL was refused before any
     // native call, so no error will arrive on the error stream: fall
     // back to the next candidate here, the same path the error stream
@@ -642,7 +699,9 @@ class MusicPlayerController extends GetxController
       await _onPlayError(auto: auto, gen: gen);
       return;
     }
-    await player.setVolume(1.0);
+    final gain = normalizationGainFor(currentSong);
+    _currentNormGain = gain;
+    await player.setVolume(gain);
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
@@ -832,6 +891,14 @@ class MusicPlayerController extends GetxController
     // check below catches a newer load; the identity check catches a
     // queue-slot replacement that did not bump the gen.
     final loadKey = song.identityKey;
+    // A bookmark jump that triggered this load: seek there once the
+    // duration is known, instead of the kill-saved resume position.
+    // Any other song's load drops it — a bookmark never seeks a
+    // different song to its position.
+    final pendingBookmarkSec = _pendingBookmarkSeek?.key == loadKey
+        ? _pendingBookmarkSeek!.seconds
+        : null;
+    _pendingBookmarkSeek = null;
     // Close the previous track's listen session (real seconds only)
     // and start one for this song. The old code recorded the song's
     // FULL duration here, before a second had played.
@@ -997,8 +1064,14 @@ class MusicPlayerController extends GetxController
     // The sleep timer may have fired while this load was resolving:
     // the landed song must not sound past the deadline.
     await _pauseIfSleepFired(_active);
-    if (resumeSec > 5) {
-      // Seek only once the duration is known.
+    if (resumeSec > 5 || pendingBookmarkSec != null) {
+      // Seek only once the duration is known. A bookmark jump wins
+      // over the kill-saved resume: the user asked for that exact
+      // spot. The resume guard (> 10 s from the end) still applies
+      // to the resume path; a bookmark only needs to be inside the
+      // track.
+      final seekSec = pendingBookmarkSec ?? resumeSec;
+      final fromBookmark = pendingBookmarkSec != null;
       unawaited(
         _active.stream.duration
             .firstWhere((d) => d > Duration.zero)
@@ -1008,10 +1081,11 @@ class MusicPlayerController extends GetxController
           // Only seek when the user has not already moved the
           // position (a manual seek in the seconds before the
           // duration arrived must not be jumped back).
-          if (total.inSeconds > 0 &&
-              total.inSeconds - resumeSec > 10 &&
-              position.value < const Duration(seconds: 5)) {
-            await _active.seek(Duration(seconds: resumeSec));
+          final inRange = fromBookmark
+              ? total.inSeconds > seekSec
+              : total.inSeconds > 0 && total.inSeconds - seekSec > 10;
+          if (inRange && position.value < const Duration(seconds: 5)) {
+            await _active.seek(Duration(seconds: seekSec));
           }
         }),
       );
@@ -1028,6 +1102,10 @@ class MusicPlayerController extends GetxController
     // scratch and the track change would stutter). A preloaded player
     // that has since gone idle still runs the idle check below.
     if (!incoming.isPreloadedFor(url)) {
+      // Not preloaded: this open creates the item, so stamp its tap
+      // now (the preloaded path was already stamped by
+      // _prefetchNext at preload time).
+      _pushLoudnessTrackKey(currentSong?.identityKey ?? '');
       // Refused URL: never touched native, so no error stream event
       // will come — fall back on the still-active player instead of
       // swapping in a player with no source.
@@ -1073,7 +1151,15 @@ class MusicPlayerController extends GetxController
     duration.value = Duration.zero;
     final start = DateTime.now();
     const step = Duration(milliseconds: 100);
-    const targetVol = 1.0;
+    // The envelope multiplies the per-track normalisation gain:
+    // the incoming track fades up to ITS gain, the outgoing fades
+    // down from the volume it is really at (see _currentNormGain) —
+    // never from 1.0, or a normalised track would jump loud at the
+    // handover. With normalisation off both are 1.0, exactly the
+    // old behaviour.
+    final targetVol = normalizationGainFor(currentSong);
+    final outgoingStartVol = _currentNormGain;
+    _currentNormGain = targetVol;
     _fadeTimer = Timer.periodic(step, (timer) async {
       // A newer load owns the players now: stop touching them (no
       // volume fight, and never pause the newer song's player).
@@ -1091,7 +1177,7 @@ class MusicPlayerController extends GetxController
         return;
       }
       await incoming.setVolume(targetVol * t);
-      await outgoing.setVolume(targetVol * (1 - t));
+      await outgoing.setVolume(outgoingStartVol * (1 - t));
     });
   }
 
@@ -1403,11 +1489,38 @@ class MusicPlayerController extends GetxController
     // closed), so the single-loop replay and the next() path below —
     // which finalise again via _loadCurrent — stay correct.
     unawaited(_finalizeListenSession());
+    // Sleep timer, 播完本首后停止 (1.1.6): the track ends here —
+    // stop, do not advance or loop, and clear the timer. Checked
+    // BEFORE single-loop: under 单曲循环 the track would otherwise
+    // never end, so the timer would never stop it.
+    if (_sleepTimer.isCurrentTrackEnd) {
+      _sleepTimer.cancel();
+      if (_playersReady) unawaited(_active.pause());
+      _syncSleepState();
+      return;
+    }
+    // Sleep timer, 播完 N 首后停止 (1.1.6): only natural completions
+    // reach here — manual next/prev, taps and failed skips never
+    // call _onTrackCompleted, so they never count. The track that
+    // was playing when the mode started counts when it completes.
+    // At the target, stop here: the next track has not started yet
+    // (crossfade only starts inside the next _loadCurrent), so there
+    // is no half-faded-in track to cut off.
+    if (_sleepTimer.isAfterNTracks) {
+      final reached = _sleepTimer.noteTrackCompleted();
+      if (reached) {
+        _sleepTimer.cancel();
+        if (_playersReady) unawaited(_active.pause());
+        _syncSleepState();
+        return;
+      }
+      _syncSleepState();
+    }
     // Sleep timer, 到歌单结束: the queue ends here — stop, do not
     // advance or loop, and clear the timer.
     if (_sleepTimer.isQueueEnd) {
       _sleepTimer.cancel();
-      unawaited(_active.pause());
+      if (_playersReady) unawaited(_active.pause());
       _syncSleepState();
       return;
     }
@@ -1486,6 +1599,12 @@ class MusicPlayerController extends GetxController
                 return;
               }
               if (_nextCache?.key != key) return;
+              // Stamp the preload's tap with the NEXT song's key:
+              // the tap is created here, before that song's
+              // _loadCurrent runs — a stamp pushed only in
+              // _loadCurrent would arrive too late and the report
+              // would be attributed to the song now playing.
+              _pushLoudnessTrackKey(tr.identityKey);
               await _standby.preload(r.url).catchError((_) => false);
             }),
           );
@@ -1632,11 +1751,45 @@ class MusicPlayerController extends GetxController
   /// must not sound when it lands: record its gen so the landing
   /// open pauses instead (see [_pauseIfSleepFired]). The fire's own
   /// pause covers what is sounding now; the flag covers what lands
-  /// next.
+  /// next. The stop fades out over 1 s ([_fadeOutAndPause]) instead
+  /// of cutting hard — completion-mode stops (current-track-end /
+  /// after-N-tracks / queue-end) need no fade: the track already
+  /// ended, so there is nothing sounding to fade.
   void _onSleepTimerFired() {
     _sleepFiredGen = _playGen;
-    if (_playersReady) unawaited(_active.pause());
+    if (_playersReady) unawaited(_fadeOutAndPause());
     _syncSleepState();
+  }
+
+  /// Fade the sounding track out over 1 s, then pause. The volume
+  /// is restored to the track's sounding gain afterwards, so a
+  /// manual resume is not silent. A newer load (gen bumped — the
+  /// user tapped another song mid-fade) stops the fade touching
+  /// the new song's player. The standby is paused too: if the fire
+  /// lands mid-crossfade the outgoing partner is still sounding.
+  Future<void> _fadeOutAndPause() async {
+    final gen = _playGen;
+    final player = _active;
+    final startVol = _currentNormGain;
+    _fadeTimer?.cancel();
+    final start = DateTime.now();
+    const step = Duration(milliseconds: 100);
+    _fadeTimer = Timer.periodic(step, (timer) async {
+      if (gen != _playGen || _disposed) {
+        timer.cancel();
+        return;
+      }
+      final t =
+          DateTime.now().difference(start).inMilliseconds / 1000.0;
+      if (t >= 1.0 || _disposed) {
+        timer.cancel();
+        await player.pause();
+        await _standby.pause();
+        await player.setVolume(startVol);
+        return;
+      }
+      await player.setVolume(startVol * (1 - t));
+    });
   }
 
   /// Pause [player] if the sleep timer fired while its load was in
@@ -1666,27 +1819,54 @@ class MusicPlayerController extends GetxController
     sleepOption.value = _sleepTimer.option;
     sleepRemaining.value = _sleepTimer.remaining;
     sleepCustomMinutes.value = _sleepTimer.customMinutes;
+    sleepTrackCount.value = _sleepTimer.trackTarget;
+    sleepTracksCompleted.value = _sleepTimer.tracksCompleted;
   }
 
   /// Human label for the active sleep timer, with the custom
   /// minutes filled in ("自定义 45 分钟" — the enum label alone is
-  /// just "自定义").
+  /// just "自定义") and the N count for after-N-tracks ("播完 3 首后
+  /// 停止" — the enum label alone is just "播完 N 首后停止").
   String get sleepLabel {
     if (sleepOption.value == SleepTimerOption.custom) {
       return '自定义 ${sleepCustomMinutes.value} 分钟';
+    }
+    if (sleepOption.value == SleepTimerOption.afterNTracks) {
+      return '播完 ${sleepTrackCount.value} 首后停止';
     }
     return sleepOption.value.label;
   }
 
   /// Start (or replace) the sleep timer. `off` cancels it.
   /// `custom` replays the persisted custom minutes (the sheet writes
-  /// them first via [setSleepTimerMinutes]).
+  /// them first via [setSleepTimerMinutes]); `afterNTracks` replays
+  /// the last N target (set via [setSleepTimerAfterNTracks] /
+  /// [setSleepTrackCount]).
   void setSleepTimer(SleepTimerOption option) {
     if (option == SleepTimerOption.custom) {
       setSleepTimerMinutes(MusicStore.sleepCustomMinutes);
       return;
     }
+    if (option == SleepTimerOption.afterNTracks) {
+      setSleepTimerAfterNTracks(_sleepTimer.trackTarget);
+      return;
+    }
     _sleepTimer.start(option);
+    _syncSleepState();
+  }
+
+  /// Start a "播完 N 首后停止" run (clamp 1..10, bad input 3). The
+  /// count restarts from zero.
+  void setSleepTimerAfterNTracks(int count) {
+    _sleepTimer.startAfterNTracks(count);
+    _syncSleepState();
+  }
+
+  /// Change the N target of a running "播完 N 首后停止" timer. The
+  /// count restarts from zero ("改 N 从当下重计"); with no run
+  /// active the target is just remembered for the next run.
+  void setSleepTrackCount(int count) {
+    _sleepTimer.setTrackTarget(count);
     _syncSleepState();
   }
 
@@ -1706,6 +1886,202 @@ class MusicPlayerController extends GetxController
   void cancelSleepTimer() {
     _sleepTimer.cancel();
     _syncSleepState();
+  }
+
+  /// Test seam: drive the track-completed path without native audio
+  /// (same pattern as [fireSleepTimerForTest]). The counting / stop
+  /// branches are what tests exercise here; advancing to the next
+  /// track still goes through the normal [next] path.
+  @visibleForTesting
+  void simulateTrackCompletedForTest() => _onTrackCompleted();
+
+  /// Test seam: run the real wall-clock fire path (1 s fade-out +
+  /// pause) without waiting for a real countdown. The countdown
+  /// itself is SleepTimer's (covered by sleep_timer_test.dart).
+  @visibleForTesting
+  void simulateSleepTimerFiredForTest() => _onSleepTimerFired();
+
+  // -- volume normalisation (1.1.6, strategy A) -------------------------
+
+  /// Target loudness (streaming-standard -14 LUFS). A track louder
+  /// than this is attenuated towards it; a quieter track is never
+  /// boosted (the player-volume path caps at 1.0 — see
+  /// [normalizationGainLinear]).
+  static const double normalizationTargetLufs = -14.0;
+
+  /// Max attenuation per strength level (0 = 轻度, 1 = 标准,
+  /// 2 = 强力). Fixed -14 LUFS target; no custom target in v1
+  /// (one fewer slider, one fewer mis-tap).
+  static const List<double> normalizationMaxCutDb = [3.0, 6.0, 12.0];
+
+  /// Pure gain math (unit-tested): attenuation-only linear gain for
+  /// a measured [lufs] at [strength] (0..2, clamped). Returns 1.0
+  /// when the track is at or below target (never boosts), and never
+  /// below the level's max cut. No state, no I/O.
+  static double normalizationGainLinear({
+    required double lufs,
+    required int strength,
+  }) {
+    if (!lufs.isFinite) return 1.0;
+    final maxCut = normalizationMaxCutDb[strength.clamp(0, 2)];
+    final db = (normalizationTargetLufs - lufs).clamp(-maxCut, 0.0);
+    return math.pow(10, db / 20).toDouble();
+  }
+
+  /// The gain the player volume should sit at for [song]: 1.0
+  /// unless normalisation is on AND this track has a measured
+  /// loudness. A track that has never been measured plays at 1.0 —
+  /// measurement happens during playback (see
+  /// [noteMeasuredLoudness]), so the first play is never delayed
+  /// or changed, and the gain takes effect from the second play.
+  /// Applies to the NEXT load, never mid-song (no audible jump).
+  double normalizationGainFor(Song? song) {
+    if (!normalizationEnabled.value || song == null) return 1.0;
+    final lufs = _measuredLufs[song.identityKey];
+    if (lufs == null) return 1.0;
+    return normalizationGainLinear(
+      lufs: lufs,
+      strength: normalizationStrength.value,
+    );
+  }
+
+  /// Record a track's integrated loudness (LUFS), measured during
+  /// playback in the EQ tap — the feed-in point for the native tap
+  /// wiring (method channel, via EqualizerStore.onLoudnessMeasured).
+  /// Only the value is stored here; the gain is applied by
+  /// [normalizationGainFor] on the next load. Never pre-downloads
+  /// or decodes a track for loudness (that would break the "点播 1
+  /// 秒出声" rule), and never touches ffmpeg / loudnorm or any
+  /// GPL/AGPL loudness code. Stored in-memory (cap 200, oldest
+  /// dropped) AND written through to the Hive cache
+  /// ([HiveKeys.musicLoudnessCache], same cap) so the second-play
+  /// effect survives a restart; the Hive write is best-effort (a
+  /// failure only loses persistence, never the in-memory value).
+  /// The in-memory map IS the merged truth, so the write is a plain
+  /// put of it — no read-modify-write race between two taps
+  /// finalizing close together.
+  void noteMeasuredLoudness(String identityKey, double lufs) {
+    if (identityKey.isEmpty || !lufs.isFinite) return;
+    _measuredLufs.remove(identityKey);
+    _measuredLufs[identityKey] = lufs.clamp(-70.0, 0.0);
+    while (_measuredLufs.length > 200) {
+      _measuredLufs.remove(_measuredLufs.keys.first);
+    }
+    unawaited(_persistLoudnessCache());
+  }
+
+  /// Best-effort write of the in-memory loudness map to Hive.
+  Future<void> _persistLoudnessCache() async {
+    try {
+      await HiveStore.put(
+        HiveKeys.musicLoudnessCache,
+        Map<String, double>.of(_measuredLufs),
+      );
+    } catch (_) {}
+  }
+
+  /// Parse the persisted loudness cache ({identityKey: LUFS double})
+  /// into a clean map. Junk is dropped, not trusted: non-map input
+  /// yields empty, non-numeric values and empty keys are skipped,
+  /// non-finite values are skipped, values clamp to -70..0, and the
+  /// map caps at 200 entries (oldest dropped). Pure, unit-tested.
+  static Map<String, double> parseLoudnessCache(dynamic raw) {
+    final out = <String, double>{};
+    if (raw is Map) {
+      for (final entry in raw.entries) {
+        final key = entry.key?.toString() ?? '';
+        // `as num?` throws on a String value — check first.
+        final value =
+            entry.value is num ? (entry.value as num).toDouble() : null;
+        if (key.isEmpty || value == null || !value.isFinite) continue;
+        out[key] = value.clamp(-70.0, 0.0);
+      }
+    }
+    while (out.length > 200) {
+      out.remove(out.keys.first);
+    }
+    return out;
+  }
+
+  /// Stamp the native EQ tap with the identityKey of the track
+  /// whose item is about to be created (open / preload). The tap's
+  /// finalize loudness report is attributed by that stamp — without
+  /// it, A/B crossfade overlap would mix two tracks' measurements.
+  /// Fire-and-forget, fully guarded: no native engine (tests /
+  /// Android / EQ off) only loses that track's measurement, never
+  /// playback. Called with the song being opened, never with a
+  /// stale one — see the call sites.
+  void _pushLoudnessTrackKey(String identityKey) {
+    if (identityKey.isEmpty) return;
+    try {
+      unawaited(EqualizerStore.ensure().setTrackKey(identityKey));
+    } catch (_) {}
+  }
+
+  /// Turn normalisation on/off (persisted; default off). Takes
+  /// effect from the next track load — the sounding track never
+  /// jumps mid-song.
+  Future<void> setNormalizationEnabled(bool value) async {
+    normalizationEnabled.value = value;
+    try {
+      await HiveStore.put(HiveKeys.musicNormalizationEnabled, value);
+    } catch (_) {}
+  }
+
+  /// Set the strength level 0..2 (persisted; default 1 = 标准).
+  /// Out of range clamps. Takes effect from the next track load.
+  Future<void> setNormalizationStrength(int strength) async {
+    final clamped = strength.clamp(0, 2);
+    normalizationStrength.value = clamped;
+    try {
+      await HiveStore.put(HiveKeys.musicNormalizationStrength, clamped);
+    } catch (_) {}
+  }
+
+  // -- bookmarks + breakpoint resume (1.1.6) -----------------------------
+
+  /// Save a bookmark at the current position of [song]. Only the
+  /// song now playing has a position to save — any other song
+  /// returns null (its progress is unknown). Position 0 is not a
+  /// bookmark. The breakpoint-resume rule is untouched: the resume
+  /// position is still saved ONLY on app kill (see
+  /// [_saveResumeOnKill]); bookmarks are the explicit, user-saved
+  /// counterpart and never touch the resume map.
+  Future<MusicBookmark?> addBookmark(Song song) async {
+    if (currentSong?.identityKey != song.identityKey) return null;
+    final pos = position.value.inSeconds;
+    if (pos <= 0) return null;
+    return BookmarksStore.add(song.identityKey, pos);
+  }
+
+  /// This song's bookmarks, earliest position first.
+  List<MusicBookmark> bookmarksFor(Song song) =>
+      BookmarksStore.forSong(song.identityKey);
+
+  /// Delete one bookmark.
+  Future<void> deleteBookmark(Song song, MusicBookmark bookmark) =>
+      BookmarksStore.remove(song.identityKey, bookmark);
+
+  /// Jump to [seconds] in [song]. When the song is already loaded,
+  /// seek immediately. Otherwise load it first (from the queue when
+  /// present, else on its own) and seek once its duration is known
+  /// — the pending seek is consumed by [_loadCurrent] and wins over
+  /// the kill-saved resume position.
+  Future<void> jumpToBookmark(Song song, int seconds) async {
+    if (seconds < 0 || !_playersReady) return;
+    if (_playersReady &&
+        _loadedIdentityKey == song.identityKey &&
+        currentSong?.identityKey == song.identityKey) {
+      await _active.seek(Duration(seconds: seconds));
+      return;
+    }
+    _pendingBookmarkSeek = (key: song.identityKey, seconds: seconds);
+    final idx = queue.indexWhere((s) => s.identityKey == song.identityKey);
+    if (idx >= 0) {
+      await playIndex(idx);
+    } else {
+      await playQueue([song], 0);
+    }
   }
 
   // -- quality (setQuality, app.js:2145) ----------------------------------------

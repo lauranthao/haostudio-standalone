@@ -13,6 +13,8 @@ import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -114,7 +116,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
                   children: [
                     Text(
                       '直播',
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
@@ -122,7 +124,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.search),
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.search),
                       tooltip: '搜索直播间',
                       onPressed: () => Get.to(
                         () => LiveSearchPage(
@@ -131,12 +133,12 @@ class _LiveTabPageState extends State<LiveTabPage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.history),
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.history),
                       tooltip: '直播历史',
                       onPressed: () => Get.to(() => const LiveHistoryPage()),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.favorite_border),
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.favorite_border),
                       tooltip: '我的关注',
                       onPressed: () => Get.to(() => const LiveFollowsPage()),
                     ),
@@ -181,19 +183,23 @@ class _LiveTabPageState extends State<LiveTabPage> {
           onAction: _controller.retry,
         );
       case LiveTabStatus.ready:
-        return RefreshIndicator(
-          onRefresh: _controller.refresh,
-          child: GridView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 14,
-              childAspectRatio: 16 / 10,
+        return CustomScrollView(
+          controller: _scrollController,
+          slivers: [
+            CupertinoSliverRefreshControl(
+              onRefresh: _controller.refresh,
             ),
-            itemCount: _controller.rooms.length + _footerItemCount,
-            itemBuilder: (context, i) {
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 16 / 10,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
               if (i >= _controller.rooms.length) return _buildFooter(theme);
               final room = _controller.rooms[i];
               return _RoomCard(
@@ -211,8 +217,12 @@ class _LiveTabPageState extends State<LiveTabPage> {
                   );
                 },
               );
-            },
-          ),
+                  },
+                  childCount: _controller.rooms.length + _footerItemCount,
+                ),
+              ),
+            ),
+          ],
         );
     }
   }
@@ -233,7 +243,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
           onPressed: _controller.loadMore,
           child: Text(
             '加载失败，点击重试',
-            style: TextStyle(color: theme.accent, fontSize: 12),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent, fontSize: 13),
           ),
         ),
       );
@@ -242,8 +252,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
       child: SizedBox(
         width: 20,
         height: 20,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
+        child: CupertinoActivityIndicator(
           color: theme.accent,
         ),
       ),
@@ -273,7 +282,7 @@ class _PlatformRow extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ChoiceChip(
-              label: Text(site.name),
+              label: Text(site.name, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
               selected: selected,
               selectedColor: theme.accentSoft,
               shape: RoundedRectangleBorder(
@@ -283,11 +292,11 @@ class _PlatformRow extends StatelessWidget {
                 color: selected ? theme.accent : theme.hairline,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              labelStyle: TextStyle(
+              labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: selected ? theme.accent : theme.textSecondary,
                 fontSize: 13,
                 fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w500,
+                    selected ? FontWeight.w600 : FontWeight.w500,
               ),
               onSelected: (_) => onSelect(id),
             ),
@@ -320,9 +329,10 @@ class _CategoryRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         children: [
-          _categoryChip(theme, '全部', selected == null, () => onSelect(null)),
+          _categoryChip(context, theme, '全部', selected == null, () => onSelect(null)),
           for (final area in categories)
             _categoryChip(
+              context,
               theme,
               area.areaName,
               selected?.areaId == area.areaId,
@@ -334,6 +344,7 @@ class _CategoryRow extends StatelessWidget {
   }
 
   Widget _categoryChip(
+    BuildContext context,
     HaoTheme theme,
     String label,
     bool isSelected,
@@ -342,7 +353,7 @@ class _CategoryRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: ChoiceChip(
-        label: Text(label),
+        label: Text(label, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
         selected: isSelected,
         selectedColor: theme.accentSoft,
         shape: RoundedRectangleBorder(
@@ -352,10 +363,10 @@ class _CategoryRow extends StatelessWidget {
           color: isSelected ? theme.accent : theme.hairline,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        labelStyle: TextStyle(
+        labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
           color: isSelected ? theme.accent : theme.textSecondary,
           fontSize: 13,
-          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         ),
         onSelected: (_) => onTap(),
       ),
@@ -365,7 +376,7 @@ class _CategoryRow extends StatelessWidget {
 
 /// One room: full-bleed cover, LIVE badge top-left (the only red in the
 /// app), watching pill bottom-right, title + nick over a bottom scrim.
-/// The follow heart top-right is a Stack sibling of the card's InkWell,
+/// The follow heart top-right is a Stack sibling of the card's HaoPressable,
 /// so tapping it never opens the room.
 class _RoomCard extends StatefulWidget {
   const _RoomCard({required this.room, required this.onTap});
@@ -386,7 +397,7 @@ class _RoomCardState extends State<_RoomCard> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        InkWell(
+        HaoPressable(
           onTap: widget.onTap,
           borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: Container(
@@ -527,8 +538,8 @@ class _RoomCardState extends State<_RoomCard> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (room.title.isNotEmpty) ...[
@@ -539,7 +550,7 @@ class _RoomCardState extends State<_RoomCard> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 12,
+                            fontSize: 13,
                           ),
                         ),
                       ],
@@ -683,15 +694,15 @@ class _StateView extends StatelessWidget {
                 color: theme.accentSoft,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 40, color: theme.accent),
+              child: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: 40, color: theme.accent),
             ),
             const SizedBox(height: 16),
             Text(
               title,
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             if (subtitle != null) ...[
@@ -699,7 +710,7 @@ class _StateView extends StatelessWidget {
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textSecondary,
                   fontSize: 14,
                   height: 1.5,
@@ -721,7 +732,7 @@ class _StateView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              child: Text(actionLabel),
+              child: Text(actionLabel, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
             ),
           ],
         ),

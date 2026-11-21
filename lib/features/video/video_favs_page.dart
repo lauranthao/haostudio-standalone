@@ -12,7 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
-import 'video_detail_page.dart';
+import 'video_detail_router.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
@@ -26,20 +26,17 @@ class VideoFavsPage extends StatefulWidget {
 
 class _VideoFavsPageState extends State<VideoFavsPage> {
   void _openDetail(VideoItem item) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (_) => VideoDetailPage(
-              sourceId: item.source,
-              vodId: item.vodId,
-              preload: item,
-            ),
-          ),
-        )
-        .then((_) {
-          // Favourite may have been toggled off on the detail page.
-          if (mounted) setState(() {});
-        });
+    // 1.1.6: shared routing (`video_detail_router.dart`) — Emby items
+    // open EmbyDetailPage (audit P0). Same branch as the history page.
+    openVideoDetail<void>(
+      context,
+      source: item.source,
+      vodId: item.vodId,
+      preload: item,
+    ).then((_) {
+      // Favourite may have been toggled off on the detail page.
+      if (mounted) setState(() {});
+    });
   }
 
   @override

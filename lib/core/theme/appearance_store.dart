@@ -238,12 +238,15 @@ class AppearanceStore {
   /// No-op when the path is not in the list. [path] may be the
   /// resolved absolute path (as the UI passes it) or a stored
   /// relative name — it is normalized before the membership check.
+  /// Selects a wallpaper (sets the current path). D3 (build 28):
+  /// selecting an image does NOT auto-enable the wallpaper — the
+  /// wallpaper switch is the master gate; the user flips it in the
+  /// wallpaper page, which shows the switch state.
   Future<void> applyWallpaper(String path) async {
     final stored = _toStored(path);
     if (!_repairAndRescan().contains(stored)) return;
     try {
       await HiveStore.put(HiveKeys.wallpaperCurrent, stored);
-      await HiveStore.put(HiveKeys.wallpaperEnabled, true);
     } catch (_) {}
   }
 
@@ -469,9 +472,15 @@ class AppearanceBackgroundLayer extends StatelessWidget {
           controller.currentWallpaper.value.isNotEmpty) {
         final file = File(controller.currentWallpaper.value);
         if (file.existsSync()) {
-          final scrim = Theme.of(
+          // b28: the THEME scaffold colour, not ThemeData's — the
+          // latter is transparent while a wallpaper is active, so
+          // withValues(alpha:) kept RGB (0,0,0) and the light-mode
+          // scrim was black 55% instead of the near-white wash the
+          // comment above promises (same write as
+          // video_detail_page.dart:785).
+          final scrim = HaoTheme.ofOrDefault(
             context,
-          ).scaffoldBackgroundColor.withValues(alpha: 0.55);
+          ).scaffoldBackground.withValues(alpha: 0.55);
           return Stack(
             fit: StackFit.expand,
             children: [

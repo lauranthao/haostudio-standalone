@@ -6,7 +6,7 @@
 // platform must stay enabled.
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/settings_ui.dart';
@@ -32,7 +32,7 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
   Future<void> _toggle(String siteId, bool value) async {
     final ok = await LiveSourcesStore.setEnabled(siteId, value);
     if (!ok) {
-      Get.snackbar('至少保留一个直播源', '直播页至少需要一个开启的平台');
+      HaoToast.show('至少保留一个直播源', message:  '直播页至少需要一个开启的平台');
       return;
     }
     if (!mounted) return;

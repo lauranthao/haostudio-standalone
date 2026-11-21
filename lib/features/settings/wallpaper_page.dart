@@ -15,7 +15,9 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart'; // Obx (wallpaper switch state)
+import '../../widgets/hao_pressable.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/hao_themes.dart';
@@ -37,11 +39,15 @@ class WallpaperPage extends StatelessWidget {
     final stored = await controller.addWallpaper(File(path));
     if (!context.mounted) return;
     if (stored == null) {
-      Get.snackbar('导入失败', '只支持 jpg / png / webp / gif 图片');
+      HaoToast.show('导入失败', message:  '只支持 jpg / png / webp / gif 图片');
       return;
     }
     await controller.applyWallpaper(stored);
-    Get.snackbar('已应用', '壁纸已设为背景');
+    if (controller.wallpaperEnabled.value) {
+      HaoToast.show('已应用', message:  '壁纸已设为背景');
+    } else {
+      HaoToast.show('已选定', message:  '壁纸已选定，打开壁纸开关后生效');
+    }
   }
 
   @override
@@ -82,6 +88,18 @@ class WallpaperPage extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Build 28 D3: the wallpaper switch on the settings page
+            // is the master gate — it is shown here too, so the page
+            // states whether a wallpaper is actually applied.
+            SwitchListTile(
+              title: const Text('壁纸'),
+              value: enabled,
+              activeThumbColor: theme.accent,
+              onChanged: (value) {
+                HaoHaptics.select();
+                unawaited(controller.setWallpaperEnabled(value));
+              },
+            ),
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.all(16),
@@ -102,7 +120,7 @@ class WallpaperPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(HaoRadius.large),
                         child: Material(
                           color: Colors.transparent,
-                          child: InkWell(
+                          child: HaoPressable(
                             onTap: () {
                               HaoHaptics.tap();
                               unawaited(controller.applyWallpaper(path));
@@ -165,8 +183,8 @@ class WallpaperPage extends StatelessWidget {
                         child: Material(
                           color: Colors.black.withValues(alpha: 0.45),
                           shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
+                          child: HaoPressable(
+                            borderRadius: BorderRadius.circular(999),
                             onTap: () {
                               HaoHaptics.tap();
                               unawaited(controller.deleteWallpaper(path));

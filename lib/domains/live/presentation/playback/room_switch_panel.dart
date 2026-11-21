@@ -24,11 +24,14 @@
 import '../../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
+import '../../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../core/theme/glass.dart';
+import '../../../../widgets/hao_search_field.dart';
 import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../live_follow_store.dart';
@@ -162,6 +165,7 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
                 Text(
                   '切换直播间',
                   style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -171,19 +175,19 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
                 if (_lastRefresh != null)
                   Text(
                     '上次刷新 ${_formatTime(_lastRefresh!)}',
-                    style: TextStyle(color: theme.textMuted, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 12),
                   ),
                 IconButton(
                   icon: _refreshingFollows
                       ? SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                          child: CupertinoActivityIndicator(
+                            radius: 9,
                             color: theme.accent,
                           ),
                         )
-                      : Icon(Icons.refresh, color: theme.accent),
+                      : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh, color: theme.accent),
                   tooltip: '刷新',
                   onPressed: _refreshingFollows ? null : _refreshFollows,
                 ),
@@ -192,22 +196,9 @@ class _RoomSwitchPanelState extends State<_RoomSwitchPanel> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GlassCard(
-              radius: 14,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: '筛选：标题 / 主播 / 房间号',
-                  hintStyle: TextStyle(color: theme.textMuted),
-                  prefixIcon: Icon(Icons.search, color: theme.textMuted),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                style: TextStyle(color: theme.textPrimary),
-                onChanged: (v) => setState(() => _query = v),
-              ),
+            child: HaoSearchField(
+              hintText: '筛选：标题 / 主播 / 房间号',
+              onChanged: (v) => setState(() => _query = v),
             ),
           ),
           const SizedBox(height: 8),
@@ -294,6 +285,7 @@ class _GroupTitle extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
               color: theme.textSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -320,15 +312,15 @@ class _LoadingRow extends StatelessWidget {
           SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
+            child: CupertinoActivityIndicator(
+              radius: 8,
               color: theme.accent,
             ),
           ),
           const SizedBox(width: 10),
           Text(
             '正在检查开播状态…',
-            style: TextStyle(color: theme.textMuted, fontSize: 13),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -348,7 +340,7 @@ class _EmptyRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Text(
         text,
-        style: TextStyle(color: theme.textMuted, fontSize: 13),
+        style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
       ),
     );
   }
@@ -388,7 +380,7 @@ class _RoomRow extends StatelessWidget {
           ),
         ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
+        child: HaoPressable(
           onTap: onTap,
           child: Container(
             decoration: BoxDecoration(
@@ -445,6 +437,7 @@ class _RoomRow extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -482,6 +475,7 @@ class _RoomRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textSecondary,
                           fontSize: 12,
                         ),
@@ -490,6 +484,7 @@ class _RoomRow extends StatelessWidget {
                         Text(
                           '${room.watching} 人在看 · ${platformName(room.platform)}',
                           style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 12,
                           ),
@@ -498,6 +493,7 @@ class _RoomRow extends StatelessWidget {
                         Text(
                           platformName(room.platform),
                           style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 12,
                           ),

@@ -95,6 +95,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 // count field. The import box lives inside the 我的歌单 section.
 
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
 
 import '../../core/storage/hive_store.dart';
@@ -331,9 +332,10 @@ class _MusicTabPageState extends State<MusicTabPage>
             Text(
               '新歌单的名字',
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(ctx),
                 color: theme.textPrimary,
                 fontSize: 17,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 12),
@@ -350,13 +352,13 @@ class _MusicTabPageState extends State<MusicTabPage>
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: Text(
                     '取消',
-                    style: TextStyle(color: theme.textSecondary),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.textSecondary),
                   ),
                 ),
                 TextButton(
                   onPressed: () =>
                       Navigator.of(ctx).pop(nameController.text.trim()),
-                  child: Text('新建歌单', style: TextStyle(color: theme.accent)),
+                  child: Text('新建歌单', style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.accent)),
                 ),
               ],
             ),
@@ -528,15 +530,16 @@ class _MusicTabPageState extends State<MusicTabPage>
             Text(
               title,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(ctx),
                 color: theme.textPrimary,
                 fontSize: 17,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               body,
-              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx), color: theme.textSecondary, fontSize: 14),
             ),
             const SizedBox(height: 16),
             Row(
@@ -544,7 +547,7 @@ class _MusicTabPageState extends State<MusicTabPage>
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('知道了'),
+                  child: Text('知道了', style: TextStyle(shadows: HaoTheme.legibilityShadows(ctx))),
                 ),
               ],
             ),
@@ -695,6 +698,7 @@ class _MusicTabPageState extends State<MusicTabPage>
                       horizontalPadding: 24,
                       verticalPadding: 10,
                       titleStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
@@ -715,6 +719,7 @@ class _MusicTabPageState extends State<MusicTabPage>
                       horizontalPadding: 24,
                       verticalPadding: 10,
                       titleStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 22,
                         fontWeight: FontWeight.w600,
@@ -920,8 +925,9 @@ class _MusicTabPageState extends State<MusicTabPage>
             radius: 20,
             quality: GlassCardQuality.standard,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            // Transparent Material so the rows' InkWells can paint
-            // ripples (GlassCard itself carries no Material).
+            // Transparent Material is the text-style ancestor for the
+            // rows (GlassCard itself carries no Material); rows are
+            // HaoPressables that dim on press — no ripples (N-16).
             child: Material(
               color: Colors.transparent,
               child: Column(
@@ -956,8 +962,8 @@ class _MusicTabPageState extends State<MusicTabPage>
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _createList,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('新建歌单'),
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add, size: 18),
+            label: Text('新建歌单', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
             style: OutlinedButton.styleFrom(
               foregroundColor: theme.accent,
               side: BorderSide(color: theme.hairline),
@@ -984,7 +990,7 @@ class _MusicTabPageState extends State<MusicTabPage>
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    return HaoPressable(
       onTap: () {
         HaoHaptics.tap();
         onTap();
@@ -1005,19 +1011,19 @@ class _MusicTabPageState extends State<MusicTabPage>
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: theme.textPrimary, fontSize: 14),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 14),
                   ),
                   const SizedBox(height: 1),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: theme.textSecondary, fontSize: 12),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: theme.textMuted),
+            Icon(shadows: HaoTheme.legibilityShadows(context), Icons.chevron_right, color: theme.textMuted),
           ],
         ),
       ),
@@ -1034,7 +1040,7 @@ class _MusicTabPageState extends State<MusicTabPage>
         color: theme.accentSoft,
         borderRadius: BorderRadius.circular(HaoRadius.small),
       ),
-      child: Icon(icon, size: 20, color: theme.accent),
+      child: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: 20, color: theme.accent),
     );
   }
 
@@ -1116,7 +1122,7 @@ class _MusicTabPageState extends State<MusicTabPage>
           ],
         ),
       ),
-      child: Icon(Icons.music_note, size: 20, color: theme.textMuted),
+      child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.music_note, size: 20, color: theme.textMuted),
     );
   }
 
@@ -1161,7 +1167,7 @@ class _MusicTabPageState extends State<MusicTabPage>
             padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
               _importProgress,
-              style: TextStyle(color: theme.textMuted, fontSize: 12),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
             ),
           ),
       ],
@@ -1269,7 +1275,7 @@ class _FeatureCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(HaoRadius.large),
         child: Material(
           color: Colors.transparent,
-          child: InkWell(
+          child: HaoPressable(
             onTap: () {
               HaoHaptics.tap();
               tile.onTap();
@@ -1307,7 +1313,7 @@ class _FeatureCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _featureIcon(Colors.white),
+                        _featureIcon(context, Colors.white),
                         const Spacer(),
                         Text(
                           tile.title,
@@ -1316,7 +1322,7 @@ class _FeatureCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             shadows: [
                               Shadow(
                                 color: Color.fromRGBO(0, 0, 0, 0.4),
@@ -1348,7 +1354,7 @@ class _FeatureCard extends StatelessWidget {
   /// title use theme.textPrimary (dark text in light mode, white in
   /// dark mode); the title shadow is dropped here — it only exists
   /// to lift white text off the solid gradient, and it muddies text
-  /// on glass. Tap + haptics are the same InkWell as the gradient
+  /// on glass. Tap + haptics are the same HaoPressable as the gradient
   /// branch; layout (96 high, icon 22 top-left, title 15 bold
   /// bottom-left, 14 padding) is unchanged.
   Widget _buildGlass(BuildContext context) {
@@ -1375,7 +1381,7 @@ class _FeatureCard extends StatelessWidget {
         tint: wash,
         child: Material(
           color: Colors.transparent,
-          child: InkWell(
+          child: HaoPressable(
             onTap: () {
               HaoHaptics.tap();
               tile.onTap();
@@ -1386,16 +1392,17 @@ class _FeatureCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _featureIcon(foreground),
+                  _featureIcon(context, foreground),
                   const Spacer(),
                   Text(
                     tile.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: foreground,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -1445,9 +1452,9 @@ class _FeatureCard extends StatelessWidget {
   /// (10 bold, offset y+3) like Kumone's showsDate (HomeView.swift
   /// :427-435). [color] is white on the gradient cards and
   /// theme.textPrimary on the glass cards.
-  Widget _featureIcon(Color color) {
+  Widget _featureIcon(BuildContext context, Color color) {
     if (!tile.showsDate) {
-      return Icon(tile.icon, size: 22, color: color);
+      return Icon(shadows: HaoTheme.legibilityShadows(context), tile.icon, size: 22, color: color);
     }
     return SizedBox(
       width: 22,
@@ -1455,7 +1462,7 @@ class _FeatureCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(tile.icon, size: 22, color: color),
+          Icon(shadows: HaoTheme.legibilityShadows(context), tile.icon, size: 22, color: color),
           Padding(
             padding: const EdgeInsets.only(top: 3),
             child: Text(
@@ -1501,7 +1508,7 @@ class _CapsuleButton extends StatelessWidget {
       opacity: enabled ? 1 : 0.4,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: HaoPressable(
           onTap: enabled
               ? () {
                   HaoHaptics.tap();

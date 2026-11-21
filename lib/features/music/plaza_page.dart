@@ -21,6 +21,7 @@ import 'dart:async';
 // too (both writes go through both stores, so the legacy plaza key
 // stays in sync for any reader that still uses it).
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/storage/hive_store.dart';
@@ -140,7 +141,7 @@ class _PlazaPageState extends State<PlazaPage> {
     final theme = HaoTheme.of(context);
     final items = _sorted;
     return Scaffold(
-      appBar: AppBar(title: const Text('歌单广场')),
+      appBar: AppBar(title: Text('歌单广场', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -148,7 +149,7 @@ class _PlazaPageState extends State<PlazaPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(
               '各大音乐平台的热门歌单，点进去就能听，也能一键导入到我的歌单',
-              style: TextStyle(color: theme.textSecondary, fontSize: 13),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
             ),
           ),
           Padding(
@@ -184,6 +185,7 @@ class _PlazaPageState extends State<PlazaPage> {
                                     pf.displayName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context)),
                                   ),
                                 ),
                               ],
@@ -210,6 +212,7 @@ class _PlazaPageState extends State<PlazaPage> {
                       selectedColor: theme.accentSoft,
                       side: BorderSide(color: theme.hairline),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _sort == sort
                             ? theme.accent
                             : theme.textSecondary,
@@ -225,14 +228,14 @@ class _PlazaPageState extends State<PlazaPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CupertinoActivityIndicator())
                 : _failed
                     ? _errorState(theme)
                     : items.isEmpty
                         ? Center(
                             child: Text(
                               '${_platform.displayName}暂时没有歌单',
-                              style: TextStyle(color: theme.textMuted),
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                             ),
                           )
                         : ListView.builder(
@@ -252,6 +255,7 @@ class _PlazaPageState extends State<PlazaPage> {
                                           height: 52,
                                           color: theme.accentSoft,
                                           child: Icon(
+                                            shadows: HaoTheme.legibilityShadows(ctx),
                                             Icons.music_note,
                                             color: theme.textMuted,
                                           ),
@@ -267,6 +271,7 @@ class _PlazaPageState extends State<PlazaPage> {
                                             height: 52,
                                             color: theme.accentSoft,
                                             child: Icon(
+                                              shadows: HaoTheme.legibilityShadows(ctx),
                                               Icons.music_note,
                                               color: theme.textMuted,
                                             ),
@@ -278,6 +283,7 @@ class _PlazaPageState extends State<PlazaPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(ctx),
                                     color: theme.textPrimary,
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
@@ -295,6 +301,7 @@ class _PlazaPageState extends State<PlazaPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(ctx),
                                     color: theme.textSecondary,
                                     fontSize: 13,
                                   ),
@@ -311,13 +318,14 @@ class _PlazaPageState extends State<PlazaPage> {
                                     if (p.playCount > 0)
                                       const SizedBox(width: 8),
                                     Icon(
+                                      shadows: HaoTheme.legibilityShadows(ctx),
                                       Icons.chevron_right,
                                       color: theme.textMuted,
                                     ),
                                   ],
                                 ),
                                 onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
+                                  CupertinoPageRoute<void>(
                                     settings: const RouteSettings(
                                         name: musicSubPageRouteName),
                                     builder: (_) =>
@@ -341,6 +349,7 @@ class _PlazaPageState extends State<PlazaPage> {
           Text(
             '${_platform.displayName}歌单加载失败',
             style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
               color: theme.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -349,7 +358,7 @@ class _PlazaPageState extends State<PlazaPage> {
           const SizedBox(height: 4),
           Text(
             '当前选择仍是${_platform.displayName}，没有切换到其他平台',
-            style: TextStyle(color: theme.textMuted, fontSize: 13),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
@@ -490,15 +499,15 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(title: Text(p.name, maxLines: 1)),
+      appBar: AppBar(title: Text(p.name, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _failed
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('歌单加载失败', style: TextStyle(color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+                      Text('歌单加载失败', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 12),
                       ElevatedButton(
                         onPressed: () {
@@ -528,6 +537,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                     height: 96,
                                     color: theme.accentSoft,
                                     child: Icon(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       Icons.music_note,
                                       color: theme.textMuted,
                                       size: 40,
@@ -543,6 +553,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                       height: 96,
                                       color: theme.accentSoft,
                                       child: Icon(
+                                        shadows: HaoTheme.legibilityShadows(context),
                                         Icons.music_note,
                                         color: theme.textMuted,
                                         size: 40,
@@ -559,6 +570,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                 Text(
                                   p.name,
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textPrimary,
                                     fontSize: 20,
                                     fontWeight: FontWeight.w800,
@@ -568,6 +580,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                 Text(
                                   '${p.platform.displayName} · ${p.creator}',
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textSecondary,
                                     fontSize: 13,
                                   ),
@@ -576,6 +589,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                                 Text(
                                   '${_tracks?.length ?? 0} 首歌曲',
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textSecondary,
                                     fontSize: 13,
                                   ),
@@ -605,8 +619,8 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: _importAll,
-                              icon: const Icon(Icons.download),
-                              label: const Text('一键导入'),
+                              icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.download),
+                              label: Text('一键导入', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: theme.accent,
                                 side: BorderSide(color: theme.hairline),

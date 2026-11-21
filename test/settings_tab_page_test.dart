@@ -1,10 +1,11 @@
-// Settings page: collapsible player-engine section + About at the bottom.
+// Settings page: six flat groups + About at the bottom (build 28).
 //
-// - The 播放器引擎 group starts collapsed (only the current engine name
-//   shows as a summary); tapping the header expands / collapses it and
-//   the state persists in Hive (`engineSectionExpanded`).
-// - The 关于 section (版本 / 检查更新 / 日志) is the last
-//   section on the page, after every other settings group.
+// - No collapsible sections any more: the engine radios and the music
+//   playback panel are always visible (the old `engineSectionExpanded`
+//   / `playbackSectionExpanded` Hive keys are gone — D12).
+// - The 关于 section (版本 / 检查更新 / 启动时自动检查更新) is the
+//   last section on the page, after every other settings group;
+//   日志 and 缓存管理 live in the 数据 group above it.
 
 import 'dart:io';
 
@@ -57,8 +58,10 @@ void main() {
   });
 
   Future<void> pumpPage(WidgetTester tester) async {
-    // Tall viewport so the whole ListView lays out at once.
-    tester.view.physicalSize = const Size(800, 2400);
+    // Tall viewport so the whole ListView lays out at once. The flat
+    // page (build 28) is longer than the old collapsed one; the
+    // 1.1.6 VOD/music rows add ~530px more.
+    tester.view.physicalSize = const Size(800, 4200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -73,68 +76,346 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('engine section starts collapsed, tap expands and persists',
+  /// The GlassSwitch inside the row titled [title] (Beans switch
+  /// rows render title + trailing switch in one Row).
+  Finder rowSwitch(String title) {
+    final row = find
+        .ancestor(
+          of: find.text(title),
+          matching: find.byType(Row),
+        )
+        .last;
+    return find.descendant(
+      of: row,
+      matching: find.byType(GlassSwitch),
+    );
+  }
+
+  Future<void> tapRowSwitch(WidgetTester tester, String title) async {
+    final sw = rowSwitch(title);
+    expect(sw, findsOneWidget);
+    await tester.tap(sw);
+    await tester.pumpAndSettle();
+  }
+
+  /// The 0.4-grey lock wrapper (1.1.6 trio display lock) around
+  /// the row titled [title]; findsNothing when the row is unlocked.
+  Finder greyLock(String title) => find.ancestor(
+        of: find.text(title),
+        matching: find.byWidgetPredicate(
+          (w) => w is Opacity && w.opacity == 0.4,
+        ),
+      );
+
+  testWidgets('engine radios are always visible, tap switches engine',
       (tester) async {
-    await HiveStore.box.delete(HiveKeys.engineSectionExpanded);
+    await HiveStore.box.delete(HiveKeys.videoPlayerKey);
     await pumpPage(tester);
 
-    // Collapsed: no engine radios, current engine shown as a summary.
-    expect(find.byType(RadioListTile<String>), findsNothing);
-    expect(find.text('MPV'), findsOneWidget);
-    // Two expandable headers share the chevron icon now (playback +
-    // engine), so scope the icon to the engine header row.
-    Finder engineChevron(IconData icon) => find.descendant(
-          of: find
-              .ancestor(
-                of: find.text('播放器引擎'),
-                matching: find.byType(Row),
-              )
-              .last,
-          matching: find.byIcon(icon),
-        );
-    expect(engineChevron(Icons.keyboard_arrow_down), findsOneWidget);
-
-    // Expand: all three engines appear; the state is persisted.
-    // One '播放器引擎' text now (the redundant section title above the
-    // header was removed — chen: no duplicates).
-    await tester.tap(find.text('播放器引擎').last);
-    await tester.pumpAndSettle();
+    // Flat (build 28): no collapse header, all three radios visible.
+    expect(find.text('播放器引擎'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+    expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
     expect(find.byType(RadioListTile<String>), findsNWidgets(3));
-    expect(engineChevron(Icons.keyboard_arrow_up), findsOneWidget);
-    expect(HiveStore.getBool(HiveKeys.engineSectionExpanded, false), isTrue);
+    expect(find.text('MPV'), findsOneWidget);
+    expect(find.text('IJK'), findsOneWidget);
+    expect(find.text('AVPlayer'), findsOneWidget);
+    // AVPlayer row keeps its FLV warning subtitle (E8).
+    expect(find.text('AVPlayer 不能播 FLV，失败时自动换内核'), findsOneWidget);
 
-    // Collapse again: radios gone, persisted as false.
-    await tester.tap(find.text('播放器引擎').last);
+    // Tapping a radio persists the engine key.
+    await tester.tap(find.text('IJK'));
     await tester.pumpAndSettle();
-    expect(find.byType(RadioListTile<String>), findsNothing);
-    expect(HiveStore.getBool(HiveKeys.engineSectionExpanded, true), isFalse);
+    expect(HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv'), 'ijk');
   });
 
-  testWidgets('engine section restores expanded state from Hive',
+  testWidgets('six flat groups in order, old group names gone',
       (tester) async {
-    await HiveStore.put(HiveKeys.engineSectionExpanded, true);
     await pumpPage(tester);
 
-    expect(find.byType(RadioListTile<String>), findsNWidgets(3));
-    expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
+    final tops = [
+      for (final title in ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'])
+        tester.getTopLeft(find.text(title)).dy,
+    ];
+    for (var i = 1; i < tops.length; i++) {
+      expect(tops[i], greaterThan(tops[i - 1]));
+    }
+    expect(find.text('主题'), findsNothing);
+    expect(find.text('播放设置'), findsNothing);
+    expect(find.text('播放器引擎'), findsNothing);
+    expect(find.text('备份与数据'), findsNothing);
+    expect(find.text('播放与缓存'), findsNothing);
   });
 
   testWidgets('about section is the last section on the page',
       (tester) async {
     await pumpPage(tester);
 
-    // 关于 sits below every other section's last row (缓存管理) and
-    // its own rows (版本 / 检查更新 / 日志) follow it.
+    // 关于 sits below every other section and its own rows
+    // (版本 / 检查更新 / 启动时自动检查更新) follow it. 日志 and
+    // 缓存管理 moved to the 数据 group above 关于 (build 28).
+    final dataTop = tester.getTopLeft(find.text('数据')).dy;
     final aboutTop = tester.getTopLeft(find.text('关于')).dy;
+    final exportTop = tester.getTopLeft(find.text('导出备份')).dy;
+    final importTop = tester.getTopLeft(find.text('导入备份')).dy;
     final cacheTop = tester.getTopLeft(find.text('缓存管理')).dy;
+    final logTop = tester.getTopLeft(find.text('日志')).dy;
     final versionTop = tester.getTopLeft(find.text('版本')).dy;
     final updateTop = tester.getTopLeft(find.text('检查更新')).dy;
-    final logTop = tester.getTopLeft(find.text('日志')).dy;
+    final autoCheckTop =
+        tester.getTopLeft(find.text('启动时自动检查更新')).dy;
 
-    expect(aboutTop, greaterThan(cacheTop));
+    expect(exportTop, greaterThan(dataTop));
+    expect(importTop, greaterThan(exportTop));
+    expect(cacheTop, greaterThan(importTop));
+    expect(logTop, greaterThan(cacheTop));
+    expect(aboutTop, greaterThan(logTop));
     expect(versionTop, greaterThan(aboutTop));
     expect(updateTop, greaterThan(versionTop));
-    expect(logTop, greaterThan(updateTop));
+    expect(autoCheckTop, greaterThan(updateTop));
+  });
+
+  testWidgets('redundant subtitles are gone, state subtitles stay',
+      (tester) async {
+    await pumpPage(tester);
+
+    // E1–E5: the repeated hint subtitles are deleted.
+    expect(find.text('选择备份文件恢复'), findsNothing);
+    expect(find.text('导出全部本地数据（含音乐/壁纸文件）'), findsNothing);
+    expect(find.text('已开启自定义背景色'), findsNothing);
+    expect(find.text('关闭后回到主题默认背景'), findsNothing);
+    expect(find.textContaining('仅影视播放'), findsNothing);
+    expect(find.textContaining('下次打开生效'), findsNothing);
+    // No font installed → no reset row (D4).
+    expect(find.text('恢复默认字体'), findsNothing);
+    expect(find.text('自定义字体'), findsOneWidget);
+    // Kept: the version subtitle is state, not a hint.
+    expect(find.textContaining('build'), findsOneWidget);
+  });
+
+  testWidgets('background swatches stay mounted when the switch is off',
+      (tester) async {
+    await pumpPage(tester);
+
+    // One '背景色' text only (the switch row); the swatch card's
+    // duplicate title is gone (A1), but the card itself stays mounted
+    // (D5) — 恢复默认 is present even with the switch off.
+    expect(find.text('背景色'), findsOneWidget);
+    expect(find.text('恢复默认'), findsOneWidget);
+  });
+
+  testWidgets('low-memory tap toasts once instead of a subtitle',
+      (tester) async {
+    await pumpPage(tester);
+
+    expect(find.textContaining('下次打开生效'), findsNothing);
+    await tester.tap(find.text('低内存模式'));
+    await tester.pump();
+    expect(find.text('下次打开生效'), findsOneWidget);
+    // Let the snackbar auto-dismiss before the test ends — its
+    // overlay ticker would otherwise leak into the next test.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('auto update check switch defaults on and persists',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.autoUpdateCheck);
+    await pumpPage(tester);
+
+    final row = find
+        .ancestor(
+          of: find.text('启动时自动检查更新'),
+          matching: find.byType(Row),
+        )
+        .last;
+    final autoSwitch = find.descendant(
+      of: row,
+      matching: find.byType(GlassSwitch),
+    );
+    expect(autoSwitch, findsOneWidget);
+    expect(tester.widget<GlassSwitch>(autoSwitch).value, isTrue);
+    await tester.tap(autoSwitch);
+    await tester.pumpAndSettle();
+    expect(HiveStore.getBool(HiveKeys.autoUpdateCheck, true), isFalse);
+  });
+
+  testWidgets('Anime4K super-resolution switch defaults off and persists',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.vodSuperResolution);
+    await pumpPage(tester);
+
+    // In the 影视播放 group, below 视频画面比例. The subtitle states
+    // the scope (MPV-only, next playback) — it is load-bearing, not
+    // a hint: on IJK/AVPlayer the switch does nothing visible.
+    final fitTop = tester.getTopLeft(find.text('视频画面比例')).dy;
+    final srTop = tester.getTopLeft(find.text('Anime4K 超分')).dy;
+    final lowMemTop = tester.getTopLeft(find.text('低内存模式')).dy;
+    expect(srTop, greaterThan(fitTop));
+    expect(lowMemTop, greaterThan(srTop));
+    // 1.1.6: the same scope subtitle now also sits on 插帧 and
+    // SDR 转 HDR (the MPV trio shares it).
+    expect(find.text('仅 MPV，下次播放生效'), findsNWidgets(3));
+
+    final row = find
+        .ancestor(
+          of: find.text('Anime4K 超分'),
+          matching: find.byType(Row),
+        )
+        .last;
+    final srSwitch = find.descendant(
+      of: row,
+      matching: find.byType(GlassSwitch),
+    );
+    expect(srSwitch, findsOneWidget);
+    expect(tester.widget<GlassSwitch>(srSwitch).value, isFalse);
+    await tester.tap(srSwitch);
+    await tester.pumpAndSettle();
+    expect(HiveStore.getBool(HiveKeys.vodSuperResolution, false), isTrue);
+  });
+
+  testWidgets('1.1.6 VOD trio defaults off, DV P8 defaults on, persist',
+      (tester) async {
+    // The Anime4K test above leaves vodSuperResolution=true in the
+    // shared box — clear it, or the trio rows start greyed out.
+    await HiveStore.box.delete(HiveKeys.vodSuperResolution);
+    await HiveStore.box.delete(HiveKeys.vodInterpolation);
+    await HiveStore.box.delete(HiveKeys.vodSdrToHdr);
+    await HiveStore.box.delete(HiveKeys.vodDvP8Downgrade);
+    await pumpPage(tester);
+
+    expect(find.text('插帧'), findsOneWidget);
+    expect(find.text('SDR 转 HDR'), findsOneWidget);
+    expect(find.text('杜比视界 Profile 8 降级 HDR'), findsOneWidget);
+    // DV P8 has no subtitle (title only).
+    expect(tester.widget<GlassSwitch>(rowSwitch('插帧')).value, isFalse);
+    expect(tester.widget<GlassSwitch>(rowSwitch('SDR 转 HDR')).value,
+        isFalse);
+    expect(
+        tester.widget<GlassSwitch>(rowSwitch('杜比视界 Profile 8 降级 HDR'))
+            .value,
+        isTrue);
+
+    await tapRowSwitch(tester, '插帧');
+    expect(HiveStore.getBool(HiveKeys.vodInterpolation, false), isTrue);
+    await tapRowSwitch(tester, '杜比视界 Profile 8 降级 HDR');
+    expect(HiveStore.getBool(HiveKeys.vodDvP8Downgrade, true), isFalse);
+  });
+
+  testWidgets('MPV trio mutual exclusion greys the other two, keeps stored values',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.vodSuperResolution);
+    await HiveStore.box.delete(HiveKeys.vodInterpolation);
+    await HiveStore.box.delete(HiveKeys.vodSdrToHdr);
+    await pumpPage(tester);
+
+    // All off: nothing greyed.
+    expect(greyLock('Anime4K 超分'), findsNothing);
+    expect(greyLock('插帧'), findsNothing);
+    expect(greyLock('SDR 转 HDR'), findsNothing);
+
+    // Turn super-res on: the other two grey out, their stored
+    // values are NOT cleared.
+    await tapRowSwitch(tester, 'Anime4K 超分');
+    expect(greyLock('Anime4K 超分'), findsNothing);
+    expect(greyLock('插帧'), findsOneWidget);
+    expect(greyLock('SDR 转 HDR'), findsOneWidget);
+    expect(HiveStore.getBool(HiveKeys.vodInterpolation, false), isFalse);
+    expect(HiveStore.getBool(HiveKeys.vodSdrToHdr, false), isFalse);
+
+    // Turn super-res off again: locks release.
+    await tapRowSwitch(tester, 'Anime4K 超分');
+    expect(greyLock('插帧'), findsNothing);
+    expect(greyLock('SDR 转 HDR'), findsNothing);
+  });
+
+  testWidgets('MPV trio seeded on greys the other two from the start',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.vodSuperResolution);
+    await HiveStore.put(HiveKeys.vodInterpolation, true);
+    await HiveStore.box.delete(HiveKeys.vodSdrToHdr);
+    await pumpPage(tester);
+
+    expect(tester.widget<GlassSwitch>(rowSwitch('插帧')).value, isTrue);
+    expect(greyLock('插帧'), findsNothing);
+    expect(greyLock('Anime4K 超分'), findsOneWidget);
+    expect(greyLock('SDR 转 HDR'), findsOneWidget);
+  });
+
+  testWidgets('skip intro row cycles four modes and persists',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.vodSkipIntroMode);
+    await pumpPage(tester);
+
+    expect(find.text('跳过片头片尾'), findsOneWidget);
+    expect(find.text('当前：关'), findsOneWidget);
+
+    await tester.tap(find.text('跳过片头片尾'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前：手动'), findsOneWidget);
+    expect(HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off'),
+        'manual');
+
+    await tester.tap(find.text('跳过片头片尾'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前：自动延时 3 秒'), findsOneWidget);
+    expect(HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off'),
+        'auto3s');
+
+    await tester.tap(find.text('跳过片头片尾'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前：自动立即'), findsOneWidget);
+    expect(HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off'),
+        'autoNow');
+
+    await tester.tap(find.text('跳过片头片尾'));
+    await tester.pumpAndSettle();
+    expect(find.text('当前：关'), findsOneWidget);
+    expect(
+        HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off'), 'off');
+  });
+
+  testWidgets('subtitle delay slider defaults 0s, drag persists a positive offset',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.vodSubtitleDelay);
+    await pumpPage(tester);
+
+    expect(find.text('字幕时间偏移'), findsOneWidget);
+    expect(find.text('0s'), findsOneWidget);
+    final card = find
+        .ancestor(
+          of: find.text('字幕时间偏移'),
+          matching: find.byType(Column),
+        )
+        .first;
+    final slider = find.descendant(
+      of: card,
+      matching: find.byType(Slider),
+    );
+    expect(slider, findsOneWidget);
+    final sliderWidget = tester.widget<Slider>(slider);
+    expect(sliderWidget.min, -10);
+    expect(sliderWidget.max, 10);
+    expect(sliderWidget.divisions, 200);
+
+    await tester.drag(slider, const Offset(120, 0));
+    await tester.pumpAndSettle();
+    final stored = HiveStore.getDouble(HiveKeys.vodSubtitleDelay, 0.0);
+    expect(stored, greaterThan(0));
+    expect(find.textContaining('+'), findsOneWidget);
+  });
+
+  testWidgets('volume normalisation switch defaults off and persists',
+      (tester) async {
+    await HiveStore.box.delete(HiveKeys.musicNormalizationEnabled);
+    await pumpPage(tester);
+
+    expect(find.text('音量归一化'), findsOneWidget);
+    expect(tester.widget<GlassSwitch>(rowSwitch('音量归一化')).value,
+        isFalse);
+    await tapRowSwitch(tester, '音量归一化');
+    expect(HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false),
+        isTrue);
   });
 
   testWidgets('日志 row opens the app log page', (tester) async {
@@ -163,32 +444,24 @@ void main() {
     expect(find.text('版本'), findsOneWidget);
   });
 
-  Future<void> expandPlayback(WidgetTester tester) async {
-    await HiveStore.box.delete(HiveKeys.playbackSectionExpanded);
-    await pumpPage(tester);
-    // Collapsed: panel rows hidden.
-    expect(find.text('与其他音频同时播放'), findsNothing);
-    // One '播放设置' text now (the redundant section title above the
-    // header was removed — chen: no duplicates).
-    await tester.tap(find.text('播放设置').last);
-    await tester.pumpAndSettle();
-    expect(HiveStore.getBool(HiveKeys.playbackSectionExpanded, false),
-        isTrue);
-  }
-
-  testWidgets('playback section shows every Beans row, no VIP row, with EQ row',
+  testWidgets('music playback group shows every Beans row, no VIP row, with EQ row',
       (tester) async {
-    await expandPlayback(tester);
+    await pumpPage(tester);
 
+    // Flat (build 28): rows visible with no expand tap; the 120Hz
+    // display row is deleted (D2).
+    expect(find.text('音乐播放'), findsOneWidget);
     expect(find.text('与其他音频同时播放'), findsOneWidget);
-    expect(find.text('120Hz 高刷新'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.text('120Hz 高刷新'), findsNothing);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
     expect(find.text('启动时自动播放上次歌曲'), findsOneWidget);
     // Subtitle removed (clean pass 2026-11-19): title + switch only.
     expect(find.text('打开软件后自动恢复上次未播放完的歌曲'),
         findsNothing);
     // ONE quality row (chen: all songs are third-party resolves).
     expect(find.text('播放音质'), findsOneWidget);
+    // Quality hint removed (build 28 E4).
+    expect(find.text('无法使用时会由平台自动降级。'), findsNothing);
     expect(find.text('触感反馈'), findsOneWidget);
     // Stage 3: the EQ engine exists now, so the row is back (Beans
     // `equalizerSection`): real state trailing, opens the 10-band page.
@@ -198,6 +471,8 @@ void main() {
     expect(find.text('调节低音、人声与高音'), findsNothing);
     expect(find.text('已关闭'), findsOneWidget);
     expect(find.text('第三方音源'), findsOneWidget);
+    // 1.1.6: loudness normalisation row, below the panel.
+    expect(find.text('音量归一化'), findsOneWidget);
     // No second entry: the '管理 / 导入音源' button inside this panel
     // opened the same page as the standalone 音源管理 row (chen: no
     // duplicates) — it was removed; the count row stays as info only
@@ -210,7 +485,7 @@ void main() {
   });
 
   testWidgets('EQ row opens the 10-band page', (tester) async {
-    await expandPlayback(tester);
+    await pumpPage(tester);
 
     await tester.tap(find.text('均衡器'));
     await tester.pumpAndSettle();
@@ -230,7 +505,7 @@ void main() {
   testWidgets('haptics switch persists and flips the Hive flag',
       (tester) async {
     await HiveStore.put(HiveKeys.hapticsEnabled, true);
-    await expandPlayback(tester);
+    await pumpPage(tester);
 
     final row = find
         .ancestor(

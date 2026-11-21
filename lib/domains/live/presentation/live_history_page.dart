@@ -15,6 +15,8 @@
 import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -23,6 +25,7 @@ import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../features/video/widgets/referer_image.dart';
 import '../../../widgets/glass_dialog.dart';
+import '../../../widgets/hao_search_field.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
 import '../live_history_store.dart';
@@ -131,6 +134,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
               Text(
                 '历史记录上限',
                 style: TextStyle(
+                  shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -155,6 +159,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                               : theme.hairline,
                         ),
                         labelStyle: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: selected == p
                               ? theme.accent
                               : theme.textSecondary,
@@ -179,6 +184,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                             : theme.hairline,
                       ),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: selected == 0
                             ? theme.accent
                             : theme.textSecondary,
@@ -212,6 +218,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   Text(
                     '缩小上限将删除最旧的 $wouldDelete 条记录。',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.accent,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -226,14 +233,14 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: Text(
                       '取消',
-                      style: TextStyle(color: theme.textSecondary),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
                     ),
                   ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(selected),
                     child: Text(
                       '确定',
-                      style: TextStyle(color: theme.accent),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent),
                     ),
                   ),
                 ],
@@ -260,21 +267,21 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
         : '${LiveHistoryStore.limit} 条';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('直播历史'),
+        title: Text('直播历史', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
         actions: [
           IconButton(
             icon: _refreshing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CupertinoActivityIndicator(),
                   )
-                : const Icon(Icons.refresh),
+                : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
             tooltip: '刷新在线状态',
             onPressed: _refreshing ? null : _refreshStatuses,
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete_outline),
             tooltip: '清空历史记录',
             onPressed: all.isEmpty ? null : _confirmClear,
           ),
@@ -284,29 +291,8 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: '搜索标题 / 主播 / 房间号 / 平台',
-                hintStyle: TextStyle(color: theme.textMuted),
-                prefixIcon: Icon(Icons.search, color: theme.textMuted),
-                filled: true,
-                fillColor: theme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(HaoRadius.large),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(HaoRadius.large),
-                  borderSide: BorderSide(color: theme.hairline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(HaoRadius.large),
-                  borderSide: BorderSide(color: theme.accent),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 12),
-              ),
-              style: TextStyle(color: theme.textPrimary),
+            child: HaoSearchField(
+              hintText: '搜索标题 / 主播 / 房间号 / 平台',
               onChanged: (value) => setState(() => _query = value),
             ),
           ),
@@ -319,6 +305,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                       ? '共 0 条'
                       : '共 ${all.length} 条 · 上限 $limitLabel',
                   style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textMuted,
                     fontSize: 13,
                   ),
@@ -328,7 +315,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   onPressed: _showLimitDialog,
                   child: Text(
                     '上限设置',
-                    style: TextStyle(color: theme.accent, fontSize: 13),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent, fontSize: 13),
                   ),
                 ),
               ],
@@ -340,6 +327,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
               child: Row(
                 children: [
                   Icon(
+                    shadows: HaoTheme.legibilityShadows(context),
                     Icons.warning_amber_outlined,
                     size: 14,
                     color: theme.textMuted,
@@ -348,6 +336,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   Text(
                     '$_failedCount 个状态获取失败',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,
                       fontSize: 12,
                     ),
@@ -368,6 +357,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
+                            shadows: HaoTheme.legibilityShadows(context),
                             Icons.live_tv_outlined,
                             size: 40,
                             color: theme.accent,
@@ -377,6 +367,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                         Text(
                           '还没有直播观看记录',
                           style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textPrimary,
                             fontSize: 17,
                             fontWeight: FontWeight.w600,
@@ -391,6 +382,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
+                              shadows: HaoTheme.legibilityShadows(context),
                               Icons.search_off_outlined,
                               size: 40,
                               color: theme.textMuted,
@@ -399,6 +391,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                             Text(
                               '没有匹配的记录',
                               style: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textSecondary,
                                 fontSize: 15,
                               ),
@@ -466,6 +459,7 @@ class _SectionHeader extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
               color: theme.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -515,7 +509,7 @@ class _HistoryCardState extends State<_HistoryCard> {
       margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: HaoPressable(
           onTap: () {
             HaoHaptics.tap();
             widget.onTap();
@@ -577,6 +571,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -589,6 +584,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textSecondary,
                         fontSize: 13,
                       ),
@@ -597,6 +593,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                     Text(
                       _formatTime(entry.atDate),
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textMuted,
                         fontSize: 12,
                       ),
@@ -609,6 +606,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                 children: [
                   IconButton(
                     icon: Icon(
+                      shadows: HaoTheme.legibilityShadows(context),
                       followed ? Icons.favorite : Icons.favorite_border,
                       color: followed ? theme.accent : theme.textMuted,
                       size: 20,
@@ -622,6 +620,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                   ),
                   IconButton(
                     icon: Icon(
+                      shadows: HaoTheme.legibilityShadows(context),
                       Icons.close,
                       color: theme.textMuted,
                       size: 20,

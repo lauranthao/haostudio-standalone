@@ -7,6 +7,10 @@
 @implementation JustAudioPlugin {
     NSObject<FlutterPluginRegistrar>* _registrar;
     NSMutableDictionary<NSString *, AudioPlayer *> *_players;
+    // Equalizer channel (kept alive for the app lifetime): the
+    // loudness report handler (HaoEqualizer -> Dart) invokes on it,
+    // so it must outlive registerWithRegistrar's stack frame.
+    FlutterMethodChannel* _eqChannel;
 }
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
@@ -24,6 +28,18 @@
         methodChannelWithName:@"com.haostudio.standalone/equalizer"
               binaryMessenger:[registrar messenger]];
     [registrar addMethodCallDelegate:instance channel:eqChannel];
+    instance->_eqChannel = eqChannel;
+    // Loudness measurement (1.1.6 normalisation feed-in): the EQ
+    // tap reports each track's RMS-approximated LUFS at finalize;
+    // forward it to Dart on the same channel Dart already uses
+    // (EqualizerStore owns the Dart side). Runs on the main thread
+    // (HaoEqualizer dispatches there before invoking the handler).
+    [[HaoEqualizer shared] setLoudnessReportHandler:^(
+        NSString *identityKey, double lufs) {
+        [eqChannel invokeMethod:@"loudnessMeasured"
+                      arguments:@{@"identityKey": identityKey,
+                                  @"lufs": @(lufs)}];
+    }];
 }
 
 - (instancetype)initWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
@@ -47,6 +63,18 @@
         [[HaoEqualizer shared] updateSettingsWithEnabled:enabled
                                                     gains:gains
                                                    preamp:preamp];
+        result(nil);
+        return;
+    }
+    // HAo loudness measurement (1.1.6): Dart stamps the next tap(s)
+    // with the track about to be opened / preloaded, so the tap's
+    // finalize report can be attributed to the right song (see
+    // HaoEqualizer.h -setPendingTrackKey:). Best-effort, always acks.
+    if ([@"setTrackKey" isEqualToString:call.method]) {
+        NSDictionary *args = (NSDictionary *)call.arguments;
+        id key = args[@"identityKey"];
+        [[HaoEqualizer shared] setPendingTrackKey:
+            [key isKindOfClass:[NSString class]] ? key : nil];
         result(nil);
         return;
     }

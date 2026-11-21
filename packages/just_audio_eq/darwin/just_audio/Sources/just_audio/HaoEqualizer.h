@@ -37,9 +37,10 @@
 //     enable/disable toggle re-apply to BOTH players' current items.
 //     (Beans only re-applies to player.currentItem.)
 //  2. Gain/preamp changes do NOT recreate the tap: the tap callbacks
-//     read the shared coefficients live under the lock (exactly as
-//     Beans' process() reads processingGains/coefficients), so a slider
-//     drag retunes the running audio with no glitch. Only the enabled
+//     read the shared gains live under the lock and rebuild each tap's
+//     own coefficient snapshot when they move (exactly as Beans'
+//     process() reads processingGains/coefficients), so a slider drag
+//     retunes the running audio with no glitch. Only the enabled
 //     flag needs a re-apply (set/clear audioMix on live items).
 //  3. No 5-band legacy migration (Beans normalizedGains): we never
 //     shipped a 5-band EQ, so there is no legacy data to migrate.
@@ -74,6 +75,27 @@ NS_ASSUME_NONNULL_BEGIN
 /// while the item is still alive and EQ is still enabled. Safe to call
 /// on a fresh item (createPlayerItem) and on a live item (re-apply).
 - (void)applyToItem:(AVPlayerItem *)item;
+
+/// Stamp the next created tap(s) with this track's identityKey.
+/// Dart calls this immediately before every open / preload (see
+/// HAO_PATCH.md "loudness measurement"): the tap is created inside
+/// that open, so the pending key is the key of the tap's own track
+/// even while A/B crossfade overlaps two taps — and even when the
+/// item is created by _prefetchNext, before that track's _loadCurrent
+/// runs. The key is sticky (last push wins) so a gapless second item
+/// for the same track keeps the same stamp. The tap's finalize
+/// report is attributed by this stamp.
+- (void)setPendingTrackKey:(nullable NSString *)identityKey;
+
+/// Loudness-report handler (set by JustAudioPlugin, which owns the
+/// equalizer method channel): invoked on the main thread when a tap
+/// finalizes with >= 10 s of measured audio. identityKey is the
+/// stamp from -setPendingTrackKey:, lufs is the RMS-approximated
+/// integrated loudness (see HaoEqualizer.m — NOT precise LUFS).
+/// Nil until the plugin sets it; a nil handler means reports are
+/// computed and dropped, never queued.
+@property (nonatomic, copy, nullable) void (^loudnessReportHandler)(
+    NSString *identityKey, double lufs);
 
 @end
 

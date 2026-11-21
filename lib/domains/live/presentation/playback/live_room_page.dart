@@ -36,11 +36,17 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart';
+import '../../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../../widgets/hao_toast.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
+import '../../../../core/danmaku/danmaku_occlusion.dart';
+import '../../../../core/danmaku/danmaku_occlusion_mask.dart';
 import '../../../../core/logging/app_log.dart';
+import '../../../../core/native/person_segmentation.dart';
 import '../../../../core/models/live_models.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
@@ -173,6 +179,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // fullscreen only; the portrait list below stays the danmaku
   // surface in portrait.
   final BarrageController _barrageController = BarrageController();
+  // Danmaku occlusion avoidance (1.1.6, reduced version): same
+  // controller as the VOD page — Vision person mask over
+  // low-frequency MPV snapshots, whole-layer ShaderMask on the
+  // flying danmaku. Live only matters in landscape fullscreen
+  // (portrait has no flying danmaku, only the list below); the gate
+  // below includes the fullscreen flag for exactly that reason.
+  late final DanmakuOcclusionController _occlusion;
   // Automatic-recovery budget: consecutive session-error retries in
   // this episode. advanceLine() wraps around and never returns null
   // for >= 2 lines, so without a bound a failing room retries lines
@@ -189,15 +202,21 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // Danmaku display settings (DanmakuSettings, Hive-backed): read on
   // entry and re-read live while the room is open, so a change in the
   // settings page takes effect without leaving the room.
-  // Speed does NOT exist in DanmakuSettings: a list has no scroll
-  // speed, so there is nothing to honour for it — the settings page
-  // says so instead of faking a slider. Area DOES exist, fullscreen
-  // only: it caps the flying danmaku's BarrageConfig.area (the
-  // portrait list is a chat list, not an overlay).
+  // Speed / stroke / colour exist in DanmakuSettings and apply ONLY
+  // to the fullscreen flying danmaku (BarrageConfig): the portrait
+  // list is a chat list of plain Text, so it has no scroll speed or
+  // stroke to honour. Area is fullscreen-only the same way. Maximum
+  // count caps both sides (list + flying, flying clamped to the
+  // engine pool ceiling 72).
   bool _danmakuEnabled = true;
   double _danmakuFontSize = DanmakuSettings.defaultFontSize;
   double _danmakuOpacity = DanmakuSettings.defaultOpacity;
   double _danmakuArea = DanmakuSettings.defaultAreaFraction;
+  bool _danmakuStroke = DanmakuSettings.defaultStroke;
+  double _danmakuStrokeWidth = DanmakuSettings.defaultStrokeWidth;
+  double _danmakuSpeed = DanmakuSettings.defaultSpeed;
+  int _danmakuMaxCount = DanmakuSettings.defaultMaxCount;
+  String _danmakuColorMode = DanmakuSettings.colorModeUniform;
   bool _danmakuStarted = false;
   bool _roomDetailLoaded = false;
   ValueListenable<Box<dynamic>>? _danmakuSettingsListenable;
@@ -212,6 +231,29 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // One filter per room — its similarity cache dies with the room.
   late final DanmakuContentFilter _danmakuFilter;
 
+  // Burst throttle (1.1.6): at most 30 chat messages per rolling
+  // 1 s window reach the list / flying danmaku; the rest are
+  // dropped (the filter already ran before the quota check, so a
+  // dropped message never enters the similarity cache either).
+  // Super-chat is exempt: gifts must never be throttled away.
+  // No deferred batching: the room renders synchronously on emit
+  // (the widget tests assert right after emit + pump), so a
+  // Timer-based batch would break that contract; the quota bounds
+  // setState to 30/s and the scroll-to-bottom callback is coalesced
+  // instead (one pending post-frame callback at most).
+  static const int danmakuBurstQuotaPerSecond = 30;
+  DateTime? _danmakuBurstWindowStart;
+  int _danmakuBurstCount = 0;
+  bool _danmakuScrollPending = false;
+
+  // While a quality switch's session.open is in flight, errors from
+  // THAT open belong to the switch (open's bool return), not to the
+  // still-playing old stream: _onSessionError must not run recovery
+  // for them, or a failed switch would resurrect the failure card
+  // after _switchQuality restored the old quality. Set to the
+  // switch epoch before open, cleared right after it returns.
+  int? _qualitySwitchEpoch;
+
   // S4: tap highlights one danmaku item (accent wash); tapping it
   // again clears the highlight. Long-press opens the block menu.
   int? _highlightedDanmakuIndex;
@@ -223,6 +265,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _room = widget.room;
     _site = widget.site ?? Sites.of(widget.room.platform);
     _session = PlaybackSession(backendFactory: widget.backendFactory);
+    _occlusion = DanmakuOcclusionController(
+      segmentation: PersonSegmentation(),
+      frameSource: () async =>
+          _session.frameCapableBackend?.captureFrameJpeg(),
+      isFrameCapable: () => _session.frameCapableBackend != null,
+    );
     _fullscreen = Get.put(FullscreenController());
     // Entering fullscreen re-shows the bars and restarts the 5 s
     // auto-hide from that moment: the portrait bar is page chrome
@@ -374,6 +422,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _danmakuFontSize = DanmakuSettings.fontSize();
     _danmakuOpacity = DanmakuSettings.opacity();
     _danmakuArea = DanmakuSettings.areaFraction();
+    _danmakuStroke = DanmakuSettings.stroke();
+    _danmakuStrokeWidth = DanmakuSettings.strokeWidth();
+    _danmakuSpeed = DanmakuSettings.speed();
+    _danmakuMaxCount = DanmakuSettings.maxCount();
+    _danmakuColorMode = DanmakuSettings.colorMode();
     _listStyle = DanmakuSettings.listStyle();
     _listSpacing = DanmakuSettings.listSpacing();
     _showUsernames = DanmakuSettings.showUsernames();
@@ -395,6 +448,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           HiveKeys.danmakuFontSize,
           HiveKeys.danmakuOpacity,
           HiveKeys.danmakuArea,
+          HiveKeys.danmakuStroke,
+          HiveKeys.danmakuStrokeWidth,
+          HiveKeys.danmakuSpeed,
+          HiveKeys.danmakuMaxCount,
+          HiveKeys.danmakuColorMode,
           HiveKeys.danmakuListStyle,
           HiveKeys.danmakuListSpacing,
           HiveKeys.danmakuShowUsernames,
@@ -486,21 +544,36 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     }
   }
 
-  /// Append one danmaku message, capped at 200 (oldest dropped first),
-  /// and stick to the bottom while the user is already near it. The
-  /// S3 content filter runs FIRST: a blocked message never reaches
-  /// the list (and never enters the similarity cache).
+  /// Append one danmaku message, capped at [_danmakuMaxCount]
+  /// (oldest dropped first), and stick to the bottom while the user
+  /// is already near it. The S3 content filter runs FIRST: a blocked
+  /// message never reaches the list (and never enters the similarity
+  /// cache). Burst throttle runs SECOND, chat only: at most
+  /// [danmakuBurstQuotaPerSecond] chat messages per rolling 1 s
+  /// window are kept; the rest are dropped outright (never listed,
+  /// never flown). Super-chat is exempt from the quota.
   void _onDanmakuMessage(LiveMessage message) {
     if (!mounted) return;
     if (!_danmakuFilter.shouldShow(message, platform: _site.id)) return;
+    if (message.type == LiveMessageType.chat) {
+      final now = DateTime.now();
+      final start = _danmakuBurstWindowStart;
+      if (start == null ||
+          now.difference(start) >= const Duration(seconds: 1)) {
+        _danmakuBurstWindowStart = now;
+        _danmakuBurstCount = 0;
+      }
+      if (_danmakuBurstCount >= danmakuBurstQuotaPerSecond) return;
+      _danmakuBurstCount++;
+    }
     final stick =
         !_danmakuScroll.hasClients ||
         _danmakuScroll.position.pixels >=
             _danmakuScroll.position.maxScrollExtent - 200;
     setState(() {
       _danmaku.add(message);
-      if (_danmaku.length > 200) {
-        _danmaku.removeRange(0, _danmaku.length - 200);
+      if (_danmaku.length > _danmakuMaxCount) {
+        _danmaku.removeRange(0, _danmaku.length - _danmakuMaxCount);
       }
     });
     // Fullscreen barrage (Pure Live PlayerDanmakuSurface): the same
@@ -509,17 +582,33 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // and nothing is sent in portrait — the list below is the danmaku
     // surface there.
     if (_fullscreen.isFullscreen.value && _danmakuEnabled && _danmakuVisible) {
+      // Platform colour, flying only: the adapter's colour when it
+      // has one. 0xFFFFFFFF is the adapters' "no colour" sentinel
+      // (most leave it), so it falls back to the config white
+      // instead of painting white-on-white. A platform-coloured
+      // item forces a stroke: a pale platform colour over bright
+      // video is unreadable without it.
+      final platformColored =
+          _danmakuColorMode == DanmakuSettings.colorModePlatform &&
+          message.color != 0xFFFFFFFF;
       _barrageController.send(
         BarrageItem(
           content: _showUsernames && message.userName.isNotEmpty
               ? '${message.userName}: ${message.message}'
               : message.message,
           userName: message.userName,
+          textColor: platformColored ? Color(message.color) : null,
+          showStroke: platformColored ? true : null,
         ),
       );
     }
-    if (stick) {
+    // One pending scroll callback at most: a burst of N messages in
+    // one frame used to queue N post-frame jumpTo calls.
+    if (stick && !_danmakuScrollPending) {
+      _danmakuScrollPending = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        _danmakuScrollPending = false;
+        if (!mounted) return;
         if (_danmakuScroll.hasClients) {
           _danmakuScroll.jumpTo(_danmakuScroll.position.maxScrollExtent);
         }
@@ -552,7 +641,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       );
       if (ackedIndex >= 0 && ackedIndex != _currentQuality) {
         setState(() => _currentQuality = ackedIndex);
-        Get.snackbar('提示', '清晰度已限制为${_qualities[ackedIndex].quality}');
+        HaoToast.show('提示', message:  '清晰度已限制为${_qualities[ackedIndex].quality}');
       }
     }
     _recovery.lines = resolution.urls;
@@ -639,6 +728,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   void _onSessionError(String message) {
     if (!mounted) return;
+    // Errors from a quality switch's own open belong to the switch
+    // (open's bool return) — not to the still-playing old stream.
+    // Running recovery here would re-open the NEW (dead) lines and,
+    // once the budget is spent, raise the failure card over a
+    // healthy old stream that _switchQuality just restored.
+    if (_qualitySwitchEpoch != null) return;
     AppLog.warn('直播异常：$message');
     // Order: next line first (no request), then fresh re-parse.
     // BOUND: after the recovery budget for this episode is spent, stop
@@ -742,6 +837,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   Future<void> _switchLine(int index) async {
     if (index == _recovery.currentLineIndex) return; // no-op
     if (index < 0 || index >= _recovery.lines.length) return;
+    // New line = new picture: the old person mask is a stale
+    // silhouette — drop it at once (the 500 ms expiry is only the
+    // backstop).
+    _occlusion.invalidateMask();
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     _recovery.currentLineIndex = index;
@@ -779,8 +878,19 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// that throws (all CDNs failed) is a toast, not a silent no-op: the
   /// throw used to escape uncaught through unawaited(), leaving the
   /// room on the old quality with no feedback at all.
+  ///
+  /// Failure keeps the old picture (1.1.6): the switch snapshots the
+  /// old quality + recovery plan BEFORE the optimistic update, and
+  /// open failing restores the whole snapshot, never sets [_failed]
+  /// (the old backend is untouched — PlaybackSession only swaps on
+  /// first frame — so the old stream is still playing under the
+  /// restore), and toasts "切换失败，已保持原清晰度". The preference
+  /// is only persisted after a successful open, and stores the
+  /// server-confirmed quality, never the requested one.
   Future<void> _switchQuality(int index, {bool persist = true}) async {
     if (index == _currentQuality) return; // no-op
+    // New quality = new picture: drop the old person mask at once.
+    _occlusion.invalidateMask();
     final epoch = ++_selectionEpoch;
     _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     final before = List<String>.of(_recovery.lines);
@@ -793,12 +903,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       );
     } catch (_) {
       if (epoch != _selectionEpoch || !mounted) return;
-      Get.snackbar('提示', '切换清晰度失败，请重试');
+      HaoToast.show('提示', message:  '切换清晰度失败，请重试');
       return;
     }
     if (epoch != _selectionEpoch || !mounted) return; // stale response
     if (resolution.urls.isEmpty) {
-      Get.snackbar('提示', '该清晰度暂无可用线路');
+      HaoToast.show('提示', message:  '该清晰度暂无可用线路');
       return;
     }
     // Server-confirmed quality (may be lower than requested).
@@ -809,8 +919,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     final effectiveIndex = ackedIndex >= 0 ? ackedIndex : index;
     if (_sameUrlList(before, resolution.urls)) {
       if (ackedIndex >= 0 && ackedIndex != index) {
-        Get.snackbar(
-          '提示',
+        HaoToast.show('提示', message: 
           '清晰度已限制为${_qualities[ackedIndex].quality}',
         );
       }
@@ -818,25 +927,28 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       // no toast, just abort.
       return;
     }
+    // Snapshot the old picture BEFORE the optimistic update: on an
+    // open failure every field below is restored, so the room (UI,
+    // recovery plan, lease) is exactly as it was before the tap.
+    // The old held prefetch plan cannot be restored (discardHeld
+    // drops it and LiveRecovery keeps no copy) — the restored lease
+    // re-arms schedulePrefetch, so the next hold is re-fetched
+    // instead of served stale; recovery meanwhile re-parses.
+    final prevQualityIndex = _currentQuality;
+    final prevLines = List<String>.of(_recovery.lines);
+    final prevFacts = List<LiveStreamFacts>.of(_recovery.facts);
+    final prevQuality = _recovery.quality;
+    final prevLineIndex = _recovery.currentLineIndex;
+    final prevIssuedAt = _recovery.issuedAt;
+    final prevRefreshAt = _recovery.refreshAt;
+    final prevInvalidAt = _recovery.invalidAt;
     setState(() {
       _currentQuality = effectiveIndex;
       _loading = true;
     });
     if (ackedIndex >= 0 && ackedIndex != index) {
-      Get.snackbar(
-        '提示',
+      HaoToast.show('提示', message: 
         '清晰度已限制为${_qualities[ackedIndex].quality}',
-      );
-    }
-    if (persist) {
-      // Fire-and-forget persistence: the quality switch must not wait
-      // on storage I/O (and must keep working when storage is
-      // unavailable).
-      unawaited(
-        HiveStore.put(
-          HiveKeys.preferResolution,
-          quality.quality,
-        ).catchError((_) {}),
       );
     }
     _recovery.lines = resolution.urls;
@@ -851,6 +963,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _recovery.currentLineIndex = 0;
     _recovery.discardHeld(); // a hold belongs to the old quality
     _recovery.schedulePrefetch(); // new resolution, new lease prefetch
+    // Errors from THIS open belong to the switch (its bool return),
+    // not to the old stream — see _onSessionError.
+    _qualitySwitchEpoch = epoch;
     final ok = await _session.open(
       url: resolution.urls.first,
       isLive: true,
@@ -859,11 +974,50 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       refreshUrls: _refreshUrls,
       excludeIjk: _excludeIjk,
     );
+    _qualitySwitchEpoch = null;
     if (epoch != _selectionEpoch || !mounted) return;
+    if (!ok) {
+      // New stream dead: restore the old picture in full. The old
+      // backend was never swapped out, so the old stream is still
+      // playing — no failure card, no re-parse of the new quality.
+      // _recovery may have been mutated by the session's own fresh
+      // re-parse attempts during the failed open; the snapshot
+      // overwrites all of it. schedulePrefetch re-arms the OLD
+      // lease (it cancels the new-resolution timer first).
+      _recovery.lines = prevLines;
+      _recovery.facts = prevFacts;
+      _recovery.issuedAt = prevIssuedAt;
+      _recovery.refreshAt = prevRefreshAt;
+      _recovery.invalidAt = prevInvalidAt;
+      _recovery.quality = prevQuality;
+      _recovery.currentLineIndex = prevLineIndex;
+      _recovery.schedulePrefetch();
+      setState(() {
+        _currentQuality = prevQualityIndex;
+        _loading = false;
+        _failed = false;
+        _ladderHint = null;
+      });
+      HaoToast.show('提示', message:  '切换失败，已保持原清晰度');
+      return;
+    }
     setState(() {
-      _loading = !ok;
-      _failed = !ok;
+      _loading = false;
+      _failed = false;
     });
+    if (persist) {
+      // Fire-and-forget persistence: the quality switch must not wait
+      // on storage I/O (and must keep working when storage is
+      // unavailable). Only after a successful open, and the
+      // server-CONFIRMED quality — persisting the requested one
+      // would re-request a capped rate on the next entry.
+      unawaited(
+        HiveStore.put(
+          HiveKeys.preferResolution,
+          _qualities[effectiveIndex].quality,
+        ).catchError((_) {}),
+      );
+    }
   }
 
   /// Index of the quality the server actually confirmed, or -1 when the
@@ -1047,12 +1201,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 if (message.userName.isNotEmpty)
                   ListTile(
                     leading: Icon(
+                      shadows: HaoTheme.legibilityShadows(context),
                       Icons.person_off_outlined,
                       color: theme.textPrimary,
                     ),
                     title: Text(
                       '屏蔽该用户 (${message.userName})',
-                      style: TextStyle(color: theme.textPrimary),
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                     ),
                     onTap: () async {
                       Navigator.of(sheetContext).pop();
@@ -1060,16 +1215,16 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     },
                   ),
                 ListTile(
-                  leading: Icon(Icons.block_outlined, color: theme.textPrimary),
+                  leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.block_outlined, color: theme.textPrimary),
                   title: Text(
                     '屏蔽这句话',
-                    style: TextStyle(color: theme.textPrimary),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                   ),
                   subtitle: Text(
                     message.message,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: theme.textSecondary),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
                   ),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
@@ -1077,8 +1232,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.close, color: theme.textPrimary),
-                  title: Text('取消', style: TextStyle(color: theme.textPrimary)),
+                  leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textPrimary),
+                  title: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                   onTap: () => Navigator.of(sheetContext).pop(),
                 ),
                 const SizedBox(height: 8),
@@ -1099,7 +1254,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _danmaku.removeWhere((m) => m.userName.contains(userName));
       _highlightedDanmakuIndex = null;
     });
-    Get.snackbar('已屏蔽', '已屏蔽用户 $userName');
+    HaoToast.show('已屏蔽', message:  '已屏蔽用户 $userName');
   }
 
   Future<void> _blockDanmakuMessage(String text) async {
@@ -1110,7 +1265,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _danmaku.removeWhere((m) => m.message.contains(text));
       _highlightedDanmakuIndex = null;
     });
-    Get.snackbar('已屏蔽', '已屏蔽该弹幕');
+    HaoToast.show('已屏蔽', message:  '已屏蔽该弹幕');
   }
 
   // ---- Pure Live player overlay: bars, lock, gestures ----
@@ -1234,6 +1389,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   List<Widget> _bottomBarButtons(Color color) => [
     IconButton(
       icon: Icon(
+        shadows: HaoTheme.legibilityShadows(context),
         _playing ? Icons.pause : Icons.play_arrow,
         color: color,
       ),
@@ -1241,12 +1397,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       onPressed: () => _session.togglePlayPause(),
     ),
     IconButton(
-      icon: Icon(Icons.refresh, color: color),
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh, color: color),
       tooltip: '刷新',
       onPressed: _manualRetry,
     ),
     IconButton(
       icon: Icon(
+        shadows: HaoTheme.legibilityShadows(context),
         _danmakuVisible ? Icons.chat_bubble_outline : Icons.chat_bubble,
         color: color,
       ),
@@ -1261,6 +1418,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         child: Text(
           _qualities.isEmpty ? '清晰度' : _qualities[_currentQuality].quality,
           style: TextStyle(
+            shadows: HaoTheme.legibilityShadows(context),
             color: color,
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -1276,6 +1434,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         child: Text(
           '线路 ${_recovery.currentLineIndex + 1}',
           style: TextStyle(
+            shadows: HaoTheme.legibilityShadows(context),
             color: color,
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -1285,13 +1444,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     }),
     const Spacer(),
     IconButton(
-      icon: Icon(Icons.lock_open, color: color),
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lock_open, color: color),
       tooltip: '锁定控制条',
       onPressed: _lockControls,
     ),
     IconButton(
       icon: Obx(
         () => Icon(
+          shadows: HaoTheme.legibilityShadows(context),
           _fullscreen.isFullscreen.value
               ? Icons.fullscreen_exit
               : Icons.fullscreen,
@@ -1337,6 +1497,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     title: Text(
                       _qualities[i].quality,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 15,
                         fontWeight: i == _currentQuality
@@ -1345,7 +1506,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       ),
                     ),
                     trailing: i == _currentQuality
-                        ? Icon(Icons.check, color: theme.accent)
+                        ? Icon(shadows: HaoTheme.legibilityShadows(context), Icons.check, color: theme.accent)
                         : null,
                     onTap: () {
                       Navigator.of(sheetContext).pop();
@@ -1395,6 +1556,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     title: Text(
                       '线路 ${i + 1}',
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 15,
                         fontWeight: i == _recovery.currentLineIndex
@@ -1403,7 +1565,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       ),
                     ),
                     trailing: i == _recovery.currentLineIndex
-                        ? Icon(Icons.check, color: theme.accent)
+                        ? Icon(shadows: HaoTheme.legibilityShadows(context), Icons.check, color: theme.accent)
                         : null,
                     onTap: () {
                       Navigator.of(sheetContext).pop();
@@ -1432,6 +1594,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _fullscreenWorker = null;
     _drag.dispose();
     _barrageController.dispose();
+    _occlusion.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
     unawaited(_danmakuTransport?.stop());
@@ -1490,6 +1653,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   void _enterBackground() {
     if (_backgroundAudioOnly) return;
+    // Background: the occlusion loop stops at once — no background
+    // snapshots / inference / battery burn. The room keeps playing
+    // audio-only, so unlike VOD there is no pause path that would
+    // stop the loop for us; this call is the only stop.
+    _occlusion.stopLoop();
     // Only when the room is actually trying to play; a user-paused
     // room stays paused, and an error/finished room has nothing to
     // keep alive.
@@ -1507,6 +1675,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (!_backgroundAudioOnly) return;
     _backgroundAudioOnly = false;
     await _session.setAudioOnly(false);
+    // Foreground return re-evaluates the occlusion gate (the switch
+    // may have changed in Settings while away).
+    _occlusion.update(
+      danmakuVisible:
+          _fullscreen.isFullscreen.value &&
+          _danmakuEnabled &&
+          _danmakuVisible,
+      playing: _playing,
+    );
     // If mpv paused natively anyway (non-MPV engine, or a vo error
     // before the audio-only switch landed), resume: play() on an
     // already-playing player is a no-op.
@@ -1542,38 +1719,69 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           // layer below keeps working.
           Obx(() {
             final fs = _fullscreen.isFullscreen.value;
+            // Danmaku occlusion gate (1.1.6): runs FIRST, before the
+            // early return — exiting fullscreen must stop the loop,
+            // and this Obx re-runs on every fullscreen toggle (Rx)
+            // and on every page rebuild (danmaku toggle / playing
+            // state), so this one call site sees all gates. Live
+            // video fit is always contain; portrait has no flying
+            // danmaku, so the gate includes the fullscreen flag.
+            _occlusion.update(
+              danmakuVisible: fs && _danmakuEnabled && _danmakuVisible,
+              playing: _playing,
+            );
             if (!fs || !_danmakuEnabled || !_danmakuVisible) {
               return const SizedBox.shrink();
             }
             return Positioned.fill(
               child: IgnorePointer(
-                child: FlameBarrageWidget(
-                  controller: _barrageController,
-                  enablePointerEvents: false,
-                  config: BarrageConfig(
-                    // Pure Live PlayerDanmakuSurface values.
-                    emitInterval: 0.05,
-                    fontSize: _danmakuFontSize,
-                    opacity: _danmakuOpacity,
-                    // Danmaku area setting: the fraction of the video
-                    // the flying danmaku may cover (full / top half /
-                    // top third / top fifth). The engine re-derives the track
-                    // layout live when it changes (forceRefresh).
-                    area: _danmakuArea,
-                    rasterizeItems: true,
-                    maxPendingCount: 120,
-                    maxPendingAge: const Duration(seconds: 5),
-                    pictureCacheMaxSize: 96,
-                    barragePoolMaxSize: 72,
-                    textCacheMaxSize: 320,
-                    trackHeight: (_danmakuFontSize * 1.55)
-                        .clamp(24.0, 64.0)
-                        .toDouble(),
-                    emojiSize: (_danmakuFontSize * 1.3)
-                        .clamp(16.0, 48.0)
-                        .toDouble(),
+                child: DanmakuOcclusionMask(
+                  controller: _occlusion,
+                  fit: BoxFit.contain,
+                  child: FlameBarrageWidget(
+                    controller: _barrageController,
+                    enablePointerEvents: false,
+                    config: BarrageConfig(
+                      // Pure Live PlayerDanmakuSurface values.
+                      emitInterval: 0.05,
+                      fontSize: _danmakuFontSize,
+                      opacity: _danmakuOpacity,
+                      // Uniform flying colour is white in every theme
+                      // (the video behind it is dark); platform mode
+                      // overrides per item in _onDanmakuMessage.
+                      textColor: Colors.white,
+                      // Stroke / speed / max count (1.1.6, fullscreen
+                      // flying only): stroke colour is fixed black.
+                      showStroke: _danmakuStroke,
+                      strokeColor: Colors.black,
+                      strokeWidth: _danmakuStrokeWidth,
+                      baseSpeed:
+                          DanmakuSettings.baseSpeedPxPerSecond *
+                          _danmakuSpeed,
+                      maxVisibleCount: _danmakuMaxCount.clamp(
+                        1,
+                        DanmakuSettings.enginePoolMaxSize,
+                      ),
+                      // Danmaku area setting: the fraction of the video
+                      // the flying danmaku may cover (full / top half /
+                      // top third / top fifth). The engine re-derives the track
+                      // layout live when it changes (forceRefresh).
+                      area: _danmakuArea,
+                      rasterizeItems: true,
+                      maxPendingCount: 120,
+                      maxPendingAge: const Duration(seconds: 5),
+                      pictureCacheMaxSize: 96,
+                      barragePoolMaxSize: 72,
+                      textCacheMaxSize: 320,
+                      trackHeight: (_danmakuFontSize * 1.55)
+                          .clamp(24.0, 64.0)
+                          .toDouble(),
+                      emojiSize: (_danmakuFontSize * 1.3)
+                          .clamp(16.0, 48.0)
+                          .toDouble(),
+                    ),
+                    emojiAtlas: EmojiAtlas.instance,
                   ),
-                  emojiAtlas: EmojiAtlas.instance,
                 ),
               ),
             );
@@ -1760,7 +1968,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               bottom: 0,
               child: Center(
                 child: IconButton(
-                  icon: const Icon(Icons.lock, color: Colors.white),
+                  icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lock, color: Colors.white),
                   tooltip: '解锁控制条',
                   onPressed: _unlockControls,
                 ),
@@ -1771,12 +1979,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const CircularProgressIndicator(color: Colors.white),
+                  const CupertinoActivityIndicator(color: Colors.white),
                   if (_ladderHint != null) ...[
                     const SizedBox(height: 12),
                     Text(
                       _ladderHint!,
-                      style: const TextStyle(
+                      style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: Colors.white70,
                         fontSize: 12,
                       ),
@@ -1839,17 +2048,17 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           appBar: fullscreen
               ? null
               : AppBar(
-                  title: Text(_room.title.isEmpty ? '直播间' : _room.title),
+                  title: Text(_room.title.isEmpty ? '直播间' : _room.title, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                   actions: [
                     IconButton(
-                      icon: const Icon(Icons.swap_horiz),
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz),
                       tooltip: '切换直播间',
                       // L04: switch-room panel (follows / current list /
                       // history / replay follows).
                       onPressed: _openSwitchPanel,
                     ),
                     IconButton(
-                      icon: const Icon(Icons.fullscreen),
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen),
                       tooltip: '全屏',
                       // The [ ] button is the ONLY path to landscape (fix 2).
                       onPressed: () => _fullscreen.toggleFullscreen(),
@@ -1887,7 +2096,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               // L05: the whole info bar is tappable — it opens the room
               // detail sheet (never covering the video).
               if (!fullscreen)
-                InkWell(
+                HaoPressable(
                   onTap: _openRoomDetail,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -1916,6 +2125,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                           ? '?'
                                           : _room.nick[0],
                                       style: TextStyle(
+                                        shadows: HaoTheme.legibilityShadows(context),
                                         color: theme.textPrimary,
                                         fontSize: 18,
                                         fontWeight: FontWeight.w700,
@@ -1937,6 +2147,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                             ? '?'
                                             : _room.nick[0],
                                         style: TextStyle(
+                                          shadows: HaoTheme.legibilityShadows(context),
                                           color: theme.textPrimary,
                                           fontSize: 18,
                                           fontWeight: FontWeight.w700,
@@ -1954,6 +2165,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                               Text(
                                 _room.nick.isEmpty ? '主播' : _room.nick,
                                 style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textPrimary,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
@@ -1964,6 +2176,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                     ? '${_room.watching} 人在看'
                                     : '',
                                 style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textMuted,
                                   fontSize: 12,
                                 ),
@@ -1994,6 +2207,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                           ),
                         const SizedBox(width: 8),
                         Icon(
+                          shadows: HaoTheme.legibilityShadows(context),
                           Icons.chevron_right,
                           size: 18,
                           color: theme.accent,
@@ -2032,6 +2246,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             vertical: 2,
                           ),
                           labelStyle: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: selected
                                 ? theme.accent
                                 : theme.textSecondary,
@@ -2075,6 +2290,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             vertical: 2,
                           ),
                           labelStyle: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: selected
                                 ? theme.accent
                                 : theme.textSecondary,
@@ -2104,7 +2320,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               if (!fullscreen)
                 Expanded(
                   child: !_danmakuEnabled
-                      ? InkWell(
+                      ? HaoPressable(
                           // Tap opens danmaku settings directly — the
                           // empty state is the shortcut, not a signpost.
                           onTap: () =>
@@ -2120,6 +2336,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     Icons.chat_bubble_outline,
                                     size: 32,
                                     color: theme.accent,
@@ -2129,6 +2346,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                 Text(
                                   '弹幕已关闭',
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textPrimary,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -2138,6 +2356,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                 Text(
                                   '点按打开弹幕设置',
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textMuted,
                                     fontSize: 13,
                                   ),
@@ -2152,6 +2371,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
+                                shadows: HaoTheme.legibilityShadows(context),
                                 Icons.chat_bubble_outline,
                                 size: 36,
                                 color: theme.textMuted,
@@ -2164,6 +2384,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                         ? '弹幕已断开'
                                         : '暂无弹幕'),
                                 style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textMuted,
                                   fontSize: 14,
                                 ),
@@ -2199,6 +2420,18 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                               };
                               // Username in primary + semibold, message
                               // in secondary: same string, clearer scan.
+                              // Platform colour mode dyes the message
+                              // body only (username stays theme): the
+                              // adapter's colour when it has one —
+                              // 0xFFFFFFFF is the "no colour" sentinel
+                              // most adapters leave, and stays theme.
+                              final bodyColor =
+                                  _danmakuColorMode ==
+                                              DanmakuSettings
+                                                  .colorModePlatform &&
+                                          m.color != 0xFFFFFFFF
+                                      ? Color(m.color)
+                                      : theme.textSecondary;
                               final body =
                                   _showUsernames && m.userName.isNotEmpty
                                   ? Text.rich(
@@ -2215,7 +2448,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                         ],
                                       ),
                                       style: TextStyle(
-                                        color: theme.textSecondary,
+                                        shadows: HaoTheme.legibilityShadows(context),
+                                        color: bodyColor,
                                         fontSize: _danmakuFontSize,
                                         height: textHeight,
                                       ),
@@ -2223,7 +2457,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                   : Text(
                                       text,
                                       style: TextStyle(
-                                        color: theme.textSecondary,
+                                        shadows: HaoTheme.legibilityShadows(context),
+                                        color: bodyColor,
                                         fontSize: _danmakuFontSize,
                                         height: textHeight,
                                       ),

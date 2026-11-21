@@ -17,6 +17,7 @@
 // trick as render_music_home_test.dart).
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -326,7 +327,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab(Icons.settings));
+    await tester.tap(barTab(CupertinoIcons.settings));
     // The tap-triggered spring starts in a post-frame callback, so
     // it needs a starter pump before the clock advance (same as
     // glass_tab_bar_test.dart: "a tap-triggered spring needs two
@@ -351,7 +352,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab(Icons.settings));
+    await tester.tap(barTab(CupertinoIcons.settings));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
@@ -367,7 +368,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab(Icons.settings));
+    await tester.tap(barTab(CupertinoIcons.settings));
     // Same starter pump + small steps as mid-slide: a single big
     // pump does not tick the spring in this harness (the pill stays
     // on 音乐 and the golden would be a meaningless rest duplicate).
@@ -403,7 +404,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab(Icons.settings));
+    await tester.tap(barTab(CupertinoIcons.settings));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));

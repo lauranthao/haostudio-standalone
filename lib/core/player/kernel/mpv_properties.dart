@@ -167,6 +167,8 @@ Map<String, String> mpvBaseProperties({LowMemoryMode? mode}) {
     properties['hwdec'] = 'no';
   }
 
+  properties.addAll(mpvPlatformHwdec(isIOS: Platform.isIOS));
+
   // Decode-cost policy: a software decoder's thread pool is what actually
   // costs CPU on a weak box, so cap it there and let lowres absorb the rest.
   if (lowEnd) {
@@ -196,6 +198,41 @@ int get _cpuCores {
     return 4;
   }
 }
+
+/// Hardware-decode property by platform (pure, tested).
+///
+/// iOS: `hwdec=videotoolbox`. mpv's built-in default is `no`
+/// (software) — nothing in the repo ever set it on iOS, so the
+/// mpv_backend.dart header comment claiming "hwdec videotoolbox"
+/// was aspirational, not behaviour. Software decode cannot hold
+/// 4K HEVC (the Emby direct-file case) smoothly; VideoToolbox
+/// decodes H.264/HEVC in hardware. The software fallback
+/// (`hwdec-software-fallback=1`, set in the base table) keeps the
+/// failure path: a codec VideoToolbox rejects still falls back
+/// instead of failing the open. macOS stays `no` (unstable texture
+/// path, see the macOS branch above); Android is untouched (its
+/// mediacodec path is set elsewhere).
+Map<String, String> mpvPlatformHwdec({required bool isIOS}) {
+  if (isIOS) return const {'hwdec': 'videotoolbox'};
+  return const {};
+}
+
+/// Anime4K super-resolution — the mpv list-option name (build 28).
+///
+/// Only the option name lives here: the efficiency chain itself
+/// (Kazumi `mpvAnime4KShadersLite`, via Pure Live
+/// `super_resolution.dart` — 7 files, mount order fixed) lives in
+/// `lib/core/player/super_resolution.dart` as
+/// `kAnime4kEfficiencyShaders`, with the unpack / gate / command
+/// helpers. Pure Live's preset system (modes, locale keys, settings
+/// wiring) is deliberately NOT ported — one bool switch, one tier,
+/// VOD only, MPV only, default off.
+///
+/// The value is a list option: set it ONLY through the `change-list`
+/// command (`glslShadersChangeListCommand`), never through
+/// `setProperty` with a joined string (mpv would take the whole
+/// joined value as a single shader filename).
+const String kMpvGlslShadersOption = 'glsl-shaders';
 
 /// Per-source properties for LIVE streams only.
 /// Pure Live `MediaKitLiveProperties.sourceProperties()`, with

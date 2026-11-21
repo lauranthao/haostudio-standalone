@@ -10,6 +10,7 @@ import 'dart:async';
 // outside dismisses it.
 
 import 'package:flutter/material.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -66,7 +67,7 @@ class PlayQueuePanel extends StatelessWidget {
                           child: Obx(
                             () => Text(
                               '播放列表 · ${controller.queue.length} 首',
-                              style: TextStyle(
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textPrimary,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -81,14 +82,14 @@ class PlayQueuePanel extends StatelessWidget {
                           () => TextButton.icon(
                             onPressed: () =>
                                 unawaited(controller.cyclePlayMode()),
-                            icon: Icon(
+                            icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                               playModeIcon(controller.mode),
                               color: theme.accent,
                               size: 18,
                             ),
                             label: Text(
                               controller.mode.label,
-                              style: TextStyle(
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.accent,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -116,7 +117,7 @@ class PlayQueuePanel extends StatelessWidget {
                         // Same rule as the player star button (no Obx
                         // around non-Rx reads).
                         PopupMenuButton<String>(
-                          icon: Icon(
+                          icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                             Icons.more_horiz,
                             color: theme.textSecondary,
                           ),
@@ -133,20 +134,25 @@ class PlayQueuePanel extends StatelessWidget {
                               enabled: controller.queue.length > 1,
                               child: Row(
                                 children: [
-                                  Icon(
+                                  Icon(shadows: HaoTheme.legibilityShadows(context),
                                     Icons.delete_outline,
                                     size: 18,
                                     color: theme.textSecondary,
                                   ),
                                   const SizedBox(width: 8),
-                                  const Text('清空队列'),
+                                  Text(
+                                    '清空队列',
+                                    style: TextStyle(
+                                      shadows: HaoTheme.legibilityShadows(context),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
                           ],
                         ),
                         IconButton(
-                          icon: Icon(Icons.close, color: theme.textSecondary),
+                          icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textSecondary),
                           onPressed: onClose,
                         ),
                       ],
@@ -159,7 +165,7 @@ class PlayQueuePanel extends StatelessWidget {
                         return Center(
                           child: Text(
                             '队列为空',
-                            style: TextStyle(color: theme.textMuted),
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                           ),
                         );
                       }
@@ -187,7 +193,7 @@ class PlayQueuePanel extends StatelessWidget {
                         itemBuilder: (ctx, i) {
                           final song = queue[i];
                           final isCurrent = i == controller.currentIndex.value;
-                          return InkWell(
+                          return HaoPressable(
                             key: ValueKey(rowKeys[i]),
                             onTap: () {
                               onClose();
@@ -205,7 +211,7 @@ class PlayQueuePanel extends StatelessWidget {
                                 children: [
                                   ReorderableDragStartListener(
                                     index: i,
-                                    child: Icon(
+                                    child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.drag_handle,
                                       color: theme.textMuted,
                                       size: 20,
@@ -219,7 +225,7 @@ class PlayQueuePanel extends StatelessWidget {
                                             width: 40,
                                             height: 40,
                                             color: theme.accentSoft,
-                                            child: Icon(
+                                            child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                               Icons.music_note,
                                               color: theme.textMuted,
                                               size: 20,
@@ -237,7 +243,7 @@ class PlayQueuePanel extends StatelessWidget {
                                                   width: 40,
                                                   height: 40,
                                                   color: theme.accentSoft,
-                                                  child: Icon(
+                                                  child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                                     Icons.music_note,
                                                     color: theme.textMuted,
                                                     size: 20,
@@ -256,7 +262,7 @@ class PlayQueuePanel extends StatelessWidget {
                                           song.title,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
+                                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                             color: isCurrent
                                                 ? theme.accent
                                                 : theme.textPrimary,
@@ -269,7 +275,7 @@ class PlayQueuePanel extends StatelessWidget {
                                           song.artist,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
+                                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                             color: theme.textSecondary,
                                             fontSize: 13,
                                           ),
@@ -278,14 +284,14 @@ class PlayQueuePanel extends StatelessWidget {
                                     ),
                                   ),
                                   if (isCurrent)
-                                    Icon(
+                                    Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.equalizer,
                                       color: theme.accent,
                                       size: 20,
                                     ),
                                   // ↑/↓ move buttons (M-P0-4).
                                   IconButton(
-                                    icon: const Icon(
+                                    icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.arrow_upward,
                                       size: 18,
                                     ),
@@ -303,7 +309,7 @@ class PlayQueuePanel extends StatelessWidget {
                                         : () => controller.moveQueueUp(i),
                                   ),
                                   IconButton(
-                                    icon: const Icon(
+                                    icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.arrow_downward,
                                       size: 18,
                                     ),
@@ -336,7 +342,7 @@ class PlayQueuePanel extends StatelessWidget {
                         onPressed: onClose,
                         child: Text(
                           '取消',
-                          style: TextStyle(color: theme.textSecondary),
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
                         ),
                       ),
                     ),

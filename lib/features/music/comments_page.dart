@@ -11,6 +11,7 @@
 // all 4 themes in light and dark mode.
 
 import '../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -127,7 +128,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
       ),
       body: _loading
           ? Center(
-              child: CircularProgressIndicator(color: theme.accent),
+              child: CupertinoActivityIndicator(color: theme.accent),
             )
           : _error
               ? Center(
@@ -415,10 +416,9 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
           child: SizedBox(
             width: 24,
             height: 24,
-            child: CircularProgressIndicator(
+            child: CupertinoActivityIndicator(
               color: theme.accent,
-              strokeWidth: 2,
-            ),
+              ),
           ),
         ),
       );

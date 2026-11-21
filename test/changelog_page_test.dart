@@ -67,8 +67,10 @@ void main() {
     WidgetTester tester, {
     required ThemeData theme,
   }) async {
-    // Tall viewport so all three cards lay out at once for the goldens.
-    tester.view.physicalSize = const Size(800, 2400);
+    // Tall viewport so all four cards lay out at once for the goldens
+    // (1.1.6 added a fourth entry; 2400 no longer fits all of them —
+    // ListView only builds on-screen children).
+    tester.view.physicalSize = const Size(800, 3600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();

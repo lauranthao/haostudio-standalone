@@ -64,12 +64,25 @@ class HaoLiquidGlass {
   /// Thickness floors at 1.0 so the refraction pass never sees a
   /// zero depth. The optical leftovers scale too (G-P2-6): at 0 the
   /// refractive index eases to 1.0 (no bending) and glow / light /
-  /// chromatic aberration fade to zero — and `visibility` scales with
-  /// the intensity as well, because the library still paints a faint
-  /// body wash at 0 with visibility left at 1.0 (measured: 5.0% of
-  /// pixels differ from the bare backdrop without it, ~0.2% — text
-  /// antialiasing only — with it). So 0% glass is optically clear,
-  /// not just visually faint.
+  /// chromatic aberration fade to zero.
+  ///
+  /// b28 — `visibility` is deliberately NOT scaled (build-27 G-P2-6
+  /// scaled it to 0, and that is the third root cause of the 0%
+  /// legibility bug): the library wraps the GlassContainer CHILD in
+  /// `Opacity(opacity: settings.visibility)` (`liquid_glass.dart:216`,
+  /// "The visibility Opacity below it already tracks the glass
+  /// channel"), so visibility 0 fades the tab bar icons / mini
+  /// player contents / card titles to fully transparent along with
+  /// the glass — the child is invisible, not just unreadable
+  /// (measured: glass_container_intensity_0.png shows the bare
+  /// backdrop where the baseline shows the dark glyphs; the audit
+  /// §1.2 "0.21% — text antialiasing only" reading of those 1008 px
+  /// was wrong, they are the missing glyphs). The body wash is
+  /// killed instead by zeroing the optics that paint it: saturation
+  /// back to 1.0 (ios27 light is 2.1 — an oversaturated patch over
+  /// the backdrop), bodyShade to 0 (ios27 dark is 0.28), the preset
+  /// shadow alphas to 0, and edgeAbsorption to 0. At 0 the child
+  /// stays fully opaque and only the glass is gone.
   static LiquidGlassSettings _scale(
     LiquidGlassSettings base,
     double intensity,
@@ -88,7 +101,34 @@ class HaoLiquidGlass {
       glowIntensity: base.glowIntensity * i,
       lightIntensity: base.lightIntensity * i,
       chromaticAberration: base.chromaticAberration * i,
-      visibility: base.visibility * i,
+      // b28 (see doc above): visibility stays at the base value —
+      // scaling it hides the child. The wash dies via the optics.
+      saturation: 1.0 + (base.saturation - 1.0) * i,
+      bodyShade: base.bodyShade * i,
+      shadow: base.shadow
+          ?.map(
+            (s) => s.copyWith(
+              color: s.color.withValues(alpha: s.color.a * i),
+            ),
+          )
+          .toList(),
+      edgeAbsorption: base.edgeAbsorption * i,
+      // b28: at exactly 0% the body compositing switches to clear
+      // mode. In the default adaptive mode the shader adds a uniform
+      // bright body lift even with the tint alpha at 0 (measured:
+      // ~12% white over the whole card, 4.7% of pixels differ from
+      // the bare backdrop); clear mode composites the tint with
+      // exact alpha blending, so with alpha 0 there is nothing to
+      // lift. Above 0% the base (adaptive) mode stays — today's
+      // glass look, only faded. First-render caveat (library
+      // warm-up): the very first GlassContainer render in a process
+      // still shows the lift even in clear mode; it is gone from the
+      // second render on (measured A2 wash / A3 clean, same
+      // settings). On device the shader is warm long before the
+      // user can reach 0%, so this only matters to golden order —
+      // the 0% goldens must not be the first library render in
+      // their file (see glass_intensity_test.dart golden order).
+      bodyMode: i <= 0.0 ? GlassBodyMode.clear : base.bodyMode,
     );
   }
 
@@ -174,15 +214,27 @@ class HaoLiquidGlass {
       bodyShade: 0.0,
       // G-P2-6, same as _scale: at 0 the chrome must be optically
       // clear too — refractive index to 1.0, glow / light /
-      // chromatic aberration to zero, visibility to zero (the
-      // library paints a body wash at 0 with visibility left at
-      // 1.0). All five are identity at 1.0, so today's chrome is
-      // untouched.
+      // chromatic aberration to zero. `visibility` is NOT scaled
+      // (b28, see [_scale]): the library wraps the chrome's CHILD
+      // in Opacity(visibility), so scaling it would hide the tab bar
+      // icons and mini player contents at 0%. The wash dies via the
+      // optics instead — and the fields _scale's audit found
+      // unscaled here (blur, frost, rimShade) ARE scaled now, or the
+      // bar would keep a blur/frost cloud and a rim outline at 0%.
       refractiveIndex: 1.0 + (base.refractiveIndex - 1.0) * intensity,
       glowIntensity: base.glowIntensity * intensity,
       lightIntensity: base.lightIntensity * intensity,
       chromaticAberration: base.chromaticAberration * intensity,
-      visibility: base.visibility * intensity,
+      blur: base.blur * intensity,
+      frost: base.frost * intensity,
+      rimShade: base.rimShade * intensity,
+      edgeAbsorption: base.edgeAbsorption * intensity,
+      // b28 (see [_scale]): at exactly 0% the body compositing
+      // switches to clear mode, or the adaptive body lift leaves a
+      // bright wash over the bar. Above 0% the base mode stays.
+      bodyMode: intensity <= 0.0
+          ? GlassBodyMode.clear
+          : base.bodyMode,
       // chen 2026-11-21: 不要有影子了 — the ios27 preset carries an
       // explicit light-mode drop shadow (0x0F000000, r12, y6) in its
       // `shadow` list, which IGNORES shadowElevation (the library's

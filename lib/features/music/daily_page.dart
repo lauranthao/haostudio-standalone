@@ -6,6 +6,7 @@ import 'dart:async';
 // stable (date-seeded shuffle, cached per day). Cold-start hint when
 // there is no listen history at all.
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -93,9 +94,9 @@ class _DailyPageState extends State<DailyPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(title: const Text('每日推荐')),
+      appBar: AppBar(title: const Text('每日推荐'), flexibleSpace: const HaoAppBarGlass()),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _failed
               ? Center(
                   child: Column(
@@ -234,7 +235,7 @@ class _DailyPageState extends State<DailyPage> {
                                   setState(() {});
                                 },
                                 onOpenArtist: () => Navigator.of(context).push(
-                                  MaterialPageRoute<void>(
+                                  CupertinoPageRoute<void>(
                                     settings: const RouteSettings(
                                         name: musicSubPageRouteName),
                                     builder: (_) => ArtistDetailPage(

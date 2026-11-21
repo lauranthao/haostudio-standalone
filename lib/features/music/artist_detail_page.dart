@@ -10,6 +10,7 @@ import 'dart:async';
 // Share uses the clipboard fallback chain and ALWAYS gives visible
 // feedback (fix 5).
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -126,7 +127,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
     final favIds = MusicStore.getFavIds();
     return Scaffold(
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _failed
               ? _errorState(theme)
               : CustomScrollView(
@@ -146,7 +147,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                       ),
                       actions: [
                         IconButton(
-                          icon: const Icon(Icons.share),
+                          icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share),
                           onPressed: _share,
                         ),
                       ],
@@ -164,6 +165,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                                   Text(
                                     _detail!.name,
                                     style: TextStyle(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       color: theme.textPrimary,
                                       fontSize: 26,
                                       fontWeight: FontWeight.w800,
@@ -173,6 +175,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                                   Text(
                                     '${_detail!.musicSize} 首歌曲 · ${_detail!.albumSize} 张专辑',
                                     style: TextStyle(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       color: theme.textSecondary,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
@@ -255,18 +258,18 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
   Widget _empty(HaoTheme theme, String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Text(text, style: TextStyle(color: theme.textMuted)),
+      child: Text(text, style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted)),
     );
   }
 
   Widget _errorState(HaoTheme theme) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.artistName)),
+      appBar: AppBar(title: Text(widget.artistName, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('歌手详情加载失败', style: TextStyle(color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+            Text('歌手详情加载失败', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () {
@@ -300,6 +303,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
       leading: Text(
         '${index + 1}',
         style: TextStyle(
+          shadows: HaoTheme.legibilityShadows(context),
           color: HaoTheme.of(context).textMuted,
           fontSize: 15,
           fontWeight: FontWeight.w700,
@@ -325,7 +329,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                 width: 48,
                 height: 48,
                 color: theme.accentSoft,
-                child: Icon(Icons.album, color: theme.textMuted),
+                child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.album, color: theme.textMuted),
               )
             : Image(
                 image: MusicImageProvider(album.cover),
@@ -336,7 +340,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                   width: 48,
                   height: 48,
                   color: theme.accentSoft,
-                  child: Icon(Icons.album, color: theme.textMuted),
+                  child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.album, color: theme.textMuted),
                 ),
               ),
       ),
@@ -345,6 +349,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
+          shadows: HaoTheme.legibilityShadows(context),
           color: theme.textPrimary,
           fontSize: 15,
           fontWeight: FontWeight.w600,
@@ -354,13 +359,13 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         album.year > 0
             ? '${album.year}年 · ${album.songCount} 首'
             : '${album.songCount} 首',
-        style: TextStyle(color: theme.textSecondary, fontSize: 13),
+        style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
       ),
-      trailing: Icon(Icons.chevron_right, color: theme.textMuted),
+      trailing: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.chevron_right, color: theme.textMuted),
       onTap: () {
         HaoHaptics.tap();
         Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          CupertinoPageRoute<void>(
             settings: const RouteSettings(name: musicSubPageRouteName),
             builder: (_) => AlbumDetailPage(
               platform: widget.platform,

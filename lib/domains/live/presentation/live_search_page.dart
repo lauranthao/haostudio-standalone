@@ -33,17 +33,18 @@
 import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/models/live_models.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/glass.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import '../../../core/theme/haptics.dart';
 import '../../../features/settings/source_stores.dart';
 import '../../../features/video/widgets/referer_image.dart';
+import '../../../widgets/hao_search_field.dart';
 import '../../../shared/platforms/sites.dart';
 import '../live_history_store.dart';
 import 'playback/live_room_page.dart';
@@ -167,12 +168,11 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
     final history = LiveHistoryStore.getSearchHistory();
     final enabled = LiveSourcesStore.enabledIds();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('搜索直播间'),
+        title: Text('搜索直播间', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
       ),
       body: Column(
         children: [
@@ -185,18 +185,19 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
             // our suffixIcon clear; textInputAction.search is the
             // library search variant's default; the cursor follows
             // DefaultSelectionStyle -> colorScheme.primary = accent.
-            child: GlassSearchBar(
+            child: HaoSearchField(
               controller: _controller,
               autofocus: true,
-              placeholder: '搜索直播间、主播…',
-              placeholderStyle: TextStyle(color: theme.textMuted),
-              textStyle: TextStyle(
-                color: theme.textPrimary,
-                fontSize: 16,
-              ),
-              searchIconColor: theme.textMuted,
-              clearIconColor: theme.textMuted,
+              hintText: '搜索直播间、主播…',
               onSubmitted: _search,
+              onCancel: () {
+                setState(() {
+                  _results = [];
+                  _searched = false;
+                  _failed = false;
+                  _query = '';
+                });
+              },
             ),
         ),
           _PlatformRow(
@@ -218,7 +219,7 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
             ),
           Expanded(
             child: _searching
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CupertinoActivityIndicator())
                 : _failed
                     ? _SearchError(
                         query: _query,
@@ -280,7 +281,7 @@ class _PlatformRow extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ChoiceChip(
-              label: Text(site.name),
+              label: Text(site.name, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
               selected: selected,
               selectedColor: theme.accentSoft,
               shape: RoundedRectangleBorder(
@@ -290,7 +291,7 @@ class _PlatformRow extends StatelessWidget {
                 color: selected ? theme.accent : theme.hairline,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              labelStyle: TextStyle(
+              labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: selected ? theme.accent : theme.textSecondary,
                 fontSize: 13,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -330,7 +331,7 @@ class _HistorySection extends StatelessWidget {
             children: [
               Text(
                 '搜索历史',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
@@ -342,7 +343,7 @@ class _HistorySection extends StatelessWidget {
                 onTap: onClear,
                 child: Text(
                   '清除',
-                  style: TextStyle(
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                     color: theme.textMuted,
                     fontSize: 13,
                   ),
@@ -358,8 +359,8 @@ class _HistorySection extends StatelessWidget {
                 .take(8)
                 .map(
                   (c) => ActionChip(
-                    label: Text(c),
-                    labelStyle: TextStyle(
+                    label: Text(c, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+                    labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textSecondary,
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
@@ -395,7 +396,7 @@ class _RoomRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: HaoPressable(
           onTap: () {
             HaoHaptics.tap();
             onTap();
@@ -428,7 +429,7 @@ class _RoomRow extends StatelessWidget {
                     room.title.isEmpty ? room.nick : room.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -439,7 +440,7 @@ class _RoomRow extends StatelessWidget {
                     room.nick,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textSecondary,
                       fontSize: 13,
                     ),
@@ -457,9 +458,9 @@ class _RoomRow extends StatelessWidget {
                             color: theme.liveRed,
                             borderRadius: BorderRadius.circular(HaoRadius.badge),
                           ),
-                          child: const Text(
+                          child: Text(
                             'LIVE',
-                            style: TextStyle(
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                               color: Colors.white,
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -470,14 +471,14 @@ class _RoomRow extends StatelessWidget {
                       else
                         Text(
                           '未开播',
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 12,
                           ),
                         ),
                       if (room.watching > 0) ...[
                         const SizedBox(width: 8),
-                        Icon(
+                        Icon(shadows: HaoTheme.legibilityShadows(context),
                           Icons.visibility_outlined,
                           color: theme.textMuted,
                           size: 13,
@@ -485,7 +486,7 @@ class _RoomRow extends StatelessWidget {
                         const SizedBox(width: 3),
                         Text(
                           _formatWatching(room.watching),
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 12,
                           ),
@@ -496,7 +497,7 @@ class _RoomRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
+            Icon(shadows: HaoTheme.legibilityShadows(context),
               Icons.chevron_right,
               color: theme.textMuted,
               size: 20,
@@ -519,7 +520,7 @@ class _MissingCover extends StatelessWidget {
     return ColoredBox(
       color: theme.surfaceSolid,
       child: Center(
-        child: Icon(
+        child: Icon(shadows: HaoTheme.legibilityShadows(context),
           Icons.live_tv_outlined,
           color: theme.textMuted,
           size: 28,
@@ -544,11 +545,11 @@ class _SearchError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            Icon(shadows: HaoTheme.legibilityShadows(context), Icons.cloud_off, size: 48, color: theme.textMuted),
             const SizedBox(height: 16),
             Text(
               '直播源暂时无法访问',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -557,7 +558,7 @@ class _SearchError extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               '换个关键词或平台试试',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textMuted,
                 fontSize: 14,
               ),
@@ -565,8 +566,8 @@ class _SearchError extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+              icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
+              label: Text('重试', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
                 foregroundColor: Theme.of(context).colorScheme.onPrimary,
@@ -593,7 +594,7 @@ class _EmptyResults extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            Icon(shadows: HaoTheme.legibilityShadows(context),
               Icons.search_off_outlined,
               size: 48,
               color: theme.textMuted,
@@ -601,7 +602,7 @@ class _EmptyResults extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '没有找到相关直播间：$query',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -611,7 +612,7 @@ class _EmptyResults extends StatelessWidget {
             Text(
               '· 换个关键词试试\n· 该主播可能没开播\n· 换个平台可能有结果',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textMuted,
                 fontSize: 14,
                 height: 1.7,

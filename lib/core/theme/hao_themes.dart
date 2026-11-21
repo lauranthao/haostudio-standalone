@@ -22,6 +22,8 @@
 // rebuilds the app root with the new ThemeData; no restart, no stale
 // cached colours).
 
+import 'dart:ui';
+
 import 'hao_radius.dart';
 import 'package:flutter/material.dart';
 
@@ -122,6 +124,57 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       Theme.of(context).extension<HaoTheme>() ??
       HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!;
 
+  /// b28 legibility shadows (build 28 audit §3 scheme A): the
+  /// readability treatment for text/icons sitting on glass or bare
+  /// wallpaper once the glass intensity fades. The shadow strength is
+  /// `(1 - glassIntensity)` — at 100% this returns `[]`, so today's
+  /// look is byte-identical; at 0% it is at full strength. Only the
+  /// brightness decides the colour (light mode: white halo around
+  /// dark text; dark mode: black shadow under light text), never the
+  /// theme — the same halo/shadow works for all 4 themes.
+  ///
+  /// Precedents copied, not estimated: dark shadow black 0.45, offset
+  /// (0,1) from the lyric shadow (`music_player_sheet.dart:714`,
+  /// blur 8 there; 5 here so small text does not smear — the small
+  /// white-on-artwork title at `music_tab_page.dart:1321` uses black
+  /// 0.4 blur 2); light halo white 0.55–0.65, blur 4–6, offset 0
+  /// (audit §3). Apply with `TextStyle(shadows: ...)` for text and
+  /// with `Icon(..., shadows: ...)` for icons — `Icon` takes shadows
+  /// natively (Flutter `icon.dart`: `shadows` reaches the same
+  /// TextStyle the glyph is drawn with), so no glyph-as-Text widget
+  /// and no blurred-ghost layer are needed (T4 probe verdict).
+  static List<Shadow> legibilityShadows(
+    BuildContext context, {
+    double blurRadius = 5.0,
+  }) {
+    final theme = ofOrDefault(context);
+    return legibilityShadowsFor(
+      isDark: Theme.of(context).brightness == Brightness.dark,
+      intensity: theme.glassIntensity,
+      blurRadius: blurRadius,
+    );
+  }
+
+  /// Pure form of [legibilityShadows] (no [BuildContext]): the
+  /// machine-testable core — mode + intensity in, shadows out.
+  static List<Shadow> legibilityShadowsFor({
+    required bool isDark,
+    required double intensity,
+    double blurRadius = 5.0,
+  }) {
+    final strength = 1.0 - intensity.clamp(0.0, 1.0);
+    if (strength <= 0.0) return const [];
+    return [
+      Shadow(
+        color: isDark
+            ? Colors.black.withValues(alpha: 0.45 * strength)
+            : Colors.white.withValues(alpha: 0.60 * strength),
+        offset: isDark ? const Offset(0, 1) : Offset.zero,
+        blurRadius: blurRadius,
+      ),
+    ];
+  }
+
   @override
   HaoTheme copyWith({
     Color? accent,
@@ -181,6 +234,35 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
         t,
       )!,
       tabPill: Color.lerp(tabPill, other.tabPill, t)!,
+    );
+  }
+}
+
+/// Frosted-glass strip for sub-page AppBars (N-7, 1.1.6 原生感).
+///
+/// `AppBarTheme` cannot carry a blur, so sub-page AppBars take this as
+/// `flexibleSpace`. It blurs whatever sits behind the bar (the
+/// wallpaper while the background is on — the AppBar is transparent
+/// then) with the theme's own blur sigma x glass intensity, the same
+/// optics as the sheet glass background; it paints no colour of its own,
+/// so with the background off (solid-surface AppBar) it is invisible.
+/// Title stays 17 w700 (D-1 is about the big title only). All 4 themes
+/// x light/dark read the same token, so all 8 combinations get it.
+class HaoAppBarGlass extends StatelessWidget {
+  const HaoAppBarGlass({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.ofOrDefault(context);
+    final intensity = theme.glassIntensity.clamp(0.0, 1.0);
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: theme.glassBlurSigma * intensity,
+          sigmaY: theme.glassBlurSigma * intensity,
+        ),
+        child: const SizedBox.expand(),
+      ),
     );
   }
 }
@@ -262,14 +344,22 @@ ThemeData _buildThemeData({
     ),
     dividerColor: hairline,
     dividerTheme: DividerThemeData(color: hairline, thickness: 1, space: 1),
+    // N-16: no Material ripple anywhere (iOS presses dim instead of
+    // spreading a wave). NoSplash kills the splash on InkWell /
+    // ListTile / buttons app-wide; the press highlight that remains
+    // is the dim. HaoPressable (GestureDetector + opacity) is the
+    // explicit form for rows that need it; this is the uniform
+    // backstop for every ListTile and button.
+    splashFactory: NoSplash.splashFactory,
     // Generic list-row typography (settings rows and every other tab's
-    // rows share it): title 16/w600 primary, subtitle 13 secondary.
-    // Per-row styles that only set a colour inherit size/weight/height
-    // from here, so the hierarchy holds in all 8 combinations.
+    // rows share it): title 17/w600 primary, subtitle 13 secondary
+    // (N-11 type table: row title 17, footnote 13). Per-row styles
+    // that only set a colour inherit size/weight/height from here,
+    // so the hierarchy holds in all 8 combinations.
     listTileTheme: ListTileThemeData(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       titleTextStyle: TextStyle(
-        fontSize: 16,
+        fontSize: 17,
         fontWeight: FontWeight.w600,
         color: textPrimary,
         height: 1.35,
@@ -307,30 +397,10 @@ ThemeData _buildThemeData({
         fontWeight: FontWeight.w600,
       ),
       trackHeight: 4,
-      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
-    ),
-    segmentedButtonTheme: SegmentedButtonThemeData(
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected)
-              ? accent.withValues(alpha: 0.14)
-              : Colors.transparent,
-        ),
-        foregroundColor: WidgetStateProperty.resolveWith(
-          (states) =>
-              states.contains(WidgetState.selected) ? accent : textSecondary,
-        ),
-        side: WidgetStateProperty.all(BorderSide(color: hairline)),
-        shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
-        ),
-        padding: WidgetStateProperty.all(
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        textStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-      ),
+      // N-12: iOS thumb is 28pt across (radius 14); the old 20pt
+      // thumb was hard to grab. Shape stays Material (N-12 decision:
+      // keep the theme colours, do not switch to CupertinoSlider).
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 14),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: surface,

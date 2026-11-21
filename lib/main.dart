@@ -167,17 +167,20 @@ Future<void> _warmUpAfterFirstFrame(
   await appearanceController.migrateWallpaperOffOnce();
   await appearanceController.load();
 
-  // Automatic update check, 2 s after start, at most once per 20 h.
+  // Automatic update check, 2 s after warm-up, at most once per 20 h.
   // Silent when throttled / up to date / fetch fails (fix 8). When a
   // newer version IS found, show the same download dialog as the
   // manual check — not just a snackbar.
   final updateService = UpdateService();
   unawaited(
     Future<void>.delayed(const Duration(seconds: 2), () async {
-      final info = await updateService.checkAuto();
+      // Gate (D1): only when the "启动时自动检查更新" switch is on
+      // (default on). checkAutoIfEnabled() reads the switch before
+      // checkAuto() runs, so a switched-off check sends no request
+      // and writes no throttle stamp. The manual check is never gated.
+      final info = await updateService.checkAutoIfEnabled();
       if (info == null) return;
       AppLog.info('发现新版本 v${info.version} (build ${info.build})');
-      await updateService.recordKnownUpdate(info.version);
       final context = Get.context;
       if (context == null || !context.mounted) return;
       await showUpdateDialog(context, info, service: updateService);

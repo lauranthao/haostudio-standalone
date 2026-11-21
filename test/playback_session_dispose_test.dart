@@ -171,6 +171,10 @@ void main() {
         url: 'https://example.com/ep1.mp4',
         isLive: false,
       );
+      // 1.1.6: open() awaits _disposePreopened() first, so the
+      // factory runs a microtask later — wait until the backend
+      // exists before touching created.
+      await Future<void>.delayed(Duration.zero);
       // Let open() reach the first-frame wait before disposing.
       await created.single.enteredFirstFrame.future;
       await session.dispose();
@@ -199,6 +203,10 @@ void main() {
         url: 'https://example.com/ep1.mp4',
         isLive: false,
       );
+      // 1.1.6: open() awaits _disposePreopened() first, so the
+      // factory runs a microtask later — wait until the backend
+      // exists before touching created.
+      await Future<void>.delayed(Duration.zero);
       await created.single.enteredOpen.future;
       await session.dispose();
 

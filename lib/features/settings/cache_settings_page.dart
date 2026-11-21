@@ -4,8 +4,9 @@
 // History, favourites, resume positions, playlists and listen records
 // are the user's DATA and are never touched here — see [CacheService].
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
@@ -54,8 +55,7 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
     final freed = await CacheService.clearSection(section);
     if (!mounted) return;
     _refresh();
-    Get.snackbar(
-      '已清除',
+    HaoToast.show('已清除', message: 
       '${section.title}已清除，释放 ${CacheService.formatBytes(freed)}',
     );
   }
@@ -71,7 +71,7 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
     final freed = await MusicDownloadService().clearAll();
     if (!mounted) return;
     await _refreshDownloads();
-    Get.snackbar('已清除', '音乐下载已清除，释放 ${CacheService.formatBytes(freed)}');
+    HaoToast.show('已清除', message:  '音乐下载已清除，释放 ${CacheService.formatBytes(freed)}');
   }
 
   Future<void> _clearAll() async {
@@ -85,7 +85,7 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
     final freed = await CacheService.clearAll();
     if (!mounted) return;
     _refresh();
-    Get.snackbar('已清除', '全部缓存已清除，释放 ${CacheService.formatBytes(freed)}');
+    HaoToast.show('已清除', message:  '全部缓存已清除，释放 ${CacheService.formatBytes(freed)}');
   }
 
   @override
@@ -97,7 +97,7 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
         padding: const EdgeInsets.all(16),
         children: [
           if (_loading)
-            const Center(child: CircularProgressIndicator())
+            const Center(child: CupertinoActivityIndicator())
           else ...[
             SettingsGroup(
               children: [

@@ -8,7 +8,7 @@
 // (its iOS 16–25 fallback bar; the iOS 26 native bar is the same
 // capsule in real liquid glass). Numbers are Kumone's (see below);
 // only the tab set, icons and accent colour are ours (our 4 tabs,
-// Material icons, theme accent — Kumone's red #EC4949 accent is NOT
+// CupertinoIcons, theme accent — Kumone's red #EC4949 accent is NOT
 // copied, our themes own the accent, and blue accents are now black
 // per chen 2026-11-18).
 //
@@ -70,6 +70,8 @@
 // the CURRENT page. The live room is a pushed route (no tab bar at all
 // while open — fix 17.3), separate from this guard.
 
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
@@ -87,8 +89,33 @@ import '../features/video/video_tab_page.dart';
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
+  /// Tab PageView physics (N-20): page snapping + iOS-style end
+  /// bounce. Plain `PageScrollPhysics` stops dead at the first/last
+  /// page; a `BouncingScrollPhysics` parent lets the edge overscroll
+  /// with friction and spring back, like `UIPageViewController`. The
+  /// parent is [_EdgeBouncingScrollPhysics], not stock
+  /// `BouncingScrollPhysics`: stock doubles `minFlingVelocity`, which
+  /// would make slow flicks stop switching tabs (D-2 keeps swipe tab
+  /// switching). In-range paging is untouched — snapping still comes
+  /// from the `PageScrollPhysics` branch.
+  static const tabPagePhysics = PageScrollPhysics(
+    parent: _EdgeBouncingScrollPhysics(),
+  );
+
   @override
   State<AppShell> createState() => _AppShellState();
+}
+
+/// `BouncingScrollPhysics` with the stock fling threshold restored:
+/// stock doubles `minFlingVelocity` (its ballistic simulation
+/// decelerates more slowly), which would make slow flicks stop
+/// switching tabs. Only the edge overscroll friction + spring-back
+/// is wanted here, so the threshold stays at the platform default.
+class _EdgeBouncingScrollPhysics extends BouncingScrollPhysics {
+  const _EdgeBouncingScrollPhysics();
+
+  @override
+  double get minFlingVelocity => kMinFlingVelocity;
 }
 
 class _AppShellState extends State<AppShell> {
@@ -146,7 +173,7 @@ class _AppShellState extends State<AppShell> {
               // live tab.
               physics: isLiveTab
                   ? const NeverScrollableScrollPhysics()
-                  : const PageScrollPhysics(),
+                  : AppShell.tabPagePhysics,
               onPageChanged: (index) {
                 _dismissOverlays();
                 setState(() => _currentIndex = index);
@@ -256,10 +283,12 @@ class GlassTabBarState extends State<GlassTabBar>
   }
 
   static const List<(IconData, String)> _items = [
-    (Icons.movie, '影视'),
-    (Icons.live_tv, '直播'),
-    (Icons.music_note, '音乐'),
-    (Icons.settings, '设置'),
+    // N-2: CupertinoIcons (iOS native glyphs) — film / tv /
+    // music_note / settings replace the Material set.
+    (CupertinoIcons.film, '影视'),
+    (CupertinoIcons.tv, '直播'),
+    (CupertinoIcons.music_note, '音乐'),
+    (CupertinoIcons.settings, '设置'),
   ];
 
   double? _dragX;
@@ -479,7 +508,7 @@ class _TabItem extends StatelessWidget {
         ? theme.accent
         : theme.textPrimary.withValues(alpha: 0.8);
     return Center(
-      child: Icon(icon, size: 23, color: color, semanticLabel: label),
+      child: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: 23, color: color, semanticLabel: label),
     );
   }
 }

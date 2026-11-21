@@ -132,13 +132,17 @@ void main() {
         }
 
         // Titles use the theme's primary text (dark in light mode,
-        // white in dark mode) with no shadow.
+        // white in dark mode) with no shadow at full intensity.
+        // 1.1.6: the title weight is w600, not w700 — the glass work
+        // changed w700 to w600 everywhere it added legibility
+        // shadows (music_tab_page.dart + playlist_detail_page.dart),
+        // since the shadow itself adds visual weight.
         for (final title in ['私人漫游', '心动模式']) {
           final text = tester.widget<Text>(find.text(title));
           expect(text.style!.color, expectedText);
           expect(text.style!.shadows ?? [], isEmpty);
           expect(text.style!.fontSize, 15);
-          expect(text.style!.fontWeight, FontWeight.w700);
+          expect(text.style!.fontWeight, FontWeight.w600);
         }
       });
     }

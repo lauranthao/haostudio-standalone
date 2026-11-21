@@ -9,11 +9,17 @@
 // shipped defaults. `kind: search` sources are search-only — their
 // play URLs are not trusted — and are labelled as such.
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../core/theme/liquid_glass_theme.dart';
+import '../../services/video/emby_client.dart';
+import '../../services/video/emby_models.dart';
 import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../video/cms_sources.dart';
@@ -30,10 +36,144 @@ class VideoSourcesPage extends StatefulWidget {
 class _VideoSourcesPageState extends State<VideoSourcesPage> {
   late List<VideoSource> _sources;
 
+  // Emby: one server, configured here, stored under its own Hive key
+  // (hao_emby_config). The key never leaves this card's controllers
+  // and EmbyClient — no logging, no toString, no share text.
+  EmbyServerConfig? _embyConfig;
+  late final TextEditingController _embyBaseController;
+  late final TextEditingController _embyKeyController;
+  bool _embyProbing = false;
+  String _embyProbeStatus = '';
+  bool _embyProbeOk = false;
+  List<EmbyUser> _embyUsers = const [];
+  String? _embySelectedUserId;
+  bool _embyHttpWarned = false;
+  CancelToken? _embyProbeToken;
+
   @override
   void initState() {
     super.initState();
     _sources = VideoSourcesStore.getAll();
+    _embyConfig = EmbyConfigStore.load();
+    _embyBaseController =
+        TextEditingController(text: _embyConfig?.baseUrl ?? '');
+    _embyKeyController =
+        TextEditingController(text: _embyConfig?.apiKey ?? '');
+    _embySelectedUserId = _embyConfig?.userId.isNotEmpty == true
+        ? _embyConfig!.userId
+        : null;
+  }
+
+  @override
+  void dispose() {
+    _embyProbeToken?.cancel();
+    _embyBaseController.dispose();
+    _embyKeyController.dispose();
+    super.dispose();
+  }
+
+  EmbyServerConfig _embyFromFields({bool? enabled, String? userId}) {
+    final prev = _embyConfig;
+    return EmbyServerConfig(
+      baseUrl: _embyBaseController.text.trim(),
+      apiKey: _embyKeyController.text.trim(),
+      userId: userId ?? prev?.userId ?? '',
+      enabled: enabled ?? prev?.enabled ?? true,
+      movieLibraryId: prev?.movieLibraryId,
+      tvLibraryId: prev?.tvLibraryId,
+    );
+  }
+
+  Future<void> _saveEmby({bool? enabled, String? userId}) async {
+    final config = _embyFromFields(enabled: enabled, userId: userId);
+    _embyConfig = config;
+    await EmbyConfigStore.save(config);
+  }
+
+  Future<void> _toggleEmbyEnabled(bool value) async {
+    await _saveEmby(enabled: value);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _probeEmby() async {
+    final baseUrl = _embyBaseController.text.trim();
+    final apiKey = _embyKeyController.text.trim();
+    if (baseUrl.isEmpty || apiKey.isEmpty) {
+      setState(() {
+        _embyProbeOk = false;
+        _embyProbeStatus = '请先填写服务器地址和 API 密钥';
+      });
+      return;
+    }
+    if (!baseUrl.startsWith('http://') &&
+        !baseUrl.startsWith('https://')) {
+      setState(() {
+        _embyProbeOk = false;
+        _embyProbeStatus = '服务器地址必须以 http:// 或 https:// 开头';
+      });
+      return;
+    }
+    if (isPlainHttpVideoSourceUrl(baseUrl) && !_embyHttpWarned) {
+      // Plain-http server: warn clearly (requests go in the clear),
+      // but do NOT block — a LAN http address is a legal setup.
+      // Same glass confirm shell as the CMS add-source warning.
+      final keep = await showGlassConfirmDialog(
+        context,
+        title: '该地址使用明文 http',
+        content:
+            'Emby 服务器地址是 http://，请求将以明文传输，同一网络下可能被窃听或篡改。建议改用支持 https 的地址。',
+        confirmLabel: '仍要连接',
+      );
+      if (keep != true || !mounted) return;
+      _embyHttpWarned = true;
+    }
+    await _saveEmby();
+    setState(() {
+      _embyProbing = true;
+      _embyProbeStatus = '正在连接…';
+    });
+    _embyProbeToken?.cancel();
+    final token = _embyProbeToken = CancelToken();
+    final result = await EmbyClient(config: _embyConfig!)
+        .probe(cancelToken: token);
+    if (!mounted) return;
+    if (token.isCancelled) return;
+    if (result.ok) {
+      if (result.users.length == 1) {
+        await _saveEmby(userId: result.users.first.id);
+        _embySelectedUserId = result.users.first.id;
+        _embyUsers = const [];
+      } else {
+        _embyUsers = result.users;
+        if (_embyUsers.isNotEmpty &&
+            (_embySelectedUserId == null ||
+                !_embyUsers.any((u) => u.id == _embySelectedUserId))) {
+          _embySelectedUserId = null;
+        }
+      }
+      setState(() {
+        _embyProbing = false;
+        _embyProbeOk = true;
+        _embyProbeStatus = result.serverName.isNotEmpty
+            ? '已连接：${result.serverName}'
+                '${result.version.isNotEmpty ? '（${result.version}）' : ''}'
+            : '已连接';
+      });
+    } else {
+      setState(() {
+        _embyProbing = false;
+        _embyProbeOk = false;
+        _embyProbeStatus = result.errorMessage;
+      });
+    }
+  }
+
+  Future<void> _onEmbyUserSelected(String? userId) async {
+    if (userId == null) return;
+    await _saveEmby(userId: userId);
+    if (mounted) {
+      setState(() => _embySelectedUserId = userId);
+    }
   }
 
   Future<void> _save() async {
@@ -48,7 +188,7 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
     if (!value &&
         _sources.where((s) => s.enabled).length <= 1 &&
         source.enabled) {
-      Get.snackbar('至少保留一个影视源', '至少需要一个开启的影视源才能看视频');
+      HaoToast.show('至少保留一个影视源', message:  '至少需要一个开启的影视源才能看视频');
       return;
     }
     _sources = _sources
@@ -70,11 +210,11 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
 
   Future<void> _delete(VideoSource source) async {
     if (VideoSourcesStore.wouldLeaveNone(source)) {
-      Get.snackbar('不能删除最后一个影视源', '至少需要保留一个影视源');
+      HaoToast.show('不能删除最后一个影视源', message:  '至少需要保留一个影视源');
       return;
     }
     if (source.enabled && _sources.where((s) => s.enabled).length <= 1) {
-      Get.snackbar('不能删除最后一个开启的影视源', '至少需要一个开启的影视源');
+      HaoToast.show('不能删除最后一个开启的影视源', message:  '至少需要一个开启的影视源');
       return;
     }
     // Glass confirm, like every other destructive confirm in the app
@@ -150,11 +290,11 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
     final name = nameController.text.trim();
     final url = urlController.text.trim();
     if (name.isEmpty || url.isEmpty) {
-      Get.snackbar('添加失败', '名称和接口地址都不能为空');
+      HaoToast.show('添加失败', message:  '名称和接口地址都不能为空');
       return;
     }
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      Get.snackbar('添加失败', '接口地址必须以 http:// 或 https:// 开头');
+      HaoToast.show('添加失败', message:  '接口地址必须以 http:// 或 https:// 开头');
       return;
     }
     if (isPlainHttpVideoSourceUrl(url)) {
@@ -183,6 +323,103 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       ),
     ];
     await _save();
+  }
+
+  /// Emby config card: sits above the CMS list, independent of it.
+  /// Fields: server address + API key + probe + enable switch. No
+  /// extra hint text. The user id is never typed here — probe fills
+  /// it in (single user), or the picker below appears (multi-user).
+  Widget _buildEmbyCard(HaoTheme theme) {
+    final enabled = _embyConfig?.enabled ?? true;
+    return HaoGlassCard(
+      margin: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+      quality: GlassCardQuality.standard,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Emby',
+                style: TextStyle(
+                  color: theme.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              GlassSwitch(
+                value: enabled,
+                // N-8: iOS size 51x31 (was Material Switch).
+                width: 51,
+                height: 31,
+                activeColor: theme.accent,
+                settings: HaoLiquidGlass.ios27Settings(context),
+                enableHaptics: HaoHaptics.enabled,
+                onChanged: _toggleEmbyEnabled,
+              ),
+            ],
+          ),
+          TextField(
+            controller: _embyBaseController,
+            decoration: const InputDecoration(
+              labelText: '服务器地址',
+              hintText: 'http://192.168.1.10:8096',
+            ),
+            keyboardType: TextInputType.url,
+            onChanged: (_) => _saveEmby(),
+          ),
+          TextField(
+            controller: _embyKeyController,
+            decoration: const InputDecoration(labelText: 'API 密钥'),
+            obscureText: true,
+            onChanged: (_) => _saveEmby(),
+          ),
+          if (_embyUsers.length > 1) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _embySelectedUserId,
+              decoration: const InputDecoration(labelText: '用户'),
+              items: _embyUsers
+                  .map(
+                    (u) => DropdownMenuItem<String>(
+                      value: u.id,
+                      child: Text(u.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _onEmbyUserSelected,
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton(
+                onPressed: _embyProbing ? null : _probeEmby,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: theme.hairline),
+                  foregroundColor: theme.accent,
+                ),
+                child: Text(_embyProbing ? '连接中…' : '测连通'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _embyProbeStatus,
+                  style: TextStyle(
+                    color: _embyProbeOk
+                        ? theme.accent
+                        : theme.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _reset() async {
@@ -218,6 +455,7 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       ),
       body: Column(
         children: [
+          _buildEmbyCard(theme),
           const Padding(
             padding: EdgeInsets.fromLTRB(12, 16, 12, 12),
             child: HaoHint('长按拖动排序，搜索按顺序尝试；「仅搜索」的源只参与搜索，不提供播放地址。'),
@@ -254,9 +492,14 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
                           tooltip: '删除',
                           onPressed: () => _delete(source),
                         ),
-                        Switch(
+                        GlassSwitch(
                           value: source.enabled,
-                          activeThumbColor: theme.accent,
+                          // N-8: iOS size 51x31 (was Material Switch).
+                          width: 51,
+                          height: 31,
+                          activeColor: theme.accent,
+                          settings: HaoLiquidGlass.ios27Settings(context),
+                          enableHaptics: HaoHaptics.enabled,
                           onChanged: (v) => _toggle(source, v),
                         ),
                       ],

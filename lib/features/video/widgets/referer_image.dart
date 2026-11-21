@@ -47,6 +47,7 @@ class RefererImage extends StatefulWidget {
     this.width,
     this.height,
     this.fallback,
+    this.headers,
   });
 
   final String url;
@@ -56,6 +57,11 @@ class RefererImage extends StatefulWidget {
 
   /// Shown while loading and on any failure (null → blank).
   final Widget? fallback;
+
+  /// Extra request headers (Emby: `X-Emby-Token`). The URL itself
+  /// stays credential-free, so it remains a safe cache key. The
+  /// built-in Douban Referer / Accept headers are added alongside.
+  final Map<String, String>? headers;
 
   @override
   State<RefererImage> createState() => _RefererImageState();
@@ -78,13 +84,27 @@ class _RefererImageState extends State<RefererImage> {
   @override
   void didUpdateWidget(covariant RefererImage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
+    if (oldWidget.url != widget.url ||
+        !_headersEqual(oldWidget.headers, widget.headers)) {
       _bytes = null;
       _failed = false;
       _retried = false;
       _retryTimer?.cancel();
       _load();
     }
+  }
+
+  static bool _headersEqual(
+    Map<String, String>? a,
+    Map<String, String>? b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == null && b == null;
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
   }
 
   @override
@@ -136,6 +156,7 @@ class _RefererImageState extends State<RefererImage> {
         url,
         options: Options(
           headers: <String, String>{
+            ...?widget.headers,
             if (isDouban) 'Referer': 'https://movie.douban.com/',
             'Accept': 'image/*',
           },

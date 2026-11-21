@@ -57,7 +57,8 @@ void main() {
   });
 
   group('wallpaper', () {
-    test('add copies the image, lists it, apply selects + enables', () async {
+    test('add copies the image, lists it, apply selects (no auto-enable)',
+        () async {
       final path = await store.addWallpaper(
         await srcFile('wall.jpg', 'fake-jpeg'),
       );
@@ -68,7 +69,12 @@ void main() {
       expect(store.backgroundActive, isFalse); // added, not applied
       await store.applyWallpaper(path);
       expect(store.currentWallpaper, path);
-      expect(store.wallpaperEnabled, isTrue);
+      // D3 (build 28): selecting does NOT auto-enable — the
+      // wallpaper switch is the master gate.
+      expect(store.wallpaperEnabled, isFalse);
+      expect(store.hasActiveWallpaper, isFalse);
+      expect(store.backgroundActive, isFalse);
+      await store.setWallpaperEnabled(true);
       expect(store.hasActiveWallpaper, isTrue);
       expect(store.backgroundActive, isTrue);
     });
@@ -92,7 +98,9 @@ void main() {
       expect(store.hasActiveWallpaper, isFalse);
       // The other wallpaper still exists and can be applied.
       await store.applyWallpaper(b!);
-      expect(store.hasActiveWallpaper, isTrue);
+      expect(store.currentWallpaper, b);
+      // D3 (build 28): selecting does NOT auto-enable.
+      expect(store.hasActiveWallpaper, isFalse);
     });
 
     test('switch off returns to theme default (files kept)', () async {
@@ -139,6 +147,7 @@ void main() {
       await store.setBackgroundColor('#000000');
       final path = await store.addWallpaper(await srcFile('w.jpg', 'x'));
       await store.applyWallpaper(path!);
+      await store.setWallpaperEnabled(true);
       expect(store.backgroundActive, isTrue);
       expect(store.hasActiveWallpaper, isTrue);
       expect(store.hasActiveBackgroundColor, isTrue);
@@ -153,6 +162,7 @@ void main() {
     test('load() reflects the store in Rx values', () async {
       final path = await store.addWallpaper(await srcFile('w.jpg', 'x'));
       await store.applyWallpaper(path!);
+      await store.setWallpaperEnabled(true);
       await store.setBackgroundColor('#FFFFFF');
       final controller = AppearanceController(store: store);
       await controller.load();
@@ -172,6 +182,7 @@ void main() {
     test('stored on -> off once; files + selection kept', () async {
       final path = await store.addWallpaper(await srcFile('wall.jpg', 'fake-jpeg'));
       await store.applyWallpaper(path!);
+      await store.setWallpaperEnabled(true);
       expect(store.wallpaperEnabled, isTrue);
       await store.migrateWallpaperOffOnce();
       expect(store.wallpaperEnabled, isFalse);
@@ -184,6 +195,7 @@ void main() {
       await store.migrateWallpaperOffOnce();
       final path = await store.addWallpaper(await srcFile('w.jpg', 'x'));
       await store.applyWallpaper(path!);
+      await store.setWallpaperEnabled(true);
       expect(store.wallpaperEnabled, isTrue);
       await store.migrateWallpaperOffOnce();
       expect(store.wallpaperEnabled, isTrue);

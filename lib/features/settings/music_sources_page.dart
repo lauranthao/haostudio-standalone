@@ -29,11 +29,13 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
+import '../../core/theme/liquid_glass_theme.dart';
 import '../../widgets/glass_dialog.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/lx_script_engine.dart';
@@ -88,7 +90,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   Future<void> _toggle(MusicPlatform pf, bool value) async {
     final ok = await MusicSourcesStore.setEnabled(pf, value);
     if (!ok) {
-      Get.snackbar('至少保留一个音源', '歌曲搜索至少需要一个开启的平台');
+      HaoToast.show('至少保留一个音源', message:  '歌曲搜索至少需要一个开启的平台');
       return;
     }
     if (!mounted) return;
@@ -104,7 +106,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   Future<void> _addCustom() async {
     final url = _urlController.text.trim();
     if (url.isEmpty) {
-      Get.snackbar('请输入脚本链接', '粘贴 LX 音乐源脚本的 URL');
+      HaoToast.show('请输入脚本链接', message:  '粘贴 LX 音乐源脚本的 URL');
       return;
     }
     setState(() => _adding = true);
@@ -116,11 +118,11 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
         _scriptInfos = LxScriptEngine.instance.scripts;
         _custom = LxScriptSourcesStore.customScripts();
       });
-      Get.snackbar('已添加', '${info.name} · ${info.sources.length} 个音源');
+      HaoToast.show('已添加', message:  '${info.name} · ${info.sources.length} 个音源');
     } on LxScriptException catch (e) {
-      Get.snackbar('添加失败', e.message);
+      HaoToast.show('添加失败', message:  e.message);
     } catch (e) {
-      Get.snackbar('添加失败', e.toString());
+      HaoToast.show('添加失败', message:  e.toString());
     } finally {
       if (mounted) setState(() => _adding = false);
     }
@@ -149,7 +151,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       code = null;
     }
     if (code == null || code.isEmpty) {
-      Get.snackbar('读取失败', '无法读取该文件');
+      HaoToast.show('读取失败', message:  '无法读取该文件');
       return;
     }
     setState(() => _adding = true);
@@ -163,11 +165,11 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
         _scriptInfos = LxScriptEngine.instance.scripts;
         _custom = LxScriptSourcesStore.customScripts();
       });
-      Get.snackbar('已添加', '${info.name} · ${info.sources.length} 个音源');
+      HaoToast.show('已添加', message:  '${info.name} · ${info.sources.length} 个音源');
     } on LxScriptException catch (e) {
-      Get.snackbar('添加失败', e.message);
+      HaoToast.show('添加失败', message:  e.message);
     } catch (e) {
-      Get.snackbar('添加失败', e.toString());
+      HaoToast.show('添加失败', message:  e.toString());
     } finally {
       if (mounted) setState(() => _adding = false);
     }
@@ -197,7 +199,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
     if (pruned.length != order.length) {
       await LxScriptSourcesStore.saveScriptOrder(pruned);
     }
-    Get.snackbar('已删除', name);
+    HaoToast.show('已删除', message:  name);
   }
 
   /// Scripts in the user's manual order: saved ids first, then any
@@ -288,9 +290,14 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
               tooltip: '删除',
               onPressed: onDelete,
             ),
-          Switch(
+          GlassSwitch(
             value: on,
-            activeThumbColor: theme.accent,
+            // N-8: iOS size 51x31 (was Material Switch).
+            width: 51,
+            height: 31,
+            activeColor: theme.accent,
+            settings: HaoLiquidGlass.ios27Settings(context),
+            enableHaptics: HaoHaptics.enabled,
             onChanged: (v) => _toggleScript(id, v),
           ),
         ],

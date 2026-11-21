@@ -228,15 +228,32 @@ class UpdateService {
 
   /// Automatic check. Returns null when it should stay silent (throttled,
   /// up to date, or fetch failed).
+  ///
+  /// The throttle stamp is written only after the remote manifest was
+  /// fetched successfully (D2): a failed fetch (timeout / network /
+  /// HTTP / parse) must not consume the 20 h window, so the next cold
+  /// start retries instead of staying silent for 20 h.
   Future<UpdateInfo?> checkAuto() async {
     final last = HiveStore.getInt(HiveKeys.lastUpdateCheckAt, 0);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - last < autoCheckInterval.inMilliseconds) return null;
-    await HiveStore.put(HiveKeys.lastUpdateCheckAt, now);
     final (info, _, _) = await fetchRemote();
     if (info == null) return null;
+    await HiveStore.put(HiveKeys.lastUpdateCheckAt, now);
     if (_classify(info) != UpdateCheckResult.newerAvailable) return null;
     return info;
+  }
+
+  /// Automatic check gated by the "启动时自动检查更新" switch
+  /// ([HiveKeys.autoUpdateCheck], default on). When the switch is off,
+  /// [checkAuto] is never called — no request is sent and the throttle
+  /// stamp is not written — so turning the switch back on checks on
+  /// the next cold start. The manual check ([checkManual]) is never
+  /// gated. This is the testable unit for the main.dart warm-up gate
+  /// (D11): the warm-up calls this instead of [checkAuto] directly.
+  Future<UpdateInfo?> checkAutoIfEnabled() async {
+    if (!HiveStore.getBool(HiveKeys.autoUpdateCheck, true)) return null;
+    return checkAuto();
   }
 
   /// A release is newer when its version is newer, or when the
@@ -257,12 +274,6 @@ class UpdateService {
     if (skipped == info.id) return UpdateCheckResult.skipped;
     return UpdateCheckResult.newerAvailable;
   }
-
-  Future<void> recordKnownUpdate(String version) =>
-      HiveStore.put(HiveKeys.knownUpdateVersion, version);
-
-  Future<void> clearKnownUpdate() =>
-      HiveStore.delete(HiveKeys.knownUpdateVersion);
 
   Future<void> skipVersion(String version) =>
       HiveStore.put(HiveKeys.skippedVersion, version);

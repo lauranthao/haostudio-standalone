@@ -14,6 +14,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +25,7 @@ import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/music/song_search_page.dart';
 import 'package:standalone/services/music/music_store.dart';
+import 'package:standalone/widgets/hao_segmented_control.dart';
 
 void main() {
   late Directory hiveDir;
@@ -172,7 +174,7 @@ void main() {
     ) async {
       await pumpPage(tester);
       expect(
-        find.byWidgetPredicate((w) => w is SegmentedButton),
+        find.byWidgetPredicate((w) => w is HaoSegmentedControl),
         findsOneWidget,
       );
       expect(find.text('歌曲'), findsOneWidget);
@@ -185,12 +187,12 @@ void main() {
       tester,
     ) async {
       await pumpPage(tester);
-      expect(find.byIcon(Icons.search), findsOneWidget);
-      expect(find.byIcon(Icons.cancel), findsNothing);
+      expect(find.byIcon(CupertinoIcons.search), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.clear_circled_solid), findsNothing);
       await tester.enterText(find.byType(TextField), 'abc');
       await tester.pump();
-      expect(find.byIcon(Icons.cancel), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.cancel));
+      expect(find.byIcon(CupertinoIcons.clear_circled_solid), findsOneWidget);
+      await tester.tap(find.byIcon(CupertinoIcons.clear_circled_solid));
       await tester.pump();
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.controller?.text, isEmpty);
@@ -203,8 +205,9 @@ void main() {
       await pumpPage(tester);
       expect(find.text('林俊杰'), findsOneWidget);
       expect(find.text('周杰伦'), findsOneWidget);
-      // InputChip's default delete icon is Icons.clear (not cancel).
-      await tester.tap(find.byIcon(Icons.clear).first);
+      // The per-chip x is a standalone round button with
+      // CupertinoIcons.clear now (1.1.6 dropped InputChip).
+      await tester.tap(find.byIcon(CupertinoIcons.clear).first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('林俊杰'), findsNothing);

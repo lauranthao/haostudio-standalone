@@ -8,6 +8,8 @@
 // toplist API returns.
 
 import '../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -70,19 +72,20 @@ class _ChartsPageState extends State<ChartsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('排行榜')),
+      appBar: AppBar(title: Text('排行榜', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
       body: _charts == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _platform != MusicPlatform.wy
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.bar_chart, size: 48, color: theme.textMuted),
+                  Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bar_chart, size: 48, color: theme.textMuted),
                   const SizedBox(height: 12),
                   Text(
                     '当前平台是${_platform.displayName}',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -91,13 +94,13 @@ class _ChartsPageState extends State<ChartsPage> {
                   const SizedBox(height: 4),
                   Text(
                     '排行榜仅网易云音乐提供',
-                    style: TextStyle(color: theme.textMuted, fontSize: 13),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute<void>(
+                        CupertinoPageRoute<void>(
                           settings: const RouteSettings(
                             name: musicSubPageRouteName,
                           ),
@@ -115,11 +118,12 @@ class _ChartsPageState extends State<ChartsPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.bar_chart, size: 48, color: theme.textMuted),
+                  Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bar_chart, size: 48, color: theme.textMuted),
                   const SizedBox(height: 12),
                   Text(
                     '排行榜加载失败',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -128,7 +132,7 @@ class _ChartsPageState extends State<ChartsPage> {
                   const SizedBox(height: 4),
                   Text(
                     '检查网络后重试',
-                    style: TextStyle(color: theme.textMuted, fontSize: 13),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
@@ -158,11 +162,11 @@ class _ChartsPageState extends State<ChartsPage> {
                 return HaoGlassCard(
                   padding: const EdgeInsets.all(14),
                   margin: const EdgeInsets.only(bottom: 8),
-                  child: InkWell(
+                  child: HaoPressable(
                     onTap: () {
                       HaoHaptics.tap();
                       Navigator.of(context).push(
-                        MaterialPageRoute<void>(
+                        CupertinoPageRoute<void>(
                           settings: const RouteSettings(
                             name: musicSubPageRouteName,
                           ),
@@ -193,6 +197,7 @@ class _ChartsPageState extends State<ChartsPage> {
                                     height: 52,
                                     color: theme.accentSoft,
                                     child: Icon(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       Icons.leaderboard,
                                       color: theme.textMuted,
                                     ),
@@ -207,6 +212,7 @@ class _ChartsPageState extends State<ChartsPage> {
                                       height: 52,
                                       color: theme.accentSoft,
                                       child: Icon(
+                                        shadows: HaoTheme.legibilityShadows(context),
                                         Icons.leaderboard,
                                         color: theme.textMuted,
                                       ),
@@ -224,6 +230,7 @@ class _ChartsPageState extends State<ChartsPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textPrimary,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -235,6 +242,7 @@ class _ChartsPageState extends State<ChartsPage> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       color: theme.textSecondary,
                                       fontSize: 13,
                                     ),
@@ -242,7 +250,7 @@ class _ChartsPageState extends State<ChartsPage> {
                               ],
                             ),
                           ),
-                          Icon(Icons.chevron_right, color: theme.textMuted),
+                          Icon(shadows: HaoTheme.legibilityShadows(context), Icons.chevron_right, color: theme.textMuted),
                         ],
                       ),
                     ),

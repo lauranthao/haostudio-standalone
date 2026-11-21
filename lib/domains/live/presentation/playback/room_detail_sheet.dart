@@ -196,6 +196,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       Text(
                         room.nick.isEmpty ? '主播' : room.nick,
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textPrimary,
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -205,6 +206,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       Text(
                         platformName(room.platform),
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textSecondary,
                           fontSize: 13,
                         ),
@@ -233,7 +235,10 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   ),
                   child: Text(
                     _followed ? '已关注' : '关注',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      shadows: _followed ? HaoTheme.legibilityShadows(context) : null,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -276,6 +281,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     child: Text(
                       '已下播',
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textMuted,
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -285,6 +291,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                 if (room.watching > 0) ...[
                   const SizedBox(width: 10),
                   Icon(
+                    shadows: HaoTheme.legibilityShadows(context),
                     Icons.visibility_outlined,
                     size: 14,
                     color: theme.textMuted,
@@ -293,6 +300,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   Text(
                     '${room.watching} 人在看',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,
                       fontSize: 13,
                     ),
@@ -305,6 +313,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
             Text(
               room.title.isEmpty ? '（无标题）' : room.title,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -321,6 +330,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   child: Text(
                     '房间号 ${room.roomId}',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textSecondary,
                       fontSize: 14,
                     ),
@@ -328,10 +338,10 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                 ),
                 TextButton.icon(
                   onPressed: _copyRoomId,
-                  icon: Icon(Icons.copy, size: 16, color: theme.accent),
+                  icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.copy, size: 16, color: theme.accent),
                   label: Text(
                     '复制',
-                    style: TextStyle(color: theme.accent),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent),
                   ),
                 ),
               ],
@@ -342,8 +352,8 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _share,
-                    icon: const Icon(Icons.share_outlined, size: 18),
-                    label: const Text('分享'),
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share_outlined, size: 18),
+                    label: Text('分享', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
                       side: BorderSide(color: theme.hairline),
@@ -362,8 +372,8 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _openInApp,
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    label: Text('在${platformName(room.platform)} App 中打开'),
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.open_in_new, size: 18),
+                    label: Text('在${platformName(room.platform)} App 中打开', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
                       side: BorderSide(color: theme.hairline),
@@ -406,6 +416,7 @@ class _AvatarFallback extends StatelessWidget {
       child: Text(
         room.nick.isEmpty ? '?' : room.nick[0],
         style: TextStyle(
+          shadows: HaoTheme.legibilityShadows(context),
           color: theme.textPrimary,
           fontSize: 20,
           fontWeight: FontWeight.w700,

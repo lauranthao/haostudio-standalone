@@ -8,14 +8,17 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../services/video/cms_client.dart';
-import 'video_detail_page.dart';
+import '../../services/video/poster_patch_service.dart';
 import 'video_detail_service.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
+import 'video_smart_groups.dart';
+import 'video_version_sheet.dart';
 
 class VideoTypePage extends StatefulWidget {
   const VideoTypePage({super.key, required this.typeName});
@@ -29,6 +32,7 @@ class VideoTypePage extends StatefulWidget {
 class _VideoTypePageState extends State<VideoTypePage> {
   final _cms = CmsClient();
   final _detailService = VideoDetailService();
+  final _posterPatch = PosterPatchService();
 
   List<VideoItem> _items = [];
   bool _loading = true;
@@ -163,13 +167,26 @@ class _VideoTypePageState extends State<VideoTypePage> {
   }
 
   void _openDetail(VideoItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => VideoDetailPage(
-          sourceId: item.source,
-          vodId: item.vodId,
-          preload: item,
-        ),
+    // 1.1.6 Smart Groups: same film on one page shows one card; a
+    // multi-version card opens the version sheet, a single version
+    // goes straight to its detail page.
+    GroupedVideoItem? group;
+    for (final g in groupVideoItems(_items)) {
+      if (g.representative.identityKey == item.identityKey) {
+        group = g;
+        break;
+      }
+    }
+    unawaited(
+      openGroupedVideo(
+        context,
+        group ??
+            GroupedVideoItem(
+              key: '',
+              representative: item,
+              versions: [item],
+            ),
+        detailService: _detailService,
       ),
     );
   }
@@ -177,9 +194,16 @@ class _VideoTypePageState extends State<VideoTypePage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Grouped render: one card per film. Cached poster patches apply
+    // to poster-less items (no network at render).
+    final groups = groupVideoItems(
+      _posterPatch.withCachedPatches(_items),
+    );
+    final representatives =
+        groups.map((g) => g.representative).toList();
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.typeName),
+        title: Text(widget.typeName, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
       ),
       body: Column(
         children: [
@@ -203,6 +227,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                             : theme.hairline,
                       ),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _area == a
                             ? theme.accent
                             : theme.textSecondary,
@@ -235,6 +260,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                             : theme.hairline,
                       ),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _year == y
                             ? theme.accent
                             : theme.textSecondary,
@@ -258,6 +284,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                             _by == b ? theme.accent : theme.hairline,
                       ),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _by == b
                             ? theme.accent
                             : theme.textSecondary,
@@ -276,7 +303,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
           Divider(height: 1, color: theme.hairline),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CupertinoActivityIndicator())
                 : _failed
                     ? Center(
                         child: Column(
@@ -286,7 +313,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                               _error == 'type not found'
                                   ? '该分类不存在'
                                   : '视频源暂时无法访问',
-                              style: TextStyle(color: theme.textPrimary),
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                             ),
                             const SizedBox(height: 16),
                             FilledButton(
@@ -307,7 +334,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                         ? Center(
                             child: Text(
                               '没有影片',
-                              style: TextStyle(color: theme.textMuted),
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
                             ),
                           )
                         : CustomScrollView(
@@ -321,7 +348,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                 ),
                                 sliver: SliverToBoxAdapter(
                                   child: VideoPosterGrid(
-                                    items: _items,
+                                    items: representatives,
                                     onTapItem: _openDetail,
                                     onPointerDownItem: (item) =>
                                         _detailService.prefetch(
@@ -349,7 +376,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                             color: theme.hairline,
                                           ),
                                         ),
-                                        child: const Text('上一页'),
+                                        child: Text('上一页', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                                       ),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
@@ -358,6 +385,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                         child: Text(
                                           '$_page/$_pagecount',
                                           style: TextStyle(
+                                            shadows: HaoTheme.legibilityShadows(context),
                                             color: theme.textMuted,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -372,7 +400,7 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                             color: theme.hairline,
                                           ),
                                         ),
-                                        child: const Text('下一页'),
+                                        child: Text('下一页', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                                       ),
                                     ],
                                   ),

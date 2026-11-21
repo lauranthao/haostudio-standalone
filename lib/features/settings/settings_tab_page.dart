@@ -8,9 +8,11 @@
 // - every row its own glass card (Beans `GlassCard` radius 18,
 //   row padding h14 v13; icon 14 in a 28-wide frame, title 15,
 //   subtitle 11, chevron 11 semibold)
-// - expandable sections (Beans `playbackSection`): a header card with
-//   a ⌄/⌃ chevron, expanding into a glass panel (radius 22,
-//   padding 16, rows spaced 14, dividers muted 0.15)
+// - flat sections (build 28): six groups (外观 / 音乐播放 / 影视播放 /
+//   源管理 / 数据 / 关于), all rows visible — the old expandable
+//   播放设置 / 播放器引擎 headers are gone; the music panel keeps the
+//   Beans glass panel (radius 22, padding 16, rows spaced 14,
+//   dividers muted 0.15)
 // - quality chips (Beans `playbackQualitySection` / third-party
 //   quality chips): height 31, h padding 12, font 12, selected fill
 //   accent 0.14 + stroke accent 0.42 (0.8pt) + checkmark 9 bold,
@@ -39,13 +41,12 @@
 //   fork + MTAudioProcessingTap, see EqualizerStore), so the playback
 //   panel now has a 均衡器 row showing 已开启/已关闭, opening the
 //   10-band page — Beans `equalizerSection` (ProfileView.swift:2255).
-// - The 120Hz row is display-only with a checkmark, exactly like
-//   Beans (ProfileView.swift: the row has no toggle and onAppear
-//   forces the keeper on). Ours is pinned in Info.plist + AppDelegate,
-//   so there is nothing to toggle at runtime — a switch here would
-//   be a fake switch.
+// - The 120Hz row was deleted in build 28 (D2): it was display-only
+//   with a checkmark, exactly like Beans, but 120Hz is pinned in
+//   Info.plist + AppDelegate, so the row told the user nothing they
+//   could act on.
 //
-// NOTHING is deleted: theme, engine picker, backup export/import,
+// NOTHING else is deleted: theme, engine picker, backup export/import,
 // source management (music/video/live), auto-next, danmaku, cache,
 // version, update check and crash record are all still here — only
 // the shell and structure changed. Every borrowed setting is wired
@@ -56,7 +57,10 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
+import '../../widgets/hao_segmented_control.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
     hide GlassCard, GlassShadow;
 import 'package:path_provider/path_provider.dart';
@@ -111,8 +115,6 @@ class SettingsTabPage extends StatefulWidget {
 class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _engineKey;
 
-  late bool _engineExpanded;
-  late bool _playbackExpanded;
   late bool _autoNext;
   // Good-projects P1 (PiliPlus/Kazumi): VOD picture fit + low-memory
   // mode. Cached like _autoNext; refreshed after every cycle tap.
@@ -120,6 +122,33 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   late LowMemoryMode _lowMemoryMode;
   late bool _mixWithOthers;
   late bool _autoResume;
+  // Build 28: gates only the automatic update check at startup
+  // (main.dart warm-up); the manual 检查更新 row is never gated.
+  late bool _autoUpdateCheck;
+  // Build 28 J: Anime4K super-resolution for VOD (default off).
+  // Live playback never reads this flag.
+  late bool _vodSuperResolution;
+  // 1.1.6 VOD rows: skip-intro mode (String 'off' | 'manual' |
+  // 'auto3s' | 'autoNow', default 'off'); frame interpolation,
+  // SDR→HDR (both default off, MPV-only, mutually exclusive with
+  // super-res in display only — stored values are never cleared);
+  // DV Profile 8 downgrade-to-HDR (default ON, unlike the trio);
+  // subtitle time offset in seconds (default 0.0, ±10s, 0.1s step).
+  late String _vodSkipIntroMode;
+  late bool _vodInterpolation;
+  late bool _vodSdrToHdr;
+  late bool _vodDvP8Downgrade;
+  late double _vodSubtitleDelay;
+  // 1.1.6 subtitle appearance tiers (String keys, defaults are the
+  // mpv defaults — see vod_controls.dart): font size, colour,
+  // position. Applied at the next open, same as the delay row.
+  late String _vodSubtitleFontSize;
+  late String _vodSubtitleColor;
+  late String _vodSubtitlePosition;
+  // 1.1.6 music row: loudness normalisation (default off).
+  // Strength (0..2, default 1) is handled inside the player by
+  // the music group — no row here.
+  late bool _musicNormalizationEnabled;
   late bool _hapticsOn;
   late AudioQuality _quality;
   int? _sourceCount;
@@ -138,15 +167,37 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   void initState() {
     super.initState();
     _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
-    // Engine section starts collapsed; the toggle state persists.
-    _engineExpanded = HiveStore.getBool(HiveKeys.engineSectionExpanded, false);
-    _playbackExpanded =
-        HiveStore.getBool(HiveKeys.playbackSectionExpanded, false);
     _autoNext = VideoPlaybackSettings.autoNext;
     _videoFit = VideoPlaybackSettings.videoFit;
     _lowMemoryMode = LowMemoryMode.current;
     _mixWithOthers = HiveStore.getBool(HiveKeys.audioMixWithOthers, false);
     _autoResume = HiveStore.getBool(HiveKeys.autoResumeLastPlayback, false);
+    _autoUpdateCheck = HiveStore.getBool(HiveKeys.autoUpdateCheck, true);
+    _vodSuperResolution =
+        HiveStore.getBool(HiveKeys.vodSuperResolution, false);
+    _vodSkipIntroMode =
+        HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off');
+    _vodInterpolation = HiveStore.getBool(HiveKeys.vodInterpolation, false);
+    _vodSdrToHdr = HiveStore.getBool(HiveKeys.vodSdrToHdr, false);
+    _vodDvP8Downgrade = HiveStore.getBool(HiveKeys.vodDvP8Downgrade, true);
+    _vodSubtitleDelay = HiveStore.getDouble(HiveKeys.vodSubtitleDelay, 0.0);
+    _vodSubtitleFontSize =
+        HiveStore.getString(HiveKeys.vodSubtitleFontSize, 'medium');
+    if (!_subFontSizeOrder.contains(_vodSubtitleFontSize)) {
+      _vodSubtitleFontSize = 'medium';
+    }
+    _vodSubtitleColor =
+        HiveStore.getString(HiveKeys.vodSubtitleColor, 'white');
+    if (!_subColorOrder.contains(_vodSubtitleColor)) {
+      _vodSubtitleColor = 'white';
+    }
+    _vodSubtitlePosition =
+        HiveStore.getString(HiveKeys.vodSubtitlePosition, 'bottom');
+    if (!_subPositionOrder.contains(_vodSubtitlePosition)) {
+      _vodSubtitlePosition = 'bottom';
+    }
+    _musicNormalizationEnabled =
+        HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false);
     _hapticsOn = HaoHaptics.enabled;
     _quality = MusicStore.quality;
     _loadSourceCount();
@@ -179,6 +230,57 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     });
   }
 
+  /// Subtitle appearance tiers, in cycle order (stored value -> label).
+  static const _subFontSizeOrder = ['small', 'medium', 'large'];
+  static const _subFontSizeLabels = {
+    'small': '小',
+    'medium': '标准',
+    'large': '大',
+  };
+  static const _subColorOrder = ['white', 'yellow', 'cyan'];
+  static const _subColorLabels = {
+    'white': '白色',
+    'yellow': '黄色',
+    'cyan': '青色',
+  };
+  static const _subPositionOrder = ['bottom', 'middle', 'top'];
+  static const _subPositionLabels = {
+    'bottom': '底部',
+    'middle': '中间',
+    'top': '顶部',
+  };
+
+  /// Skip-intro modes, in cycle order (stored value -> label).
+  static const _skipIntroOrder = ['off', 'manual', 'auto3s', 'autoNow'];
+  static const _skipIntroLabels = {
+    'off': '关',
+    'manual': '手动',
+    'auto3s': '自动延时 3 秒',
+    'autoNow': '自动立即',
+  };
+
+  /// 1.1.6 trio display lock (super-res / interpolation /
+  /// SDR→HDR): when one is on, the other two are greyed
+  /// (Opacity 0.4 + IgnorePointer, the D5 pattern) — display
+  /// only, the stored value is never touched; the gate layer
+  /// runs only the first passing branch.
+  Widget _mpvFxRow({required bool locked, required Widget child}) {
+    if (!locked) return child;
+    return Opacity(
+      opacity: 0.4,
+      child: IgnorePointer(ignoring: true, child: child),
+    );
+  }
+
+  /// Subtitle delay display: 0 -> '0s', positive -> '+0.5s',
+  /// negative -> '−1.0s' (U+2212 minus).
+  String _formatSubtitleDelay(double v) {
+    final rounded = double.parse(v.toStringAsFixed(1));
+    if (rounded == 0) return '0s';
+    final s = rounded.abs().toStringAsFixed(1);
+    return rounded > 0 ? '+${s}s' : '−${s}s';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
@@ -203,10 +305,11 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 color: theme.textPrimary,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
+                shadows: HaoTheme.legibilityShadows(context),
               ),
             ),
           ),
-          const _SectionTitle('主题'),
+          const _SectionTitle('外观'),
           HaoGlassCard(
             quality: GlassCardQuality.standard,
             padding: const EdgeInsets.all(16),
@@ -224,6 +327,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                         selectedColor: theme.accentSoft,
                         labelStyle: TextStyle(
                           color: selected ? theme.accent : theme.textSecondary,
+                          shadows: HaoTheme.legibilityShadows(context),
                         ),
                         onSelected: (_) {
                           HaoHaptics.select();
@@ -235,27 +339,23 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ),
                 const SizedBox(height: 12),
                 Obx(
-                  () => SegmentedButton<ThemeMode>(
+                  () => HaoSegmentedControl<ThemeMode>(
                     segments: const [
-                      ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
-                      ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
-                      ButtonSegment(
-                        value: ThemeMode.system,
-                        label: Text('跟随系统'),
-                      ),
+                      HaoSegment(value: ThemeMode.light, label: '浅色'),
+                      HaoSegment(value: ThemeMode.dark, label: '深色'),
+                      HaoSegment(value: ThemeMode.system, label: '跟随系统'),
                     ],
-                    selected: {themeController.themeMode.value},
-                    onSelectionChanged: (modes) {
-                      HaoHaptics.select();
-                      themeController.setMode(modes.first, box: HiveStore.box);
-                    },
+                    value: themeController.themeMode.value,
+                    // No explicit HaoHaptics.select() here: the control
+                    // fires it on every segment tap (N-13).
+                    onChanged: (mode) =>
+                        themeController.setMode(mode, box: HiveStore.box),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          const _SectionTitle('外观'),
+          const SizedBox(height: 12),
           _BeansSwitchRow(
             icon: Icons.wallpaper,
             title: '壁纸',
@@ -277,12 +377,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 if (!mounted) return;
                 setState(() => _loadAppearance());
                 if (_wallpaperOn != value) {
-                  Get.snackbar('设置失败', '壁纸开关保存失败，请重试');
+                  HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
                 }
               } catch (_) {
                 if (!mounted) return;
                 setState(() => _wallpaperOn = previous);
-                Get.snackbar('设置失败', '壁纸开关保存失败，请重试');
+                HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
               }
             },
           ),
@@ -309,7 +409,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           _BeansSwitchRow(
             icon: Icons.format_paint,
             title: '背景色',
-            subtitle: _bgOn ? '已开启自定义背景色' : '关闭后回到主题默认背景',
             value: _bgOn,
             onChanged: (value) async {
               HaoHaptics.select();
@@ -325,41 +424,42 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 if (!mounted) return;
                 setState(() => _loadAppearance());
                 if (_bgOn != value) {
-                  Get.snackbar('设置失败', '背景色开关保存失败，请重试');
+                  HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
                 }
               } catch (_) {
                 if (!mounted) return;
                 setState(() => _bgOn = previous);
-                Get.snackbar('设置失败', '背景色开关保存失败，请重试');
+                HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
               }
             },
           ),
-          if (_bgOn) ...[
-            const SizedBox(height: 12),
-            // Wallpaper beats the background colour — shown by
-            // disabling, not by a sentence (clean pass 2026-11-19):
-            // while wallpaper is on, the swatch row is greyed out
-            // and untappable.
-            Opacity(
-              opacity: _wallpaperOn ? 0.4 : 1,
-              child: IgnorePointer(
-                ignoring: _wallpaperOn,
-                child: _BackgroundSwatches(
-                  selectedHex: _bgHex,
-                  onSelect: (hex) async {
-                    HaoHaptics.select();
-                    await AppearanceController.ensure().setBackgroundColor(hex);
-                    setState(() => _loadAppearance());
-                  },
-                  onReset: () async {
-                    HaoHaptics.select();
-                    await AppearanceController.ensure().clearBackgroundColor();
-                    setState(() => _loadAppearance());
-                  },
-                ),
+          const SizedBox(height: 12),
+          // Background swatches stay mounted (build 28 D5): when the
+          // background switch is off the card is greyed out and
+          // untappable instead of disappearing, so toggling the
+          // switch never jumps the layout height. Same treatment
+          // while wallpaper is on — wallpaper beats the background
+          // colour, shown by disabling, not by a sentence (clean
+          // pass 2026-11-19).
+          Opacity(
+            opacity: (!_bgOn || _wallpaperOn) ? 0.4 : 1,
+            child: IgnorePointer(
+              ignoring: !_bgOn || _wallpaperOn,
+              child: _BackgroundSwatches(
+                selectedHex: _bgHex,
+                onSelect: (hex) async {
+                  HaoHaptics.select();
+                  await AppearanceController.ensure().setBackgroundColor(hex);
+                  setState(() => _loadAppearance());
+                },
+                onReset: () async {
+                  HaoHaptics.select();
+                  await AppearanceController.ensure().clearBackgroundColor();
+                  setState(() => _loadAppearance());
+                },
               ),
             ),
-          ],
+          ),
           const SizedBox(height: 12),
           // Liquid-glass intensity (chen 2026-11-21): whole-app
           // frosted-glass strength, 0% = clear, 100% = today's
@@ -379,13 +479,17 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                         Icons.blur_on,
                         size: 14,
                         color: theme.accent,
+                        shadows: HaoTheme.legibilityShadows(context),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         '液态玻璃强度',
-                        style: TextStyle(fontSize: 15),
+                        style: TextStyle(
+                          fontSize: 15,
+                          shadows: HaoTheme.legibilityShadows(context),
+                        ),
                       ),
                     ),
                     Text(
@@ -393,6 +497,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                       style: TextStyle(
                         color: theme.textSecondary,
                         fontSize: 14,
+                        shadows: HaoTheme.legibilityShadows(context),
                       ),
                     ),
                   ],
@@ -405,8 +510,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                   // pays a Hive put per tick.
                   onChanged: (v) =>
                       themeController.setGlassIntensityPreview(v),
-                  onChangeEnd: (v) =>
-                      themeController.setGlassIntensity(v, box: HiveStore.box),
+                  onChangeEnd: (v) {
+                    themeController.setGlassIntensity(
+                      v,
+                      box: HiveStore.box,
+                    );
+                    // N-13: light tap on release, click at either end.
+                    HaoHaptics.sliderEnd(v, 0, 1);
+                  },
                 ),
               ],
             ),
@@ -418,30 +529,20 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             subtitle: _fontName.isEmpty ? '未安装' : '已安装：$_fontName',
             onTap: () => _importFont(context),
           ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.restore,
-            title: '恢复默认字体',
-            onTap: () => _resetFont(context),
-          ),
-          const SizedBox(height: 20),
-          _ExpandableHeader(
-            icon: Icons.play_circle_fill,
-            title: '播放设置',
-            expanded: _playbackExpanded,
-            onTap: () async {
-              HaoHaptics.select();
-              final next = !_playbackExpanded;
-              await HiveStore.put(HiveKeys.playbackSectionExpanded, next);
-              setState(() => _playbackExpanded = next);
-            },
-          ),
-          if (_playbackExpanded) ...[
+          if (_fontName.isNotEmpty) ...[
             const SizedBox(height: 12),
-            AnimatedBuilder(
-              animation: EqualizerStore.ensure(),
-              builder: (context, _) => _PlaybackPanel(
-                mixWithOthers: _mixWithOthers,
+            _BeansRow(
+              icon: Icons.restore,
+              title: '恢复默认字体',
+              onTap: () => _resetFont(context),
+            ),
+          ],
+          const SizedBox(height: 20),
+          const _SectionTitle('音乐播放'),
+          AnimatedBuilder(
+            animation: EqualizerStore.ensure(),
+            builder: (context, _) => _PlaybackPanel(
+              mixWithOthers: _mixWithOthers,
               onMixChanged: (value) async {
                 HaoHaptics.select();
                 await HiveStore.put(HiveKeys.audioMixWithOthers, value);
@@ -473,69 +574,306 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 HaoHaptics.tap();
                 await Get.to(() => const EqualizerPage());
               },
-              ),
             ),
-          ],
-          const SizedBox(height: 20),
-          _ExpandableHeader(
-            icon: Icons.movie_filter,
-            title: '播放器引擎',
-            value: _engineExpanded
-                ? null
-                : PlayerEngineX.fromKey(_engineKey).displayName,
-            expanded: _engineExpanded,
-            onTap: () async {
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: loudness normalisation (default off, no
+          // subtitle). Strength lives in the player, not here.
+          _BeansSwitchRow(
+            icon: Icons.volume_up,
+            title: '音量归一化',
+            value: _musicNormalizationEnabled,
+            onChanged: (value) async {
               HaoHaptics.select();
-              final next = !_engineExpanded;
-              await HiveStore.put(HiveKeys.engineSectionExpanded, next);
-              setState(() => _engineExpanded = next);
+              await HiveStore.put(HiveKeys.musicNormalizationEnabled, value);
+              setState(() => _musicNormalizationEnabled = value);
             },
           ),
-          if (_engineExpanded) ...[
-            const SizedBox(height: 12),
-            HaoGlassCard(
-              quality: GlassCardQuality.standard,
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: RadioGroup<String>(
-                groupValue: _engineKey,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  HaoHaptics.select();
-                  await HiveStore.put(HiveKeys.videoPlayerKey, value);
-                  setState(() => _engineKey = value);
-                },
-                child: Column(
-                  children: PlayerEngine.values.map((engine) {
-                    return RadioListTile<String>(
-                      title: Text(
-                        engine.displayName,
-                        style: TextStyle(color: theme.textPrimary),
+          const SizedBox(height: 20),
+          const _SectionTitle('影视播放'),
+          HaoGlassCard(
+            quality: GlassCardQuality.standard,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: RadioGroup<String>(
+              groupValue: _engineKey,
+              onChanged: (value) async {
+                if (value == null) return;
+                HaoHaptics.select();
+                await HiveStore.put(HiveKeys.videoPlayerKey, value);
+                setState(() => _engineKey = value);
+              },
+              child: Column(
+                children: PlayerEngine.values.map((engine) {
+                  return RadioListTile<String>(
+                    title: Text(
+                      engine.displayName,
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        shadows: HaoTheme.legibilityShadows(context),
                       ),
-                      subtitle: engine == PlayerEngine.exo
-                          ? const Text('AVPlayer 不能播 FLV，失败时自动换内核')
-                          : null,
-                      value: engine.key,
-                      activeColor: theme.accent,
-                    );
-                  }).toList(),
-                ),
+                    ),
+                    subtitle: engine == PlayerEngine.exo
+                        ? Text(
+                            'AVPlayer 不能播 FLV，失败时自动换内核',
+                            style: TextStyle(
+                              shadows: HaoTheme.legibilityShadows(context),
+                            ),
+                          )
+                        : null,
+                    value: engine.key,
+                    activeColor: theme.accent,
+                  );
+                }).toList(),
               ),
             ),
-          ],
-          const SizedBox(height: 20),
-          const _SectionTitle('备份与数据'),
+          ),
+          const SizedBox(height: 12),
+          _BeansSwitchRow(
+            icon: Icons.skip_next,
+            title: '自动连播下一集',
+            value: _autoNext,
+            onChanged: (value) async {
+              HaoHaptics.select();
+              await VideoPlaybackSettings.setAutoNext(value);
+              setState(() => _autoNext = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          // VOD picture fit (PiliPlus VideoFitType + Kazumi
+          // PlayerAspectRatio): tap cycles 自动 -> 拉伸 -> 裁剪.
+          // VOD only — live always renders contain.
           _BeansRow(
-            icon: Icons.upload,
-            title: '导出备份',
-            subtitle: '导出全部本地数据（含音乐/壁纸文件）',
-            onTap: () => _exportBackup(context),
+            icon: Icons.aspect_ratio,
+            title: '视频画面比例',
+            subtitle: '当前：${_videoFit.label}',
+            onTap: () async {
+              HaoHaptics.select();
+              final next = _videoFit.next;
+              await VideoPlaybackSettings.setVideoFit(next);
+              setState(() => _videoFit = next);
+            },
+          ),
+          const SizedBox(height: 12),
+          // Anime4K super-resolution (build 28 J): VOD only — the
+          // switch gates the VOD path; live playback never reads it.
+          // Effective only on the MPV engine, from the next open
+          // (next episode / line or engine switch re-opens the
+          // player); toggling mid-playback does nothing until then.
+          // 1.1.6 trio: mutually exclusive with interpolation and
+          // SDR→HDR in display only (see _mpvFxRow) — the stored
+          // value of a greyed-out row is never cleared.
+          _mpvFxRow(
+            locked: _vodInterpolation || _vodSdrToHdr,
+            child: _BeansSwitchRow(
+              icon: Icons.auto_awesome,
+              title: 'Anime4K 超分',
+              subtitle: '仅 MPV，下次播放生效',
+              value: _vodSuperResolution,
+              onChanged: (value) async {
+                HaoHaptics.select();
+                await HiveStore.put(HiveKeys.vodSuperResolution, value);
+                setState(() => _vodSuperResolution = value);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: VOD frame interpolation (MPV only, next open).
+          _mpvFxRow(
+            locked: _vodSuperResolution || _vodSdrToHdr,
+            child: _BeansSwitchRow(
+              icon: Icons.animation,
+              title: '插帧',
+              subtitle: '仅 MPV，下次播放生效',
+              value: _vodInterpolation,
+              onChanged: (value) async {
+                HaoHaptics.select();
+                await HiveStore.put(HiveKeys.vodInterpolation, value);
+                setState(() => _vodInterpolation = value);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: VOD SDR→HDR (MPV only, next open).
+          _mpvFxRow(
+            locked: _vodSuperResolution || _vodInterpolation,
+            child: _BeansSwitchRow(
+              icon: Icons.hdr_on,
+              title: 'SDR 转 HDR',
+              subtitle: '仅 MPV，下次播放生效',
+              value: _vodSdrToHdr,
+              onChanged: (value) async {
+                HaoHaptics.select();
+                await HiveStore.put(HiveKeys.vodSdrToHdr, value);
+                setState(() => _vodSdrToHdr = value);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: DV Profile 8 downgrade-to-HDR. Default ON —
+          // unlike the trio above. Not part of the exclusion.
+          _BeansSwitchRow(
+            icon: Icons.high_quality,
+            title: '杜比视界 Profile 8 降级 HDR',
+            value: _vodDvP8Downgrade,
+            onChanged: (value) async {
+              HaoHaptics.select();
+              await HiveStore.put(HiveKeys.vodDvP8Downgrade, value);
+              setState(() => _vodDvP8Downgrade = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: skip intro/outro — tap cycles 关 -> 手动 ->
+          // 自动延时 3 秒 -> 自动立即 (same cycle-row pattern as
+          // 视频画面比例 / 低内存模式 above).
+          _BeansRow(
+            icon: Icons.fast_forward,
+            title: '跳过片头片尾',
+            subtitle: '当前：${_skipIntroLabels[_vodSkipIntroMode] ?? '关'}',
+            onTap: () async {
+              HaoHaptics.select();
+              final i = _skipIntroOrder.indexOf(_vodSkipIntroMode);
+              final next =
+                  _skipIntroOrder[(i < 0 ? 0 : i + 1) % _skipIntroOrder.length];
+              await HiveStore.put(HiveKeys.vodSkipIntroMode, next);
+              setState(() => _vodSkipIntroMode = next);
+            },
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: VOD subtitle time offset (±10s, 0.1s step).
+          // Same card shape as the 液态玻璃强度 slider above:
+          // drag previews in memory, Hive is written on release.
+          HaoGlassCard(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Icon(
+                        Icons.subtitles,
+                        size: 14,
+                        color: theme.accent,
+                        shadows: HaoTheme.legibilityShadows(context),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '字幕时间偏移',
+                        style: TextStyle(
+                          fontSize: 15,
+                          shadows: HaoTheme.legibilityShadows(context),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _formatSubtitleDelay(_vodSubtitleDelay),
+                      style: TextStyle(
+                        color: theme.textSecondary,
+                        fontSize: 14,
+                        shadows: HaoTheme.legibilityShadows(context),
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: _vodSubtitleDelay.clamp(-10.0, 10.0),
+                  min: -10,
+                  max: 10,
+                  divisions: 200,
+                  onChanged: (v) => setState(
+                    () => _vodSubtitleDelay =
+                        double.parse(v.toStringAsFixed(1)),
+                  ),
+                  onChangeEnd: (v) async {
+                    final rounded = double.parse(v.toStringAsFixed(1));
+                    await HiveStore.put(HiveKeys.vodSubtitleDelay, rounded);
+                    if (mounted) {
+                      setState(() => _vodSubtitleDelay = rounded);
+                    }
+                    // N-13: light tap on release, click at either end.
+                    HaoHaptics.sliderEnd(v, -10, 10);
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 1.1.6: VOD subtitle appearance (MPV only, three tiers
+          // each). Tap cycles to the next tier; applies at the next
+          // open, same as the subtitle delay row above (the player
+          // reads the persisted tiers once at open).
+          _BeansRow(
+            icon: Icons.format_size,
+            title: '字幕字号',
+            subtitle:
+                '当前：${_subFontSizeLabels[_vodSubtitleFontSize] ?? '标准'}',
+            onTap: () async {
+              HaoHaptics.select();
+              final i = _subFontSizeOrder.indexOf(_vodSubtitleFontSize);
+              final next = _subFontSizeOrder[
+                  (i < 0 ? 0 : i + 1) % _subFontSizeOrder.length];
+              await HiveStore.put(HiveKeys.vodSubtitleFontSize, next);
+              if (mounted) setState(() => _vodSubtitleFontSize = next);
+              HaoToast.show('提示', message: '下次打开生效');
+            },
           ),
           const SizedBox(height: 12),
           _BeansRow(
-            icon: Icons.download,
-            title: '导入备份',
-            subtitle: '选择备份文件恢复',
-            onTap: () => _importBackup(context),
+            icon: Icons.palette_outlined,
+            title: '字幕颜色',
+            subtitle: '当前：${_subColorLabels[_vodSubtitleColor] ?? '白色'}',
+            onTap: () async {
+              HaoHaptics.select();
+              final i = _subColorOrder.indexOf(_vodSubtitleColor);
+              final next =
+                  _subColorOrder[(i < 0 ? 0 : i + 1) % _subColorOrder.length];
+              await HiveStore.put(HiveKeys.vodSubtitleColor, next);
+              if (mounted) setState(() => _vodSubtitleColor = next);
+              HaoToast.show('提示', message: '下次打开生效');
+            },
+          ),
+          const SizedBox(height: 12),
+          _BeansRow(
+            icon: Icons.vertical_align_center,
+            title: '字幕位置',
+            subtitle:
+                '当前：${_subPositionLabels[_vodSubtitlePosition] ?? '底部'}',
+            onTap: () async {
+              HaoHaptics.select();
+              final i = _subPositionOrder.indexOf(_vodSubtitlePosition);
+              final next = _subPositionOrder[
+                  (i < 0 ? 0 : i + 1) % _subPositionOrder.length];
+              await HiveStore.put(HiveKeys.vodSubtitlePosition, next);
+              if (mounted) setState(() => _vodSubtitlePosition = next);
+              HaoToast.show('提示', message: '下次打开生效');
+            },
+          ),
+          const SizedBox(height: 12),
+          // Low-memory mode (Kazumi): tap cycles 自动 -> 始终开启 ->
+          // 始终关闭. Applies at the next open (mpv properties are set
+          // in open()); the subtitle states the effective state now,
+          // and the toast below says so once, at the moment the user
+          // changes it (build 28 D9 — no permanent hint row).
+          _BeansRow(
+            icon: Icons.data_saver_on,
+            title: '低内存模式',
+            subtitle: _lowMemoryMode.statusDescription(),
+            onTap: () async {
+              HaoHaptics.select();
+              final next = _lowMemoryMode.next;
+              await LowMemoryMode.save(next);
+              setState(() => _lowMemoryMode = next);
+              HaoToast.show('提示', message:  '下次打开生效');
+            },
+          ),
+          const SizedBox(height: 12),
+          _BeansRow(
+            icon: Icons.chat_bubble_outline,
+            title: '弹幕设置',
+            onTap: () => Get.to(() => const DanmakuSettingsPage()),
           ),
           const SizedBox(height: 20),
           const _SectionTitle('源管理'),
@@ -557,59 +895,29 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             onTap: () => Get.to(() => const LiveSourcesPage()),
           ),
           const SizedBox(height: 20),
-          const _SectionTitle('播放与缓存'),
-          _BeansSwitchRow(
-            icon: Icons.skip_next,
-            title: '自动连播下一集',
-            value: _autoNext,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              await VideoPlaybackSettings.setAutoNext(value);
-              setState(() => _autoNext = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          // VOD picture fit (PiliPlus VideoFitType + Kazumi
-          // PlayerAspectRatio): tap cycles 自动 -> 拉伸 -> 裁剪.
-          // VOD only — live always renders contain.
+          const _SectionTitle('数据'),
           _BeansRow(
-            icon: Icons.aspect_ratio,
-            title: '视频画面比例',
-            subtitle: '当前：${_videoFit.label}（仅影视播放）',
-            onTap: () async {
-              HaoHaptics.select();
-              final next = _videoFit.next;
-              await VideoPlaybackSettings.setVideoFit(next);
-              setState(() => _videoFit = next);
-            },
-          ),
-          const SizedBox(height: 12),
-          // Low-memory mode (Kazumi): tap cycles 自动 -> 始终开启 ->
-          // 始终关闭. Applies at the next open (mpv properties are set
-          // in open()); the subtitle states the effective state now.
-          _BeansRow(
-            icon: Icons.data_saver_on,
-            title: '低内存模式',
-            subtitle:
-                '${_lowMemoryMode.statusDescription()}（下次打开生效）',
-            onTap: () async {
-              HaoHaptics.select();
-              final next = _lowMemoryMode.next;
-              await LowMemoryMode.save(next);
-              setState(() => _lowMemoryMode = next);
-            },
+            icon: Icons.upload,
+            title: '导出备份',
+            onTap: () => _exportBackup(context),
           ),
           const SizedBox(height: 12),
           _BeansRow(
-            icon: Icons.chat_bubble_outline,
-            title: '弹幕设置',
-            onTap: () => Get.to(() => const DanmakuSettingsPage()),
+            icon: Icons.download,
+            title: '导入备份',
+            onTap: () => _importBackup(context),
           ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.cleaning_services,
             title: '缓存管理',
             onTap: () => Get.to(() => const CacheSettingsPage()),
+          ),
+          const SizedBox(height: 12),
+          _BeansRow(
+            icon: Icons.article_outlined,
+            title: '日志',
+            onTap: () => Get.to(() => const AppLogPage()),
           ),
           const SizedBox(height: 20),
           const _SectionTitle('关于'),
@@ -626,10 +934,17 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             onTap: () => _checkUpdate(context),
           ),
           const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.article_outlined,
-            title: '日志',
-            onTap: () => Get.to(() => const AppLogPage()),
+          // Build 28: gates only the automatic check at startup;
+          // the manual 检查更新 row above is never gated.
+          _BeansSwitchRow(
+            icon: Icons.autorenew,
+            title: '启动时自动检查更新',
+            value: _autoUpdateCheck,
+            onChanged: (value) async {
+              HaoHaptics.select();
+              await HiveStore.put(HiveKeys.autoUpdateCheck, value);
+              setState(() => _autoUpdateCheck = value);
+            },
           ),
         ],
       ),
@@ -653,7 +968,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       final installed = await CustomFontService().install(File(path));
       if (!context.mounted) return;
       if (installed == null) {
-        Get.snackbar('导入失败', '只支持 ttf / otf / ttc 字体文件');
+        HaoToast.show('导入失败', message:  '只支持 ttf / otf / ttc 字体文件');
         return;
       }
       Get.find<ThemeController>().setCustomFontFamily(
@@ -661,10 +976,10 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         box: HiveStore.box,
       );
       setState(() => _loadAppearance());
-      Get.snackbar('已安装字体', _fontName);
+      HaoToast.show('已安装字体', message:  _fontName);
     } catch (_) {
       if (!context.mounted) return;
-      Get.snackbar('导入失败', '读取字体文件失败，请重试');
+      HaoToast.show('导入失败', message:  '读取字体文件失败，请重试');
     }
   }
 
@@ -676,7 +991,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     Get.find<ThemeController>().setCustomFontFamily('', box: HiveStore.box);
     setState(() => _loadAppearance());
     if (!context.mounted) return;
-    Get.snackbar('已恢复', '已恢复系统默认字体');
+    HaoToast.show('已恢复', message:  '已恢复系统默认字体');
   }
 
   Future<void> _checkUpdate(BuildContext context) async {
@@ -687,19 +1002,16 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         AppLog.info(
           '发现新版本 v${info!.version} (build ${info.build})',
         );
-        await _updateService.recordKnownUpdate(info.version);
-        if (!context.mounted) return;
         await showUpdateDialog(context, info, service: _updateService);
       case UpdateCheckResult.skipped:
         AppLog.debug('更新检查：已跳过该版本');
-        Get.snackbar('提示', '已跳过该版本');
+        HaoToast.show('提示', message:  '已跳过该版本');
       case UpdateCheckResult.upToDate:
         AppLog.debug('更新检查：已是最新版本');
-        await _updateService.clearKnownUpdate();
-        Get.snackbar('提示', '已是最新版本');
+        HaoToast.show('提示', message:  '已是最新版本');
       case UpdateCheckResult.unavailable:
         AppLog.warn('更新检查失败');
-        Get.snackbar('提示', _updateFailureMessage());
+        HaoToast.show('提示', message:  _updateFailureMessage());
     }
   }
 
@@ -746,7 +1058,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       );
     } catch (_) {
       if (!context.mounted) return;
-      Get.snackbar('导出失败', '备份文件写入失败，请重试');
+      HaoToast.show('导出失败', message:  '备份文件写入失败，请重试');
     }
   }
 
@@ -796,8 +1108,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       if (!context.mounted) return;
       switch (result) {
         case BackupImportResult.ok:
-          Get.snackbar(
-            '恢复成功',
+          HaoToast.show('恢复成功', message: 
             files > 0 ? '已恢复 $count 项数据，$files 个文件' : '已恢复 $count 项数据',
           );
           // The import rewrote the whole box — every piece of state
@@ -807,10 +1118,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           Get.find<ThemeController>().loadFromBox(HiveStore.box);
           setState(() {
             _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
-            _engineExpanded =
-                HiveStore.getBool(HiveKeys.engineSectionExpanded, false);
-            _playbackExpanded =
-                HiveStore.getBool(HiveKeys.playbackSectionExpanded, false);
             _autoNext = VideoPlaybackSettings.autoNext;
             _mixWithOthers =
                 HiveStore.getBool(HiveKeys.audioMixWithOthers, false);
@@ -820,17 +1127,17 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             _quality = MusicStore.quality;
           });
         case BackupImportResult.invalidJson:
-          Get.snackbar('恢复失败', '文件不是有效的备份文件');
+          HaoToast.show('恢复失败', message:  '文件不是有效的备份文件');
         case BackupImportResult.wrongSchema:
-          Get.snackbar('恢复失败', '备份版本不受支持');
+          HaoToast.show('恢复失败', message:  '备份版本不受支持');
         case BackupImportResult.emptyData:
-          Get.snackbar('恢复失败', '备份文件没有数据');
+          HaoToast.show('恢复失败', message:  '备份文件没有数据');
         case BackupImportResult.writeFailed:
-          Get.snackbar('恢复失败', '导入中断，已恢复原数据');
+          HaoToast.show('恢复失败', message:  '导入中断，已恢复原数据');
       }
     } catch (_) {
       if (!context.mounted) return;
-      Get.snackbar('恢复失败', '读取备份文件失败，请重试');
+      HaoToast.show('恢复失败', message:  '读取备份文件失败，请重试');
     }
   }
 }
@@ -877,18 +1184,15 @@ class _BackgroundSwatches extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(
-                  '背景色',
-                  style: TextStyle(
-                    color: theme.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
                 const Spacer(),
                 TextButton(
                   onPressed: onReset,
-                  child: const Text('恢复默认'),
+                  child: Text(
+                    '恢复默认',
+                    style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -920,6 +1224,7 @@ class _BackgroundSwatches extends StatelessWidget {
                             color: hex == '#FFFFFF' || hex == '#F2F2F7'
                                 ? Colors.black
                                 : Colors.white,
+                            shadows: HaoTheme.legibilityShadows(context),
                           )
                         : null,
                   ),
@@ -949,7 +1254,8 @@ class _SectionTitle extends StatelessWidget {
         style: TextStyle(
           color: HaoTheme.of(context).textPrimary,
           fontSize: 21,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
+          shadows: HaoTheme.legibilityShadows(context),
         ),
       ),
     );
@@ -987,7 +1293,7 @@ class _BeansRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         child: Material(
           color: Colors.transparent,
-          child: InkWell(
+          child: HaoPressable(
             onTap: onTap == null
                 ? null
                 : () {
@@ -999,7 +1305,12 @@ class _BeansRow extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 28,
-                  child: Icon(icon, size: 14, color: theme.accent),
+                  child: Icon(
+                    icon,
+                    size: 14,
+                    color: theme.accent,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1012,6 +1323,7 @@ class _BeansRow extends StatelessWidget {
                         style: TextStyle(
                           color: theme.textPrimary,
                           fontSize: 15,
+                          shadows: HaoTheme.legibilityShadows(context),
                         ),
                       ),
                       if (subtitle != null) ...[
@@ -1021,6 +1333,7 @@ class _BeansRow extends StatelessWidget {
                           style: TextStyle(
                             color: theme.textSecondary,
                             fontSize: 11,
+                            shadows: HaoTheme.legibilityShadows(context),
                           ),
                         ),
                       ],
@@ -1034,6 +1347,7 @@ class _BeansRow extends StatelessWidget {
                             Icons.chevron_right,
                             size: 16,
                             color: theme.textMuted.withValues(alpha: 0.6),
+                            shadows: HaoTheme.legibilityShadows(context),
                           )),
               ],
             ),
@@ -1077,6 +1391,9 @@ class _BeansSwitchRow extends StatelessWidget {
       subtitle: subtitle,
       trailing: GlassSwitch(
         value: value,
+        // N-8: iOS size 51x31 (was the library default 58x26).
+        width: 51,
+        height: 31,
         onChanged: onChanged,
         activeColor: HaoTheme.of(context).accent,
         // Intensity-scaled optics (chen 2026-11-21).
@@ -1087,83 +1404,10 @@ class _BeansSwitchRow extends StatelessWidget {
   }
 }
 
-/// Expandable-section header card (Beans `playbackSection` header,
-/// ProfileView.swift: header button with icon + title + ⌄/⌃ chevron,
-/// glass radius 18, padding h14 v13, press scale 0.98). [value] is the
-/// collapsed-state summary shown on the right (engine picker).
-class _ExpandableHeader extends StatelessWidget {
-  const _ExpandableHeader({
-    required this.icon,
-    required this.title,
-    this.value,
-    required this.expanded,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? value;
-  final bool expanded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
-    return GlassPressScale(
-      pressedScale: 0.98,
-      child: GlassCard(
-        radius: 18,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(HaoRadius.panel),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: Icon(icon, size: 14, color: theme.accent),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: theme.textPrimary,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                if (value != null)
-                  Text(
-                    value!,
-                    style: TextStyle(
-                      color: theme.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                Icon(
-                  expanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  size: 16,
-                  color: theme.textMuted.withValues(alpha: 0.6),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The expanded playback panel (Beans `playbackSection` expanded body,
 /// ProfileView.swift: glass radius 22, padding 16, rows spaced 14,
 /// dividers muted 0.15). Rows, in Beans' order:
-/// 与其他音频同时播放 / 120Hz 高刷新 (display) / 启动时自动播放上次歌曲 /
+/// 与其他音频同时播放 / 启动时自动播放上次歌曲 /
 /// 播放音质 (chips) / 触感反馈 / 均衡器 (Beans `equalizerSection`,
 /// ProfileView.swift:2255: row + 已开启/已关闭 trailing, opens the
 /// 10-band page) / 第三方音源 (count display only — management lives
@@ -1213,24 +1457,6 @@ class _PlaybackPanel extends StatelessWidget {
             onChanged: onMixChanged,
           ),
           const _PanelDivider(),
-          // 120Hz: display-only row with a checkmark, exactly like
-          // Beans (no toggle; onAppear forces the keeper on). Ours is
-          // pinned in Info.plist + AppDelegate, so the checkmark is
-          // always on — a switch here would be fake.
-          Row(
-            children: [
-              SizedBox(
-                width: 28,
-                child: Icon(Icons.speed, size: 14, color: theme.accent),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text('120Hz 高刷新', style: TextStyle(fontSize: 15)),
-              ),
-              Icon(Icons.check_circle, size: 17, color: theme.accent),
-            ],
-          ),
-          const _PanelDivider(),
           _PanelSwitch(
             icon: Icons.play_circle_outline,
             title: '启动时自动播放上次歌曲',
@@ -1240,7 +1466,6 @@ class _PlaybackPanel extends StatelessWidget {
           const _PanelDivider(),
           _QualityChips(
             title: '播放音质',
-            hint: '无法使用时会由平台自动降级。',
             selected: quality,
             onSelected: onQualityChanged,
           ),
@@ -1257,48 +1482,68 @@ class _PlaybackPanel extends StatelessWidget {
           // state (已开启/已关闭) + chevron; tap opens the 10-band
           // page. The state comes from EqualizerStore (AnimatedBuilder
           // above), so it follows the page's toggle live.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onOpenEqualizer,
-              borderRadius: BorderRadius.circular(HaoRadius.large),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 28,
-                    child: Icon(Icons.tune, size: 14, color: theme.accent),
+          // Hidden on Android only (1.1.6): the equalizer is the
+          // vendored just_audio fork + MTAudioProcessingTap, iOS-only
+          // — Android has no equalizer engine, so the row (and its
+          // divider) is hidden there instead of opening a dead page.
+          // `!isAndroid` (not `isIOS`) keeps the Linux test env green.
+          if (!Platform.isAndroid) ...[
+              Material(
+                color: Colors.transparent,
+                child: HaoPressable(
+                  onTap: onOpenEqualizer,
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 28,
+                        child: Icon(
+                          Icons.tune,
+                          size: 14,
+                          color: theme.accent,
+                          shadows: HaoTheme.legibilityShadows(context),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '均衡器',
+                              style: TextStyle(
+                                fontSize: 15,
+                                shadows: HaoTheme.legibilityShadows(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        equalizerEnabled ? '已开启' : '已关闭',
+                        style: TextStyle(
+                          color: equalizerEnabled
+                              ? theme.accent
+                              : theme.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          shadows: HaoTheme.legibilityShadows(context),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: theme.textMuted.withValues(alpha: 0.6),
+                        shadows: HaoTheme.legibilityShadows(context),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('均衡器', style: TextStyle(fontSize: 15)),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    equalizerEnabled ? '已开启' : '已关闭',
-                    style: TextStyle(
-                      color: equalizerEnabled
-                          ? theme.accent
-                          : theme.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: theme.textMuted.withValues(alpha: 0.6),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          const _PanelDivider(),
+              const _PanelDivider(),
+          ],
           Row(
             children: [
               SizedBox(
@@ -1307,18 +1552,27 @@ class _PlaybackPanel extends StatelessWidget {
                   Icons.inventory_2,
                   size: 14,
                   color: theme.accent,
+                  shadows: HaoTheme.legibilityShadows(context),
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
                   '第三方音源',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
                 ),
               ),
               Text(
                 sourceCount == null ? '…' : '$sourceCount 个',
-                style: TextStyle(color: theme.textSecondary, fontSize: 12),
+                style: TextStyle(
+                  color: theme.textSecondary,
+                  fontSize: 13,
+                  shadows: HaoTheme.legibilityShadows(context),
+                ),
               ),
             ],
           ),
@@ -1363,14 +1617,28 @@ class _PanelSwitch extends StatelessWidget {
       children: [
         SizedBox(
           width: 28,
-          child: Icon(icon, size: 14, color: theme.accent),
+          child: Icon(
+            icon,
+            size: 14,
+            color: theme.accent,
+            shadows: HaoTheme.legibilityShadows(context),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(title, style: const TextStyle(fontSize: 15)),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 15,
+              shadows: HaoTheme.legibilityShadows(context),
+            ),
+          ),
         ),
         GlassSwitch(
           value: value,
+          // N-8: iOS size 51x31 (was the library default 58x26).
+          width: 51,
+          height: 31,
           onChanged: onChanged,
           activeColor: theme.accent,
           // Intensity-scaled optics (chen 2026-11-21).
@@ -1383,7 +1651,7 @@ class _PanelSwitch extends StatelessWidget {
 }
 
 /// Beans quality chips (ProfileView.swift `playbackQualitySection` and
-/// the third-party quality chips): title 14 semibold, hint 10, chips
+/// the third-party quality chips): title 14 semibold, chips
 /// height 31, h padding 12, font 12, spacing 8; selected fill accent
 /// 0.14 + stroke accent 0.42 (0.8pt) + checkmark 9 bold; unselected
 /// fill label 0.055 + stroke label 0.08. Single row (chen: one quality
@@ -1391,13 +1659,11 @@ class _PanelSwitch extends StatelessWidget {
 class _QualityChips extends StatelessWidget {
   const _QualityChips({
     required this.title,
-    required this.hint,
     required this.selected,
     required this.onSelected,
   });
 
   final String title;
-  final String hint;
   final AudioQuality selected;
   final ValueChanged<AudioQuality> onSelected;
 
@@ -1411,7 +1677,12 @@ class _QualityChips extends StatelessWidget {
           children: [
             SizedBox(
               width: 22,
-              child: Icon(Icons.graphic_eq, size: 13, color: theme.accent),
+              child: Icon(
+                Icons.graphic_eq,
+                size: 13,
+                color: theme.accent,
+                shadows: HaoTheme.legibilityShadows(context),
+              ),
             ),
             const SizedBox(width: 9),
             Expanded(
@@ -1421,18 +1692,10 @@ class _QualityChips extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    hint,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: theme.textSecondary,
-                      fontSize: 10,
+                      shadows: HaoTheme.legibilityShadows(context),
                     ),
                   ),
                 ],
@@ -1479,7 +1742,7 @@ class _QualityChip extends StatelessWidget {
       pressedScale: 0.97,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: HaoPressable(
           onTap: () {
             HaoHaptics.select();
             onTap();
@@ -1507,15 +1770,21 @@ class _QualityChip extends StatelessWidget {
                   quality.label,
                   style: TextStyle(
                     color: selected ? theme.accent : theme.textPrimary,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: selected
                         ? FontWeight.w600
                         : FontWeight.w500,
+                    shadows: HaoTheme.legibilityShadows(context),
                   ),
                 ),
                 if (selected) ...[
                   const SizedBox(width: 5),
-                  Icon(Icons.check, size: 9, color: theme.accent),
+                  Icon(
+                    Icons.check,
+                    size: 9,
+                    color: theme.accent,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
                 ],
               ],
             ),

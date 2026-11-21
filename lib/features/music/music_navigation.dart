@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 /// Route name marking a music sub-page: search, daily, plaza, charts,
 /// listening report, favourites, downloads, local files, playlist /
@@ -65,7 +65,7 @@ void resetPlayerPageGuardForTest() {
 /// sub-page push; do NOT use it for the full player or the equalizer.
 Future<T?> pushMusicSubPage<T>(BuildContext context, Widget page) {
   return Navigator.of(context).push<T>(
-    MaterialPageRoute<T>(
+    CupertinoPageRoute<T>(
       settings: const RouteSettings(name: musicSubPageRouteName),
       builder: (_) => page,
     ),

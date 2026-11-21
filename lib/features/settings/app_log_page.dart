@@ -14,7 +14,9 @@ import '../../core/theme/hao_radius.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/logging/app_log.dart';
@@ -84,7 +86,7 @@ class _AppLogPageState extends State<AppLogPage> {
   Future<void> _share() async {
     final text = AppLog.formatText(_filtered);
     if (text.isEmpty) {
-      Get.snackbar('无日志', '没有可分享的日志');
+      HaoToast.show('无日志', message:  '没有可分享的日志');
       return;
     }
     try {
@@ -92,7 +94,7 @@ class _AppLogPageState extends State<AppLogPage> {
       await share(text);
     } catch (_) {
       if (!mounted) return;
-      Get.snackbar('分享失败', '无法打开分享');
+      HaoToast.show('分享失败', message:  '无法打开分享');
     }
   }
 
@@ -123,7 +125,7 @@ class _AppLogPageState extends State<AppLogPage> {
     await AppLog.clear();
     if (!mounted) return;
     setState(() => _hasNew = false);
-    Get.snackbar('已清空', '日志记录已清空');
+    HaoToast.show('已清空', message:  '日志记录已清空');
   }
 
   void _jumpToTop() {
@@ -358,7 +360,7 @@ class _NewLogPill extends StatelessWidget {
     final theme = HaoTheme.of(context);
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: HaoPressable(
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Container(

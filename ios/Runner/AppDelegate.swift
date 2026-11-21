@@ -45,5 +45,13 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.SystemVolumePlugin") {
       SystemVolumePlugin.register(with: registrar)
     }
+    // Person segmentation (1.1.6, danmaku occlusion avoidance,
+    // reduced version): Vision VNGeneratePersonSegmentationRequest
+    // (iOS 15+, .fast) over low-frequency MPV snapshots; the mask
+    // comes back to Dart for a whole-layer ShaderMask on the
+    // danmaku layer. MPV-only, default off.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.PersonSegmentationPlugin") {
+      PersonSegmentationPlugin.register(with: registrar)
+    }
   }
 }

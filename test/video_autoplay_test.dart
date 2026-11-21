@@ -337,6 +337,13 @@ void main() {
 
       expect(openedUrls(), hasLength(1));
       expect(find.text('已播完'), findsOneWidget);
+      // Drain the cross-source continuation sweep: _onEpisodeEnded
+      // falls through to a real-CMS findAlts scan whose 15 s cap
+      // timer (cms_client.dart) outlives the end state; the
+      // framework fails the test if any timer is still pending at
+      // teardown. Same drain as the failed-player test in this file.
+      // AutoNext is OFF here, so nothing auto-plays during the drain.
+      await tester.pump(const Duration(seconds: 16));
       await unmountPlayer(tester);
     });
 
@@ -349,6 +356,10 @@ void main() {
 
       expect(openedUrls(), hasLength(1));
       expect(find.text('已播完'), findsOneWidget);
+      // Drain the cross-source continuation sweep (see the toggle-OFF
+      // test above). No network in the test env, so the scan finds no
+      // candidate and the 5 s countdown never starts during the drain.
+      await tester.pump(const Duration(seconds: 16));
       await unmountPlayer(tester);
     });
 

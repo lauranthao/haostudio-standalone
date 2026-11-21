@@ -55,11 +55,21 @@ DoubanDetail? parseDoubanAbstract(Map<String, dynamic>? json) {
 }
 
 /// Parse the mobile page `m.douban.com/movie/subject/<id>/` →
-/// `{poster, overview, score}`. Port of `doubanParseMPage` exactly:
-/// poster via og:image `pNNNN` id → s_ratio_poster URL, else any
-/// s_ratio_poster match, else the raw og:image; overview from the
-/// description meta (entity-decoded, leading `…豆瓣评分：X.X 简介：`
-/// prefix stripped); score from the ratingValue meta.
+/// `{poster, overview, score}`. Port of `doubanParseMPage` exactly,
+/// except the poster tier (F1, build 28): poster via og:image `pNNNN`
+/// id → l_ratio_poster URL, else any l_ratio_poster match (then m,
+/// then s), else the raw og:image; overview from the description meta
+/// (entity-decoded, leading `…豆瓣评分：X.X 简介：` prefix stripped);
+/// score from the ratingValue meta.
+///
+/// F1 note — the m page only ever embeds s_ratio_poster thumbnails
+/// (verified 2026-11-21 on the real 庆余年 + 流浪地球2 pages: 0
+/// l_ratio_poster and 0 m_ratio_poster occurrences), so a bare
+/// regex search for an embedded l URL can never match. The l URL
+/// is built by swapping ONLY the tier segment of the embedded URL
+/// found (host + p-id untouched — the imgN host must stay the one
+/// the page gave, per the 418 check in §2.2). The l→m→s order
+/// picks which embedded URL to rewrite when several are present.
 ({String poster, String overview, String? score}) parseDoubanMPage(
   String? html,
 ) {
@@ -74,17 +84,38 @@ DoubanDetail? parseDoubanAbstract(Map<String, dynamic>? json) {
   final ogUrl = og != null ? og.group(1)!.replaceAll('&amp;', '&') : '';
   final idm = RegExp(r'/public/(p\d+)\.jpg').firstMatch(ogUrl);
   if (idm != null) {
-    final re = RegExp(
-      'https://img\\d+\\.doubanio\\.com/view/photo/s_ratio_poster/public/${idm.group(1)}\\.jpg',
-    );
-    final m2 = re.firstMatch(html);
-    if (m2 != null) poster = m2.group(0)!;
+    // F1: prefer an embedded l URL, then m, then s — then rewrite
+    // the tier segment to l (see the doc comment above for why a
+    // plain l search can never match a real m page).
+    for (final tier in const [
+      'l_ratio_poster',
+      'm_ratio_poster',
+      's_ratio_poster',
+    ]) {
+      final re = RegExp(
+        'https://img\\d+\\.doubanio\\.com/view/photo/$tier/public/${idm.group(1)}\\.jpg',
+      );
+      final m2 = re.firstMatch(html);
+      if (m2 != null) {
+        poster = m2.group(0)!.replaceFirst(tier, 'l_ratio_poster');
+        break;
+      }
+    }
   }
   if (poster.isEmpty) {
-    final m3 = RegExp(
-      r'https://img\d+\.doubanio\.com/view/photo/s_ratio_poster/public/p\d+\.jpg',
-    ).firstMatch(html);
-    if (m3 != null) poster = m3.group(0)!;
+    for (final tier in const [
+      'l_ratio_poster',
+      'm_ratio_poster',
+      's_ratio_poster',
+    ]) {
+      final m3 = RegExp(
+        'https://img\\d+\\.doubanio\\.com/view/photo/$tier/public/p\\d+\\.jpg',
+      ).firstMatch(html);
+      if (m3 != null) {
+        poster = m3.group(0)!.replaceFirst(tier, 'l_ratio_poster');
+        break;
+      }
+    }
   }
   if (poster.isEmpty && ogUrl.isNotEmpty) poster = ogUrl;
 

@@ -186,4 +186,42 @@ void main() {
       matchesGoldenFile('goldens/settings_dark.png'),
     );
   });
+
+  testWidgets('render settings light scrolled', (tester) async {
+    await pumpSettings(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
+    );
+    // The flat page (build 28) is taller than the viewport: scroll to
+    // the bottom (数据 + 关于 groups) for the second golden. Scope the
+    // scrollable to the ListView — the quality-chips row is a second,
+    // horizontal Scrollable on the same page.
+    await tester.scrollUntilVisible(
+      find.text('启动时自动检查更新'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/settings_light_scrolled.png'),
+    );
+  });
+
+  testWidgets('render settings dark scrolled', (tester) async {
+    await pumpSettings(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
+    );
+    await tester.scrollUntilVisible(
+      find.text('启动时自动检查更新'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/settings_dark_scrolled.png'),
+    );
+  });
 }

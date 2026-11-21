@@ -12,6 +12,7 @@ import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -196,7 +197,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Widget _buildRow(HaoTheme theme, _DownloadRow row) {
     final song = row.song;
     final isDone = row.status == DownloadStatus.downloaded;
-    return InkWell(
+    return HaoPressable(
       onTap: isDone
           ? () => _playSong(
                 song,

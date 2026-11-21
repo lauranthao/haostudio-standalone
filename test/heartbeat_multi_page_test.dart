@@ -18,6 +18,7 @@ import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -298,7 +299,7 @@ void main() {
     expect(playerPages(tester), 1);
 
     // ⋯ sheet -> 播放列表 -> tap a song — still one page.
-    await tester.tap(inPlayer(find.byIcon(Icons.more_horiz)));
+    await tester.tap(inPlayer(find.byIcon(CupertinoIcons.ellipsis)));
     await settle(tester);
     await tester.tap(find.text('播放列表'));
     await settle(tester);

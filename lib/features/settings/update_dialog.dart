@@ -13,11 +13,10 @@
 // never a hardcoded colour; no purple anywhere. Frosted-glass card in
 // the same style as the audio-quality sheet.
 
-import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/glass.dart';
@@ -64,10 +63,10 @@ Future<UpdateDialogAction?> showUpdateDialog(
       type: MaterialType.transparency,
       child: Center(
         child: GlassCard(
-          radius: 24,
+          radius: 14,
           shadow: GlassShadow.panel,
           quality: GlassCardQuality.premium,
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          padding: EdgeInsets.zero,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 480),
             child: SizedBox(
@@ -76,35 +75,51 @@ Future<UpdateDialogAction?> showUpdateDialog(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    '发现新版本 v${info.version} (build ${info.build})',
-                    style: TextStyle(
-                      color: theme.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Text(
-                        (info.changelog == null || info.changelog!.isEmpty)
-                            ? '新版本已发布，点击下载在浏览器中获取安装包。'
-                            : info.changelog!,
-                        style: TextStyle(
-                          color: theme.textSecondary,
-                          fontSize: 14,
-                          height: 1.5,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          '发现新版本 v${info.version} (build ${info.build})',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(ctx),
+                            color: theme.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: Text(
+                              (info.changelog == null ||
+                                      info.changelog!.isEmpty)
+                                  ? '新版本已发布，点击下载在浏览器中获取安装包。'
+                                  : info.changelog!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(ctx),
+                                color: theme.textSecondary,
+                                fontSize: 13,
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  FilledButton(
+                  _UpdateAction(
+                    label: '下载',
+                    color: theme.accent,
+                    weight: FontWeight.w600,
                     onPressed: () async {
                       final uri = Uri.tryParse(info.ipaUrl);
                       if (uri == null) {
-                        Get.snackbar('下载失败', '下载链接无效');
+                        HaoToast.show('下载失败', message: '下载链接无效');
                         return;
                       }
                       final opened = await urlOpener(uri);
@@ -112,58 +127,31 @@ Future<UpdateDialogAction?> showUpdateDialog(
                       if (opened) {
                         Navigator.of(ctx).pop(UpdateDialogAction.download);
                       } else {
-                        Get.snackbar('下载失败', '无法打开下载链接，请检查网络后重试');
+                        HaoToast.show(
+                          '下载失败',
+                          message: '无法打开下载链接，请检查网络后重试',
+                        );
                       }
                     },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: theme.accent,
-                      // Theme-derived (light: white, dark: near-black) so
-                      // the label stays readable on every accent, incl. gold.
-                      foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(HaoRadius.large),
-                      ),
-                    ),
-                    child: const Text(
-                      '下载',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          // Pop first so the dialog dismisses instantly;
-                          // record the skip in the background. Awaiting
-                          // the Hive disk write before popping held the
-                          // dialog open on a slow write (and made the
-                          // dismiss timing depend on disk I/O).
-                          onPressed: () {
-                            Navigator.of(ctx).pop(UpdateDialogAction.skipped);
-                            unawaited(service.skipVersion(info.id));
-                          },
-                          child: Text(
-                            '跳过此版本',
-                            style: TextStyle(color: theme.textSecondary),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () =>
-                              Navigator.of(ctx).pop(UpdateDialogAction.later),
-                          child: Text(
-                            '稍后',
-                            style: TextStyle(color: theme.textSecondary),
-                          ),
-                        ),
-                      ),
-                    ],
+                  _UpdateAction(
+                    label: '跳过此版本',
+                    color: theme.textSecondary,
+                    // Pop first so the dialog dismisses instantly;
+                    // record the skip in the background. Awaiting
+                    // the Hive disk write before popping held the
+                    // dialog open on a slow write (and made the
+                    // dismiss timing depend on disk I/O).
+                    onPressed: () {
+                      Navigator.of(ctx).pop(UpdateDialogAction.skipped);
+                      unawaited(service.skipVersion(info.id));
+                    },
+                  ),
+                  _UpdateAction(
+                    label: '稍后',
+                    color: theme.textSecondary,
+                    onPressed: () =>
+                        Navigator.of(ctx).pop(UpdateDialogAction.later),
                   ),
                 ],
               ),
@@ -173,4 +161,51 @@ Future<UpdateDialogAction?> showUpdateDialog(
       ),
     ),
   );
+}
+
+/// One full-width stacked action row (N-4, same as the confirm
+/// dialog's rows): 17pt, centred, min 44pt tall, hairline divider
+/// above it.
+class _UpdateAction extends StatelessWidget {
+  const _UpdateAction({
+    required this.label,
+    required this.color,
+    required this.onPressed,
+    this.weight = FontWeight.w400,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+  final FontWeight weight;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(height: 1, color: theme.hairline),
+        TextButton(
+          onPressed: onPressed,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            minimumSize: const Size.fromHeight(44),
+            shape: const RoundedRectangleBorder(),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
+              color: color,
+              fontSize: 17,
+              fontWeight: weight,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

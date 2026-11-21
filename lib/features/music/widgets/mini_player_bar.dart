@@ -2,6 +2,7 @@ import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' hide GlassCard;
 
@@ -117,7 +118,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
               quality: GlassQuality.premium,
               child: Material(
                 color: Colors.transparent,
-                child: InkWell(
+                child: HaoPressable(
                   onTap: () {
                     HaoHaptics.tap();
                     // The bar's own rect (the keyed Container's box —
@@ -155,7 +156,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                                   width: 32,
                                   height: 32,
                                   color: theme.accentSoft,
-                                  child: Icon(
+                                  child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                     Icons.music_note,
                                     color: theme.textMuted,
                                   ),
@@ -169,7 +170,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                                     width: 32,
                                     height: 32,
                                     color: theme.accentSoft,
-                                    child: Icon(
+                                    child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                       Icons.music_note,
                                       color: theme.textMuted,
                                     ),
@@ -187,7 +188,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                               song.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textPrimary,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -214,7 +215,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                                   key: ValueKey(line ?? song.artist),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textSecondary,
                                     fontSize: 10,
                                   ),
@@ -304,7 +305,7 @@ class _MiniControl extends StatelessWidget {
       height: 44,
       child: IconButton(
         key: buttonKey,
-        icon: Icon(icon, size: size, color: color),
+        icon: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: size, color: color),
         padding: EdgeInsets.zero,
         onPressed: onPressed,
       ),

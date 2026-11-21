@@ -12,8 +12,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
@@ -70,10 +71,10 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
     }
     if (!mounted) return;
     if (added > 0) {
-      Get.snackbar('已导入', '已导入 $added 首本地音频');
+      HaoToast.show('已导入', message:  '已导入 $added 首本地音频');
       unawaited(_refresh());
     } else {
-      Get.snackbar('未导入', '没有可导入的音频文件');
+      HaoToast.show('未导入', message:  '没有可导入的音频文件');
     }
   }
 
@@ -97,7 +98,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
     if (ok != true || !mounted) return;
     await _store.remove(song);
     if (!mounted) return;
-    Get.snackbar('已删除', '已删除 ${song.title}');
+    HaoToast.show('已删除', message:  '已删除 ${song.title}');
     unawaited(_refresh());
   }
 
@@ -106,27 +107,27 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
     final theme = HaoTheme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('本地文件'),
+        title: Text('本地文件', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add),
             tooltip: '导入音频',
             onPressed: _import,
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _songs.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.audio_file, size: 48, color: theme.textMuted),
+                  Icon(shadows: HaoTheme.legibilityShadows(context), Icons.audio_file, size: 48, color: theme.textMuted),
                   const SizedBox(height: 12),
                   Text(
                     '还没有导入本地音频',
-                    style: TextStyle(color: theme.textSecondary, fontSize: 15),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 15),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
@@ -145,6 +146,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                   child: Text(
                     '共 ${_songs.length} 首 · 保存在应用内',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textSecondary,
                       fontSize: 13,
                     ),
@@ -173,6 +175,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                                 borderRadius: BorderRadius.circular(HaoRadius.standard),
                               ),
                               child: Icon(
+                                shadows: HaoTheme.legibilityShadows(ctx),
                                 Icons.audio_file,
                                 color: theme.textMuted,
                               ),
@@ -182,6 +185,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(ctx),
                                 color: theme.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -192,12 +196,14 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(ctx),
                                 color: theme.textSecondary,
                                 fontSize: 13,
                               ),
                             ),
                             trailing: IconButton(
                               icon: Icon(
+                                shadows: HaoTheme.legibilityShadows(ctx),
                                 Icons.delete_outline,
                                 color: theme.textSecondary,
                                 size: 20,

@@ -17,6 +17,12 @@
 // - NO duplicate episode number chips (fix 17.6): episodes render
 //   ONCE as horizontal cards (numbered dark tile + episode name,
 //   current marked, cap 12 with a "加载更多 (n)" expander).
+// - 1.1.6 缺集接续: the episode row merges the current line with the
+//   episodes only other sources carry (exact episode number, never a
+//   title guess). A missing chip is greyed with an "其他源" badge;
+//   tapping it switches to the source carrying that episode and
+//   plays it from 0 (a vanished target toasts and stays put — never
+//   a wrong episode).
 // - The app NEVER renders a web video player: tapping play opens the
 //   native landscape player directly (VOD rule). No inline web play
 //   path exists in-app.
@@ -37,9 +43,13 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../services/video/cms_client.dart';
 import '../../services/video/douban_parsers.dart';
 import '../../services/video/douban_service.dart';
+import '../../services/video/poster_patch_service.dart';
+import 'missing_episode_chips.dart';
 import 'native_video_player_page.dart';
+import 'skip_intro_dialog.dart';
 import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'widgets/referer_image.dart';
@@ -66,6 +76,17 @@ import 'video_title_helpers.dart';
   return (lineIdx: li, epIdx: ei);
 }
 
+/// Alt-source DETAILS for the missing-episode union, streamed
+/// fastest-first (see [CmsClient.altDetailsStream]): each alt's parsed
+/// detail is yielded the moment it is fetched, dead sources skipped
+/// silently — the episode row never waits on the whole scan.
+typedef AltDetailsStreamer = Stream<VideoDetail> Function(
+  String title,
+  String year,
+  dynamic excludeSourceId, {
+  CancelToken? cancelToken,
+});
+
 class VideoDetailPage extends StatefulWidget {
   const VideoDetailPage({
     super.key,
@@ -73,7 +94,9 @@ class VideoDetailPage extends StatefulWidget {
     required this.vodId,
     this.preload,
     this.autoResume = false,
+    this.startEpName,
     this.detailService,
+    this.altDetails,
   });
 
   final dynamic sourceId;
@@ -89,9 +112,20 @@ class VideoDetailPage extends StatefulWidget {
   /// opens normally and play starts from the beginning.
   final bool autoResume;
 
+  /// 1.1.6 下一集: open at the episode with this exact name and
+  /// auto-play it from 0 (the 下一集 card). A name that is not in
+  /// these lines falls back to the normal open — never a guessed
+  /// index, never the previous episode's position.
+  final String? startEpName;
+
   /// Test seam only: an injected [VideoDetailService] (canned fetch in
   /// render tests). Null in production — the page owns a fresh one.
   final VideoDetailService? detailService;
+
+  /// Test seam only: alt-source details for the missing-episode union
+  /// (canned stream in tests). Null in production — the page owns a
+  /// [CmsClient] stream.
+  final AltDetailsStreamer? altDetails;
 
   @override
   State<VideoDetailPage> createState() => _VideoDetailPageState();
@@ -101,6 +135,14 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   late final VideoDetailService _detailService =
       widget.detailService ?? VideoDetailService();
   final _douban = DoubanService();
+  final _posterPatch = PosterPatchService();
+  late final AltDetailsStreamer _altDetailsStreamer = widget.altDetails ??
+      ((title, year, exclude, {cancelToken}) => CmsClient().altDetailsStream(
+            title,
+            year,
+            exclude,
+            cancelToken: cancelToken,
+          ));
 
   /// Cancels the in-flight detail race when the page is left
   /// (V-P1-4): without it the CMS requests run on to their 8 s
@@ -108,9 +150,20 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   /// never recorded as a source failure.
   final _loadToken = CancelToken();
 
+  /// Multi-source episode union (1.1.6 缺集接续): alt details arrive
+  /// streaming from [CmsClient.altDetailsStream] and each one extends
+  /// the union; the episode row re-renders with missing chips as they
+  /// land. Cancelled when the page leaves or a new detail applies.
+  CancelToken? _unionCancel;
+  StreamSubscription<VideoDetail>? _unionSub;
+  List<VideoDetail> _altDetails = const [];
+  Map<int, EpisodeUnionTarget> _union = const {};
+
   @override
   void dispose() {
     _loadToken.cancel();
+    _unionSub?.cancel();
+    _unionCancel?.cancel();
     super.dispose();
   }
 
@@ -177,6 +230,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   }
 
   void _applyDetail(VideoDetail detail, dynamic sourceId, String vodId) {
+    // The detail we switch away from stays a playable source for
+    // the episodes the new base lacks — the union scan keeps it.
+    final previousDetail = _detail;
     // P1-15: the winning source's own resume key first; when the
     // detail race switched sources, that key does not exist yet, so
     // fall back to the film-level row (title + year, any source)
@@ -204,11 +260,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       pic: detail.meta.pic,
       year: detail.meta.year,
     );
-    final clamped = clampDetailIndices(
-      detail.lines,
-      resume?.lineIdx ?? hist?.lineIdx ?? 0,
-      resume?.epIdx ?? hist?.epIdx ?? 0,
-    );
+    // 1.1.6 下一集: open at the episode with this exact name and
+    // play it from 0. A name that is not in these lines falls back
+    // to the normal open (never a guessed index).
+    final start = widget.startEpName != null
+        ? findEpisodeByName(detail.lines, widget.startEpName!)
+        : null;
+    final clamped = start != null
+        ? (lineIdx: start.lineIdx, epIdx: start.epIdx)
+        : clampDetailIndices(
+            detail.lines,
+            resume?.lineIdx ?? hist?.lineIdx ?? 0,
+            resume?.epIdx ?? hist?.epIdx ?? 0,
+          );
     setState(() {
       _detail = detail;
       _detailSourceId = sourceId;
@@ -217,16 +281,23 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _failed = false;
       _lineIdx = clamped.lineIdx;
       _epIdx = clamped.epIdx;
-      _resume = resume;
+      // A start episode plays from 0: the saved resume belongs to a
+      // different episode and must not leak its position in.
+      _resume = start != null ? null : resume;
       _watched = hist != null;
       _epsExpanded = false;
       _isFav = VideoHistoryStore.isFav(favItem);
     });
     // Douban enrichment AFTER the CMS render — never blocks it.
     unawaited(_enrichDouban(detail));
+    // Missing-episode union: alt details stream in after the render
+    // (never blocking it) and missing chips appear as they land.
+    _startUnionScan(detail, previousBase: previousDetail);
     // History resume (V-P0-1): open the player at the saved position
     // once, only when a resume exists. No resume -> stay on the page.
-    if (widget.autoResume && resume != null && !_autoResumeDone) {
+    // A start episode auto-plays regardless of any resume.
+    if ((widget.autoResume && resume != null || start != null) &&
+        !_autoResumeDone) {
       _autoResumeDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_play());
@@ -237,12 +308,71 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   Future<void> _enrichDouban(VideoDetail detail) async {
     if (detail.meta.douban != null) return;
     final dd = await _douban.detail(detail.meta.name, detail.meta.year);
-    if (dd == null || !mounted) return;
     // Only merge if this detail is still on screen.
-    if (_detail != detail) return;
+    if (!mounted || _detail != detail) return;
+    if (dd == null) {
+      // Douban failed: fallback poster (Bangumi → Bilibili PGC),
+      // cached for the wall. A miss keeps the CMS poster — never an
+      // error, never a retry storm (failures cache 1 h).
+      final patched =
+          await _posterPatch.patchFor(detail.meta.name, detail.meta.year);
+      if (patched != null && mounted && _detail == detail) {
+        setState(() {
+          detail.meta.pic = patched;
+        });
+      }
+      return;
+    }
     setState(() {
       mergeDoubanIntoMeta(detail.meta, dd);
     });
+  }
+
+  /// Start (or restart) the missing-episode union scan for [base]:
+  /// the previous scan is cancelled, the union is rebuilt from the
+  /// new base plus every alt detail known so far, and the stream
+  /// appends further alts as they arrive — one setState per alt, so
+  /// missing chips appear progressively, never after a long wait.
+  /// No parseable episode numbers anywhere in the base (a movie's
+  /// single 正片): the union is empty by construction, so no scan
+  /// and no network at all.
+  void _startUnionScan(VideoDetail base, {VideoDetail? previousBase}) {
+    unawaited(_unionSub?.cancel());
+    _unionCancel?.cancel();
+    final token = _unionCancel = CancelToken();
+    // The detail we just switched away from is still a playable
+    // source for the episodes the new base lacks — keep it in the
+    // union so the user can switch back through a missing chip.
+    final known = <VideoDetail>[
+      if (previousBase != null && !identical(previousBase, base))
+        previousBase,
+    ];
+    _altDetails = known;
+    _union = buildEpisodeUnion(base: base, alts: known);
+    final hasNumbered = base.lines
+        .expand((l) => l.episodes)
+        .any((e) => e.episodeNumber != null);
+    if (!hasNumbered) return;
+    _unionSub = _altDetailsStreamer(
+      base.meta.name,
+      base.meta.year,
+      base.source,
+      cancelToken: token,
+    ).listen(
+      (alt) {
+        if (!mounted || _detail != base || token.isCancelled) return;
+        final key = '${alt.source}|${alt.vodId}';
+        if (_altDetails.any((d) => '${d.source}|${d.vodId}' == key)) {
+          return;
+        }
+        setState(() {
+          _altDetails = [..._altDetails, alt];
+          _union = buildEpisodeUnion(base: base, alts: _altDetails);
+        });
+      },
+      onError: (_) {},
+      cancelOnError: false,
+    );
   }
 
   String get _currentEpName {
@@ -312,6 +442,48 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         ),
       ),
     );
+  }
+
+  /// Play a missing episode: switch the page to the alt detail that
+  /// carries this exact episode number and play it from 0. The
+  /// number is resolved with [findEpisodeByNumber] against the alt
+  /// detail's lines at tap time — never by title, never a neighbour
+  /// episode. When no alt carries it any more, toast and stay put:
+  /// never play a wrong episode.
+  Future<void> _playMissingEpisode(
+    int episodeNumber,
+    EpisodeUnionTarget target,
+  ) async {
+    VideoDetail? alt;
+    for (final d in _altDetails) {
+      if (d.source == target.source && d.vodId == target.vodId) {
+        alt = d;
+        break;
+      }
+    }
+    final found =
+        alt == null ? null : findEpisodeByNumber(alt.lines, episodeNumber);
+    if (alt == null || found == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该集暂无可播片源')),
+      );
+      return;
+    }
+    // Suppress _applyDetail's auto-play: we play the tapped episode
+    // explicitly below, and its own resume must not leak in either.
+    _autoResumeDone = true;
+    _applyDetail(alt, target.source, target.vodId);
+    if (!mounted) return;
+    setState(() {
+      _lineIdx = found.lineIdx;
+      _epIdx = found.epIdx;
+      _resume = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已切换片源播放第$episodeNumber集')),
+    );
+    await _play(found.lineIdx, found.epIdx);
   }
 
   Future<void> _toggleFav() async {
@@ -385,9 +557,14 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final genreChips = m.genreChips;
     final lines = d.lines;
     final episodes = lines[_lineIdx].episodes;
+    // 1.1.6 缺集接续: the row merges the current line with the
+    // missing episodes other sources carry (exact number match).
+    // Present chips keep their shape, order and tap behaviour;
+    // missing chips are greyed with an "其他源" badge.
+    final chips = mergeEpisodeChips(base: episodes, union: _union);
     const epCap = 12;
-    final showAll = _epsExpanded || episodes.length <= epCap;
-    final shown = showAll ? episodes : episodes.sublist(0, epCap);
+    final showAll = _epsExpanded || chips.length <= epCap;
+    final shown = showAll ? chips : chips.sublist(0, epCap);
 
     return CustomScrollView(
       slivers: [
@@ -411,7 +588,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                       _playButtonLabel,
                       style: const TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     style: FilledButton.styleFrom(
@@ -443,6 +620,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     Text(
                       m.name,
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
@@ -469,8 +647,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                 child: Text(
                                   g,
                                   style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
                                     color: theme.textMuted,
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -484,6 +663,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                       Text(
                         m.remarks,
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textSecondary,
                           fontSize: 14,
                         ),
@@ -494,6 +674,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                       Text(
                         '导演：${m.director}',
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textSecondary,
                           fontSize: 14,
                         ),
@@ -547,11 +728,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                 : theme.hairline,
                           ),
                           labelStyle: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: selected
                                 ? theme.accent
                                 : theme.textSecondary,
                             fontWeight: selected
-                                ? FontWeight.w700
+                                ? FontWeight.w600
                                 : FontWeight.w500,
                             fontSize: 14,
                           ),
@@ -578,6 +760,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     Text(
                       '选集',
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
@@ -585,8 +768,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     ),
                     const Spacer(),
                     Text(
-                      '(${episodes.length})',
+                      '(${chips.length})',
                       style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textMuted,
                         fontSize: 14,
                       ),
@@ -602,14 +786,49 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: shown.length,
                   itemBuilder: (context, i) {
-                    final selected = i == _epIdx;
+                    final chip = shown[i];
+                    if (chip.isMissing) {
+                      final num = chip.episodeNumber!;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: _EpisodeCard(
+                          number: num.toString().padLeft(2, '0'),
+                          name: '第$num集',
+                          selected: false,
+                          missing: true,
+                          onTap: () =>
+                              _playMissingEpisode(num, chip.target!),
+                        ),
+                      );
+                    }
+                    final epIdx = chip.epIdx!;
+                    final selected = epIdx == _epIdx;
+                    final ep = episodes[epIdx];
+                    // Big number = the episode's own number when it has
+                    // one (a gapped line's 第4集 is `04`, not its row
+                    // position `03` — with missing chips merged in, a
+                    // position number would collide with the missing
+                    // chip's number); unparseable names (正片/花絮)
+                    // keep the old position number.
+                    final numText = (ep.episodeNumber ?? (epIdx + 1))
+                        .toString()
+                        .padLeft(2, '0');
                     return Padding(
                       padding: const EdgeInsets.only(right: 10),
                       child: _EpisodeCard(
-                        index: i,
-                        name: shown[i].name,
+                        number: numText,
+                        name: ep.name,
                         selected: selected,
-                        onTap: () => _play(_lineIdx, i),
+                        onTap: () => _play(_lineIdx, epIdx),
+                        // Long-press: per-episode custom skip-intro
+                        // seconds (1.1.6, CMS has no markers).
+                        onLongPress: () => unawaited(
+                          showSkipIntroDialog(
+                            context,
+                            title: m.name,
+                            episodeName: ep.name,
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -626,7 +845,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                         side: BorderSide(color: theme.hairline),
                         foregroundColor: theme.accent,
                       ),
-                      child: Text('加载更多 (${episodes.length - epCap})'),
+                      child: Text('加载更多 (${chips.length - epCap})', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     ),
                   ),
                 ),
@@ -644,6 +863,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                             ? TextOverflow.visible
                             : TextOverflow.ellipsis,
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textPrimary,
                           fontSize: 15,
                           height: 1.8,
@@ -654,7 +874,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                           onPressed: () => setState(
                             () => _synExpanded = !_synExpanded,
                           ),
-                          child: Text(_synExpanded ? '收起' : '展开全文'),
+                          child: Text(_synExpanded ? '收起' : '展开全文', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                         ),
                     ],
                   ),
@@ -667,6 +887,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   child: Text(
                     '演员',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
@@ -710,6 +931,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                   fallback: Text(
                                     name.isEmpty ? '?' : name[0],
                                     style: TextStyle(
+                                      shadows: HaoTheme.legibilityShadows(context),
                                       color: theme.textMuted,
                                       fontSize: 28,
                                       fontWeight: FontWeight.w700,
@@ -723,8 +945,9 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textPrimary,
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -798,7 +1021,7 @@ class _CoverHero extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: const Icon(CupertinoIcons.back, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -822,7 +1045,7 @@ class _CoverFallback extends StatelessWidget {
       // 8 combinations.
       color: theme.surfaceStrong,
       child: Center(
-        child: Icon(Icons.movie, color: theme.textMuted, size: 64),
+        child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.movie, color: theme.textMuted, size: 64),
       ),
     );
   }
@@ -859,14 +1082,15 @@ class _MetaLine extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.star, color: theme.accent, size: 16),
+              Icon(shadows: HaoTheme.legibilityShadows(context), Icons.star, color: theme.accent, size: 16),
               const SizedBox(width: 2),
               Text(
                 meta.score,
                 style: TextStyle(
+                  shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (meta.douban?.score != null) ...[
@@ -883,6 +1107,7 @@ class _MetaLine extends StatelessWidget {
                   child: Text(
                     '豆瓣',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,
                       fontSize: 10,
                     ),
@@ -894,7 +1119,7 @@ class _MetaLine extends StatelessWidget {
         if (rest.isNotEmpty)
           Text(
             rest,
-            style: TextStyle(color: theme.textMuted, fontSize: 14),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 14),
           ),
       ],
     );
@@ -931,6 +1156,7 @@ class _CircleAction extends StatelessWidget {
           color: active ? theme.accentSoft : Colors.transparent,
         ),
         child: Icon(
+          shadows: HaoTheme.legibilityShadows(context),
           icon,
           color: active ? theme.accent : theme.textSecondary,
         ),
@@ -944,48 +1170,89 @@ class _CircleAction extends StatelessWidget {
 /// the same poster repeated.
 class _EpisodeCard extends StatelessWidget {
   const _EpisodeCard({
-    required this.index,
+    required this.number,
     required this.name,
     required this.selected,
     required this.onTap,
+    this.onLongPress,
+    this.missing = false,
   });
 
-  final int index;
+  /// Big tile number: base episodes show their episode number when
+  /// it parses (else their row position), missing episodes their
+  /// exact episode number.
+  final String number;
   final String name;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  /// Missing-episode chip: greyed (muted name) + an "其他源" badge.
+  /// Present episodes never set this — their shape is untouched.
+  final bool missing;
 
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: SizedBox(
         width: 128,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 128,
-              height: 72,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? theme.accentSoft : theme.surface,
-                borderRadius: BorderRadius.circular(HaoRadius.large),
-                border: Border.all(
-                  color:
-                      selected ? theme.accent : theme.hairline,
-                  width: selected ? 1.5 : 1,
+            Stack(
+              children: [
+                Container(
+                  width: 128,
+                  height: 72,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected ? theme.accentSoft : theme.surface,
+                    borderRadius: BorderRadius.circular(HaoRadius.large),
+                    border: Border.all(
+                      color:
+                          selected ? theme.accent : theme.hairline,
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    number,
+                    style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                      color: selected ? theme.accent : theme.textMuted,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
-              child: Text(
-                (index + 1).toString().padLeft(2, '0'),
-                style: TextStyle(
-                  color: selected ? theme.accent : theme.textMuted,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+                if (missing)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: theme.hairline),
+                      ),
+                      child: Text(
+                        '其他源',
+                        style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
+                          color: theme.textMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(
@@ -993,10 +1260,15 @@ class _EpisodeCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: selected ? theme.accent : theme.textPrimary,
+                shadows: HaoTheme.legibilityShadows(context),
+                color: selected
+                    ? theme.accent
+                    : missing
+                        ? theme.textMuted
+                        : theme.textPrimary,
                 fontSize: 13,
                 fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w400,
+                    selected ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ],
@@ -1081,6 +1353,7 @@ class _DetailSkeleton extends StatelessWidget {
                   child: Text(
                     preload!.name,
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textPrimary,
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
@@ -1092,7 +1365,7 @@ class _DetailSkeleton extends StatelessWidget {
                 child: const SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CupertinoActivityIndicator(),
                 ),
               ),
             ],
@@ -1120,6 +1393,7 @@ class _ErrorCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
+              shadows: HaoTheme.legibilityShadows(context),
               Icons.cloud_off,
               size: 48,
               color: theme.textMuted,
@@ -1128,16 +1402,17 @@ class _ErrorCard extends StatelessWidget {
             Text(
               '影片加载失败',
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               '视频源暂时无法访问，请检查网络后重试',
               textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textMuted),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted),
             ),
             const SizedBox(height: 20),
             FilledButton.icon(

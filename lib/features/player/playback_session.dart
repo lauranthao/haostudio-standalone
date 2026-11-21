@@ -17,12 +17,14 @@ import 'package:flutter/widgets.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/player/kernel/avplayer_backend.dart';
+import '../../core/player/kernel/frame_capable_backend.dart';
 import '../../core/player/kernel/ijk_backend.dart';
 import '../../core/player/kernel/mpv_backend.dart';
 import '../../core/player/kernel/player_backend.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/player_kernel.dart';
 import '../../core/player/kernel/recovery_ladder.dart';
+import '../../core/player/vod_controls.dart';
 import '../../core/storage/hive_store.dart';
 import '../live/live_breadcrumb.dart';
 
@@ -112,6 +114,7 @@ class PlaybackSession {
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<String>? _errorSub;
   StreamSubscription<void>? _completedSub;
+  StreamSubscription<List<String>>? _subtitleSub;
   Timer? _stallTimer;
   Duration _lastPosition = Duration.zero;
   DateTime _lastPositionAt = DateTime.now();
@@ -122,6 +125,58 @@ class PlaybackSession {
   /// off while the app is backgrounded. Remembered so a ladder
   /// backend swap re-applies it to the new backend, like [_rate].
   bool _audioOnly = false;
+
+  /// Selected audio/subtitle track ids (backend-native, see
+  /// [PlaybackTrack.id]; null = backend default). Remembered so a
+  /// ladder backend swap re-applies them to the new backend, like
+  /// [_rate] — a swap must not silently reset the user's track
+  /// choice. The player page reads these to mark the active row.
+  String? _audioTrackId;
+  String? _subtitleTrackId;
+
+  String? get currentAudioTrackId => _audioTrackId;
+  String? get currentSubtitleTrackId => _subtitleTrackId;
+
+  /// Subtitle time offset, seconds (1.1.6, MPV `sub-delay`, ±10).
+  /// Remembered like the track ids and re-applied after a ladder
+  /// backend swap, so an episode / line / kernel switch never loses
+  /// the user's sync correction.
+  double _subtitleDelay = 0.0;
+
+  double get currentSubtitleDelay => _subtitleDelay;
+
+  /// Subtitle appearance (1.1.6, MPV `sub-font-size` / `sub-color` /
+  /// `sub-pos`). Remembered like [_subtitleDelay] and re-applied
+  /// after a ladder backend swap. Null = mpv defaults (never
+  /// applied) — the player page sets it once at open from the
+  /// persisted tiers, and the settings page changes it for the
+  /// next open.
+  ({int fontSize, String color, double position})? _subtitleAppearance;
+
+  ({int fontSize, String color, double position})?
+      get currentSubtitleAppearance => _subtitleAppearance;
+
+  /// Second subtitle track id for dual subtitles (MPV
+  /// `secondary-sid`; null = off). Remembered and re-applied like
+  /// [_subtitleTrackId]. The picker row lives in the track sheet
+  /// (native_video_player_page.dart), so this is in-memory until
+  /// the picker calls [setSecondarySubtitleTrack].
+  String? _secondarySubtitleTrackId;
+
+  String? get currentSecondarySubtitleTrackId => _secondarySubtitleTrackId;
+
+  /// Preopened (staged) backend for a seamless line switch (1.1.6):
+  /// [preopen] opens the next line's URL on a fresh backend and
+  /// holds it here — verified playable, but NOT installed — until
+  /// [swapToPreopened] swaps it in. The currently playing backend
+  /// is untouched while a preopen is in flight or staged, so a
+  /// failed preopen costs nothing: the old line just keeps playing.
+  /// A staged backend is owned by one preopen generation; a newer
+  /// [open] or [preopen] disposes it (see [_disposePreopened]).
+  PlayerBackend? _preopenedBackend;
+  String? _preopenedUrl;
+  PlayerEngine? _preopenedEngine;
+  int _preopenGeneration = 0;
 
   /// Whether the app is in the foreground, as told by the owning page
   /// via [setForeground]. Defaults to foreground so a session used
@@ -143,8 +198,28 @@ class PlaybackSession {
   final _durationController = StreamController<Duration>.broadcast();
   final _ladderAttemptController = StreamController<PlayerEngine>.broadcast();
 
+  /// Text subtitle lines, forwarded from the active capable backend
+  /// (`[main, secondary]`). The VOD page draws these in its own
+  /// overlay above the danmaku layer; a backend without the
+  /// capability contributes nothing (empty lines).
+  final _subtitleController = StreamController<List<String>>.broadcast();
+
+  /// Text subtitle lines `[main, secondary]` from the active backend.
+  Stream<List<String>> get subtitleStream => _subtitleController.stream;
+
   PlaybackStatus get status => _status;
   PlayerEngine? get activeEngine => _backend?.engine;
+
+  /// The active backend when it can hand out video frames (MPV
+  /// only, 1.1.6 danmaku occlusion avoidance). Null on IJK / AVPlayer
+  /// and before any backend is swapped in — the occlusion loop
+  /// treats null as "feature silently off, danmaku plays in full".
+  /// Re-read on every use: the ladder can swap the backend
+  /// mid-playback, so a cached value would go stale.
+  FrameCapableBackend? get frameCapableBackend {
+    final backend = _backend;
+    return backend is FrameCapableBackend ? backend : null;
+  }
   String? get currentUrl => _currentUrl;
   bool get isLive => _isLive;
 
@@ -186,25 +261,169 @@ class PlaybackSession {
   /// source/position/intent (study §3.3). Persists the choice.
   /// The persistence write is fire-and-forget: an engine switch must
   /// never wait on storage I/O.
+  ///
+  /// Position is preserved on VOD: the current position is captured
+  /// BEFORE the re-open and sought back after it succeeds (live is
+  /// not seekable, so nothing is sought there). Before this fix the
+  /// switch re-opened from 0 — a manual engine switch mid-film
+  /// restarted the film.
   Future<void> switchEngine(PlayerEngine engine, {bool isManual = false}) async {
     _preferred = engine;
     unawaited(
       HiveStore.put(HiveKeys.videoPlayerKey, engine.key).catchError((_) {}),
     );
     if (_currentUrl != null) {
-      await open(
+      final resume = _isLive ? Duration.zero : _lastPosition;
+      final ok = await open(
         url: _currentUrl!,
         isLive: _isLive,
         declaredFormat: _declaredFormat,
         headers: _headers,
         excludeIjk: _excludeIjk,
       );
+      if (ok && !_isLive && resume > Duration.zero) {
+        await seekTo(resume);
+      }
     }
     if (isManual) {
       // Settings display follows the engine actually playing; the status
       // stream lets the settings page re-read activeEngine.
       _emitStatus(_status);
     }
+  }
+
+  /// Dispose a staged preopened backend, if any, and forget it.
+  /// Never touches the playing backend.
+  Future<void> _disposePreopened() async {
+    final staged = _preopenedBackend;
+    _preopenedBackend = null;
+    _preopenedUrl = null;
+    _preopenedEngine = null;
+    if (staged != null) {
+      await staged.dispose();
+    }
+  }
+
+  /// Pre-open a URL on a fresh backend WITHOUT installing it
+  /// (1.1.6 seamless line switch). The candidate walks the same
+  /// engine ladder as [open] (10 s open + first-frame wait per
+  /// engine, bounded by [timeout] overall — default 10 s, so a dead
+  /// line never holds the switch longer than that) but the playing
+  /// backend, [_currentUrl] and [status] are untouched throughout:
+  /// no status is emitted, no position stream moves. Returns true
+  /// once a backend has proven it can play [url]; the caller then
+  /// swaps it in with [swapToPreopened]. Returns false when no
+  /// engine could play it — the old line just keeps playing.
+  ///
+  /// A newer [open] or [preopen] retires this preopen at once (the
+  /// generation guard): a superseded attempt never stages its
+  /// backend, and a staged backend from an older preopen is
+  /// disposed before a new one is staged.
+  Future<bool> preopen({
+    required String url,
+    required bool isLive,
+    String? declaredFormat,
+    Map<String, String>? headers,
+    bool excludeIjk = false,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (_disposed) return false;
+    final generation = ++_preopenGeneration;
+    await _disposePreopened();
+    if (_disposed || generation != _preopenGeneration) return false;
+    var engines = candidatesFor(
+      url: url,
+      declaredFormat: declaredFormat,
+      isLive: isLive,
+      preferred: _preferred,
+    );
+    if (excludeIjk) {
+      engines = engines.where((e) => e != PlayerEngine.fijk).toList();
+    }
+    if (engines.isEmpty) return false;
+    final deadline = DateTime.now().add(timeout);
+    for (final engine in engines) {
+      if (_disposed || generation != _preopenGeneration) return false;
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) return false;
+      PlayerBackend? candidate;
+      try {
+        candidate = _buildBackend(engine);
+        final openTimeout = remaining < const Duration(seconds: 10)
+            ? remaining
+            : const Duration(seconds: 10);
+        await candidate
+            .open(
+              url: url,
+              headers: headers,
+              isLive: isLive,
+              declaredFormat: declaredFormat,
+            )
+            .timeout(openTimeout);
+        if (_disposed || generation != _preopenGeneration) {
+          await candidate.dispose();
+          return false;
+        }
+        final frameBudget = deadline.difference(DateTime.now());
+        if (frameBudget <= Duration.zero) {
+          await candidate.dispose();
+          return false;
+        }
+        final ok = await candidate.waitForFirstFrame(timeout: frameBudget);
+        if (_disposed || generation != _preopenGeneration) {
+          await candidate.dispose();
+          return false;
+        }
+        if (!ok) {
+          await candidate.dispose();
+          continue;
+        }
+        _preopenedBackend = candidate;
+        _preopenedUrl = url;
+        _preopenedEngine = engine;
+        return true;
+      } catch (_) {
+        if (candidate != null) {
+          await candidate.dispose();
+        }
+        if (_disposed || generation != _preopenGeneration) return false;
+      }
+    }
+    return false;
+  }
+
+  /// Swap in the backend staged by [preopen] (1.1.6 seamless line
+  /// switch). Seeks it to [resumePosition] first (VOD only; live
+  /// ignores the seek), then installs it through the staged
+  /// [_swapBackend] — rate / audio-only / track choice are
+  /// re-applied there, exactly as on a ladder swap. Returns false
+  /// when nothing is staged (or the staged backend belongs to a
+  /// different URL); the playing backend is untouched then.
+  Future<bool> swapToPreopened({
+    required String url,
+    required Duration resumePosition,
+  }) async {
+    final staged = _preopenedBackend;
+    if (_disposed || staged == null || _preopenedUrl != url) return false;
+    _preopenedBackend = null;
+    _preopenedUrl = null;
+    final engine = _preopenedEngine;
+    _preopenedEngine = null;
+    if (!isLive && resumePosition > Duration.zero) {
+      try {
+        await staged.seekTo(resumePosition);
+      } catch (_) {
+        // Best-effort: a backend that refuses the pre-swap seek
+        // still plays — from 0 rather than from the resume point,
+        // which the caller reports, instead of failing the switch.
+      }
+    }
+    await _swapBackend(staged);
+    _currentUrl = url;
+    if (engine != null) _preferred = engine;
+    _emitStatus(PlaybackStatus.playing);
+    _startHealthWatch();
+    return true;
   }
 
   PlayerBackend _buildBackend(PlayerEngine engine) => _backendFactory(engine);
@@ -302,6 +521,11 @@ class PlaybackSession {
     Duration? openBudget,
   }) async {
     if (_disposed) return false;
+    // A fresh open retires any staged preopen: the staged backend
+    // belongs to the old switch target, and an in-flight preopen
+    // must never stage its backend after this open started.
+    _preopenGeneration++;
+    await _disposePreopened();
     _currentUrl = url;
     _isLive = isLive;
     _declaredFormat = declaredFormat;
@@ -495,9 +719,144 @@ class PlaybackSession {
     if (_rate != 1.0) {
       unawaited(next.setRate(_rate).catchError((_) {}));
     }
+    // Same for the track choice: a swap must not silently reset the
+    // audio/subtitle track the user picked. Best-effort — a backend
+    // without the capability no-ops, and a track id from another
+    // engine is ignored by its backend.
+    if (_audioTrackId != null && next is TrackCapableBackend) {
+      unawaited(next.setAudioTrack(_audioTrackId!).catchError((_) {}));
+    }
+    if (_subtitleTrackId != null && next is TrackCapableBackend) {
+      unawaited(
+        next.setSubtitleTrack(_subtitleTrackId!).catchError((_) {}),
+      );
+    }
+    // Same for the subtitle offset + appearance + dual-subtitle
+    // choice: a swap must not silently reset them. Track first,
+    // then delay (the offset is applied to the track that is
+    // actually selected).
+    if (_subtitleDelay != 0.0 && next is TrackCapableBackend) {
+      unawaited(next.setSubtitleDelay(_subtitleDelay).catchError((_) {}));
+    }
+    if (_subtitleAppearance != null && next is TrackCapableBackend) {
+      final a = _subtitleAppearance!;
+      unawaited(
+        next
+            .setSubtitleAppearance(
+              fontSize: a.fontSize,
+              color: a.color,
+              position: a.position,
+            )
+            .catchError((_) {}),
+      );
+    }
+    if (_secondarySubtitleTrackId != null &&
+        next is TrackCapableBackend) {
+      unawaited(
+        next
+            .setSecondarySubtitleTrack(_secondarySubtitleTrackId!)
+            .catchError((_) {}),
+      );
+    }
     // Dispose the old backend only after the new one is attached and
     // verified (fix 1: never release while a callback may still hold it).
     await old?.dispose();
+  }
+
+  /// Audio/subtitle tracks of the current source, as enumerated by
+  /// the active backend. Only [TrackCapableBackend]s (MPV) answer;
+  /// IJK / AVPlayer surface empty lists and the picker UI shows "no
+  /// tracks" instead of a broken list. Never throws.
+  Future<List<PlaybackTrack>> audioTracks() async {
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return const [];
+    try {
+      return await backend.audioTracks();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<PlaybackTrack>> subtitleTracks() async {
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return const [];
+    try {
+      return await backend.subtitleTracks();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Select an audio track by id ('auto' = backend default).
+  /// Remembered and re-applied after a ladder backend swap; on a
+  /// backend without the capability the choice is remembered but
+  /// does nothing until a capable backend is swapped in.
+  Future<void> setAudioTrack(String id) async {
+    _audioTrackId = id;
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return;
+    try {
+      await backend.setAudioTrack(id);
+    } catch (_) {}
+  }
+
+  /// Select a subtitle track by id ('auto' = backend default,
+  /// 'no' = off). Same remembering rule as [setAudioTrack].
+  Future<void> setSubtitleTrack(String id) async {
+    _subtitleTrackId = id;
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return;
+    try {
+      await backend.setSubtitleTrack(id);
+    } catch (_) {}
+  }
+
+  /// Set the subtitle time offset, seconds (1.1.6, MPV `sub-delay`).
+  /// Clamped to ±10 s, remembered and re-applied after a ladder
+  /// backend swap; on a backend without the capability the value is
+  /// remembered but does nothing until a capable backend is swapped
+  /// in. Applies immediately — no reopen needed.
+  Future<void> setSubtitleDelay(double seconds) async {
+    _subtitleDelay = clampSubtitleDelay(seconds);
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return;
+    try {
+      await backend.setSubtitleDelay(_subtitleDelay);
+    } catch (_) {}
+  }
+
+  /// Set the subtitle appearance (1.1.6, MPV `sub-font-size` /
+  /// `sub-color` / `sub-pos`). Same remembering rule as
+  /// [setSubtitleDelay]: remembered and re-applied after a ladder
+  /// backend swap. Applies immediately — no reopen needed.
+  Future<void> setSubtitleAppearance({
+    required int fontSize,
+    required String color,
+    required double position,
+  }) async {
+    _subtitleAppearance =
+        (fontSize: fontSize, color: color, position: position);
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return;
+    try {
+      await backend.setSubtitleAppearance(
+        fontSize: fontSize,
+        color: color,
+        position: position,
+      );
+    } catch (_) {}
+  }
+
+  /// Select the second subtitle track for dual subtitles (MPV
+  /// `secondary-sid`; 'no' = off). Same remembering rule as
+  /// [setSubtitleTrack].
+  Future<void> setSecondarySubtitleTrack(String id) async {
+    _secondarySubtitleTrackId = id;
+    final backend = _backend;
+    if (backend is! TrackCapableBackend) return;
+    try {
+      await backend.setSecondarySubtitleTrack(id);
+    } catch (_) {}
   }
 
   void _attachBackend(PlayerBackend backend) {
@@ -505,6 +864,17 @@ class PlaybackSession {
     unawaited(_durationSub?.cancel());
     unawaited(_errorSub?.cancel());
     unawaited(_completedSub?.cancel());
+    unawaited(_subtitleSub?.cancel());
+    // Forward text subtitle lines to the page-level overlay. The
+    // subscription is re-attached on every backend swap, so the
+    // overlay never stays subscribed to a disposed backend's stream.
+    if (backend is TrackCapableBackend) {
+      _subtitleSub = backend.subtitleStream.listen((lines) {
+        if (!_subtitleController.isClosed) {
+          _subtitleController.add(lines);
+        }
+      });
+    }
     _positionSub = backend.positionStream.listen((pos) {
       if (!_positionController.isClosed) _positionController.add(pos);
       if (pos != _lastPosition) {
@@ -641,6 +1011,8 @@ class PlaybackSession {
     unawaited(_durationSub?.cancel());
     unawaited(_errorSub?.cancel());
     unawaited(_completedSub?.cancel());
+    unawaited(_subtitleSub?.cancel());
+    await _disposePreopened();
     await _backend?.dispose();
     _backend = null;
     await _statusController.close();
@@ -648,6 +1020,7 @@ class PlaybackSession {
     await _stallNoticeController.close();
     await _positionController.close();
     await _durationController.close();
+    await _subtitleController.close();
     await _ladderAttemptController.close();
     unawaited(LiveBreadcrumb.write('live-closed'));
   }

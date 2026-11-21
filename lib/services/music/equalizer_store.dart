@@ -115,7 +115,18 @@ class EqualizerStore extends ChangeNotifier {
       : _channel =
             channel ?? const MethodChannel('com.haostudio.standalone/equalizer') {
     _load();
+    // Native -> Dart: the EQ tap reports each track's measured
+    // loudness at finalize ('loudnessMeasured' {identityKey, lufs},
+    // see HaoEqualizer.m). The store only routes it — the music
+    // player controller owns attribution/consumption (it registers
+    // [onLoudnessMeasured] in onInit).
+    _channel.setMethodCallHandler(_handleNativeCall);
   }
+
+  /// Called on the Dart UI thread for every tap loudness report.
+  /// Set by MusicPlayerController.onInit; null until then (reports
+  /// before any playback exists are dropped, never queued).
+  void Function(String identityKey, double lufs)? onLoudnessMeasured;
 
   static EqualizerStore? _instance;
 
@@ -270,6 +281,45 @@ class EqualizerStore extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Stamp the next native tap(s) with [identityKey] — the track
+  /// whose AVPlayerItem is about to be created (see HaoEqualizer.h
+  /// -setPendingTrackKey:). The controller calls this immediately
+  /// before every open / preload so the tap's finalize loudness
+  /// report comes back attributed to the right song. Best-effort:
+  /// false where there is no native engine (tests / Android) — a
+  /// missed stamp only loses that track's measurement.
+  Future<bool> setTrackKey(String identityKey) async {
+    if (identityKey.isEmpty) return false;
+    try {
+      await _channel.invokeMethod<void>(
+        'setTrackKey',
+        {'identityKey': identityKey},
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Native -> Dart method calls on the equalizer channel. Only
+  /// 'loudnessMeasured' arrives from native today; anything else is
+  /// ignored (never throws — a stray native call must not break the
+  /// UI thread). Malformed args (missing key, non-numeric lufs) are
+  /// dropped, not forwarded.
+  Future<void> _handleNativeCall(MethodCall call) async {
+    if (call.method != 'loudnessMeasured') return;
+    final args = call.arguments;
+    if (args is! Map) return;
+    final key = args['identityKey']?.toString() ?? '';
+    // `as num?` throws on a String value — check first, so a
+    // malformed native call is dropped instead of throwing on the
+    // UI thread.
+    final lufs =
+        args['lufs'] is num ? (args['lufs'] as num).toDouble() : null;
+    if (key.isEmpty || lufs == null || !lufs.isFinite) return;
+    onLoudnessMeasured?.call(key, lufs);
   }
 
   Future<void> _commit() async {

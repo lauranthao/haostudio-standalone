@@ -615,6 +615,42 @@ class CmsClient {
     return out;
   }
 
+  /// Alt-source DETAILS for the multi-source episode union (1.1.6
+  /// 缺集接续): the detail race ([VideoDetailService.loadWithRace])
+  /// settles on the FIRST usable detail and discards the rest, but
+  /// the union needs the other sources' episode lists too. This
+  /// stream RETAINS them: each alt's parsed detail is yielded the
+  /// moment it is fetched (fastest first, up to [maxAlts]); a failed
+  /// or unusable alt is skipped silently, never failing the stream.
+  /// Each detail fetch is capped at 5 s, like the play-time source
+  /// switch — the union must never hold the episode list hostage.
+  Stream<VideoDetail> altDetailsStream(
+    String title,
+    String year,
+    dynamic excludeSourceId, {
+    int maxAlts = 3,
+    CancelToken? cancelToken,
+  }) async* {
+    await for (final alt in altSourcesStream(
+      title,
+      year,
+      excludeSourceId,
+      maxAlts: maxAlts,
+      cancelToken: cancelToken,
+    )) {
+      try {
+        final d = await detail(
+          alt.source,
+          alt.vodId,
+          cancelToken: cancelToken,
+        ).timeout(const Duration(seconds: 5));
+        if (d.usable) yield d;
+      } catch (_) {
+        // One dead alt must not kill the union: skip it.
+      }
+    }
+  }
+
   // -- Type map -------------------------------------------------------------
 
   Map<String, CmsTypeEntry>? _typeMap;

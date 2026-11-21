@@ -11,10 +11,11 @@
 
 import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
-import 'video_detail_page.dart';
+import 'video_detail_router.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'widgets/referer_image.dart';
@@ -28,28 +29,14 @@ class VideoHistoryPage extends StatefulWidget {
 
 class _VideoHistoryPageState extends State<VideoHistoryPage> {
   void _openDetail(WatchHistoryEntry entry) {
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (_) => VideoDetailPage(
-              sourceId: entry.source,
-              vodId: entry.vodId,
-              preload: VideoItem(
-                source: entry.source,
-                sourceName: '',
-                vodId: entry.vodId,
-                name: entry.title,
-                pic: entry.pic,
-                picAlt: entry.picAlt,
-              ),
-              autoResume: true,
-            ),
-          ),
-        )
-        .then((_) {
-          // Resume/progress may have changed while watching.
-          if (mounted) setState(() {});
-        });
+    // 1.1.6: shared routing (`video_detail_router.dart`) — Emby rows
+    // open EmbyDetailPage, CMS rows VideoDetailPage. Same branch as
+    // the favourites page, the video tab and the version sheet, so
+    // the three can never drift apart again (audit P0).
+    openHistoryDetail<void>(context, entry).then((_) {
+      // Resume/progress may have changed while watching.
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _confirmClear() async {
@@ -146,7 +133,7 @@ class _HistoryRow extends StatelessWidget {
       else if (entry.isFinished)
         '已看完',
     ];
-    return InkWell(
+    return HaoPressable(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),

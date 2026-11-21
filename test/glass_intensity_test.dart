@@ -228,16 +228,29 @@ void main() {
       expect(atZero.glowIntensity, 0.0);
       expect(atZero.lightIntensity, 0.0);
       expect(atZero.chromaticAberration, 0.0);
-      // Visibility is what actually switches the library body off:
-      // without it the 0% glass still paints a faint wash (golden
-      // experiment: 5.0% of pixels differ from the bare backdrop).
-      expect(atZero.visibility, 0.0);
+      // b28 — visibility stays 1.0 at 0%: the library wraps the
+      // GlassContainer CHILD in Opacity(visibility)
+      // (liquid_glass.dart:216), so scaling it to 0 hid the child
+      // (tab bar icons, card titles) along with the glass — the
+      // 0% legibility bug's third root cause. The body wash is
+      // killed by zeroing the optics instead: saturation back to
+      // 1.0 (ios27 light is 2.1), bodyShade to 0 (ios27 dark 0.28),
+      // the preset shadow alphas to 0, edge absorption to 0.
+      expect(atZero.visibility, 1.0);
       expect(atZero.thickness, 1.0);
       expect(atZero.blur, 0.0);
       expect(atZero.frostOpacity, 0.0);
       expect(atZero.glassColor.a, 0.0);
       expect(atZero.rimLight, 0.0);
       expect(atZero.rimShade, 0.0);
+      expect(atZero.saturation, 1.0);
+      expect(atZero.bodyShade, 0.0);
+      expect(atZero.edgeAbsorption, 0.0);
+      expect(atZero.shadow!.single.color.a, 0.0);
+      // b28: at exactly 0% the body compositing is clear mode, or
+      // the adaptive body lift leaves a bright wash over the card
+      // (~12% white, 4.7% of pixels differ from the bare backdrop).
+      expect(atZero.bodyMode, GlassBodyMode.clear);
     });
 
     testWidgets('ios27Settings at 1 is the untouched ios27 preset', (
@@ -268,7 +281,21 @@ void main() {
       expect(atZero.glowIntensity, 0.0);
       expect(atZero.lightIntensity, 0.0);
       expect(atZero.chromaticAberration, 0.0);
-      expect(atZero.visibility, 0.0);
+      // b28 (see the ios27 test above): visibility stays 1.0 — the
+      // child must stay opaque at 0%. The chrome's own wash fields
+      // are already neutral (saturation 1.0, bodyShade 0, shadow
+      // []); the fields the audit found unscaled here (blur, frost,
+      // rimShade) are scaled now, or the bar would keep a blur /
+      // frost cloud and a rim outline at 0%.
+      expect(atZero.visibility, 1.0);
+      expect(atZero.blur, 0.0);
+      expect(atZero.frost, 0.0);
+      expect(atZero.rimShade, 0.0);
+      expect(atZero.edgeAbsorption, 0.0);
+      expect(atZero.saturation, 1.0);
+      expect(atZero.bodyShade, 0.0);
+      expect(atZero.shadow, isEmpty);
+      expect(atZero.bodyMode, GlassBodyMode.clear);
     });
 
     testWidgets("chromeSettings at 1 is today's chrome, unchanged", (
@@ -288,6 +315,24 @@ void main() {
     // One scene per testWidgets: a 0% -> 1% glass transition inside one
     // test leaves the golden rasterisation stuck on the 0% frame (see
     // the card golden note above). Fresh trees render correctly.
+    //
+    // b28 — warm-up: the very first GlassContainer render in a
+    // process still paints the adaptive body wash even in clear
+    // bodyMode (measured: first test wash 4.7%, second test clean
+    // 0.14%, same settings), and the same first-frame artifact
+    // shifts the 100% render too (reordering 1-before-0 changed
+    // glass_container_intensity_1.png by 4.7% vs HEAD). So a
+    // throwaway library render runs first, with no golden of its
+    // own; the goldens below are all warmed renders. On device the
+    // shader is warm long before the user can reach 0%, so this
+    // only matters to golden order, not to the shipped look.
+    testWidgets('warm-up: first library glass render (no golden)', (
+      tester,
+    ) async {
+      await _pumpContainer(tester, 1.0);
+      expect(find.text('glass'), findsOneWidget);
+    });
+
     testWidgets('golden: GlassContainer intensity 0', (tester) async {
       await _pumpContainer(tester, 0.0);
       await expectLater(

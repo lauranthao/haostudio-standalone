@@ -1,0 +1,1515 @@
+// Emby page inside the video tab (build 28).
+//
+// Own State / Client / CancelToken / cache — never shared with the
+// CMS home page. The parent (VideoTabPage) unmounts this page on
+// switch (no IndexedStack), so dispose() cancels in-flight requests
+// and nothing keeps running while hidden.
+//
+// What it shows: search pill (Emby-only search, inline) → Continue
+// Watching (Emby history rows only, source == 'emby') → 电影 → 剧集.
+// History/favourites stores are SHARED with CMS, but each page only
+// ever shows its own source's rows, and opening a row always routes
+// by source (here: EmbyDetailPage). There is deliberately NO
+// history/favourites button on this page: the shared History/Favs
+// pages still route everything through the CMS detail page (not
+// this group's files), so sending users there with Emby rows would
+// open the wrong detail — that routing is an open item for the
+// coordinator, tracked in the build-28 report.
+//
+// Posters go through RefererImage with the X-Emby-Token header; the
+// image URL itself never carries api_key. The poster card below
+// copies VideoPosterCard's values (2:3, radius standard, title
+// 13/600, meta 12, count badge, watched ✓) because that widget has
+// no headers parameter and lives outside this group's files.
+
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/storage/hive_store.dart';
+import '../../core/theme/glass.dart';
+import '../../core/theme/hao_radius.dart';
+import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../widgets/hao_search_field.dart';
+import '../../services/video/emby_client.dart';
+import '../../services/video/emby_models.dart';
+import '../settings/video_sources_page.dart';
+import 'emby_detail_page.dart';
+import 'video_history_store.dart';
+import 'video_models.dart';
+import 'widgets/referer_image.dart';
+
+class EmbyTabPage extends StatefulWidget {
+  const EmbyTabPage({super.key, this.client});
+
+  /// Test seam: production passes null and the page loads the stored
+  /// config itself.
+  final EmbyClient? client;
+
+  @override
+  State<EmbyTabPage> createState() => _EmbyTabPageState();
+}
+
+enum _EmbyPhase { unconfigured, disabled, needsUser, loading, error, ready }
+
+class _EmbyTabPageState extends State<EmbyTabPage> {
+  EmbyClient? _client;
+  _EmbyPhase _phase = _EmbyPhase.loading;
+  String _errorMessage = '';
+
+  List<VideoItem> _movies = [];
+  List<VideoItem> _series = [];
+  List<WatchHistoryEntry> _history = [];
+  bool _stale = false;
+
+  /// Library totals for pagination (1.1.6): the server reports
+  /// TotalRecordCount; the rows load 60 at a time and offer
+  /// "load more" until everything is shown (before: 60+ items
+  /// were silently cut off).
+  int _moviesTotal = 0;
+  int _seriesTotal = 0;
+  bool _moviesLoadingMore = false;
+  bool _seriesLoadingMore = false;
+  String? _movieLibId;
+  String? _tvLibId;
+
+  /// Server-side resume (GET /Items/Resume) + per-series next-up
+  /// (GET /Shows/NextUp), 1.1.6. [_resumeFromServer] is true only
+  /// when the server actually answered; otherwise the page falls
+  /// back to local history and [_serverResume] stays empty.
+  List<VideoItem> _serverResume = [];
+  List<VideoItem> _nextUp = [];
+  bool _resumeFromServer = false;
+
+  CancelToken? _loadToken;
+  CancelToken? _searchToken;
+  final _searchController = TextEditingController();
+
+  bool _searchMode = false;
+  bool _searching = false;
+  String _searchQuery = '';
+  List<VideoItem> _searchResults = [];
+  String _searchError = '';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _loadToken?.cancel();
+    _searchToken?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // -- Cache (hao_emby_home, same shape as the CMS home cache) --------
+
+  VideoHomeData? _loadCached() {
+    String? raw;
+    try {
+      raw = HiveStore.box.get(HiveKeys.embyHomeCache) as String?;
+    } catch (_) {
+      return null;
+    }
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return VideoHomeData.fromJson(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _saveCache() async {
+    final rows = <VideoHomeRow>[
+      if (_movies.isNotEmpty)
+        VideoHomeRow(name: '电影', count: _movies.length, items: _movies),
+      if (_series.isNotEmpty)
+        VideoHomeRow(name: '剧集', count: _series.length, items: _series),
+    ];
+    if (rows.isEmpty) return;
+    try {
+      await HiveStore.put(
+        HiveKeys.embyHomeCache,
+        jsonEncode(
+          VideoHomeData(rows: rows, fetchedAt: DateTime.now()).toJson(),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  // -- Load --------------------------------------------------------------
+
+  Future<void> _load({bool force = false}) async {
+    final config = widget.client?.config ?? EmbyConfigStore.load();
+    if (config == null || !config.isConfigured) {
+      if (mounted) setState(() => _phase = _EmbyPhase.unconfigured);
+      return;
+    }
+    if (!config.enabled) {
+      if (mounted) setState(() => _phase = _EmbyPhase.disabled);
+      return;
+    }
+    _client = widget.client ?? EmbyClient(config: config);
+
+    if (!force) {
+      final cached = _loadCached();
+      if (cached != null) {
+        _applyRows(cached);
+        if (mounted) setState(() => _phase = _EmbyPhase.ready);
+      }
+    }
+    _history = VideoHistoryStore.getAll()
+        .where((e) => e.sourceKey == EmbyClient.sourceId)
+        .toList();
+    if (mounted) setState(() {});
+
+    _loadToken?.cancel();
+    final token = _loadToken = CancelToken();
+    try {
+      await _client!.ensureApiRoot(cancelToken: token);
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      if (!mounted) return;
+      _fail('连不上 Emby 服务器，检查地址和网络');
+      return;
+    } on EmbyException catch (e) {
+      if (!mounted) return;
+      _fail(e.message);
+      return;
+    }
+    if (!mounted) return;
+
+    // userId comes from probe, never typed by the user. Single user:
+    // take it silently. Several: stop here — Settings picks one.
+    if (config.userId.isEmpty) {
+      EmbyProbeResult probe;
+      try {
+        probe = await _client!.probe(cancelToken: token);
+      } on DioException catch (e) {
+        if (e.type == DioExceptionType.cancel) return;
+        if (!mounted) return;
+        _fail('连不上 Emby 服务器，检查地址和网络');
+        return;
+      }
+      if (!mounted) return;
+      if (!probe.ok) {
+        _fail(probe.errorMessage);
+        return;
+      }
+      if (probe.users.isEmpty) {
+        _fail('Emby 没有返回用户，请在设置里重新测连通');
+        return;
+      }
+      if (probe.users.length > 1) {
+        setState(() => _phase = _EmbyPhase.needsUser);
+        return;
+      }
+      final updated = config.copyWith(userId: probe.users.first.id);
+      await EmbyConfigStore.save(updated);
+      _client = EmbyClient(config: updated);
+    }
+
+    final client = _client!;
+    List<EmbyLibrary> libraries = const [];
+    try {
+      libraries = await client.libraries(cancelToken: token);
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+    } on EmbyException catch (e) {
+      if (!mounted) return;
+      _fail(e.message);
+      return;
+    }
+    if (!mounted) return;
+    final movieLib = _pickLibrary(
+      libraries,
+      config.movieLibraryId,
+      (l) => l.isMovieLibrary,
+    );
+    final tvLib = _pickLibrary(
+      libraries,
+      config.tvLibraryId,
+      (l) => l.isTvLibrary,
+    );
+
+    // Movie and series loads are independent: one failing must not
+    // kill the other row.
+    List<VideoItem> movies = _movies;
+    List<VideoItem> series = _series;
+    var moviesTotal = _moviesTotal;
+    var seriesTotal = _seriesTotal;
+    try {
+      final page = await client.movies(
+        libraryId: movieLib?.id,
+        limit: 60,
+        cancelToken: token,
+      );
+      movies = page.items;
+      moviesTotal = page.totalCount;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+    } on EmbyException catch (_) {
+      movies = _movies;
+    }
+    try {
+      final page = await client.series(
+        libraryId: tvLib?.id,
+        limit: 60,
+        cancelToken: token,
+      );
+      series = page.items;
+      seriesTotal = page.totalCount;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+    } on EmbyException catch (_) {
+      series = _series;
+    }
+    if (!mounted) return;
+    setState(() {
+      _movies = movies;
+      _series = series;
+      _moviesTotal = moviesTotal;
+      _seriesTotal = seriesTotal;
+      _movieLibId = movieLib?.id;
+      _tvLibId = tvLib?.id;
+      _history = VideoHistoryStore.getAll()
+          .where((e) => e.sourceKey == EmbyClient.sourceId)
+          .toList();
+      _phase = _EmbyPhase.ready;
+      _stale = false;
+    });
+    unawaited(_saveCache());
+    unawaited(_loadServerResume(client, token));
+  }
+
+  /// Server resume + next-up rails (1.1.6, best-effort): a server
+  /// failure here never fails the page — the local-history
+  /// "继续观看" row stays as the fallback, and the "下一集" rail
+  /// simply stays empty.
+  Future<void> _loadServerResume(EmbyClient client, CancelToken token) async {
+    List<VideoItem> resume;
+    try {
+      resume = await client.resumeItems(cancelToken: token);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || token.isCancelled) return;
+    // Next-up series: from the resume episodes' SeriesId first
+    // (server data), else from local history rows (their vodId IS
+    // the series id for Emby series playback). At most 5 series,
+    // one NextUp call each — never a per-item sweep.
+    final seriesIds = <String>[];
+    void addSeries(String id) {
+      if (id.isNotEmpty && !seriesIds.contains(id)) seriesIds.add(id);
+    }
+
+    for (final item in resume) {
+      if (item.seriesId.isNotEmpty) {
+        addSeries(item.seriesId);
+      } else if (item.mediaType == 'Series') {
+        addSeries(item.vodId);
+      }
+    }
+    if (seriesIds.isEmpty) {
+      for (final h in _history) {
+        addSeries(h.vodId);
+      }
+    }
+    final next = <VideoItem>[];
+    for (final sid in seriesIds.take(5)) {
+      if (!mounted || token.isCancelled) return;
+      try {
+        next.addAll(await client.nextUp(seriesId: sid, cancelToken: token));
+      } catch (_) {
+        // One series without a next episode must not kill the rail.
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _serverResume = resume;
+      _nextUp = next;
+      _resumeFromServer = true;
+    });
+  }
+
+  Future<void> _loadMoreMovies() async {
+    final client = _client;
+    if (client == null || _moviesLoadingMore) return;
+    if (_moviesTotal > 0 && _movies.length >= _moviesTotal) return;
+    setState(() => _moviesLoadingMore = true);
+    try {
+      final page = await client.movies(
+        libraryId: _movieLibId,
+        startIndex: _movies.length,
+        limit: 60,
+      );
+      if (!mounted) return;
+      setState(() {
+        _movies = [..._movies, ...page.items];
+        _moviesTotal = page.totalCount;
+        _moviesLoadingMore = false;
+      });
+      unawaited(_saveCache());
+    } catch (_) {
+      if (mounted) setState(() => _moviesLoadingMore = false);
+    }
+  }
+
+  Future<void> _loadMoreSeries() async {
+    final client = _client;
+    if (client == null || _seriesLoadingMore) return;
+    if (_seriesTotal > 0 && _series.length >= _seriesTotal) return;
+    setState(() => _seriesLoadingMore = true);
+    try {
+      final page = await client.series(
+        libraryId: _tvLibId,
+        startIndex: _series.length,
+        limit: 60,
+      );
+      if (!mounted) return;
+      setState(() {
+        _series = [..._series, ...page.items];
+        _seriesTotal = page.totalCount;
+        _seriesLoadingMore = false;
+      });
+      unawaited(_saveCache());
+    } catch (_) {
+      if (mounted) setState(() => _seriesLoadingMore = false);
+    }
+  }
+
+  EmbyLibrary? _pickLibrary(
+    List<EmbyLibrary> libraries,
+    String? pinnedId,
+    bool Function(EmbyLibrary) matches,
+  ) {
+    if (pinnedId != null && pinnedId.isNotEmpty) {
+      for (final l in libraries) {
+        if (l.id == pinnedId) return l;
+      }
+    }
+    for (final l in libraries) {
+      if (matches(l)) return l;
+    }
+    return null;
+  }
+
+  void _applyRows(VideoHomeData cached) {
+    for (final row in cached.rows) {
+      if (row.name == '电影') {
+        _movies = row.items;
+        _moviesTotal = row.items.length;
+      }
+      if (row.name == '剧集') {
+        _series = row.items;
+        _seriesTotal = row.items.length;
+      }
+    }
+  }
+
+  void _fail(String message) {
+    setState(() {
+      _errorMessage = message;
+      if (_movies.isEmpty && _series.isEmpty) {
+        _phase = _EmbyPhase.error;
+      } else {
+        _phase = _EmbyPhase.ready;
+        _stale = true;
+      }
+    });
+  }
+
+  // -- Search (Emby only, inline) ----------------------------------------
+
+  void _openSearch() {
+    setState(() {
+      _searchMode = true;
+      _searchQuery = '';
+      _searchResults = [];
+      _searchError = '';
+    });
+  }
+
+  void _closeSearch() {
+    _searchToken?.cancel();
+    setState(() {
+      _searchMode = false;
+      _searching = false;
+      _searchController.clear();
+    });
+  }
+
+  Future<void> _runSearch(String query) async {
+    final client = _client;
+    final q = query.trim();
+    if (client == null || q.isEmpty) return;
+    _searchToken?.cancel();
+    final token = _searchToken = CancelToken();
+    setState(() {
+      _searching = true;
+      _searchQuery = q;
+      _searchError = '';
+    });
+    try {
+      final results = await client.search(q, cancelToken: token);
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _searching = false;
+      });
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchError = '连不上 Emby 服务器，检查地址和网络';
+      });
+    } on EmbyException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _searchError = e.message;
+      });
+    }
+  }
+
+  // -- Navigation ----------------------------------------------------------
+
+  void _openDetail(VideoItem item, {bool autoResume = false}) {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => EmbyDetailPage(
+          itemId: item.vodId,
+          preload: item,
+          autoResume: autoResume,
+        ),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => const VideoSourcesPage(),
+      ),
+    );
+  }
+
+  Set<String> get _watchedKeys => _history
+      .where((e) => e.isFinished)
+      .map((e) => e.identityKey)
+      .toSet();
+
+  // -- Build ---------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: _searchMode
+            ? _buildSearch(theme)
+            : _phase == _EmbyPhase.loading
+                ? const Center(child: CupertinoActivityIndicator())
+                : _phase == _EmbyPhase.unconfigured ||
+                        _phase == _EmbyPhase.disabled ||
+                        _phase == _EmbyPhase.needsUser
+                    ? _buildEmptyState(theme)
+                    : _phase == _EmbyPhase.error
+                        ? _buildError(theme)
+                        : _buildHome(theme),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(HaoTheme theme) {
+    final title = switch (_phase) {
+      _EmbyPhase.unconfigured => '还没有连接 Emby',
+      _EmbyPhase.disabled => 'Emby 已停用',
+      _EmbyPhase.needsUser => 'Emby 有多个用户',
+      _ => '',
+    };
+    final body = switch (_phase) {
+      _EmbyPhase.unconfigured => '在设置里填入服务器地址和密钥即可连接',
+      _EmbyPhase.disabled => '在设置里打开 Emby 开关即可继续',
+      _EmbyPhase.needsUser => '请在设置里选择一个用户',
+      _ => '',
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: theme.textMuted),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _openSettings,
+              icon: const Icon(Icons.settings),
+              label: const Text('去设置连接'),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.accent,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(HaoTheme theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            const SizedBox(height: 16),
+            Text(
+              'Emby 加载失败',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: theme.textMuted),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () {
+                setState(() => _phase = _EmbyPhase.loading);
+                unawaited(_load(force: true));
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.accent,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHome(HaoTheme theme) {
+    return CustomScrollView(
+      slivers: [
+        CupertinoSliverRefreshControl(
+          onRefresh: () => _load(force: true),
+        ),
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+                  child: GestureDetector(
+                    onTap: () {
+                      HaoHaptics.tap();
+                      _openSearch();
+                    },
+                    child: GlassCard(
+                      radius: 999,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.search,
+                            color: theme.textMuted,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '搜索 Emby 影片、剧集…',
+                            style: TextStyle(
+                              color: theme.textMuted,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (_stale)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: GlassCard(
+                      radius: 10,
+                      quality: GlassCardQuality.standard,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: theme.accent,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '内容可能不是最新',
+                            style: TextStyle(
+                              color: theme.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                // "继续观看": server resume first (1.1.6), local
+                // history only when the server did not answer or has
+                // nothing in progress. The two sources never mix in
+                // one row — the server is the source of truth across
+                // devices, local is the offline fallback.
+                if (_resumeFromServer && _serverResume.isNotEmpty) ...[
+                  _SectionHead(title: '继续观看', onMore: null),
+                  SizedBox(
+                    height: 186,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _serverResume.length,
+                      itemBuilder: (context, i) {
+                        final item = _serverResume[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: _ResumeCard(
+                            item: item,
+                            imageHeaders: _client?.imageHeaders,
+                            onTap: () => _openDetail(item),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ] else if (_history.isNotEmpty) ...[
+                  _SectionHead(title: '继续观看', onMore: null),
+                  SizedBox(
+                    height: 186,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _history.length,
+                      itemBuilder: (context, i) {
+                        final h = _history[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: _ContinueCard(
+                            entry: h,
+                            imageHeaders: _client?.imageHeaders,
+                            onTap: () => _openDetail(
+                              VideoItem(
+                                source: h.source,
+                                sourceName: 'Emby',
+                                vodId: h.vodId,
+                                name: h.title,
+                                pic: h.pic,
+                                picAlt: h.picAlt,
+                              ),
+                              autoResume: true,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                // "下一集": a SEPARATE rail from "继续观看" (1.1.6) —
+                // the next unwatched episode of each in-progress
+                // series, from the server (GET /Shows/NextUp).
+                // Tapping one opens that episode's detail, which
+                // plays it directly.
+                if (_nextUp.isNotEmpty) ...[
+                  _SectionHead(title: '下一集', onMore: null),
+                  SizedBox(
+                    height: 216,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _nextUp.length,
+                      itemBuilder: (context, i) {
+                        final item = _nextUp[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: SizedBox(
+                            width: 112,
+                            child: _NextUpCard(
+                              item: item,
+                              imageHeaders: _client?.imageHeaders,
+                              onTap: () => _openDetail(item),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (_movies.isNotEmpty) ...[
+                  _SectionHead(title: '电影', count: _movies.length),
+                  _PosterRow(
+                    items: _movies,
+                    watchedKeys: _watchedKeys,
+                    imageHeaders: _client?.imageHeaders,
+                    onTapItem: _openDetail,
+                  ),
+                  if (_moviesTotal > _movies.length)
+                    _LoadMoreRow(
+                      shown: _movies.length,
+                      total: _moviesTotal,
+                      loading: _moviesLoadingMore,
+                      onTap: _loadMoreMovies,
+                    ),
+                ],
+                if (_series.isNotEmpty) ...[
+                  _SectionHead(title: '剧集', count: _series.length),
+                  _PosterRow(
+                    items: _series,
+                    watchedKeys: _watchedKeys,
+                    imageHeaders: _client?.imageHeaders,
+                    onTapItem: _openDetail,
+                  ),
+                  if (_seriesTotal > _series.length)
+                    _LoadMoreRow(
+                      shown: _series.length,
+                      total: _seriesTotal,
+                      loading: _seriesLoadingMore,
+                      onTap: _loadMoreSeries,
+                    ),
+                ],
+                if (_movies.isEmpty && _series.isEmpty) ...[
+                  const SizedBox(height: 48),
+                  Center(
+                    child: Text(
+                      'Emby 片库是空的',
+                      style: TextStyle(color: theme.textMuted),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 28),
+              ],
+            ),
+          ),
+        ],
+      );
+  }
+
+  Widget _buildSearch(HaoTheme theme) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 14, 4),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _closeSearch,
+              ),
+              Expanded(
+                child: HaoSearchField(
+                  controller: _searchController,
+                  autofocus: true,
+                  hintText: '搜索 Emby 影片、剧集…',
+                  onSubmitted: _runSearch,
+                  onClear: () {
+                    setState(() {
+                      _searchResults = [];
+                      _searchError = '';
+                    });
+                  },
+                  onCancel: () {
+                    setState(() {
+                      _searchResults = [];
+                      _searchError = '';
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _searching
+              ? const Center(child: CupertinoActivityIndicator())
+              : _searchError.isNotEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          _searchError,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: theme.textMuted),
+                        ),
+                      ),
+                    )
+                  : _searchQuery.isEmpty
+                      ? Center(
+                          child: Text(
+                            '输入片名搜索',
+                            style: TextStyle(color: theme.textMuted),
+                          ),
+                        )
+                      : _searchResults.isEmpty
+                          ? Center(
+                              child: Text(
+                                '在 Emby 里没有找到“$_searchQuery”',
+                                style: TextStyle(color: theme.textMuted),
+                              ),
+                            )
+                          : GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 0.52,
+                              ),
+                              itemCount: _searchResults.length,
+                              itemBuilder: (context, i) {
+                                final item = _searchResults[i];
+                                return _EmbyPosterCard(
+                                  item: item,
+                                  imageHeaders: _client?.imageHeaders,
+                                  isWatched:
+                                      _watchedKeys.contains(item.identityKey),
+                                  onTap: () => _openDetail(item),
+                                );
+                              },
+                            ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Section header — same values as the CMS home (_SectionHead in
+/// video_tab_page.dart): 20px/800 + "count ›".
+class _SectionHead extends StatelessWidget {
+  const _SectionHead({required this.title, this.count, this.onMore});
+
+  final String title;
+  final int? count;
+  final VoidCallback? onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 10),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.02,
+              height: 1.2,
+            ),
+          ),
+          const Spacer(),
+          if (onMore != null)
+            GestureDetector(
+              onTap: onMore,
+              child: Text(
+                count != null ? '$count ›' : '查看全部 ›',
+                style: TextStyle(
+                  color: theme.textMuted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Horizontal poster row — same geometry as the CMS home
+/// (_PosterRow): 216 high, 112 wide cards.
+class _PosterRow extends StatelessWidget {
+  const _PosterRow({
+    required this.items,
+    required this.onTapItem,
+    required this.watchedKeys,
+    this.imageHeaders,
+  });
+
+  final List<VideoItem> items;
+  final void Function(VideoItem item) onTapItem;
+  final Set<String> watchedKeys;
+  final Map<String, String>? imageHeaders;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 216,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SizedBox(
+              width: 112,
+              child: _EmbyPosterCard(
+                item: item,
+                imageHeaders: imageHeaders,
+                isWatched: watchedKeys.contains(item.identityKey),
+                onTap: () => onTapItem(item),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Poster card — VideoPosterCard's values, copied because that widget
+/// takes no image headers and lives outside this group's files:
+/// 2:3 poster, radius standard, title 13/600, meta 12, count badge
+/// (dark pill, 11/600, top-right), watched ✓ (20px dark circle,
+/// top-left), missing artwork = theme tile + ▶ glyph.
+class _EmbyPosterCard extends StatelessWidget {
+  const _EmbyPosterCard({
+    required this.item,
+    this.imageHeaders,
+    this.isWatched = false,
+    this.onTap,
+  });
+
+  final VideoItem item;
+  final Map<String, String>? imageHeaders;
+  final bool isWatched;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final total = int.tryParse(item.total) ?? 0;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 2 / 3,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.surfaceStrong,
+                borderRadius: BorderRadius.circular(HaoRadius.standard),
+                border: Border.all(color: theme.hairline),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (item.pic.isNotEmpty)
+                    RefererImage(
+                      url: item.pic,
+                      headers: imageHeaders,
+                      fit: BoxFit.cover,
+                      fallback: _MissingArtwork(theme: theme),
+                    )
+                  else
+                    _MissingArtwork(theme: theme),
+                  if (isWatched)
+                    const Positioned(
+                      top: 6,
+                      left: 6,
+                      child: _WatchedMark(),
+                    ),
+                  if (total > 1)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xA6000000),
+                          borderRadius:
+                              BorderRadius.circular(HaoRadius.standard),
+                        ),
+                        child: Text(
+                          '$total 集',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            [
+              if (item.year.isNotEmpty) item.year,
+              if (item.type.isNotEmpty) item.type,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textMuted,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissingArtwork extends StatelessWidget {
+  const _MissingArtwork({required this.theme});
+
+  final HaoTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: theme.surfaceStrong,
+      child: Center(
+        child: Icon(Icons.play_arrow, color: theme.textMuted, size: 36),
+      ),
+    );
+  }
+}
+
+class _WatchedMark extends StatelessWidget {
+  const _WatchedMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        color: Color(0xA6000000),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(Icons.check, color: Colors.white, size: 13),
+    );
+  }
+}
+
+/// "Load more" footer under a paginated row (1.1.6): shows how
+/// many are displayed out of the server total, so the 60-item
+/// first page is never a silent truncation.
+class _LoadMoreRow extends StatelessWidget {
+  const _LoadMoreRow({
+    required this.shown,
+    required this.total,
+    required this.loading,
+    required this.onTap,
+  });
+
+  final int shown;
+  final int total;
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CupertinoActivityIndicator(),
+              )
+            : OutlinedButton(
+                onPressed: onTap,
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: theme.hairline),
+                  foregroundColor: theme.accent,
+                ),
+                child: Text('加载更多（已显示 $shown / 共 $total 部）'),
+              ),
+      ),
+    );
+  }
+}
+
+/// Server-resume card — same values as [_ContinueCard] (16:9
+/// fanart, 248 wide, 6px progress bar, title 15/700, subtitle 13),
+/// driven by a server [VideoItem] (UserData progress) instead of a
+/// local history row. Episodes show their series name as the title
+/// and the episode label below; movies show the title + watched %.
+class _ResumeCard extends StatelessWidget {
+  const _ResumeCard({
+    required this.item,
+    required this.onTap,
+    this.imageHeaders,
+  });
+
+  final VideoItem item;
+  final VoidCallback onTap;
+  final Map<String, String>? imageHeaders;
+
+  bool get _isEpisode => item.mediaType == 'Episode';
+
+  String get _title =>
+      _isEpisode && item.seriesName.isNotEmpty ? item.seriesName : item.name;
+
+  String get _subtitle {
+    final pct = (item.progressFraction * 100).round().clamp(0, 100);
+    if (_isEpisode) {
+      final ep = item.episodeIndex != null ? '第 ${item.episodeIndex} 集' : item.name;
+      final season = item.seasonIndex != null && item.seasonIndex! > 1
+          ? '第 ${item.seasonIndex} 季 · '
+          : '';
+      return '$season$ep · 已看 $pct%';
+    }
+    if (item.played) return '已看完';
+    return '已看 $pct%';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 248,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.surfaceStrong,
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
+                  border: Border.all(color: theme.hairline),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (item.pic.isNotEmpty)
+                      RefererImage(
+                        url: item.pic,
+                        headers: imageHeaders,
+                        fit: BoxFit.cover,
+                        fallback: ColoredBox(
+                          color: theme.surfaceStrong,
+                        ),
+                      ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: 6,
+                        color: const Color(0x73000000),
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: item.serverProgressFraction,
+                          child: Container(
+                            height: 6,
+                            color: theme.accent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+            Text(
+              _subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 13,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Next-up episode card — same geometry as [_EmbyPosterCard] (112
+/// wide, 2:3 tile, title 13/600, meta 12). The tile is the
+/// episode's own poster when the server has one, else the same
+/// missing-artwork tile; the title is the series name and the meta
+/// line is the episode label. No per-episode stills exist on the
+/// server — the tile is never a repeated series poster passed off
+/// as a still.
+class _NextUpCard extends StatelessWidget {
+  const _NextUpCard({
+    required this.item,
+    this.imageHeaders,
+    required this.onTap,
+  });
+
+  final VideoItem item;
+  final Map<String, String>? imageHeaders;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final title = item.seriesName.isNotEmpty ? item.seriesName : item.name;
+    final ep = item.episodeIndex != null ? '第 ${item.episodeIndex} 集' : item.name;
+    final season = item.seasonIndex != null && item.seasonIndex! > 1
+        ? '第 ${item.seasonIndex} 季 · '
+        : '';
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 2 / 3,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.surfaceStrong,
+                borderRadius: BorderRadius.circular(HaoRadius.standard),
+                border: Border.all(color: theme.hairline),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (item.pic.isNotEmpty)
+                    RefererImage(
+                      url: item.pic,
+                      headers: imageHeaders,
+                      fit: BoxFit.cover,
+                      fallback: _MissingArtwork(theme: theme),
+                    )
+                  else
+                    _MissingArtwork(theme: theme),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '$season$ep',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textMuted,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+/// (_ContinueCard in video_tab_page.dart): 16:9 fanart, 248 wide,
+/// 6px progress bar, title 15/700, subtitle 13. Image goes through
+/// RefererImage with the Emby header (the CMS card has none).
+class _ContinueCard extends StatelessWidget {
+  const _ContinueCard({
+    required this.entry,
+    required this.onTap,
+    this.imageHeaders,
+  });
+
+  final WatchHistoryEntry entry;
+  final VoidCallback onTap;
+  final Map<String, String>? imageHeaders;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 248,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.surfaceStrong,
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
+                  border: Border.all(color: theme.hairline),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (entry.pic.isNotEmpty)
+                      RefererImage(
+                        url: entry.pic,
+                        headers: imageHeaders,
+                        fit: BoxFit.cover,
+                        fallback: ColoredBox(
+                          color: theme.surfaceStrong,
+                        ),
+                      ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        height: 6,
+                        color: const Color(0x73000000),
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: entry.progressFraction,
+                          child: Container(
+                            height: 6,
+                            color: theme.accent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              entry.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+            Text(
+              [
+                if (entry.epName.isNotEmpty) entry.epName,
+                if (entry.remainingLabel.isNotEmpty)
+                  entry.remainingLabel
+                else if (entry.isFinished)
+                  '已看完',
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 13,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

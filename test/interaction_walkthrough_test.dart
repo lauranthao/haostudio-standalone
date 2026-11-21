@@ -534,6 +534,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The 源管理 group sits below the fold on the 1.1.6 six-group
+      // page — scroll it into view first (ListView only builds
+      // on-screen rows). Scope the scrollable to the ListView: the
+      // quality-chips row is a second, horizontal Scrollable on the
+      // same page, and a bare scrollUntilVisible throws
+      // "Too many elements" (render_settings_test uses the same idiom).
+      await tester.scrollUntilVisible(
+        find.text('音源管理'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('音源管理'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

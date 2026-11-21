@@ -35,6 +35,7 @@ import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
     hide GlassCard, GlassShadow;
 
@@ -56,12 +57,12 @@ class EqualizerPage extends StatelessWidget {
       animation: store,
       builder: (context, _) => Scaffold(
         appBar: AppBar(
-          title: const Text('均衡器'),
+          title: Text('均衡器', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
           centerTitle: true,
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text('完成', style: TextStyle(color: theme.accent)),
+              child: Text('完成', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
             ),
           ],
         ),
@@ -107,7 +108,7 @@ class _ResponseCard extends StatelessWidget {
                   children: [
                     Text(
                       '频响预览',
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -116,7 +117,7 @@ class _ResponseCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '拖动下方频段，实时塑造声音',
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textSecondary,
                         fontSize: 11,
                       ),
@@ -124,7 +125,7 @@ class _ResponseCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.graphic_eq, size: 18, color: theme.accent),
+              Icon(shadows: HaoTheme.legibilityShadows(context), Icons.graphic_eq, size: 18, color: theme.accent),
             ],
           ),
           const SizedBox(height: 8),
@@ -151,11 +152,11 @@ class _ResponseCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Text('31 Hz', style: _scaleStyle(theme)),
+              Text('31 Hz', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
               const Spacer(),
-              Text('1 kHz', style: _scaleStyle(theme)),
+              Text('1 kHz', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
               const Spacer(),
-              Text('16 kHz', style: _scaleStyle(theme)),
+              Text('16 kHz', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
             ],
           ),
         ],
@@ -163,10 +164,8 @@ class _ResponseCard extends StatelessWidget {
     );
   }
 
-  static TextStyle _scaleStyle(HaoTheme theme) => TextStyle(
-        color: theme.textSecondary,
-        fontSize: 10,
-      );
+  static TextStyle _scaleStyle(HaoTheme theme, List<Shadow> shadows) =>
+      TextStyle(color: theme.textSecondary, fontSize: 10, shadows: shadows);
 }
 
 class _ResponsePainter extends CustomPainter {
@@ -252,7 +251,7 @@ class _ControlCard extends StatelessWidget {
             children: [
               SizedBox(
                 width: 24,
-                child: Icon(
+                child: Icon(shadows: HaoTheme.legibilityShadows(context),
                   Icons.graphic_eq,
                   size: 16,
                   color: theme.accent,
@@ -265,7 +264,7 @@ class _ControlCard extends StatelessWidget {
                   children: [
                     Text(
                       '启用均衡器',
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -274,7 +273,7 @@ class _ControlCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '播放时实时应用当前调节',
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textSecondary,
                         fontSize: 11,
                       ),
@@ -284,6 +283,9 @@ class _ControlCard extends StatelessWidget {
               ),
               GlassSwitch(
                 value: store.enabled,
+                // N-8: iOS size 51x31 (was the library default 58x26).
+                width: 51,
+                height: 31,
                 onChanged: (value) {
                   HaoHaptics.select();
                   unawaited(store.setEnabled(value));
@@ -298,7 +300,7 @@ class _ControlCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             '均衡器仅处理 HAo Studio 当前播放的音乐，不影响其他 App。',
-            style: TextStyle(color: theme.textSecondary, fontSize: 11),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 11),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -311,7 +313,7 @@ class _ControlCard extends StatelessWidget {
             children: [
               Text(
                 '前级增益',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
@@ -320,7 +322,7 @@ class _ControlCard extends StatelessWidget {
               const Spacer(),
               Text(
                 '${store.preampGain >= 0 ? '+' : ''}${store.preampGain.toStringAsFixed(1)} dB',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: store.preampGain.abs() > 0.01
                       ? theme.accent
                       : theme.textSecondary,
@@ -338,11 +340,11 @@ class _ControlCard extends StatelessWidget {
           ),
           Row(
             children: [
-              Text('-12', style: _scaleStyle(theme)),
+              Text('-12', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
               const Spacer(),
-              Text('不增益', style: _scaleStyle(theme)),
+              Text('不增益', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
               const Spacer(),
-              Text('+12', style: _scaleStyle(theme)),
+              Text('+12', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
             ],
           ),
         ],
@@ -350,10 +352,8 @@ class _ControlCard extends StatelessWidget {
     );
   }
 
-  static TextStyle _scaleStyle(HaoTheme theme) => TextStyle(
-        color: theme.textSecondary.withValues(alpha: 0.75),
-        fontSize: 10,
-      );
+  static TextStyle _scaleStyle(HaoTheme theme, List<Shadow> shadows) =>
+      TextStyle(color: theme.textSecondary.withValues(alpha: 0.75), fontSize: 10, shadows: shadows);
 }
 
 /// Beans `presetCard`: current-preset Menu + 3-column preset grid +
@@ -377,7 +377,7 @@ class _PresetCard extends StatelessWidget {
             children: [
               Text(
                 '预设',
-                style: TextStyle(
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -393,7 +393,12 @@ class _PresetCard extends StatelessWidget {
                     .map(
                       (preset) => PopupMenuItem(
                         value: preset,
-                        child: Text(preset.displayName),
+                        child: Text(
+                          preset.displayName,
+                          style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
+                          ),
+                        ),
                       ),
                     )
                     .toList(),
@@ -409,14 +414,14 @@ class _PresetCard extends StatelessWidget {
                     children: [
                       Text(
                         store.currentPresetName,
-                        style: TextStyle(
+                        style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                           color: theme.accent,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Icon(
+                      Icon(shadows: HaoTheme.legibilityShadows(context),
                         Icons.unfold_more,
                         size: 10,
                         color: theme.accent,
@@ -444,7 +449,7 @@ class _PresetCard extends StatelessWidget {
                   !store.isCustom && store.selectedPreset == preset;
               return Material(
                 color: Colors.transparent,
-                child: InkWell(
+                child: HaoPressable(
                   onTap: () {
                     HaoHaptics.select();
                     unawaited(store.applyPreset(preset));
@@ -466,7 +471,7 @@ class _PresetCard extends StatelessWidget {
                     alignment: Alignment.center,
                     child: Text(
                       preset.displayName,
-                      style: TextStyle(
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                         color: selected ? theme.accent : theme.textPrimary,
                         fontSize: 11.5,
                         fontWeight: selected
@@ -483,7 +488,7 @@ class _PresetCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               '我的预设',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -494,14 +499,14 @@ class _PresetCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: InkWell(
+                    child: HaoPressable(
                       onTap: () {
                         HaoHaptics.select();
                         unawaited(store.applyCustomPreset(preset));
                       },
                       child: Row(
                         children: [
-                          Icon(
+                          Icon(shadows: HaoTheme.legibilityShadows(context),
                             store.selectedCustomPresetName == preset.name
                                 ? Icons.check_circle
                                 : Icons.circle_outlined,
@@ -517,7 +522,7 @@ class _PresetCard extends StatelessWidget {
                               preset.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
+                              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                 color: theme.textPrimary,
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w500,
@@ -531,7 +536,7 @@ class _PresetCard extends StatelessWidget {
                   IconButton(
                     onPressed: () =>
                         unawaited(store.deleteCustomPreset(preset)),
-                    icon: Icon(
+                    icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                       Icons.delete_outline,
                       size: 12,
                       color: theme.textSecondary,
@@ -548,7 +553,7 @@ class _PresetCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: InkWell(
+                child: HaoPressable(
                   onTap: () => _showSavePresetDialog(context, store),
                   borderRadius: BorderRadius.circular(HaoRadius.standard),
                   child: Container(
@@ -561,7 +566,7 @@ class _PresetCard extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
+                        Icon(shadows: HaoTheme.legibilityShadows(context),
                           Icons.download,
                           size: 14,
                           color: theme.accent,
@@ -569,7 +574,7 @@ class _PresetCard extends StatelessWidget {
                         const SizedBox(width: 6),
                         Text(
                           '保存当前预设',
-                          style: TextStyle(
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.accent,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w500,
@@ -581,7 +586,7 @@ class _PresetCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              InkWell(
+              HaoPressable(
                 onTap: () {
                   HaoHaptics.select();
                   unawaited(store.reset());
@@ -594,7 +599,7 @@ class _PresetCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(HaoRadius.standard),
                     color: theme.textPrimary.withValues(alpha: 0.055),
                   ),
-                  child: Icon(
+                  child: Icon(shadows: HaoTheme.legibilityShadows(context),
                     Icons.refresh,
                     size: 13,
                     color: theme.textSecondary,
@@ -627,7 +632,7 @@ class _PresetCard extends StatelessWidget {
           children: [
             Text(
               '保存自定义预设',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -636,12 +641,21 @@ class _PresetCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '保存当前频段和前级增益，之后可以一键恢复。',
-              style: TextStyle(color: theme.textSecondary, fontSize: 14),
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 14),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
-              decoration: const InputDecoration(labelText: '预设名称'),
+              style: TextStyle(
+                color: theme.textPrimary,
+                shadows: HaoTheme.legibilityShadows(ctx),
+              ),
+              decoration: InputDecoration(
+                labelText: '预设名称',
+                labelStyle: TextStyle(
+                  shadows: HaoTheme.legibilityShadows(ctx),
+                ),
+              ),
               autofocus: true,
             ),
             const SizedBox(height: 16),
@@ -652,12 +666,12 @@ class _PresetCard extends StatelessWidget {
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: Text(
                     '取消',
-                    style: TextStyle(color: theme.textSecondary),
+                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary),
                   ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(controller.text),
-                  child: Text('保存', style: TextStyle(color: theme.accent)),
+                  child: Text('保存', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
                 ),
               ],
             ),
@@ -695,7 +709,7 @@ class _BandsCard extends StatelessWidget {
         children: [
           Text(
             '自定义调节',
-            style: TextStyle(
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
               color: theme.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -704,7 +718,7 @@ class _BandsCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             '范围 -12 dB 至 +12 dB',
-            style: TextStyle(color: theme.textSecondary, fontSize: 11),
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 11),
           ),
           const SizedBox(height: 14),
           for (var i = 0; i < EqualizerStore.bandFrequencies.length; i++) ...[
@@ -742,7 +756,7 @@ class _BandRow extends StatelessWidget {
               EqualizerStore.frequencyLabel(
                 EqualizerStore.bandFrequencies[index],
               ),
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -751,7 +765,7 @@ class _BandRow extends StatelessWidget {
             const Spacer(),
             Text(
               '${gain >= 0 ? '+' : ''}${gain.toStringAsFixed(1)} dB',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: gain.abs() > 0.01 ? theme.accent : theme.textSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -767,21 +781,19 @@ class _BandRow extends StatelessWidget {
         ),
         Row(
           children: [
-            Text('-12', style: _scaleStyle(theme)),
+            Text('-12', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
             const Spacer(),
-            Text('0', style: _scaleStyle(theme)),
+            Text('0', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
             const Spacer(),
-            Text('+12', style: _scaleStyle(theme)),
+            Text('+12', style: _scaleStyle(theme, HaoTheme.legibilityShadows(context))),
           ],
         ),
       ],
     );
   }
 
-  static TextStyle _scaleStyle(HaoTheme theme) => TextStyle(
-        color: theme.textSecondary.withValues(alpha: 0.75),
-        fontSize: 10,
-      );
+  static TextStyle _scaleStyle(HaoTheme theme, List<Shadow> shadows) =>
+      TextStyle(color: theme.textSecondary.withValues(alpha: 0.75), fontSize: 10, shadows: shadows);
 }
 
 /// Shared EQ slider: -12..+12, 0.5 dB steps (Beans step 0.5,
@@ -810,6 +822,12 @@ class _EqSlider extends StatelessWidget {
         max: EqualizerStore.maximumGain,
         divisions: 48,
         onChanged: onChanged,
+        // N-13: light tap on release, click at either end.
+        onChangeEnd: (v) => HaoHaptics.sliderEnd(
+          v,
+          -EqualizerStore.maximumGain,
+          EqualizerStore.maximumGain,
+        ),
       ),
     );
   }

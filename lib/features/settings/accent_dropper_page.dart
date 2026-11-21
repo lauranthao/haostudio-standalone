@@ -10,6 +10,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../../widgets/hao_pressable.dart';
 
 import '../../core/theme/screen_capture.dart';
 
@@ -86,9 +87,9 @@ class _RoundButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: HaoPressable(
         onTap: onTap,
-        customBorder: const CircleBorder(),
+        borderRadius: BorderRadius.circular(999),
         child: Container(
           width: 44,
           height: 44,

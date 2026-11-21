@@ -40,6 +40,102 @@ Stream<Duration> seedKnownDuration(
   yield* source;
 }
 
+/// One audio/subtitle track of the current source, as enumerated by
+/// the active backend. [id] is backend-native (mpv track id);
+/// 'auto' = backend default, 'no' = off (subtitles; audio 'no'
+/// mutes). Backends that cannot enumerate tracks (IJK, AVPlayer)
+/// return empty lists — the session surfaces "no tracks" instead of
+/// a broken picker.
+class PlaybackTrack {
+  const PlaybackTrack({
+    required this.id,
+    this.title,
+    this.language,
+    this.codec,
+  });
+
+  final String id;
+  final String? title;
+  final String? language;
+  final String? codec;
+
+  /// Picker label: title first, then language + codec, then the id.
+  String get displayName {
+    final parts = <String>[
+      if (title != null && title!.isNotEmpty) title!,
+      if (language != null && language!.isNotEmpty) language!,
+      if (codec != null && codec!.isNotEmpty) codec!,
+    ];
+    if (parts.isEmpty) return '轨道 $id';
+    return parts.join(' · ');
+  }
+}
+
+/// Optional capability: backends that can enumerate and switch
+/// EMBEDDED audio/subtitle tracks implement this IN ADDITION to
+/// [PlayerBackend]. It is a separate interface on purpose: the old
+/// fakes (and the other two engines) use `implements PlayerBackend`,
+/// and any method added to that class — even with a default body —
+/// breaks every `implements` fake at compile time. MPV implements
+/// this (media_kit track API); IJK has no track API in flv_lzc and
+/// AVPlayer (BetterPlayer) only switches audio on HLS/DASH and only
+/// loads subtitles from external files — both stay without it, and
+/// the session surfaces "no tracks" on them.
+///
+/// It EXTENDS [PlayerBackend] on purpose, not just for the
+/// contract: Dart only narrows an `is` test when the tested type
+/// is a subtype of the variable's type, so an unrelated interface
+/// would never promote (`backend is TrackCapableBackend` would
+/// leave `backend` typed as `PlayerBackend`). With the extends,
+/// `is TrackCapableBackend` narrows and the session can call the
+/// track methods directly.
+abstract class TrackCapableBackend extends PlayerBackend {
+  /// Audio tracks of the current source (embedded).
+  Future<List<PlaybackTrack>> audioTracks();
+
+  /// Subtitle tracks of the current source (embedded).
+  Future<List<PlaybackTrack>> subtitleTracks();
+
+  /// Select an audio track by [PlaybackTrack.id] ('auto' = backend
+  /// default).
+  Future<void> setAudioTrack(String id);
+
+  /// Select a subtitle track by [PlaybackTrack.id] ('auto' = backend
+  /// default, 'no' = off).
+  Future<void> setSubtitleTrack(String id);
+
+  /// Shift the main subtitle track in time (MPV `sub-delay`, seconds,
+  /// negative = earlier). 1.1.6, VOD only. Backends without the
+  /// capability do not implement this interface at all — the session
+  /// only calls it on a [TrackCapableBackend].
+  Future<void> setSubtitleDelay(double seconds);
+
+  /// Set the subtitle appearance (MPV `sub-font-size` / `sub-color` /
+  /// `sub-pos`). 1.1.6, VOD only. Same MPV-only scope as
+  /// [setSubtitleDelay]: `fontSize` is the mpv point size, `color`
+  /// a 6-digit `#RRGGBB`, `position` the mpv `sub-pos` (0 = top,
+  /// 100 = bottom). Default is a no-op on purpose (not abstract):
+  /// only MPV implements it, and the test fakes implementing this
+  /// interface must keep compiling without a stub.
+  Future<void> setSubtitleAppearance({
+    required int fontSize,
+    required String color,
+    required double position,
+  }) async {}
+
+  /// Select the SECOND subtitle track for dual subtitles (MPV
+  /// `secondary-sid`, shown as toptitle above the main track).
+  /// 'no' = dual subtitles off. Same MPV-only scope as
+  /// [setSubtitleDelay].
+  Future<void> setSecondarySubtitleTrack(String id);
+
+  /// Text subtitle lines from mpv, `[main, secondary]` — the
+  /// `sub-text` / `secondary-sub-text` property observations. The
+  /// page draws these in its own overlay (above the danmaku layer);
+  /// bitmap subtitles (PGS) have no text event and are not in here.
+  Stream<List<String>> get subtitleStream;
+}
+
 abstract class PlayerBackend {
   PlayerEngine get engine;
 

@@ -54,10 +54,6 @@ class HiveKeys {
   /// Preferred player engine key: 'mpv' | 'ijk' | 'exo'. Default 'mpv'.
   static const String videoPlayerKey = 'videoPlayerKey';
 
-  /// Player-engine section expanded state on the settings page:
-  /// bool, default false (collapsed). Persisted across restarts.
-  static const String engineSectionExpanded = 'engineSectionExpanded';
-
   /// Haptic feedback master switch (Beans `BeansHaptics.enabledKey`,
   /// `beans.haptics.enabled`, default true). Every haptic call in the
   /// app goes through [HaoHaptics], which reads this key first.
@@ -74,11 +70,6 @@ class HiveKeys {
   /// "杀后台才存进度" rule.
   static const String autoResumeLastPlayback = 'autoResumeLastPlayback';
 
-  /// Playback-settings section expanded state on the settings page:
-  /// bool, default false (collapsed). Same pattern as
-  /// [engineSectionExpanded].
-  static const String playbackSectionExpanded = 'playbackSectionExpanded';
-
   /// Preferred quality (all networks — there is no separate
   /// cellular preference: the key for one was defined but never read,
   /// written or shown, so it was deleted rather than left dead).
@@ -90,8 +81,12 @@ class HiveKeys {
 
   /// Online-update state (fix 8).
   static const String skippedVersion = 'skippedVersion';
-  static const String knownUpdateVersion = 'knownUpdateVersion';
   static const String lastUpdateCheckAt = 'lastUpdateCheckAt';
+
+  /// "启动时自动检查更新" (build 28): bool, default true.
+  /// Gates only the automatic check in main.dart warm-up;
+  /// the manual check in Settings is never gated.
+  static const String autoUpdateCheck = 'autoUpdateCheck';
 
   /// Music (v1.0.4 music port). Values are JSON strings unless noted.
   /// Durations are stored in SECONDS (audit P0-3).
@@ -116,8 +111,7 @@ class HiveKeys {
   /// Music home section expanded states (我的歌单 / 最近播放): bool,
   /// default true (expanded). Persisted so a collapse survives tab
   /// switches (the PageView drops the music page State when you go 2
-  /// tabs away) and restarts. Same pattern as
-  /// [playbackSectionExpanded].
+  /// tabs away) and restarts.
   static const String musicPlaylistsExpanded = 'musicPlaylistsExpanded';
   static const String musicRecentExpanded = 'musicRecentExpanded';
 
@@ -138,6 +132,27 @@ class HiveKeys {
   /// customMinutesText, clamped 1..720, default 30). Persisted so the
   /// next open remembers the last custom value.
   static const String musicSleepCustomMinutes = 'musicSleepCustomMinutes';
+
+  /// Volume normalization (1.1.6, strategy A): bool, default false.
+  /// Attenuation-only per-track gain, measured during playback in
+  /// the EQ tap, takes effect from the second play of the same
+  /// track. Never boosts, never pre-downloads for loudness.
+  static const String musicNormalizationEnabled =
+      'hao_music_normalization_enabled';
+
+  /// Volume normalization strength (1.1.6): int 0..2, default 1.
+  /// Three attenuation levels around the -14 LUFS target.
+  static const String musicNormalizationStrength =
+      'hao_music_normalization_strength';
+
+  /// Music bookmarks (1.1.6): {identityKey: [{position, label,
+  /// createdAt}]} — multiple bookmarks per song, local only.
+  static const String musicBookmarks = 'hao_music_bookmarks';
+
+  /// Measured loudness cache (1.1.6): {identityKey: LUFS double} —
+  /// written by the EQ tap measurement, read by normalization on the
+  /// next play (second-play effect). No pre-download, no server.
+  static const String musicLoudnessCache = 'hao_music_loudness_cache';
 
   /// Single search platform capsule (stage 2, Beans `SearchView`
   /// provider / `RootView` PlatformPickerSheet): 'wy' | 'tx' | 'kg' |
@@ -202,6 +217,80 @@ class HiveKeys {
   /// PlayerAspectRatio intersection — see `VideoFitMode`.
   static const String vodVideoFit = 'hao_vod_video_fit';
 
+  /// Anime4K real-time super-resolution (build 28): bool,
+  /// default false. VOD only, MPV only; never live. Switch lives
+  /// in Settings → 影视播放. Dropped from build 28 if the audit
+  /// finds a hard blocker (media_kit cannot set glsl-shaders).
+  static const String vodSuperResolution = 'hao_vod_super_resolution';
+
+  /// VOD skip intro/outro mode (1.1.6): String, default 'off'.
+  /// 'off' | 'manual' | 'auto3s' (auto-skip after 3s) |
+  /// 'autoNow' (auto-skip immediately). CMS has no markers —
+  /// per-episode seconds come from [vodSkipIntroDurations];
+  /// Emby markers come from Chapters (IntroStart/IntroEnd/
+  /// CreditsStart). Switch lives in Settings → 影视播放.
+  static const String vodSkipIntroMode = 'hao_vod_skip_intro_mode';
+
+  /// Per-episode skip-intro seconds (1.1.6): map
+  /// `'<normalizedTitle>|<episodeName>'` → seconds (int, 0–300).
+  /// Edited by long-pressing an episode chip on the detail page.
+  static const String vodSkipIntroDurations =
+      'hao_vod_skip_intro_durations';
+
+  /// VOD frame interpolation (1.1.6): bool, default false.
+  /// MPV only, VOD only; `video-sync=display-resample` +
+  /// `interpolation=yes` + `tscale=oversample`. Whether it takes
+  /// effect on the libmpv render path is unverified on a real
+  /// device (chen's phone decides); if it does nothing, the
+  /// switch is dropped. Mutually exclusive with super-res and
+  /// SDR→HDR (gate layer runs only the first passing branch).
+  static const String vodInterpolation = 'hao_vod_interpolation';
+
+  /// VOD SDR→HDR (1.1.6): bool, default false. MPV only, VOD
+  /// only; `--inverse-tone-mapping` (vo=gpu-next only per mpv
+  /// manual — our vo is libmpv, so real-device effect is
+  /// unverified, chen's phone decides; if it does nothing, the
+  /// switch is dropped). Mutually exclusive with super-res and
+  /// interpolation.
+  static const String vodSdrToHdr = 'hao_vod_sdr_to_hdr';
+
+  /// VOD subtitle time offset (1.1.6): double seconds,
+  /// default 0.0, range ±10s, step 0.1s. Applied via mpv
+  /// `sub-delay`. Setting lives in Settings → 影视播放.
+  static const String vodSubtitleDelay = 'hao_vod_subtitle_delay';
+
+  /// VOD subtitle appearance (1.1.6): three tiers each, stored as
+  /// tier keys ('small' | 'medium' | 'large', 'white' | 'yellow' |
+  /// 'cyan', 'bottom' | 'middle' | 'top'); the mpv values live in
+  /// vod_controls.dart. Applied via mpv `sub-font-size` /
+  /// `sub-color` / `sub-pos` at open; a change applies at the next
+  /// open, same as the subtitle delay row. VOD only, never live.
+  static const String vodSubtitleFontSize = 'hao_vod_subtitle_font_size';
+  static const String vodSubtitleColor = 'hao_vod_subtitle_color';
+  static const String vodSubtitlePosition = 'hao_vod_subtitle_position';
+
+  /// Danmaku person-occlusion avoidance (1.1.6): bool, default
+  /// false. MPV only, VOD + live; on-device Vision person
+  /// segmentation (iOS 15+, single mask for all people) over
+  /// low-frequency snapshot frames, whole-layer ShaderMask on
+  /// the danmaku layer. True per-pixel real-time cutout is a
+  /// hard block (no frame outlet, no mask entry in flame_barrage)
+  /// — this is the reduced version only. Performance numbers
+  /// unverified until chen's phone; if unusable, the switch
+  /// stays off / the feature is cut. Switch lives in Settings →
+  /// 弹幕设置, below 影视弹幕.
+  static const String danmakuOcclusionAvoidance =
+      'hao_danmaku_occlusion_avoidance';
+
+  /// DV Profile 8 downgrade-to-HDR switch (1.1.6): bool,
+  /// default true. ON → P8 content is routed to AVPlayer
+  /// (native DV); OFF → normal kernel ladder. The final
+  /// default is bound to real-device verification: if both
+  /// kernels shift colour or fail on real P8 files, the
+  /// default is reworked and reported back — never silently
+  /// changed. Switch lives in Settings → 影视播放.
+  static const String vodDvP8Downgrade = 'hao_vod_dv_p8_downgrade';
+
   /// Kazumi low-memory mode (`hao_low_memory_mode`): 'auto' |
   /// 'always' | 'never', default 'auto'. See `LowMemoryMode`.
   static const String lowMemoryMode = 'hao_low_memory_mode';
@@ -241,6 +330,21 @@ class HiveKeys {
   /// revision, so a source the user deliberately deleted is never
   /// resurrected by a later load.
   static const String videoSourcesRevision = 'hao_sa_video_rev';
+
+  /// Emby server config (build 28): JSON string of
+  /// EmbyServerConfig {baseUrl, apiKey, userId, enabled,
+  /// movieLibraryId, tvLibraryId}. Independent key — resetting
+  /// the CMS source list never clears it. Credentials live only
+  /// in this local Hive box; never logged, never in toString().
+  static const String embyConfig = 'hao_emby_config';
+
+  /// Video tab mode (build 28): 'cms' | 'emby', default 'cms'.
+  /// Persists which page of the video tab was last selected.
+  static const String videoTabMode = 'hao_video_tab_mode';
+
+  /// Emby home cache (build 28): cached Emby library rows JSON,
+  /// same pattern as [videoHomeCache]. Never mixed with CMS cache.
+  static const String embyHomeCache = 'hao_emby_home';
 
   /// Music search sources (`hao_music_sources`): JSON list of enabled
   /// platform codes from kSearchPlatforms (wy/tx/kg/kw). Defaults
@@ -352,6 +456,39 @@ class HiveKeys {
   /// The live room maps it to the flame_barrage BarrageConfig.area
   /// fraction; see DanmakuSettings.
   static const String danmakuArea = 'hao_danmaku_area';
+
+  /// Danmaku stroke on/off (`hao_danmaku_stroke`): bool, default
+  /// true (the flame_barrage engine default). Fullscreen flying
+  /// danmaku only — the portrait list is plain Text and has no
+  /// stroke to draw.
+  static const String danmakuStroke = 'hao_danmaku_stroke';
+
+  /// Danmaku stroke width (`hao_danmaku_stroke_width`): double
+  /// 0.5..2.0, default 1.0 (the engine default). Fullscreen flying
+  /// danmaku only. Stroke colour is fixed black (a legibility
+  /// floor, not decoration) — no colour choice.
+  static const String danmakuStrokeWidth = 'hao_danmaku_stroke_width';
+
+  /// Danmaku flying-speed multiplier (`hao_danmaku_speed`): double
+  /// 0.5..2.0, default 1.0. Fullscreen flying danmaku only:
+  /// BarrageConfig.baseSpeed = 120 * speed. This is NOT playback
+  /// rate — live has no speed control and playbackRate stays 1.0.
+  static const String danmakuSpeed = 'hao_danmaku_speed';
+
+  /// Danmaku maximum count (`hao_danmaku_max_count`): int 20..200,
+  /// default 80 (the engine's maxVisibleCount default). Caps the
+  /// portrait list AND the fullscreen flying danmaku; the flying
+  /// side is additionally clamped to the engine object-pool ceiling
+  /// (72) — see DanmakuSettings.flyingMaxVisibleCount.
+  static const String danmakuMaxCount = 'hao_danmaku_max_count';
+
+  /// Danmaku colour mode (`hao_danmaku_color_mode`): 'uniform'
+  /// (default — theme text in the portrait list, white flying
+  /// danmaku) or 'platform' (the platform's own colour from
+  /// LiveMessage.color, where the adapter provides one).
+  /// Portrait-list body + fullscreen flying danmaku only; the
+  /// username stays theme-coloured in both modes.
+  static const String danmakuColorMode = 'hao_danmaku_color_mode';
 
   /// Equalizer (stage 3, Beans `BeansEqualizer` UserDefaults keys
   /// `beans.equalizer.*`): enabled bool (default false), 10 band gains

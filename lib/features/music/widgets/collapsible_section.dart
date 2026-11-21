@@ -6,12 +6,13 @@
 // the state — this widget is stateless and driven by [expanded]).
 //
 // The [trailing] widget (e.g. the music home's 「播放全部」 capsule)
-// sits OUTSIDE the head InkWell: a button nested inside another
+// sits OUTSIDE the head HaoPressable: a button nested inside another
 // button's tap area competes in the gesture arena, and the head toggle
 // would swallow the trailing's tap. Tapping the title area toggles;
 // tapping the trailing acts only on the trailing.
 
 import 'package:flutter/material.dart';
+import '../../../widgets/hao_pressable.dart';
 
 import '../../../core/theme/hao_themes.dart';
 
@@ -60,7 +61,7 @@ class CollapsibleSection extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: InkWell(
+              child: HaoPressable(
                 onTap: onToggle,
                 child: Padding(
                   padding: EdgeInsets.symmetric(
@@ -77,6 +78,8 @@ class CollapsibleSection extends StatelessWidget {
                             Icons.chevron_right,
                             color: theme.textSecondary,
                             size: 22,
+                            shadows:
+                                HaoTheme.legibilityShadows(context),
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -85,12 +88,16 @@ class CollapsibleSection extends StatelessWidget {
                         child: Text(
                           title,
                           style:
-                              titleStyle ??
-                              TextStyle(
-                                color: theme.textPrimary,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
+                              (titleStyle ??
+                                      TextStyle(
+                                        color: theme.textPrimary,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ))
+                                  .copyWith(
+                                    shadows:
+                                        HaoTheme.legibilityShadows(context),
+                                  ),
                         ),
                       ),
                     ],

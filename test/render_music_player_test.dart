@@ -11,6 +11,7 @@
 // so CJK text would be tofu blocks. We load Noto Sans CJK from the VM
 // (/usr/share/fonts/opentype/noto/) and apply it as the theme fontFamily
 // (same loader as render_music_home_test.dart).
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,8 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_player_sheet.dart';
+import 'package:standalone/features/music/player_expand_route.dart';
+import 'package:standalone/features/music/widgets/mini_player_bar.dart';
 import 'package:standalone/services/music/music_models.dart';
 
 Future<void> _loadCjkFont() async {
@@ -242,4 +245,109 @@ void main() {
       }
     }
   });
+  // build 28 swipe-down close: two frames, one test.
+  // (a) mid-drag: the finger has pulled the page ~120px down from the
+  // top bar - the page sits 120px lower, the home shows through at
+  // the top, no overflow, no scale / corner / fade on the page.
+  // (b) closed: the swipe finished, the player is gone and the mini
+  // bar is back on the home page. The player page is a forced-dark
+  // immersive face, so one theme is enough for both frames.
+  testWidgets('render swipe-down close: mid-drag and closed frames', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(780, 1688);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final c = Get.put(MusicPlayerController());
+    c.queue.assignAll([
+      Song(
+        songId: 'wy-1',
+        title: '富士山下',
+        artist: '陈奕迅',
+        album: "What's Going On...?",
+        cover: '',
+        platform: MusicPlatform.wy,
+        dur: 245,
+      ),
+    ]);
+    c.currentIndex.value = 0;
+    c.duration.value = const Duration(seconds: 245);
+    c.position.value = const Duration(seconds: 65);
+    c.isPlaying.value = true;
+    await tester.pumpWidget(
+      GetMaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
+        home: Builder(
+          builder: (ctx) => Scaffold(
+            body: Stack(
+              children: [
+                const Center(
+                  child: Text('音乐', style: TextStyle(fontSize: 24)),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: MiniPlayerBar(
+                    key: const ValueKey('swipeGoldenBar'),
+                    onOpenPlayer: (rect) => unawaited(
+                      openPlayerPage<void>(ctx, fromRect: rect),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('swipeGoldenBar')),
+        matching: find.text('富士山下'),
+      ),
+    );
+    // Two pumps after a push (route installs in a post-frame
+    // callback), then settle past the 400ms expand so the top-bar
+    // swipe strip is live (gated on animation.status == completed).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+
+    // (a) mid-drag: hold the finger 120px down, shoot, release.
+    final gesture = await tester.startGesture(const Offset(195, 60));
+    await gesture.moveBy(const Offset(0, 120));
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.byType(MusicPlayerPage)),
+      const Offset(0, 120),
+    );
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/music_player_swipe_mid.png'),
+    );
+    await gesture.up();
+    // (b) closed: the release pops the page downward; 400ms covers
+    // the 350ms reverse, and the mini bar is back.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(const ValueKey('swipeGoldenBar')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/music_player_swipe_closed.png'),
+    );
+  });
+
 }

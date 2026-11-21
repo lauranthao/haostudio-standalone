@@ -19,6 +19,8 @@
 // favorite_rules.dart (`roomsOf`, `groupOf`).
 
 import '../../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
+import '../../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -144,7 +146,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     final platforms = LiveFollowStore.followedPlatforms();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的关注'),
+        title: Text('我的关注', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
       ),
       body: Column(
         children: [
@@ -170,8 +172,8 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                   SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+                    child: CupertinoActivityIndicator(
+                      radius: 9,
                       color: theme.accent,
                     ),
                   ),
@@ -207,6 +209,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
               child: Row(
                 children: [
                   Icon(
+                    shadows: HaoTheme.legibilityShadows(context),
                     Icons.warning_amber_outlined,
                     size: 14,
                     color: theme.textMuted,
@@ -215,6 +218,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                   Text(
                     '$_failedCount 个状态获取失败',
                     style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,
                       fontSize: 12,
                     ),
@@ -224,7 +228,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
             ),
           Expanded(
             child: !_hasRefreshed
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CupertinoActivityIndicator())
                 : follows.isEmpty
                     ? _EmptyState(
                         title: '还没有关注的主播',
@@ -241,19 +245,23 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                                 : '关注的主播都在开播',
                             onBrowse: _goBrowse,
                           )
-                        : RefreshIndicator(
-                            onRefresh: _refresh,
-                            child: GridView.builder(
-                              padding: const EdgeInsets.all(12),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: 12,
-                                    mainAxisSpacing: 12,
-                                    childAspectRatio: 16 / 10,
-                                  ),
-                              itemCount: visible.length,
-                              itemBuilder: (context, i) {
+                        : CustomScrollView(
+                            slivers: [
+                              CupertinoSliverRefreshControl(
+                                onRefresh: _refresh,
+                              ),
+                              SliverPadding(
+                                padding: const EdgeInsets.all(12),
+                                sliver: SliverGrid(
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 12,
+                                        mainAxisSpacing: 12,
+                                        childAspectRatio: 16 / 10,
+                                      ),
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, i) {
                                 final follow = visible[i];
                                 return _FollowCard(
                                   follow: follow,
@@ -262,8 +270,12 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                                   onTap: () => _openFollow(follow),
                                   onUnfollow: () => _unfollow(follow),
                                 );
-                              },
-                            ),
+                                    },
+                                    childCount: visible.length,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
           ),
         ],
@@ -298,7 +310,7 @@ class _TabButton extends StatelessWidget {
       borderColor: selected ? theme.accent : null,
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+        child: HaoPressable(
           onTap: () {
             HaoHaptics.tap();
             onTap();
@@ -307,6 +319,7 @@ class _TabButton extends StatelessWidget {
           child: Text(
             '$label ($count)',
             style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
               color: selected ? theme.accent : theme.textSecondary,
               fontSize: 14,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -346,6 +359,7 @@ class _PlatformChip extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         labelStyle: TextStyle(
+          shadows: HaoTheme.legibilityShadows(context),
           color: selected ? theme.accent : theme.textSecondary,
           fontSize: 13,
           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -383,6 +397,7 @@ class _EmptyState extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
+                shadows: HaoTheme.legibilityShadows(context),
                 Icons.favorite_border,
                 size: 40,
                 color: theme.accent,
@@ -392,6 +407,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -402,6 +418,7 @@ class _EmptyState extends StatelessWidget {
               subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textSecondary,
                 fontSize: 14,
                 height: 1.5,
@@ -459,7 +476,7 @@ class _FollowCard extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        InkWell(
+        HaoPressable(
           onTap: onTap,
           borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: Container(

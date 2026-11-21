@@ -34,12 +34,18 @@ class HaoEmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 40, color: theme.textMuted),
+          Icon(
+            icon,
+            size: 40,
+            color: theme.textMuted,
+            shadows: HaoTheme.legibilityShadows(context),
+          ),
           const SizedBox(height: 12),
           Text(
             title,
             textAlign: TextAlign.center,
             style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
               color: theme.textPrimary,
               fontSize: 17,
               fontWeight: FontWeight.w600,
@@ -50,7 +56,11 @@ class HaoEmptyState extends StatelessWidget {
             Text(
               subtitle!,
               textAlign: TextAlign.center,
-              style: TextStyle(color: theme.textSecondary, fontSize: 15),
+              style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
+                color: theme.textSecondary,
+                fontSize: 15,
+              ),
             ),
           ],
         ],

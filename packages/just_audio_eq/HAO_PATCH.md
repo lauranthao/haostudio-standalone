@@ -87,6 +87,56 @@ just_audio exposes no handle to it (see below).
    DarwinLoadControl(preferredForwardBufferDuration: ...))` at
    `AudioPlayer()` construction, that value takes over and this
    default becomes inert.
+8. **Per-tap DSP state isolation (2026-11-22, 1.1.6): `HaoEqualizer.m`
+   only.** Filter memory (`filterZ1`/`filterZ2`), sample rate,
+   Float32-ness and coefficients moved out of the singleton into a
+   per-tap struct (`HaoEqualizerTapState`, inside `HaoEqualizerTapStorage`
+   allocated in `TapInit`, freed in `TapFinalize`). `TapPrepare` now
+   resets ONLY its own tap's state and rebuilds ONLY its own
+   coefficients; `TapProcess` reads/writes ONLY its own tap's state.
+   The singleton keeps only the shared settings (enabled / gains /
+   preamp) plus a `_gainsVersion` counter: a slider drag bumps the
+   version and each running tap rebuilds its own coefficient snapshot
+   (at its own sample rate) on its next process call, so live retune
+   still works with no tap recreation. Why: A/B crossfade runs two
+   taps concurrently (2.5 s overlap) and the old shared state let one
+   tap's prepare zero the other's running filter memory and let two
+   sample rates cross-contaminate (audible click risk at every auto
+   track change). Filter math itself is unchanged (same RBJ peaking,
+   same 10 bands, same gains). Note: the Behaviour-contract sentence
+   below ("reads shared coefficients under a lock") now means each tap
+   keeps its own coefficient snapshot, refreshed from the shared gains
+   when `_gainsVersion` moves.
+9. **Tap loudness measurement (2026-11-22, 1.1.6): `HaoEqualizer.m` /
+   `HaoEqualizer.h` / `JustAudioPlugin.m`.** Per-tap RMS accumulators
+   (`loudnessSumSquares` / `loudnessSamples` / `loudnessFrames` in
+   `HaoEqualizerTapState` — same per-tap isolation as item 8, so two
+   crossfade taps never mix measurements). `processBufferList:`
+   accumulates the RAW source sample (before preamp/EQ — loudness is
+   a property of the track, not of the user's EQ preset): one
+   multiply-add per sample, no extra pass, no allocation. At
+   `TapFinalize` the tap reports once: RMS -> dBFS + 3.0 dB fixed
+   offset as a LUFS APPROXIMATION (no K-weighting, no ffmpeg /
+   loudnorm, no GPL/AGPL — see `HaoEqualizer.m` constants; offset
+   and the 10 s minimum are 待确认, calibrate on device). < 10 s of
+   audio, silence, or a missing stamp/handler reports nothing.
+   Attribution: Dart pushes the track's identityKey via the
+   equalizer channel (`setTrackKey`, handled in `JustAudioPlugin.m`)
+   immediately before every open (`_openOn`, `_crossfadeTo`) and
+   every preload (`_prefetchNext` — the preload creates the item
+   before that track's `_loadCurrent` runs, so stamping only in
+   `_loadCurrent` would arrive too late); `audioMixForTrack:`
+   records the pending key per tap pointer and finalize looks it up.
+   Reports travel native -> Dart on the same channel
+   (`loudnessMeasured` {identityKey, lufs}, handler set by
+   `JustAudioPlugin` at registration, dispatched to main by
+   `HaoEqualizer`); Dart side is `EqualizerStore.onLoudnessMeasured`
+   -> `MusicPlayerController.noteMeasuredLoudness` -> Hive cache
+   `musicLoudnessCache`. Known limitation: the tap only exists while
+   EQ is on, so EQ-off tracks are never measured (normalisation
+   measurement depends on the EQ tap existing); the switch itself
+   still works from the second play of any track measured while EQ
+   was on.
 
 ## Behaviour contract (what Dart relies on)
 
@@ -102,6 +152,11 @@ just_audio exposes no handle to it (see below).
   store still persists and the UI still works, but there is no audio
   effect. The music chain is AVPlayer (`just_audio`) on iOS, so this
   matches the feature's scope; Beans itself is iOS-only.
+- Loudness: a tap that measured >= 10 s of audio reports once at
+  finalize (`loudnessMeasured` {identityKey, lufs}, RMS-approximated
+  LUFS — NOT precise LUFS); shorter listens, silence, and EQ-off
+  tracks report nothing. Dart stamps each tap via `setTrackKey`
+  immediately before the open / preload that creates its item.
 
 ## Maintenance
 

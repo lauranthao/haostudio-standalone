@@ -139,6 +139,7 @@ class VideoPosterCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: _kTitleFontSize,
                 fontWeight: FontWeight.w600,
@@ -154,6 +155,7 @@ class VideoPosterCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textMuted,
                 fontSize: _kMetaFontSize,
                 height: _kTextLineHeight,

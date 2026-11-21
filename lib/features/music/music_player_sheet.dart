@@ -32,9 +32,11 @@
 
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
@@ -565,32 +567,38 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// white-0.12 circle buttons, 14pt icons in white 0.85, horizontal
   /// padding 20, vertical padding 20 (PL-P2-6, Kumone's top padding).
   /// Left: collapse (chevron.down). Right: sound effects only
-  /// (tune → equalizer page) — the lyrics toggle moved to the bottom
-  /// row (PL-P0-3), so it is not duplicated here. Classic has no
-  /// centre "正在播放" text — removed.
+  /// (tune → equalizer page, iOS only — hidden on Android, which
+  /// has no native EQ engine) — the lyrics toggle moved to the
+  /// bottom row (PL-P0-3), so it is not duplicated here. Classic
+  /// has no centre "正在播放" text — removed.
   Widget _topBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Row(
         children: [
           _topCircleBtn(
-            icon: Icons.keyboard_arrow_down,
+            icon: CupertinoIcons.chevron_down,
             onTap: () => Navigator.of(context).pop(),
           ),
           const Spacer(),
-          _topCircleBtn(
-            icon: Icons.tune,
-            onTap: () {
-              HaoHaptics.tap();
-              unawaited(
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const EqualizerPage(),
+          // Equalizer has no native engine on Android: hide the
+          // button there instead of opening a page whose sliders do
+          // nothing. Shown everywhere else (iOS behaviour unchanged;
+          // `!isAndroid` also keeps the Linux test env green).
+          if (!Platform.isAndroid)
+            _topCircleBtn(
+              icon: CupertinoIcons.slider_horizontal_3,
+              onTap: () {
+                HaoHaptics.tap();
+                unawaited(
+                  Navigator.of(context).push(
+                    CupertinoPageRoute<void>(
+                      builder: (_) => const EqualizerPage(),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -988,7 +996,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           },
         ),
         _titleIconBtn(
-          icon: Icons.more_horiz,
+          icon: CupertinoIcons.ellipsis,
           onTap: () {
             HaoHaptics.tap();
             _openTrackMore(song);
@@ -1259,10 +1267,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                   return const SizedBox(
                     width: 28,
                     height: 28,
-                    child: CircularProgressIndicator(
+                    child: CupertinoActivityIndicator(
                       color: Colors.white,
-                      strokeWidth: 3,
-                    ),
+                      ),
                   );
                 }
                 final playing = _c.isPlaying.value;

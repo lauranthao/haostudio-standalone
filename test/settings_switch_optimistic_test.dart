@@ -100,7 +100,11 @@ void main() {
   });
 
   Future<void> pumpPage(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(800, 2400);
+    // 4200: the 1.1.6 six-group page is ~4200pt tall (same height
+    // settings_tab_page_test.dart uses) — at 2400/3200 the last
+    // switch (关于 group) stays below the fold and ListView never
+    // builds it, so the count reads 11, not 12.
+    tester.view.physicalSize = const Size(800, 4200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -116,7 +120,8 @@ void main() {
   }
 
   /// The visible GlassSwitches, in page order: wallpaper, background
-  /// colour, auto-next (the playback-panel switches are collapsed).
+  /// colour, then the rest of the flat 6-group page (9 _BeansSwitchRow
+  /// + 3 _PanelSwitch = 12; the old "3" predates the 1.1.6 flat regroup).
   List<GlassSwitch> switches(WidgetTester tester) =>
       tester.widgetList<GlassSwitch>(find.byType(GlassSwitch)).toList();
 
@@ -124,7 +129,7 @@ void main() {
     testWidgets('wallpaper switch flips on the first frame, then persists',
         (tester) async {
       await pumpPage(tester);
-      expect(switches(tester).length, 3);
+      expect(switches(tester).length, 12);
       expect(switches(tester).first.value, isFalse);
 
       await tester.tap(find.byType(GlassSwitch).first);
@@ -222,7 +227,11 @@ void main() {
       expect(controller.glassIntensity.value, 1.0);
       expect(HiveStore.box.get('haoGlassIntensity'), isNull);
 
-      final slider = find.byType(Slider);
+      // Two Sliders live on the page in 1.1.6 (glass intensity
+      // 0.0–1.0 + subtitle offset −10–10): scope to the glass one.
+      final slider = find.byWidgetPredicate(
+        (w) => w is Slider && w.min == 0.0 && w.max == 1.0,
+      );
       expect(slider, findsOneWidget);
       final gesture = await tester.startGesture(tester.getCenter(slider));
       await gesture.moveBy(const Offset(-20, 0));

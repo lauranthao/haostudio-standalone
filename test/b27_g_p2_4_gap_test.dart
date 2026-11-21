@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,10 +91,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(GlassTabBar), findsOneWidget);
-    expect(find.byIcon(Icons.movie), findsOneWidget);
-    expect(find.byIcon(Icons.live_tv), findsOneWidget);
-    expect(find.byIcon(Icons.music_note), findsOneWidget);
-    expect(find.byIcon(Icons.settings), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.film), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.tv), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.music_note), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.settings), findsOneWidget);
   });
 
   testWidgets('MiniPlayerBar renders under a bare ThemeData',

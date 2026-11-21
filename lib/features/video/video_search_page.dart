@@ -15,20 +15,23 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
+import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/glass.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import '../../services/video/cms_client.dart';
-import 'video_detail_page.dart';
+import '../../services/video/poster_patch_service.dart';
 import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
+import 'video_smart_groups.dart';
 import 'video_title_helpers.dart';
+import '../../widgets/hao_search_field.dart';
+import 'video_version_sheet.dart';
 
 class VideoSearchPage extends StatefulWidget {
   const VideoSearchPage({super.key});
@@ -44,6 +47,7 @@ const int kMaxSearchChips = 8;
 class _VideoSearchPageState extends State<VideoSearchPage> {
   final _cms = CmsClient();
   final _detailService = VideoDetailService();
+  final _posterPatch = PosterPatchService();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
@@ -208,13 +212,27 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
   }
 
   void _openDetail(VideoItem item) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => VideoDetailPage(
-          sourceId: item.source,
-          vodId: item.vodId,
-          preload: item,
-        ),
+    // 1.1.6 Smart Groups: the service already dedupes search results
+    // by film, so groups here are usually singletons (tap = detail
+    // directly); a suffix variant slipping through on one page still
+    // opens the version sheet instead of a second card.
+    GroupedVideoItem? group;
+    for (final g in groupVideoItems(_results)) {
+      if (g.representative.identityKey == item.identityKey) {
+        group = g;
+        break;
+      }
+    }
+    unawaited(
+      openGroupedVideo(
+        context,
+        group ??
+            GroupedVideoItem(
+              key: '',
+              representative: item,
+              versions: [item],
+            ),
+        detailService: _detailService,
       ),
     );
   }
@@ -234,7 +252,7 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     final hot = _hotNames.isEmpty ? _fallbackHot : _hotNames;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('搜索影片'),
+        title: Text('搜索影片', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
       ),
       body: Column(
         children: [
@@ -252,18 +270,17 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
               // our suffixIcon clear; textInputAction.search is the
               // library search variant's default; the cursor follows
               // DefaultSelectionStyle -> colorScheme.primary = accent.
-              child: GlassSearchBar(
+              child: HaoSearchField(
                 controller: _controller,
                 autofocus: true,
-                placeholder: '搜索影片、剧集…',
-                placeholderStyle: TextStyle(color: theme.textMuted),
-                textStyle: TextStyle(
-                  color: theme.textPrimary,
-                  fontSize: 16,
-                ),
-                searchIconColor: theme.textMuted,
-                clearIconColor: theme.textMuted,
+                hintText: '搜索影片、剧集…',
                 onSubmitted: _search,
+                onCancel: () {
+                  setState(() {
+                    _searched = false;
+                    _results = [];
+                  });
+                },
               ),
             ),
           ),
@@ -288,7 +305,7 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
           ],
           Expanded(
             child: _searching
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: CupertinoActivityIndicator())
                 : _failed
                     ? _SearchError(
                         query: _query,
@@ -309,7 +326,15 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
                                     ),
                                     sliver: SliverToBoxAdapter(
                                       child: VideoPosterGrid(
-                                        items: _results,
+                                        items: groupVideoItems(
+                                          _posterPatch.withCachedPatches(
+                                            _results,
+                                          ),
+                                        )
+                                            .map(
+                                              (g) => g.representative,
+                                            )
+                                            .toList(),
                                         onTapItem: _openDetail,
                                         onPointerDownItem: (item) =>
                                             _detailService.prefetch(
@@ -326,11 +351,11 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
                                       ),
                                       child: Center(
                                         child: _loadingMore
-                                            ? const CircularProgressIndicator()
+                                            ? const CupertinoActivityIndicator()
                                             : _exhausted
                                                 ? Text(
                                                     '已加载全部',
-                                                    style: TextStyle(
+                                                    style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                                                       color: theme.textMuted,
                                                     ),
                                                   )
@@ -369,7 +394,7 @@ class _ChipSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: TextStyle(
+            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
               color: theme.textPrimary,
               fontSize: 17,
               fontWeight: FontWeight.w800,
@@ -394,7 +419,7 @@ class _ChipSection extends StatelessWidget {
                       shadow: GlassShadow.none,
                       child: Material(
                         color: Colors.transparent,
-                        child: InkWell(
+                        child: HaoPressable(
                           onTap: () {
                             HaoHaptics.tap();
                             onTap(c);
@@ -402,7 +427,7 @@ class _ChipSection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                           child: Text(
                             c,
-                            style: TextStyle(
+                            style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                               color: theme.textSecondary,
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
@@ -436,11 +461,11 @@ class _SearchError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            Icon(shadows: HaoTheme.legibilityShadows(context), Icons.cloud_off, size: 48, color: theme.textMuted),
             const SizedBox(height: 16),
             Text(
               '视频源暂时无法访问',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -449,8 +474,8 @@ class _SearchError extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
+              icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
+              label: Text('重试', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
                 // Theme-defined onPrimary per mode, not hardcoded
@@ -482,11 +507,11 @@ class _EmptyResults extends StatelessWidget {
           children: [
             // B-P2-5: the empty state was an emoji 🔍; every other
             // empty state in the app is a theme-coloured icon.
-            Icon(Icons.search, size: 40, color: theme.textMuted),
+            Icon(shadows: HaoTheme.legibilityShadows(context), Icons.search, size: 40, color: theme.textMuted),
             const SizedBox(height: 12),
             Text(
               '没有找到相关影片：$query',
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -496,7 +521,7 @@ class _EmptyResults extends StatelessWidget {
             Text(
               '· 换个关键词试试\n· 检查片名有没有错字\n· 换个源可能有更多结果',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                 color: theme.textMuted,
                 fontSize: 14,
                 height: 1.7,

@@ -4,15 +4,21 @@
 // and the live room honours it (live_room_page.dart): the per-platform
 // switch gates the transport, font size / opacity style the list, the
 // area caps the fullscreen floating danmaku (BarrageConfig.area), and
-// changes apply while a room is open, no restart. Speed has no control:
-// a list has no scroll speed, so it is explained as text, not a fake
-// slider. The area does NOT move the portrait list — that list is a
-// chat list below the video, not an overlay; it only limits the
+// changes apply while a room is open, no restart. Speed / stroke /
+// colour / max count live in the 全屏飞弹幕 section below (stroke /
+// speed apply ONLY to the fullscreen flying danmaku; max count caps
+// the portrait list too, and colour mode also styles the list text)
+// and each row says so next to it, like area does.
+// The area does NOT move the portrait list — that list is a chat
+// list below the video, not an overlay; it only limits the
 // fullscreen flying danmaku, and the UI says so.
 
 import 'package:flutter/material.dart';
 
+import '../../core/storage/hive_store.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/haptics.dart';
+import '../../widgets/hao_segmented_control.dart';
 import '../../widgets/settings_ui.dart';
 import '../../domains/live/presentation/playback/danmaku_block_store.dart';
 import '../../shared/platforms/sites.dart';
@@ -30,6 +36,18 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
   late double _fontSize;
   late double _opacity;
   late String _area;
+
+  // S1b fullscreen flying danmaku.
+  late bool _stroke;
+  late double _strokeWidth;
+  late double _speed;
+  late int _maxCount;
+  late String _colorMode;
+
+  // Occlusion avoidance (MPV only, default off) — the key lives in
+  // HiveKeys (hive_store.dart); no DanmakuSettings wrapper exists,
+  // so this page reads/writes it via HiveStore directly.
+  late bool _occlusionAvoidance;
 
   // S2 chat-list style.
   late String _listStyle;
@@ -56,6 +74,15 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
     _fontSize = DanmakuSettings.fontSize();
     _opacity = DanmakuSettings.opacity();
     _area = DanmakuSettings.area();
+    _stroke = DanmakuSettings.stroke();
+    _strokeWidth = DanmakuSettings.strokeWidth();
+    _speed = DanmakuSettings.speed();
+    _maxCount = DanmakuSettings.maxCount();
+    _colorMode = DanmakuSettings.colorMode();
+    _occlusionAvoidance = HiveStore.getBool(
+      HiveKeys.danmakuOcclusionAvoidance,
+      false,
+    );
     _listStyle = DanmakuSettings.listStyle();
     _listSpacing = DanmakuSettings.listSpacing();
     _showUsernames = DanmakuSettings.showUsernames();
@@ -97,7 +124,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const HaoSectionTitle('各平台弹幕开关'),
+          const HaoSectionTitle('弹幕开关'),
           SettingsGroup(
             children: [
               ...Sites.supportedSiteIds.map((id) {
@@ -117,6 +144,49 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   },
                 );
               }),
+              // VOD ("影视弹幕") — same Hive map, its own key, default
+              // OFF. Not a live platform, so it is not in
+              // Sites.supportedSiteIds and gets its own row.
+              SwitchListTile(
+                title: Text(
+                  '影视弹幕',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                value: _enabled[DanmakuSettings.vodSiteId] ?? false,
+                activeThumbColor: theme.accent,
+                onChanged: (v) async {
+                  await DanmakuSettings.setEnabled(
+                    DanmakuSettings.vodSiteId,
+                    v,
+                  );
+                  if (!mounted) return;
+                  setState(() => _enabled = DanmakuSettings.enabledMap());
+                },
+              ),
+              // 弹幕防遮挡 (1.1.6, MPV only, VOD + live): HiveKeys
+              // key, default off — see the comment on the key in
+              // hive_store.dart. No DanmakuSettings wrapper, so the
+              // switch reads/writes HiveStore directly.
+              SwitchListTile(
+                title: Text(
+                  '弹幕防遮挡',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '仅 MPV 生效（点播 + 直播）；人物快速移动时约 100–200ms 残影',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                value: _occlusionAvoidance,
+                activeThumbColor: theme.accent,
+                onChanged: (v) async {
+                  await HiveStore.put(
+                    HiveKeys.danmakuOcclusionAvoidance,
+                    v,
+                  );
+                  if (!mounted) return;
+                  setState(() => _occlusionAvoidance = v);
+                },
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -132,7 +202,14 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   label: '${_fontSize.round()}',
                   activeColor: theme.accent,
                   onChanged: (v) => setState(() => _fontSize = v),
-                  onChangeEnd: (v) => DanmakuSettings.setFontSize(v),
+                  onChangeEnd: (v) {
+                    DanmakuSettings.setFontSize(v);
+                    HaoHaptics.sliderEnd(
+                      v,
+                      DanmakuSettings.minFontSize,
+                      DanmakuSettings.maxFontSize,
+                    );
+                  },
                 ),
               ),
               SizedBox(
@@ -162,7 +239,14 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   label: _opacity.toStringAsFixed(1),
                   activeColor: theme.accent,
                   onChanged: (v) => setState(() => _opacity = v),
-                  onChangeEnd: (v) => DanmakuSettings.setOpacity(v),
+                  onChangeEnd: (v) {
+                    DanmakuSettings.setOpacity(v);
+                    HaoHaptics.sliderEnd(
+                      v,
+                      DanmakuSettings.minOpacity,
+                      DanmakuSettings.maxOpacity,
+                    );
+                  },
                 ),
               ),
               SizedBox(
@@ -195,19 +279,213 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               // asserts). Its own full-width row below the title.
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: SegmentedButton<String>(
+                child: HaoSegmentedControl<String>(
                   segments: const [
-                    ButtonSegment(value: 'full', label: Text('全屏')),
-                    ButtonSegment(value: 'half', label: Text('上半屏')),
-                    ButtonSegment(value: 'third', label: Text('上 1/3')),
-                    ButtonSegment(value: 'fifth', label: Text('上 1/5')),
+                    HaoSegment(value: 'full', label: '全屏'),
+                    HaoSegment(value: 'half', label: '上半屏'),
+                    HaoSegment(value: 'third', label: '上 1/3'),
+                    HaoSegment(value: 'fifth', label: '上 1/5'),
                   ],
-                  selected: {_area},
-                  onSelectionChanged: (selected) async {
-                    final v = selected.first;
+                  value: _area,
+                  onChanged: (v) async {
                     await DanmakuSettings.setArea(v);
                     if (!mounted) return;
                     setState(() => _area = v);
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const HaoSectionTitle('全屏飞弹幕'),
+          SettingsGroup(
+            children: [
+              SwitchListTile(
+                title: Text(
+                  '描边',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '仅全屏飞弹幕生效',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+                value: _stroke,
+                activeThumbColor: theme.accent,
+                onChanged: (v) async {
+                  await DanmakuSettings.setStroke(v);
+                  if (!mounted) return;
+                  setState(() => _stroke = v);
+                },
+              ),
+              ListTile(
+                title: Text(
+                  '描边宽度',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '仅全屏飞弹幕生效；描边关闭时不可调',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _strokeWidth,
+                      min: DanmakuSettings.minStrokeWidth,
+                      max: DanmakuSettings.maxStrokeWidth,
+                      divisions: 15,
+                      label: _strokeWidth.toStringAsFixed(1),
+                      activeColor: theme.accent,
+                      onChanged: _stroke
+                          ? (v) => setState(() => _strokeWidth = v)
+                          : null,
+                      onChangeEnd: (v) {
+                        DanmakuSettings.setStrokeWidth(v);
+                        HaoHaptics.sliderEnd(
+                          v,
+                          DanmakuSettings.minStrokeWidth,
+                          DanmakuSettings.maxStrokeWidth,
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 44,
+                    child: Text(
+                      _strokeWidth.toStringAsFixed(1),
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+              ListTile(
+                title: Text(
+                  '弹幕速度',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '仅全屏飞弹幕生效；不是播放速度',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _speed,
+                      min: DanmakuSettings.minSpeed,
+                      max: DanmakuSettings.maxSpeed,
+                      divisions: 15,
+                      label: '×${_speed.toStringAsFixed(1)}',
+                      activeColor: theme.accent,
+                      onChanged: (v) => setState(() => _speed = v),
+                      onChangeEnd: (v) {
+                        DanmakuSettings.setSpeed(v);
+                        HaoHaptics.sliderEnd(
+                          v,
+                          DanmakuSettings.minSpeed,
+                          DanmakuSettings.maxSpeed,
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 44,
+                    child: Text(
+                      '×${_speed.toStringAsFixed(1)}',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+              ListTile(
+                title: Text(
+                  '最大数量',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '竖屏列表与全屏飞弹幕共用上限（飞弹幕最多 ${DanmakuSettings.enginePoolMaxSize} 条）',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: _maxCount.toDouble(),
+                      min: DanmakuSettings.minMaxCount.toDouble(),
+                      max: DanmakuSettings.maxMaxCount.toDouble(),
+                      divisions: 18,
+                      label: '$_maxCount',
+                      activeColor: theme.accent,
+                      onChanged: (v) =>
+                          setState(() => _maxCount = v.round()),
+                      onChangeEnd: (v) {
+                        DanmakuSettings.setMaxCount(v.round());
+                        HaoHaptics.sliderEnd(
+                          v,
+                          DanmakuSettings.minMaxCount.toDouble(),
+                          DanmakuSettings.maxMaxCount.toDouble(),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 44,
+                    child: Text(
+                      '$_maxCount',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+              ListTile(
+                title: Text(
+                  '颜色模式',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                subtitle: Text(
+                  '仅全屏飞弹幕与列表正文生效，用户名保持主题色',
+                  style: TextStyle(color: theme.textSecondary),
+                ),
+              ),
+              // Full-width row below the title: the segmented control
+              // does not fit as a ListTile trailing (Flutter asserts
+              // it consumes the whole tile width) — same as 弹幕区域 above.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: HaoSegmentedControl<String>(
+                  segments: const [
+                    HaoSegment(
+                      value: DanmakuSettings.colorModeUniform,
+                      label: '统一色',
+                    ),
+                    HaoSegment(
+                      value: DanmakuSettings.colorModePlatform,
+                      label: '平台原色',
+                    ),
+                  ],
+                  value: _colorMode,
+                  onChanged: (v) async {
+                    await DanmakuSettings.setColorMode(v);
+                    if (!mounted) return;
+                    setState(() => _colorMode = v);
                   },
                 ),
               ),
@@ -219,14 +497,19 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
             children: [
               ListTile(
                 title: Text('列表样式', style: TextStyle(color: theme.textPrimary)),
-                trailing: SegmentedButton<String>(
+              ),
+              // Full-width row below the title: the segmented control
+              // does not fit as a ListTile trailing (Flutter asserts
+              // it consumes the whole tile width) — same as 弹幕区域 above.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: HaoSegmentedControl<String>(
                   segments: const [
-                    ButtonSegment(value: 'compact', label: Text('一行一条')),
-                    ButtonSegment(value: 'card', label: Text('每条一卡')),
+                    HaoSegment(value: 'compact', label: '一行一条'),
+                    HaoSegment(value: 'card', label: '每条一卡'),
                   ],
-                  selected: {_listStyle},
-                  onSelectionChanged: (selected) async {
-                    final v = selected.first;
+                  value: _listStyle,
+                  onChanged: (v) async {
                     await DanmakuSettings.setListStyle(v);
                     if (!mounted) return;
                     setState(() => _listStyle = v);
@@ -235,15 +518,19 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
               ListTile(
                 title: Text('行间距', style: TextStyle(color: theme.textPrimary)),
-                trailing: SegmentedButton<String>(
+              ),
+              // Full-width row below the title — same trailing-width
+              // reason as 列表样式 above.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: HaoSegmentedControl<String>(
                   segments: const [
-                    ButtonSegment(value: 'compact', label: Text('紧密')),
-                    ButtonSegment(value: 'standard', label: Text('标准')),
-                    ButtonSegment(value: 'loose', label: Text('宽松')),
+                    HaoSegment(value: 'compact', label: '紧密'),
+                    HaoSegment(value: 'standard', label: '标准'),
+                    HaoSegment(value: 'loose', label: '宽松'),
                   ],
-                  selected: {_listSpacing},
-                  onSelectionChanged: (selected) async {
-                    final v = selected.first;
+                  value: _listSpacing,
+                  onChanged: (v) async {
                     await DanmakuSettings.setListSpacing(v);
                     if (!mounted) return;
                     setState(() => _listSpacing = v);
@@ -310,8 +597,14 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                           ? (v) =>
                                 setState(() => _similarityThreshold = v.round())
                           : null,
-                      onChangeEnd: (v) =>
-                          DanmakuSettings.setSimilarityThreshold(v.round()),
+                      onChangeEnd: (v) {
+                        DanmakuSettings.setSimilarityThreshold(v.round());
+                        HaoHaptics.sliderEnd(
+                          v,
+                          DanmakuSettings.minSimilarityThreshold.toDouble(),
+                          DanmakuSettings.maxSimilarityThreshold.toDouble(),
+                        );
+                      },
                     ),
                   ),
                   SizedBox(
@@ -375,8 +668,14 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                         activeColor: theme.accent,
                         onChanged: (v) =>
                             setState(() => _blockLongLength = v.round()),
-                        onChangeEnd: (v) =>
-                            DanmakuSettings.setBlockLongLength(v.round()),
+                        onChangeEnd: (v) {
+                          DanmakuSettings.setBlockLongLength(v.round());
+                          HaoHaptics.sliderEnd(
+                            v,
+                            DanmakuSettings.minBlockLongLength.toDouble(),
+                            DanmakuSettings.maxBlockLongLength.toDouble(),
+                          );
+                        },
                       ),
                     ),
                     SizedBox(

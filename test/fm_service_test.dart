@@ -10,8 +10,9 @@
 import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -51,12 +52,44 @@ class FakeMusicApi extends MusicApi {
   Future<List<PlaylistSummary>> neteaseCharts() async => [];
 }
 
+/// Stateful fake: each search of one artist returns the next batch
+/// (first call 20 songs, later calls 10 fresh songs each), so a
+/// refill can actually find songs the queue does not have yet.
+class BatchFakeMusicApi extends FakeMusicApi {
+  BatchFakeMusicApi() : super(const {});
+
+  var artistCalls = 0;
+
+  @override
+  Future<List<Song>> searchOne(
+    MusicPlatform pf,
+    String q, {
+    CancelToken? cancelToken,
+  }) async {
+    searches++;
+    if (q != '陈奕迅') return [];
+    artistCalls++;
+    final start = artistCalls == 1 ? 0 : 20 + (artistCalls - 2) * 10;
+    final count = artistCalls == 1 ? 20 : 10;
+    return List.generate(
+      count,
+      (i) => song(
+        'wy-h${start + i}',
+        '心动${start + i}',
+        artist: '陈奕迅',
+        album: '专辑A',
+      ),
+    );
+  }
+}
+
 Song song(
   String id,
   String title, {
   String artist = '陈奕迅',
   String album = '专辑',
   MusicPlatform platform = MusicPlatform.wy,
+  int albumYear = 0,
 }) =>
     Song(
       songId: id,
@@ -65,6 +98,7 @@ Song song(
       album: album,
       platform: platform,
       dur: 200,
+      albumYear: albumYear,
     );
 
 void main() {
@@ -99,13 +133,32 @@ void main() {
     await hiveDir.delete(recursive: true);
   });
 
+  /// Listen-log shards (hao_listen + hao_listen_YYYY-MM) are the FM
+  /// weight input; clear them so every test starts with no history.
+  /// (The fav/recent/dislike clears below do not cover the log.)
+  Future<void> clearListenLog() async {
+    final keys = HiveStore.box.keys
+        .whereType<String>()
+        .where(
+          (k) =>
+              k == HiveKeys.musicListen ||
+              k.startsWith('${HiveKeys.musicListen}_'),
+        )
+        .toList();
+    for (final k in keys) {
+      await HiveStore.box.delete(k);
+    }
+  }
+
   setUp(() async {
     HaoHaptics.debugEnabledOverride = false;
     // Each test starts with no favourites, no recent plays, no
-    // dislikes and expanded home sections.
+    // dislikes, no listen log, and expanded home sections.
     await HiveStore.put(HiveKeys.musicFav, '[]');
     await HiveStore.put(HiveKeys.musicRecent, '[]');
+    await HiveStore.put(HiveKeys.musicLists, '[]');
     await HiveStore.put(HiveKeys.fmDislikedIds, <String>[]);
+    await clearListenLog();
     await HiveStore.put(HiveKeys.musicRecentExpanded, true);
     await HiveStore.put(HiveKeys.musicPlaylistsExpanded, true);
     controller = Get.put(MusicPlayerController());
@@ -187,7 +240,7 @@ void main() {
       expect(controller.currentIndex.value, 0);
     });
 
-    test('startHeartbeat builds [seed, ...similar] and is finite',
+    test('startHeartbeat builds [seed, ...similar] and refills',
         () async {
       final seed = song('wy-seed', '富士山下');
       await MusicStore.toggleFav(seed);
@@ -198,11 +251,19 @@ void main() {
 
       expect(await service.startHeartbeat(), isTrue);
       expect(service.isFM.value, isFalse);
+      expect(service.isHeartbeat.value, isTrue);
       expect(controller.queueLabel.value, '心动模式');
       expect(
         controller.queue.map((s) => s.identityKey).toList(),
         [seed, ...similar].map((s) => s.identityKey).toList(),
       );
+      // Heartbeat is no longer finite: moving to the last song
+      // refills (the fake has nothing fresh, so the queue stays 3 —
+      // but the mode must NOT end, and nothing may crash).
+      controller.currentIndex.value = 2;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(service.isHeartbeat.value, isTrue);
+      expect(controller.queue.length, 3);
     });
 
     test('similarSongs drops the seed, duplicates and disliked songs',
@@ -229,12 +290,15 @@ void main() {
 
     test('refill appends fresh songs when the queue runs short',
         () async {
-      final a = song('wy-a', 'A');
-      final b = song('wy-b', 'B');
-      final c = song('wy-c', 'C');
-      final d = song('wy-d', 'D');
-      final fresh = [song('wy-x', 'X'), song('wy-y', 'Y')];
-      final api = FakeMusicApi({'陈奕迅': fresh});
+      final a = song('wy-a', 'A', artist: '陈奕迅');
+      final b = song('wy-b', 'B', artist: '陈奕迅');
+      final c = song('wy-c', 'C', artist: '周杰伦');
+      final d = song('wy-d', 'D', artist: '林俊杰');
+      final fresh = [
+        song('wy-x', 'X', artist: '王菲'),
+        song('wy-y', 'Y', artist: '李荣浩'),
+      ];
+      final api = FakeMusicApi({'周杰伦': fresh});
       final service = FmService(api: api, player: controller);
       addTearDown(service.dispose);
       service.seedForTest([a, b, c, d]);
@@ -327,6 +391,474 @@ void main() {
     });
   });
 
+  group('FM smart (build 28)', () {
+    Future<void> recordPlays(
+      String songId,
+      String title,
+      String artist,
+      int count, {
+      int dur = 200,
+      int totalDur = 200,
+      int ageDays = 1,
+    }) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (var i = 0; i < count; i++) {
+        await MusicStore.recordListenEvent(
+          ListenEvent(
+            songId: songId,
+            title: title,
+            artist: artist,
+            platform: MusicPlatform.wy,
+            dur: dur,
+            totalDur: totalDur,
+            at: now - ageDays * 86400000 - i * 1000,
+          ),
+        );
+      }
+    }
+
+    test('seed weight: 100 plays outweigh one like, sampled >80%', () {
+      final now = DateTime(2026, 11, 21, 12).millisecondsSinceEpoch;
+      final eventsA = List.generate(
+        100,
+        (i) => ListenEvent(
+          songId: 'a',
+          title: 'A',
+          artist: '甲',
+          platform: MusicPlatform.wy,
+          dur: 200,
+          totalDur: 200,
+          at: now - 86400000 - i * 1000,
+        ),
+      );
+      final stats = FmService.aggregateListenEvents(eventsA, nowMs: now);
+      final wA = FmService.seedWeight(
+        liked: false,
+        listen: stats.bySong['wy|a'],
+      );
+      final wB = FmService.seedWeight(liked: true);
+      expect(wB, 5.0);
+      expect(wA / (wA + wB), greaterThan(0.8));
+      final rng = Random(20261121);
+      var a = 0;
+      for (var i = 0; i < 200; i++) {
+        if (FmService.weightedPickIndex([wA, wB], rng) == 0) a++;
+      }
+      expect(a, greaterThan(160));
+    });
+
+    test('seed weight: yesterday beats 30 days ago at equal plays', () {
+      final now = DateTime(2026, 11, 21, 12).millisecondsSinceEpoch;
+      List<ListenEvent> evs(String id, int ageDays) => List.generate(
+            10,
+            (i) => ListenEvent(
+              songId: id,
+              title: id,
+              artist: '甲',
+              platform: MusicPlatform.wy,
+              dur: 200,
+              totalDur: 200,
+              at: now - ageDays * 86400000 - i * 1000,
+            ),
+          );
+      final stats = FmService.aggregateListenEvents(
+        [...evs('recent', 1), ...evs('old', 30)],
+        nowMs: now,
+      );
+      final wRecent = FmService.seedWeight(
+        liked: false,
+        listen: stats.bySong['wy|recent'],
+      );
+      final wOld = FmService.seedWeight(
+        liked: false,
+        listen: stats.bySong['wy|old'],
+      );
+      expect(wRecent, greaterThan(wOld));
+    });
+
+    test(
+      'seed weight: full listens raise weight, playlist songs stay low',
+      () {
+        final now = DateTime(2026, 11, 21, 12).millisecondsSinceEpoch;
+        final events = List.generate(
+          5,
+          (i) => ListenEvent(
+            songId: 'f',
+            title: 'F',
+            artist: '甲',
+            platform: MusicPlatform.wy,
+            dur: 200,
+            totalDur: 200,
+            at: now - 86400000 - i * 1000,
+          ),
+        );
+        final stats = FmService.aggregateListenEvents(events, nowMs: now);
+        final wFull = FmService.seedWeight(
+          liked: true,
+          listen: stats.bySong['wy|f'],
+        );
+        expect(wFull, greaterThan(FmService.seedWeight(liked: true)));
+        expect(FmService.seedWeight(liked: false), 1.0);
+      },
+    );
+
+    test('skip exile: 3 low-completion plays stop a song seeding FM',
+        () async {
+      final s = song('wy-s', 'S歌');
+      await MusicStore.toggleFav(s);
+      await recordPlays('wy-s', 'S歌', '陈奕迅', 3, dur: 10);
+      final stats = FmService.aggregateListenEvents(
+        MusicStore.getListenLog(),
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      expect(stats.bySong['wy|wy-s']?.skipCount, 3);
+      final service = FmService(api: FakeMusicApi({}), player: controller);
+      addTearDown(service.dispose);
+      expect(await service.startFM(), isFalse);
+    });
+
+    test(
+      'artist penalty: 3 consecutive skips quarter the factor; a full listen resets it',
+      () {
+        final now = DateTime(2026, 11, 21, 12).millisecondsSinceEpoch;
+        ListenEvent ev(int at, int dur) => ListenEvent(
+              songId: 'x',
+              title: 'X',
+              artist: '陈奕迅',
+              platform: MusicPlatform.wy,
+              dur: dur,
+              totalDur: 200,
+              at: at,
+            );
+        final skips = FmService.aggregateListenEvents(
+          [
+            ev(now - 86400000, 10),
+            ev(now - 2 * 86400000, 10),
+            ev(now - 3 * 86400000, 10),
+          ],
+          nowMs: now,
+        );
+        expect(skips.byArtist['陈奕迅']?.skipStreak, 3);
+        expect(
+          FmService.artistPenaltyFactor(
+            skips.byArtist['陈奕迅']?.skipStreak ?? 0,
+          ),
+          0.25,
+        );
+        final reset = FmService.aggregateListenEvents(
+          [
+            ev(now, 200), // full listen, newest
+            ev(now - 86400000, 10),
+            ev(now - 2 * 86400000, 10),
+            ev(now - 3 * 86400000, 10),
+          ],
+          nowMs: now,
+        );
+        expect(reset.byArtist['陈奕迅']?.skipStreak, 0);
+        expect(reset.byArtist['陈奕迅']?.newestIsFull, isTrue);
+        expect(
+          FmService.effectiveArtistSkipStreak(
+            log: reset.byArtist['陈奕迅'],
+            dislikeCount: 3,
+          ),
+          0,
+        );
+      },
+    );
+
+    test(
+      'similarSongs ranks same-album near-year first, one recording once',
+      () async {
+        final seed = song(
+          'wy-seed',
+          '种子歌',
+          artist: '陈奕迅',
+          album: '专辑A',
+          albumYear: 2020,
+        );
+        final api = FakeMusicApi({
+          '陈奕迅': [
+            song(
+              'wy-1',
+              '甲歌',
+              artist: '陈奕迅',
+              album: '其他专辑',
+              albumYear: 2020,
+            ),
+            song(
+              'wy-2',
+              '乙歌',
+              artist: '陈奕迅',
+              album: '专辑A',
+              albumYear: 2021,
+            ),
+            song(
+              'wy-3',
+              '丙歌',
+              artist: '陈奕迅',
+              album: '专辑A',
+              albumYear: 2010,
+            ),
+            song(
+              'tx-2',
+              '乙歌',
+              artist: '陈奕迅',
+              album: '专辑A',
+              albumYear: 2021,
+              platform: MusicPlatform.tx,
+            ),
+          ],
+        });
+        final service = FmService(api: api, player: controller);
+        addTearDown(service.dispose);
+        final out = await service.similarSongs(seed);
+        expect(
+          out.map((s) => s.songId).toList(),
+          ['wy-2', 'wy-3', 'wy-1'],
+        );
+      },
+    );
+
+    test('dislike generalisation: 3 dislikes cut the artist share to ≤3/10',
+        () async {
+      final seed = song(
+        'wy-seed',
+        '种子歌',
+        artist: '陈奕迅',
+        album: '专辑A',
+        albumYear: 2020,
+      );
+      final xSongs = List.generate(
+        10,
+        (i) => song('wy-x$i', '陈歌$i', artist: '陈奕迅', album: '专辑A'),
+      );
+      final otherSongs = List.generate(
+        7,
+        (i) => song(
+          'wy-o$i',
+          '他歌$i',
+          artist: '歌手$i',
+          album: '专辑A',
+          albumYear: 2020,
+        ),
+      );
+      final api = FakeMusicApi({'陈奕迅': xSongs, '专辑A': otherSongs});
+      final service = FmService(api: api, player: controller);
+      addTearDown(service.dispose);
+
+      final before = await service.similarSongs(seed);
+      expect(before.length, 10);
+      expect(
+        before.where((s) => firstArtist(s.artist) == '陈奕迅').length,
+        10,
+      );
+
+      await service.dislike(xSongs[0]);
+      await service.dislike(xSongs[1]);
+      await service.dislike(xSongs[2]);
+      final after = await service.similarSongs(seed);
+      expect(
+        after.where((s) => firstArtist(s.artist) == '陈奕迅').length,
+        lessThanOrEqualTo(3),
+      );
+      expect(after.map((s) => s.songId), isNot(contains('wy-x0')));
+    });
+
+    test('skip streak: 3 low-completion plays downweight the artist',
+        () async {
+      final seed = song(
+        'wy-seed',
+        '种子歌',
+        artist: '陈奕迅',
+        album: '专辑A',
+        albumYear: 2020,
+      );
+      final xSongs = List.generate(
+        10,
+        (i) => song('wy-x$i', '陈歌$i', artist: '陈奕迅', album: '专辑A'),
+      );
+      final otherSongs = List.generate(
+        7,
+        (i) => song(
+          'wy-o$i',
+          '他歌$i',
+          artist: '歌手$i',
+          album: '专辑A',
+          albumYear: 2020,
+        ),
+      );
+      final api = FakeMusicApi({'陈奕迅': xSongs, '专辑A': otherSongs});
+      final service = FmService(api: api, player: controller);
+      addTearDown(service.dispose);
+
+      final before = await service.similarSongs(seed);
+      expect(
+        before.where((s) => firstArtist(s.artist) == '陈奕迅').length,
+        10,
+      );
+      await recordPlays('wy-x0', '陈歌0', '陈奕迅', 1, dur: 10);
+      await recordPlays('wy-x1', '陈歌1', '陈奕迅', 1, dur: 10);
+      await recordPlays('wy-x2', '陈歌2', '陈奕迅', 1, dur: 10);
+      final after = await service.similarSongs(seed);
+      expect(
+        after.where((s) => firstArtist(s.artist) == '陈奕迅').length,
+        lessThanOrEqualTo(3),
+      );
+    });
+
+    test('diverseAppend caps one artist at 3 per 10 and 5 per queue', () {
+      final queue = <Song>[];
+      final batch = List.generate(
+        10,
+        (i) => song('wy-x$i', '歌$i', artist: '陈奕迅'),
+      );
+      expect(FmService.diverseAppend(queue, batch).length, 3);
+      final others = List.generate(
+        7,
+        (i) => song('wy-o$i', '歌$i', artist: '歌手$i'),
+      );
+      expect(FmService.diverseAppend(queue, others).length, 7);
+      final more = List.generate(
+        3,
+        (i) => song('wy-y$i', '歌$i', artist: '陈奕迅'),
+      );
+      expect(FmService.diverseAppend(queue, more).length, 2);
+      expect(
+        queue.where((s) => firstArtist(s.artist) == '陈奕迅').length,
+        5,
+      );
+    });
+
+    test('FM queue stays diverse over 30 songs', () async {
+      const artists = [
+        '歌手1',
+        '歌手2',
+        '歌手3',
+        '歌手4',
+        '歌手5',
+        '歌手6',
+        '歌手7',
+        '歌手8',
+      ];
+      for (var i = 0; i < artists.length; i++) {
+        await MusicStore.toggleFav(
+          song('wy-fav$i', '收藏$i', artist: artists[i]),
+        );
+      }
+      // Each artist search returns a mixed batch (3/3/2/2 across
+      // four artists, cyclic), so every refill can bring new artists.
+      final byQuery = <String, List<Song>>{};
+      for (var i = 0; i < artists.length; i++) {
+        final batch = <Song>[];
+        const counts = [3, 3, 2, 2];
+        for (var k = 0; k < 4; k++) {
+          final artist = artists[(i + k) % artists.length];
+          for (var j = 0; j < counts[k]; j++) {
+            batch.add(
+              song(
+                'wy-s${i}_${k}_$j',
+                '相似${i}_${k}_$j',
+                artist: artist,
+              ),
+            );
+          }
+        }
+        byQuery[artists[i]] = batch;
+      }
+      final service = FmService(
+        api: FakeMusicApi(byQuery),
+        player: controller,
+      );
+      addTearDown(service.dispose);
+
+      expect(await service.startFM(), isTrue);
+      expect(controller.queue.length, greaterThanOrEqualTo(10));
+      for (var i = 0;
+          i < 12 && controller.queue.length < 30;
+          i++) {
+        controller.currentIndex.value = controller.queue.length - 2;
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+      expect(controller.queue.length, greaterThanOrEqualTo(30));
+      final queueArtists =
+          controller.queue.map((s) => firstArtist(s.artist)).toList();
+      for (var i = 0; i + 10 <= queueArtists.length; i++) {
+        final counts = <String, int>{};
+        for (final a in queueArtists.sublist(i, i + 10)) {
+          counts[a] = (counts[a] ?? 0) + 1;
+        }
+        expect(
+          counts.values.fold(0, (m, v) => v > m ? v : m),
+          lessThanOrEqualTo(3),
+        );
+      }
+      final totalCounts = <String, int>{};
+      for (final a in queueArtists) {
+        totalCounts[a] = (totalCounts[a] ?? 0) + 1;
+      }
+      expect(
+        totalCounts.values.fold(0, (m, v) => v > m ? v : m),
+        lessThanOrEqualTo(5),
+      );
+      expect(queueArtists.toSet().length, greaterThanOrEqualTo(8));
+    });
+
+    test('startHeartbeat refills past the initial queue, near the seed',
+        () async {
+      final seed = song('wy-seed', '富士山下', artist: '陈奕迅', album: '专辑A');
+      await MusicStore.toggleFav(seed);
+      final api = BatchFakeMusicApi();
+      final service = FmService(api: api, player: controller);
+      addTearDown(service.dispose);
+
+      expect(await service.startHeartbeat(), isTrue);
+      expect(service.isHeartbeat.value, isTrue);
+      expect(service.isFM.value, isFalse);
+      expect(controller.queue.length, 21);
+
+      controller.currentIndex.value = 18;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(controller.queue.length, greaterThan(21));
+      final added = controller.queue.skip(21).toList();
+      expect(added, isNotEmpty);
+      final near = added
+          .where(
+            (s) => firstArtist(s.artist) == '陈奕迅' || s.album == '专辑A',
+          )
+          .length;
+      expect(near / added.length, greaterThanOrEqualTo(0.5));
+      expect(service.isHeartbeat.value, isTrue);
+    });
+
+    test('offline FM falls back to the seeds themselves', () async {
+      final seed = song('wy-seed', '富士山下');
+      await MusicStore.toggleFav(seed);
+      await MusicStore.addRecent(seed);
+      final service = FmService(api: FakeMusicApi({}), player: controller);
+      addTearDown(service.dispose);
+      expect(await service.startFM(), isTrue);
+      expect(service.isFM.value, isTrue);
+      expect(
+        controller.queue.map((s) => s.songId).toList(),
+        ['wy-seed'],
+      );
+    });
+
+    test('user playlists join the seed pool', () async {
+      final listSong = song('wy-pl', '歌单歌', artist: '王菲');
+      await MusicStore.saveLists([
+        UserPlaylist(id: 'l1', name: '我的歌单', tracks: [listSong]),
+      ]);
+      final service = FmService(api: FakeMusicApi({}), player: controller);
+      addTearDown(service.dispose);
+      expect(await service.startFM(), isTrue);
+      expect(
+        controller.queue.map((s) => s.songId).toList(),
+        contains('wy-pl'),
+      );
+    });
+  });
+
   group('music home cards', () {
     testWidgets('empty seeds show a real prompt for both cards',
         (tester) async {
@@ -414,7 +946,7 @@ void main() {
       await settle(tester);
       expect(find.byType(MusicPlayerPage), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.tap(find.byIcon(CupertinoIcons.ellipsis));
       await settle(tester);
       expect(find.text('不喜欢'), findsOneWidget);
       await tester.tap(find.text('不喜欢'));

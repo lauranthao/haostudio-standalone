@@ -67,6 +67,16 @@ class HaoHaptics {
   /// (Beans `select()`).
   static void select() => _fire(HapticFeedback.selectionClick);
 
+  /// Slider drag end (N-13): a light tap normally, a selection click
+  /// when the drag lands on either end (iOS ticks at the ends).
+  static void sliderEnd(double value, double min, double max) {
+    if (value <= min || value >= max) {
+      select();
+    } else {
+      tap();
+    }
+  }
+
   static void _fire(Future<void> Function() call) {
     if (!enabled) return;
     unawaited(call().catchError((_) {}));

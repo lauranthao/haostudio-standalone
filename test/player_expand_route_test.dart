@@ -15,10 +15,16 @@
 // 3. expand geometry: the sheet is a capsule at the start of the
 //    transition and square at rest;
 // 4. edge swipe: a short drag returns the page, a long fling pops it.
-
+// 5. top-bar swipe-down (build 28): a long drag / fast fling closes
+//    the page downward, a short slow drag springs back; the lyrics
+//    face, progress bar and cover tap are untouched; a swipe-down
+//    with the queue open closes the queue first; a no-rect open
+//    closes the same way.
+import 'package:standalone/features/music/widgets/play_queue_panel.dart';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -162,10 +168,10 @@ void main() {
   /// icon-only, so there is no label text to tap; each icon exists
   /// exactly once in the tree).
   const tabIcons = {
-    '影视': Icons.movie,
-    '直播': Icons.live_tv,
-    '音乐': Icons.music_note,
-    '设置': Icons.settings,
+    '影视': CupertinoIcons.film,
+    '直播': CupertinoIcons.tv,
+    '音乐': CupertinoIcons.music_note,
+    '设置': CupertinoIcons.settings,
   };
 
   Future<void> tapTab(WidgetTester tester, String label) async {
@@ -197,6 +203,30 @@ void main() {
       ),
     );
   }
+
+  /// Open the player from the overlay bar (favourites sub-page), the
+  /// shared setup for the swipe-down tests. pumpPush + settle: the
+  /// 400ms expand must be fully complete before a swipe, or the
+  /// top-bar strip (gated on animation.status == completed) is not
+  /// mounted yet and the drag hits nothing.
+  Future<void> openFromOverlay(WidgetTester tester) async {
+    await pumpShell(tester);
+    await tapTab(tester, '音乐');
+    await openFavourites(tester);
+    await tapBar(tester, overlayBar);
+    await pumpPush(tester);
+    await settle(tester);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+  }
+
+  /// Top-left of the player page in global coordinates. A swipe-down
+  /// in progress moves it down; at rest it is (0, 0).
+  Offset pageTopLeft(WidgetTester tester) =>
+      tester.getTopLeft(find.byType(MusicPlayerPage));
+
+  /// Start point of a top-bar swipe-down: middle of the top bar
+  /// (SafeArea top + 76pt bar, no SafeArea padding in tests).
+  const topBarPoint = Offset(195, 60);
 
   /// The transition's ClipRRect: the only ClipRRect that is an
   /// ancestor of the player page (the page's own clips are
@@ -312,21 +342,256 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('plain open (no rect) still uses the slide',
+  testWidgets('plain open (no rect) also uses the expand route',
       (tester) async {
     await pumpShell(tester);
     await tapTab(tester, '音乐');
     final context = tester.element(find.byType(AppShell));
     unawaited(openPlayerPage<void>(context));
+    // Mid-transition: the bottom slide-in sheet is a capsule, like
+    // the bar expansion — the no-rect path is the same route with a
+    // fallback rect, not a plain Material slide.
+    await pumpPush(tester, const Duration(milliseconds: 16));
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(transitionClip(tester), findsOneWidget);
+    expect(clipRadius(tester), greaterThan(100));
+    expect(tester.takeException(), isNull);
+
     await settle(tester);
     expect(find.byType(MusicPlayerPage), findsOneWidget);
-    // No expand sheet: the player page has no ClipRRect ancestor.
-    expect(transitionClip(tester), findsNothing);
+    expect(transitionClip(tester), findsOneWidget);
+    expect(clipRadius(tester), 0);
     expect(tester.takeException(), isNull);
 
     Get.back();
     await pumpClose(tester);
     expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('N-14 close uses the settle spring, not easeOutCubic',
+      (tester) async {
+    await openFromOverlay(tester);
+    expect(pageTopLeft(tester), Offset.zero);
+
+    Get.back();
+    await tester.pump();
+    // Mid-close (175/350ms): the spring is at ~0.95 of the slide,
+    // easeOutCubic would be at 0.875. On the 390pt logical width
+    // (780 @2.0) that is ~372pt vs ~341pt, so 0.91x separates them.
+    await tester.pump(const Duration(milliseconds: 175));
+    final width =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(pageTopLeft(tester).dx, greaterThan(0.91 * width));
+
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('T1 top-bar swipe-down closes the player', (tester) async {
+    await openFromOverlay(tester);
+    expect(pageTopLeft(tester), Offset.zero);
+
+    await tester.timedDragFrom(
+      topBarPoint,
+      const Offset(0, 300),
+      const Duration(milliseconds: 300),
+    );
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(overlayBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('T1b swipe-down follows the finger mid-drag', (tester) async {
+    await openFromOverlay(tester);
+    // Hold the finger 120px down: the page must sit exactly 120px
+    // lower (pure translation, no scale / corner / fade), and the
+    // release past the threshold must close it downward.
+    final gesture = await tester.startGesture(topBarPoint);
+    await gesture.moveBy(const Offset(0, 120));
+    await tester.pump();
+    expect(pageTopLeft(tester), const Offset(0, 120));
+    expect(tester.takeException(), isNull);
+    await gesture.up();
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(overlayBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('T2 top-bar short slow swipe springs back', (tester) async {
+    await openFromOverlay(tester);
+    final before = pageTopLeft(tester);
+
+    // 60px at 120px/s: below the 100px / 600px/s thresholds.
+    await tester.timedDragFrom(
+      topBarPoint,
+      const Offset(0, 60),
+      const Duration(milliseconds: 500),
+    );
+    await settle(tester);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(pageTopLeft(tester), before);
+    expect(find.byKey(overlayBar), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    // Leave no player open: the single-player guard (claimPlayerPage)
+    // is only released when the route pops, so a player left open
+    // here would make every later test's open a no-op.
+    Get.back();
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+  });
+
+  testWidgets('T3 top-bar swipe-down fling closes (velocity branch)',
+      (tester) async {
+    await openFromOverlay(tester);
+
+    await tester.flingFrom(topBarPoint, const Offset(0, 200), 1000);
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(overlayBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('T4 lyrics-face swipe-down scrolls lyrics, never closes',
+      (tester) async {
+    await openFromOverlay(tester);
+    Get.find<MusicPlayerController>().lyrics.assignAll([
+      LyricLine(t: 10, text: '第一句'),
+      LyricLine(t: 25.5, text: '第二句'),
+      LyricLine(t: 40, text: '第三句'),
+    ]);
+    // Flip to the lyrics face.
+    await tester.tap(find.byKey(const ValueKey('playerCover')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('playerLyrics')), findsOneWidget);
+
+    Finder lyricsScroll() => find.descendant(
+          of: find.byKey(const ValueKey('playerLyrics')),
+          matching: find.byType(Scrollable),
+        );
+    double scrollPixels() =>
+        tester.state<ScrollableState>(lyricsScroll()).position.pixels;
+    final lyricsCenter =
+        tester.getCenter(find.byKey(const ValueKey('playerLyrics')));
+
+    // Drag up first: the list starts at offset 0, so a downward drag
+    // alone has nowhere to scroll. Up 200px, then down 150px — the
+    // offset must shrink, proving the ListView owns the gesture.
+    await tester.timedDragFrom(
+      lyricsCenter,
+      const Offset(0, -200),
+      const Duration(milliseconds: 300),
+    );
+    await settle(tester);
+    final afterUp = scrollPixels();
+    expect(afterUp, greaterThan(0));
+
+    await tester.timedDragFrom(
+      lyricsCenter,
+      const Offset(0, 150),
+      const Duration(milliseconds: 300),
+    );
+    await settle(tester);
+    expect(scrollPixels(), lessThan(afterUp));
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(pageTopLeft(tester), Offset.zero);
+    expect(tester.takeException(), isNull);
+
+    Get.back();
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+  });
+
+  testWidgets('T5 cover tap still flips to lyrics', (tester) async {
+    await openFromOverlay(tester);
+
+    await tester.tap(find.byKey(const ValueKey('playerCover')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('playerLyrics')), findsOneWidget);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    Get.back();
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+  });
+
+  testWidgets('T6 progress-bar horizontal drag never closes',
+      (tester) async {
+    await openFromOverlay(tester);
+    final barCenter =
+        tester.getCenter(find.byKey(const ValueKey('progressBar')));
+
+    await tester.timedDragFrom(
+      barCenter,
+      const Offset(100, 0),
+      const Duration(milliseconds: 300),
+    );
+    await settle(tester);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(pageTopLeft(tester), Offset.zero);
+    expect(tester.takeException(), isNull);
+
+    Get.back();
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+  });
+
+  testWidgets('T7 swipe-down with queue open closes the queue first',
+      (tester) async {
+    await openFromOverlay(tester);
+    await tester.tap(find.byIcon(Icons.queue_music));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(PlayQueuePanel), findsOneWidget);
+
+    // First swipe-down: only the queue closes, the player stays.
+    await tester.timedDragFrom(
+      topBarPoint,
+      const Offset(0, 300),
+      const Duration(milliseconds: 300),
+    );
+    await settle(tester);
+    expect(find.byType(PlayQueuePanel), findsNothing);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+    expect(pageTopLeft(tester), Offset.zero);
+    expect(tester.takeException(), isNull);
+
+    // Second swipe-down: now the player itself closes.
+    await tester.timedDragFrom(
+      topBarPoint,
+      const Offset(0, 300),
+      const Duration(milliseconds: 300),
+    );
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(overlayBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('T8 no-rect open also closes on top-bar swipe-down',
+      (tester) async {
+    await pumpShell(tester);
+    await tapTab(tester, '音乐');
+    final context = tester.element(find.byType(AppShell));
+    unawaited(openPlayerPage<void>(context));
+    await pumpPush(tester);
+    await settle(tester);
+    expect(find.byType(MusicPlayerPage), findsOneWidget);
+
+    await tester.timedDragFrom(
+      topBarPoint,
+      const Offset(0, 300),
+      const Duration(milliseconds: 300),
+    );
+    await pumpClose(tester);
+    expect(find.byType(MusicPlayerPage), findsNothing);
+    expect(find.byKey(homeBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
