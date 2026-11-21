@@ -121,7 +121,6 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('评论'),
         centerTitle: true,

@@ -9,12 +9,14 @@ import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../storage/hive_store.dart';
+import 'appearance_store.dart';
 import 'hao_themes.dart';
 import 'tab_bar_accent.dart';
 
 class ThemeController extends GetxController {
   static const String _themeKey = 'haoThemeId';
   static const String _modeKey = 'haoThemeMode';
+  static const String _glassIntensityKey = 'haoGlassIntensity';
 
   /// Hive key for the custom font family (same key as
   /// HiveKeys.customFontFamily — the controller reads it directly
@@ -46,6 +48,12 @@ class ThemeController extends GetxController {
   /// stored key as well.
   final Rx<Color?> customAccent = Rx<Color?>(null);
 
+  /// Liquid-glass intensity (chen 2026-11-21, Settings → 外观）:
+  /// 1.0 = today's full glass, 0.0 = no glass at all. Read by the
+  /// theme build (HaoTheme.glassIntensity) so every glass surface
+  /// scales with it; the root Obx rebuilds when this Rx changes.
+  final RxDouble glassIntensity = 1.0.obs;
+
   ThemeController({HaoThemeId initialTheme = HaoThemeId.appleGlass, ThemeMode initialMode = ThemeMode.system})
       : themeId = initialTheme.obs,
         themeMode = initialMode.obs;
@@ -76,12 +84,17 @@ class ThemeController extends GetxController {
       customAccent.value =
           clampAccentHue(Color(savedAccent)).withValues(alpha: 1.0);
     }
+    final savedIntensity = box.get(_glassIntensityKey);
+    if (savedIntensity is num) {
+      glassIntensity.value = savedIntensity.toDouble().clamp(0.0, 1.0);
+    }
   }
 
   void _persist(Box<dynamic> box) {
     box.put(_themeKey, themeId.value.name);
     box.put(_modeKey, themeMode.value.name);
     box.put(_fontKey, customFontFamily.value);
+    box.put(_glassIntensityKey, glassIntensity.value);
   }
 
   /// Switch theme immediately everywhere. Persists the choice.
@@ -134,12 +147,27 @@ class ThemeController extends GetxController {
     customAccent.value = null;
   }
 
+  /// Liquid-glass intensity (chen 2026-11-21, Settings → 外观）: 1.0 =
+  /// today's full glass, 0.0 = no glass. Persists; the root Obx in
+  /// HAoApp rebuilds GetMaterialApp when this Rx changes, so the
+  /// slider previews live.
+  void setGlassIntensity(double value, {Box<dynamic>? box}) {
+    glassIntensity.value = value.clamp(0.0, 1.0);
+    if (box != null) box.put(_glassIntensityKey, glassIntensity.value);
+  }
+
   ThemeData get lightTheme {
     final family = customFontFamily.value;
     return HaoThemes.of(
       themeId.value,
       fontFamily: family.isEmpty ? null : family,
       accentOverride: customAccent.value,
+      glassIntensity: glassIntensity.value,
+      // Rx read, not a store snapshot: the root Obx in HAoApp tracks
+      // it, so flipping the wallpaper / background colour rebuilds
+      // the themes (transparent scaffold + app bar) on every page.
+      backgroundActive:
+          AppearanceController.ensure().backgroundActive.value,
     ).light;
   }
 
@@ -149,6 +177,9 @@ class ThemeController extends GetxController {
       themeId.value,
       fontFamily: family.isEmpty ? null : family,
       accentOverride: customAccent.value,
+      glassIntensity: glassIntensity.value,
+      backgroundActive:
+          AppearanceController.ensure().backgroundActive.value,
     ).dark;
   }
 }

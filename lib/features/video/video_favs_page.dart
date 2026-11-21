@@ -47,10 +47,8 @@ class _VideoFavsPageState extends State<VideoFavsPage> {
     final theme = HaoTheme.of(context);
     final favs = VideoHistoryStore.getFavs();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('我的收藏'),
-        backgroundColor: theme.surface,
       ),
       body: favs.isEmpty
           ? Center(

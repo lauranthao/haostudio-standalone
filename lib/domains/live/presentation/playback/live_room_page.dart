@@ -1829,7 +1829,6 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           child: Listener(
             onPointerSignal: _onPointerSignal,
             child: Scaffold(
-          backgroundColor: theme.scaffoldBackground,
           // Pure Live fullscreen has NO AppBar: the overlay top bar is
           // the exit path and the video fills the whole screen. Keeping
           // the AppBar in fullscreen was the "横屏显示不好" — the video

@@ -227,6 +227,13 @@ class HAoApp extends StatelessWidget {
         // the overlay above it.
         builder: (context, child) => Stack(
           children: [
+            // Custom background (wallpaper / background colour) for
+            // the WHOLE app (chen 2026-11-21: 壁纸要到全局）: the layer
+            // sits behind the root Navigator, so every page shows it
+            // once its scaffold / app bar goes transparent — the tab
+            // roots used to host this layer themselves (removed from
+            // AppShell; a second copy would double-paint the image).
+            const AppearanceBackgroundLayer(),
             RepaintBoundary(
               key: ScreenCapture.boundaryKey,
               child: child ?? const SizedBox.shrink(),

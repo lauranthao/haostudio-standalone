@@ -351,7 +351,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final theme = HaoTheme.of(context);
     final preload = widget.preload;
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       body: AnimatedOpacity(
         opacity: _fadedIn ? 1 : 0,
         duration: const Duration(milliseconds: 350),

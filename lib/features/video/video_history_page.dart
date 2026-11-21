@@ -69,10 +69,8 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
     final theme = HaoTheme.of(context);
     final history = VideoHistoryStore.getAll();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('历史记录'),
-        backgroundColor: theme.surface,
         actions: [
           if (history.isNotEmpty)
             IconButton(

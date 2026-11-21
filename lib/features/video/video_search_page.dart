@@ -195,10 +195,8 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     final history = VideoHistoryStore.getSearchHistory();
     final hot = _hotNames.isEmpty ? _fallbackHot : _hotNames;
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('搜索影片'),
-        backgroundColor: theme.surface,
       ),
       body: Column(
         children: [

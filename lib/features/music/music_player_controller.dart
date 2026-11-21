@@ -101,6 +101,13 @@ class MusicPlayerController extends GetxController
   final Rx<AudioQuality> actualQuality = AudioQuality.hires.obs;
   final RxDouble speed = 1.0.obs; // M-P0-2: 0.6..2.0, persisted
   final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
+
+  /// Live view of the Windows app-internal gain (see [setAppVolume]):
+  /// the player volume row and the Settings slider both read it, so a
+  /// change from either side shows up in the other without reopening
+  /// the page. Synced from Hive in [onInit]; always 1.0 off Windows
+  /// (no UI reads it there).
+  final RxDouble volume01 = 1.0.obs;
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
   final RxBool lyricsFailed = false.obs;
   /// Lyrics live BEHIND the cover (chen 2026-11-17): the cover box is
@@ -395,6 +402,11 @@ class MusicPlayerController extends GetxController
     actualQuality.value = userQuality.value;
     speed.value = MusicStore.speed;
     playMode.value = MusicStore.playMode;
+    // Windows app-internal gain (P1-V1): the player volume row reads
+    // this, so sync it once here like the other persisted prefs.
+    try {
+      volume01.value = _targetVolume;
+    } catch (_) {}
     // Restore the persisted queue (M-P0-4) — order + current index,
     // but do NOT auto-play: playback only starts on a user tap.
     final savedQueue = MusicStore.getQueue();
@@ -1630,6 +1642,9 @@ class MusicPlayerController extends GetxController
   /// persists once on release).
   Future<void> setAppVolume(double v, {bool persist = true}) async {
     final value = v.clamp(0.0, 1.0);
+    // Live view first (P1-V1): the player volume row follows every
+    // tick, even while the Hive write below still awaits.
+    volume01.value = value;
     if (persist) await HiveStore.put(HiveKeys.appVolume, value);
     if (_playersReady) {
       // Apply the live value (not the stored one): during a slider

@@ -41,6 +41,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../services/music/equalizer_store.dart';
 import '../../widgets/glass_dialog.dart';
@@ -290,6 +291,8 @@ class _ControlCard extends StatelessWidget {
                   unawaited(store.setEnabled(value));
                 },
                 activeColor: theme.accent,
+                // Intensity-scaled optics (chen 2026-11-21).
+                settings: HaoLiquidGlass.ios27Settings(context),
                 enableHaptics: HaoHaptics.enabled,
               ),
             ],

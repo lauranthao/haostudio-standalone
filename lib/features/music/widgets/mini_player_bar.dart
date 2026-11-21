@@ -98,10 +98,6 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
         child: Container(
           key: _barKey,
           margin: widget.margin,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: glassMiniPlayerShadow(context),
-          ),
           child: GlassAdaptiveScope(
             // Same premium floor as the tab bar (app_shell.dart): the
             // adaptive scope may demote premium to frosted glass on a

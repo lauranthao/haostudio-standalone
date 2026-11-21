@@ -1,1 +1,10 @@
-{"changelog": {"en": "Windows desktop edition 1.1.5 (build 25): optimization round — scrolling the wheel over a vertical danmaku list no longer changes the volume; update dialog fits desktop windows; system volume follows hardware keys right after the app changes it; left-half vertical swipe now adjusts volume (was dead); plus the build-25 optimizations from the phone version (faster startup, faster song switching, backups as zip).", "tw": "Windows 桌面版 1.1.5（build 25）：優化一輪——滾輪劃過豎屏彈幕列表不再改音量；更新彈窗寬度適配桌面窗口；應用調音量後馬上按硬件鍵，系統音量跟得上；左半屏豎滑現在是音量（原來沒反應）；另含手機版 build 25 的優化（啟動更快、點歌更快、備份改 zip）。", "zh": "Windows 桌面版 1.1.5（build 25）：优化一轮——滚轮划过竖屏弹幕列表不再改音量；更新弹窗宽度适配桌面窗口；应用调音量后马上按硬件键，系统音量跟得上；左半屏竖滑现在是音量（原来没反应）；另含手机版 build 25 的优化（启动更快、点歌更快、备份改 zip）。"}, "exeBuild": 25, "exeSize": 33691630, "exeUrl": "https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.5-windows.zip", "version": "1.1.5"}
+{
+  "changelog": {
+    "zh": "Windows 桌面版 1.1.5（build 26）：音乐播放器里加了音量调节——喇叭加滑块，点一下静音再点恢复，拖动实时生效，设置页的音量滑块改了这里也跟着变；直播和设置页的标题改成左上角大字粗体；设置 → 外观里新增“液态玻璃强度”滑块，整个 app 的玻璃效果一起调；壁纸和背景色现在全 app 生效；底栏和 mini 播放器的影子去掉了。",
+    "tw": "Windows 桌面版 1.1.5（build 26）：音樂播放器裡加了音量調節——喇叭加滑塊，點一下靜音再點恢復，拖動實時生效，設置頁的音量滑塊改了這裡也跟著變；直播和設置頁的標題改成左上角大字粗體；設置 → 外觀裡新增「液態玻璃強度」滑塊，整個 app 的玻璃效果一起調；壁紙和背景色現在全 app 生效；底欄和 mini 播放器的影子去掉了。",
+    "en": "Windows desktop edition 1.1.5 (build 26): the music player now has a volume control — speaker plus slider, tap to mute and tap again to restore, dragging applies live, and it follows the Settings volume slider; live and settings pages got big bold top-left titles; a new “liquid glass intensity” slider in Settings → Appearance adjusts the glass effect across the app; wallpaper and background color now apply app-wide; shadows removed from the bottom bar and mini player."
+  },
+  "exeBuild": 26,
+  "exeUrl": "https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.5-windows.zip",
+  "version": "1.1.5"
+}

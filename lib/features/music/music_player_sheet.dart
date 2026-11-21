@@ -47,6 +47,7 @@ import 'equalizer_page.dart';
 import 'music_player_controller.dart';
 import 'widgets/music_image.dart';
 import 'widgets/play_queue_panel.dart';
+import 'widgets/player_volume_row.dart';
 import 'widgets/quality_sheet.dart';
 import 'widgets/sleep_timer_sheet.dart';
 import 'widgets/track_more_sheet.dart';
@@ -87,9 +88,20 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   MusicPlayerController get _c => MusicPlayerController.ensure();
 
   /// Windows-only: the device volume for the ↑/↓ and mouse-wheel
-  /// shortcuts (the music player has no volume UI of its own — the
-  /// gain is the system volume, like on mobile).
+  /// shortcuts. This is the SYSTEM volume — the player volume row
+  /// below drives the app-internal gain instead, and the two gains
+  /// are independent in series, so they never fight.
   final _systemVolume = SystemVolume();
+
+  /// Last non-zero app gain, for the mute toggle (P1-V2): muting
+  /// remembers the level and restores it, instead of losing it.
+  /// Tracked from every source (drag, Settings slider) via the
+  /// volume01 listener in initState — not just from this page's
+  /// slider. 1.0 until anything non-zero is known.
+  double _lastNonZero = 1.0;
+
+  /// Subscription for the [_lastNonZero] tracking above.
+  Worker? _volumeWorker;
 
   // Apple Music-style cover background: blurred cover + dominant-color
   // gradient. Updated when the song changes (currentIndex listener);
@@ -155,6 +167,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
       final song = _c.currentSong;
       if (song != null) unawaited(_updateCoverBackground(song));
     });
+    // Track the last non-zero app gain for the mute toggle (P1-V2).
+    // Only the value matters here, not a rebuild — the volume row
+    // itself rebuilds off the volume01 Obx.
+    if (_c.volume01.value > 0) _lastNonZero = _c.volume01.value;
+    _volumeWorker = ever<double>(_c.volume01, (v) {
+      if (v > 0) _lastNonZero = v;
+    });
     final song = _c.currentSong;
     if (song != null) unawaited(_updateCoverBackground(song));
   }
@@ -162,6 +181,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   @override
   void dispose() {
     _systemVolume.dispose();
+    _volumeWorker?.dispose();
     _lyricsResumeTimer?.cancel();
     _lyricScrollController.dispose();
     _songSub?.cancel();
@@ -493,6 +513,15 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                                         _progressBar(),
                                         SizedBox(height: gap),
                                         _transportRow(song),
+                                        // Volume row (Windows only):
+                                        // Kumone classic puts it below
+                                        // the transport controls. iOS
+                                        // never sees it — the iOS player
+                                        // has no volume slider by design.
+                                        if (Platform.isWindows) ...[
+                                          const SizedBox(height: 12),
+                                          _volumeRow(),
+                                        ],
                                         const SizedBox(height: 12),
                                         _bottomIconRow(song),
                                         const SizedBox(height: 24),
@@ -1303,8 +1332,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     }
   }
 
-  /// One system-volume step (the player has no volume control of its
-  /// own — the gain is the system volume).
+  /// One system-volume step (wheel / ↑/↓ keys). This is the SYSTEM
+  /// volume — the volume row above drives the app-internal gain
+  /// instead, and the two gains are independent in series.
   Future<void> _stepVolume(double delta) async {
     final current = await _systemVolume.getVolume();
     await _systemVolume.setVolume((current + delta).clamp(0.0, 1.0));
@@ -1353,6 +1383,37 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         ),
       ),
     );
+  }
+
+  /// Volume row (Windows only — the column gates it with
+  /// `Platform.isWindows`, so iOS never sees it). Kumone classic
+  /// puts the volume slider below the transport controls, above the
+  /// bottom toolbar. The row is a live view of the app-internal gain
+  /// (`_c.volume01`): dragging applies immediately
+  /// (`setAppVolume(persist: false)` per tick, persist once on
+  /// release — the same pattern as the Settings slider), and a change
+  /// from the Settings slider shows up here without reopening.
+  Widget _volumeRow() {
+    return Obx(() {
+      final v = _c.volume01.value;
+      return PlayerVolumeRow(
+        volume: v,
+        onChanged: (nv) => unawaited(_c.setAppVolume(nv, persist: false)),
+        onChangeEnd: (nv) => unawaited(_c.setAppVolume(nv)),
+        onToggleMute: _toggleMute,
+      );
+    });
+  }
+
+  /// Speaker tap: mute / restore (P1-V2). Muting sets the gain to 0
+  /// WITHOUT persisting — a restart must not start silent. Restoring
+  /// goes back to the last non-zero level and persists it.
+  void _toggleMute() {
+    if (_c.volume01.value > 0) {
+      unawaited(_c.setAppVolume(0, persist: false));
+    } else {
+      unawaited(_c.setAppVolume(_lastNonZero, persist: true));
+    }
   }
 
   /// Bottom row (Kumone immersive CompactSecondaryControls,

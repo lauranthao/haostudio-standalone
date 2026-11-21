@@ -442,10 +442,11 @@ class AppearanceController extends GetxController {
   }
 }
 
-/// Background layer for the AppShell (stage 2 items 5-6): paints
-/// behind the tab pages — wallpaper image (cover) or background
-/// colour, nothing when no custom background is active. Tab-root
-/// Scaffolds are transparent exactly when this layer paints, so the
+/// Background layer for the WHOLE app (chen 2026-11-21: 壁纸要到全局）:
+/// hosted once behind the root Navigator (main.dart), it paints
+/// behind every page — wallpaper image (cover) or background colour,
+/// nothing when no custom background is active. Page Scaffolds and
+/// app bars are transparent exactly when this layer paints, so the
 /// layer is the background and the theme still owns every text
 /// colour (a dark wallpaper does not force light text and vice versa
 /// — readability comes from the scrim, not from re-tinting text).
@@ -488,7 +489,7 @@ class AppearanceBackgroundLayer extends StatelessWidget {
 }
 
 /// Scaffold background for a tab-root page: transparent while a
-/// custom background is active (the AppShell layer shows through),
+/// custom background is active (the app-root layer shows through),
 /// otherwise the theme scaffold colour. Call sites wrap their
 /// Scaffold in Obx so the switch takes effect immediately.
 Color tabScaffoldBackground(BuildContext context) {

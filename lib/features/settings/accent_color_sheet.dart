@@ -32,6 +32,7 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/screen_capture.dart';
 import '../../core/theme/tab_bar_accent.dart';
@@ -53,6 +54,9 @@ Future<void> showAccentColorSheet(BuildContext context) {
         topRadius: 28,
         bottomRadius: 0,
       ),
+      // Intensity-scaled optics (chen 2026-11-21): explicit settings
+      // so the sheet follows the slider instead of the ambient theme.
+      settings: HaoLiquidGlass.ios27Settings(ctx),
       quality: GlassQuality.standard,
       child: Material(
         color: Colors.transparent,

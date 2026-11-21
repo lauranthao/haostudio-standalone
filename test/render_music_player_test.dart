@@ -24,6 +24,7 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_player_sheet.dart';
+import 'package:standalone/features/music/widgets/player_volume_row.dart';
 import 'package:standalone/services/music/music_models.dart';
 
 Future<void> _loadCjkFont() async {
@@ -146,6 +147,10 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
+    // Volume row is Windows-only (Platform.isWindows gate in the
+    // sheet): on this Linux host it must not exist, so the iOS
+    // player is byte-identical to before.
+    expect(find.byType(PlayerVolumeRow), findsNothing);
     await expectLater(
       find.byType(GetMaterialApp),
       matchesGoldenFile('goldens/music_player_light.png'),
@@ -157,6 +162,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
+    expect(find.byType(PlayerVolumeRow), findsNothing);
     await expectLater(
       find.byType(GetMaterialApp),
       matchesGoldenFile('goldens/music_player_dark.png'),

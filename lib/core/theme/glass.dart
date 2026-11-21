@@ -69,32 +69,6 @@ List<BoxShadow> glassPanelShadow(BuildContext context) {
   ];
 }
 
-/// Shadow for the floating tab bar (Kumone `GlassTabBar.swift`:
-/// shadow black 0.10 light / 0.28 dark, radius 12, y 4).
-List<BoxShadow> glassTabBarShadow(BuildContext context) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  return [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.10),
-      blurRadius: 12,
-      offset: const Offset(0, 4),
-    ),
-  ];
-}
-
-/// Shadow for the mini player capsule (Kumone `IOSMiniPlayerBar`,
-/// IOSMainWindow.swift `playerBarSurface`: shadow black 0.12, radius 10,
-/// y 4 — legacyOverlay branch. Was Beans' 0.16 / r12 / y6.)
-List<BoxShadow> glassMiniPlayerShadow(BuildContext context) {
-  return const [
-    BoxShadow(
-      color: Color.fromRGBO(0, 0, 0, 0.12),
-      blurRadius: 10,
-      offset: Offset(0, 4),
-    ),
-  ];
-}
-
 /// Small shadow for the search field (Beans `SearchView.searchField`:
 /// beansCardShadow(radius: 4, y: 2) — same black 0.08 light / 0.35
 /// dark alphas as the card shadow, smaller radius/offset).
@@ -202,8 +176,8 @@ class GlassCard extends StatelessWidget {
   final LinearGradient? tint;
 
   /// The Beans shadow for [shadow] (glass.dart header: card r9 y3,
-  /// panel r14 y8, tab bar r12 y4, mini player r10 y4, small r4 y2;
-  /// black 0.08 light / 0.35 dark, panel 0.16 light).
+  /// panel r14 y8, small r4 y2; black 0.08 light / 0.35 dark,
+  /// panel 0.16 light).
   List<BoxShadow>? _shadowFor(BuildContext context) {
     switch (shadow) {
       case GlassShadow.none:
@@ -212,10 +186,6 @@ class GlassCard extends StatelessWidget {
         return glassCardShadow(context);
       case GlassShadow.panel:
         return glassPanelShadow(context);
-      case GlassShadow.tabBar:
-        return glassTabBarShadow(context);
-      case GlassShadow.miniPlayer:
-        return glassMiniPlayerShadow(context);
       case GlassShadow.small:
         return glassSmallShadow(context);
     }
@@ -286,6 +256,9 @@ class GlassCard extends StatelessWidget {
   Widget _buildFrosted(BuildContext context) {
     final theme = HaoTheme.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Glass intensity (chen 2026-11-21): 1.0 is identity — today's
+    // blur / surface / highlight; 0.0 is clear (no blur, no fill).
+    final intensity = theme.glassIntensity.clamp(0.0, 1.0);
     final borderRadius = BorderRadius.circular(radius);
     return Container(
       margin: margin,
@@ -297,12 +270,14 @@ class GlassCard extends StatelessWidget {
         borderRadius: borderRadius,
         child: BackdropFilter(
           filter: ImageFilter.blur(
-            sigmaX: theme.glassBlurSigma,
-            sigmaY: theme.glassBlurSigma,
+            sigmaX: theme.glassBlurSigma * intensity,
+            sigmaY: theme.glassBlurSigma * intensity,
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: theme.surface,
+              color: theme.surface.withValues(
+                alpha: theme.surface.a * intensity,
+              ),
               borderRadius: borderRadius,
               border: Border.all(color: borderColor ?? theme.hairline),
             ),
@@ -318,7 +293,9 @@ class GlassCard extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.center,
                         colors: [
-                          Colors.white.withValues(alpha: isDark ? 0.14 : 0.30),
+                          Colors.white.withValues(
+                            alpha: (isDark ? 0.14 : 0.30) * intensity,
+                          ),
                           Colors.white.withValues(alpha: 0.0),
                         ],
                         stops: const [0.0, 0.45],
@@ -336,7 +313,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-enum GlassShadow { none, card, panel, tabBar, miniPlayer, small }
+enum GlassShadow { none, card, panel, small }
 
 /// Dark glass for elements floating over video / a dark scene (player
 /// hint pills, live-room HUD, stall notice): BackdropFilter blurs the
@@ -389,15 +366,19 @@ class GlassSheetBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Glass intensity (chen 2026-11-21): 1.0 is identity.
+    final intensity = theme.glassIntensity.clamp(0.0, 1.0);
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
       child: BackdropFilter(
         filter: ImageFilter.blur(
-          sigmaX: theme.glassBlurSigma,
-          sigmaY: theme.glassBlurSigma,
+          sigmaX: theme.glassBlurSigma * intensity,
+          sigmaY: theme.glassBlurSigma * intensity,
         ),
         child: Container(
-          color: theme.surfaceStrong,
+          color: theme.surfaceStrong.withValues(
+            alpha: theme.surfaceStrong.a * intensity,
+          ),
           // Transparent Material between the fill and the content: the
           // sheets hold ListTiles, and a ListTile paints its ink on
           // the nearest Material ancestor — without this the ColoredBox

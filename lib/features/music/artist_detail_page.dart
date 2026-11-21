@@ -125,7 +125,6 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
     // parses the whole favourites JSON on every call.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _failed
@@ -135,7 +134,6 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                     SliverAppBar(
                       expandedHeight: 280,
                       pinned: true,
-                      backgroundColor: theme.surface,
                       flexibleSpace: FlexibleSpaceBar(
                         background: _detail!.pic.isEmpty
                             ? Container(color: theme.accentSoft)
@@ -263,7 +261,6 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
 
   Widget _errorState(HaoTheme theme) {
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: Text(widget.artistName)),
       body: Center(
         child: Column(

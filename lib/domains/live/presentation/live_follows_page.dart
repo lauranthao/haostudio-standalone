@@ -141,10 +141,8 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     final visible = _visible;
     final platforms = LiveFollowStore.followedPlatforms();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('我的关注'),
-        backgroundColor: theme.surface,
       ),
       body: Column(
         children: [

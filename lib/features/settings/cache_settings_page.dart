@@ -92,7 +92,6 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('缓存管理')),
       body: ListView(
         padding: const EdgeInsets.all(16),

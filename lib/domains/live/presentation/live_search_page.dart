@@ -171,10 +171,8 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
     final history = LiveHistoryStore.getSearchHistory();
     final enabled = LiveSourcesStore.enabledIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('搜索直播间'),
-        backgroundColor: theme.surface,
       ),
       body: Column(
         children: [

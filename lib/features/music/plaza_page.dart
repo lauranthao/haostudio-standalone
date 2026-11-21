@@ -140,7 +140,6 @@ class _PlazaPageState extends State<PlazaPage> {
     final theme = HaoTheme.of(context);
     final items = _sorted;
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('歌单广场')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,7 +490,6 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: Text(p.name, maxLines: 1)),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
