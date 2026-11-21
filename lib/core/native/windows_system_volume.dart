@@ -262,14 +262,25 @@ class WindowsSystemVolumeBackend implements SystemVolumeBackend {
     }
   }
 
+  /// True when [value] is the read-back of a recent own-set. A match
+  /// CONSUMES the record: the echo reaches the poller on the first
+  /// poll after the set, so a later poll reading the same value is a
+  /// real external change, not the same echo again. Without this, an
+  /// external change landing within the window (and within epsilon —
+  /// Windows hardware steps are 0.02, below the 0.04 epsilon) would
+  /// be swallowed and never delivered, because _lastPolled was
+  /// already updated to it.
   bool _isOwnEcho(double value) {
     final now = DateTime.now().millisecondsSinceEpoch;
     _recentOwnSets.removeWhere(
       (e) => now - e.atMs > _echoWindow.inMilliseconds,
     );
-    return _recentOwnSets.any(
+    final index = _recentOwnSets.indexWhere(
       (e) => (e.value - value).abs() <= _echoEpsilon,
     );
+    if (index < 0) return false;
+    _recentOwnSets.removeAt(index);
+    return true;
   }
 
   /// Open (and cache) the default render endpoint's volume control.

@@ -15,7 +15,13 @@
 ; version as a different app instead of an upgrade.
 
 #define MyAppName "HAo Studio"
-#define MyAppVersion "1.1.5"
+; Single-sourced from pubspec.yaml at build time: the workflow passes
+; /DMyAppVersion=<version> to iscc (see .github/workflows/windows.yml).
+; Without it the fallback below keeps the last released version, so a
+; local `iscc windows/installer.iss` still produces the same file.
+#ifndef MyAppVersion
+  #define MyAppVersion "1.1.5"
+#endif
 #define MyAppPublisher "HAo Studio"
 #define MyAppExeName "standalone.exe"
 
@@ -31,7 +37,7 @@ PrivilegesRequired=lowest
 ; (windows/), so the build output is ../build/... — the script is
 ; run from the repo root as `iscc windows/installer.iss`.
 OutputDir=..\build\windows-installer
-OutputBaseFilename=HAoStudio-standalone-v1.1.5-setup
+OutputBaseFilename=HAoStudio-standalone-v{#MyAppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

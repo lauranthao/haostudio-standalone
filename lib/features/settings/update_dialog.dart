@@ -18,6 +18,7 @@
 
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
+import 'dart:math' show min;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -74,7 +75,10 @@ Future<UpdateDialogAction?> showUpdateDialog(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 480),
             child: SizedBox(
-              width: MediaQuery.of(ctx).size.width * 0.82,
+              // 82% of the screen, capped: on a desktop window
+              // (1280 px) an uncapped 82% dialog spans ~1050 px.
+              // Phones are unaffected (390 * 0.82 = 320 < 520).
+              width: min(MediaQuery.of(ctx).size.width * 0.82, 520),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,

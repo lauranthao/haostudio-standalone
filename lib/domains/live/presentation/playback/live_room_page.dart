@@ -1156,11 +1156,21 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     );
   }
 
-  /// Mouse wheel over the room: system volume ±0.05 per notch
-  /// (scroll up = louder). Off Windows ignored.
+  /// Mouse wheel over the video: system volume ±0.05 per notch
+  /// (scroll up = louder). Off Windows ignored. Only the video
+  /// surface counts — the wheel over the portrait danmaku list
+  /// scrolls the list, and must not change the volume as well.
+  /// In fullscreen the video fills the window, so the gate passes
+  /// everywhere there (no scrollable is visible then).
   void _onPointerSignal(PointerSignalEvent event) {
     if (!Platform.isWindows) return;
     if (event is PointerScrollEvent) {
+      final box =
+          _videoSurfaceKey.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.hasSize) return;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (!rect.contains(event.position)) return;
       handleDesktopWheel(event, _applyVolumeStep);
     }
   }
