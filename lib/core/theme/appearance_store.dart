@@ -496,5 +496,8 @@ Color tabScaffoldBackground(BuildContext context) {
   final active = AppearanceController.ensure().backgroundActive.value;
   return active
       ? Colors.transparent
-      : HaoTheme.of(context).scaffoldBackground;
+      // G-P2-4: nullable read (same as GlassCard._buildFrosted) — a
+      // bare ThemeData falls back to the appleGlass light defaults
+      // instead of throwing.
+      : HaoTheme.ofOrDefault(context).scaffoldBackground;
 }

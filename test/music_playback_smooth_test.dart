@@ -61,6 +61,8 @@ class _DeferredResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) =>
       completer.future;
 }
@@ -77,6 +79,8 @@ class _NullResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async =>
       null;
 }
@@ -93,6 +97,8 @@ class _UrlResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async =>
       PlayUrlResult(
         url: 'https://example.com/a.flac',

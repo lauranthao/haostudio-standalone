@@ -100,10 +100,13 @@ Future<Uint8List> fetchMusicImageBytes(String url) async {
   throw lastError ?? StateError('music image fetch failed: $url');
 }
 
-/// Saturation-weighted average color of an image (cheap dominant-color
-/// estimate, no new dependency). Skips near-black / near-white /
-/// transparent pixels so the tint reads as the cover's color. Returns null
-/// when the bytes cannot be decoded or no pixel qualifies.
+/// Dominant color of an image (Kumone ArtworkPalette.compute,
+/// ArtworkPalette.swift:32-115): HSB saturation-weighted circular-mean
+/// hue, saturation ×1.15 (cap 0.72), brightness clamped 0.32–0.5.
+/// No near-black / near-white skip (Kumone has none) and every sampled
+/// pixel keeps a 0.01 weight floor, so a solid black / white / grey
+/// cover still yields a tint instead of no tint at all. Returns null
+/// only when the bytes cannot be decoded or no pixel qualifies.
 ///
 /// P1-P2: the decode is downsampled to [targetWidth] (200 px) first —
 /// a tint needs no more than that, and decoding the full 800x800 cover
@@ -124,35 +127,49 @@ Future<Color?> dominantCoverColor(
     final pixels = data.buffer.asUint8List();
     final total = image.width * image.height;
     final step = (total / 2000).ceil().clamp(1, 64);
-    var rSum = 0.0;
-    var gSum = 0.0;
-    var bSum = 0.0;
+    var sinSum = 0.0;
+    var cosSum = 0.0;
+    var satSum = 0.0;
+    var brightSum = 0.0;
     var wSum = 0.0;
     for (var i = 0; i + 3 < pixels.length; i += 4 * step) {
-      final r = pixels[i];
-      final g = pixels[i + 1];
-      final b = pixels[i + 2];
+      final r = pixels[i] / 255;
+      final g = pixels[i + 1] / 255;
+      final b = pixels[i + 2] / 255;
       final a = pixels[i + 3];
       if (a < 128) continue;
       final mx = math.max(r, math.max(g, b));
       final mn = math.min(r, math.min(g, b));
-      if (mx == 0) continue;
-      final sat = (mx - mn) / mx;
-      final light = (mx + mn) / 2 / 255;
-      if (light < 0.08 || light > 0.92) continue;
-      final wgt = sat + 0.15;
-      rSum += r * wgt;
-      gSum += g * wgt;
-      bSum += b * wgt;
+      final delta = mx - mn;
+      final sat = mx == 0 ? 0.0 : delta / mx;
+      var hue = 0.0;
+      if (delta > 0.00001) {
+        if (r == mx) {
+          hue = (g - b) / delta;
+        } else if (g == mx) {
+          hue = 2 + (b - r) / delta;
+        } else {
+          hue = 4 + (r - g) / delta;
+        }
+        hue /= 6.0;
+        if (hue < 0) hue += 1.0;
+      }
+      // Vivid mid-brightness pixels weigh most; the 0.01 floor is
+      // Kumone's (ArtworkPalette.swift:84).
+      final wgt = math.max(sat * (1 - (mx - 0.55).abs()), 0.01);
+      final angle = hue * 2 * math.pi;
+      sinSum += math.sin(angle) * wgt;
+      cosSum += math.cos(angle) * wgt;
+      satSum += sat * wgt;
+      brightSum += mx * wgt;
       wSum += wgt;
     }
     if (wSum <= 0) return null;
-    return Color.fromRGBO(
-      (rSum / wSum).round(),
-      (gSum / wSum).round(),
-      (bSum / wSum).round(),
-      1,
-    );
+    var hue = math.atan2(sinSum, cosSum) / (2 * math.pi);
+    if (hue < 0) hue += 1;
+    final sat = math.min(satSum / wSum * 1.15, 0.72);
+    final bright = (brightSum / wSum).clamp(0.32, 0.5);
+    return HSVColor.fromAHSV(1.0, hue * 360, sat, bright).toColor();
   } catch (_) {
     return null;
   }

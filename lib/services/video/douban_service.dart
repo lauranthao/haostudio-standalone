@@ -414,13 +414,28 @@ class DoubanService {
   }
 
   /// Serialised call with a ≥ 1 s gap (`doubanCall`).
-  Future<T> _call<T>(Future<T> Function() fn) {
+  ///
+  /// D-P1-1: [isCancelled] lets a timed-out detail() chain abandon
+  /// its queued steps instead of running them: when the 15 s budget
+  /// fires, the chain's remaining _calls throw immediately (no gap
+  /// wait, no fetch), so the next detail() is not stuck behind the
+  /// orphaned chain's leftover requests.
+  Future<T> _call<T>(
+    Future<T> Function() fn, {
+    bool Function()? isCancelled,
+  }) {
     final run = _chain.then((_) async {
       if (blocked) throw StateError('douban blocked');
+      if (isCancelled?.call() ?? false) {
+        throw StateError('douban cancelled');
+      }
       final wait = const Duration(seconds: 1) -
           DateTime.now().difference(_lastCall);
       if (wait > Duration.zero) {
         await Future<void>.delayed(wait);
+      }
+      if (isCancelled?.call() ?? false) {
+        throw StateError('douban cancelled');
       }
       _lastCall = DateTime.now();
       return fn();
@@ -433,9 +448,11 @@ class DoubanService {
     String url, {
     Duration timeout = const Duration(seconds: 10),
     bool noBackoff = false,
+    bool Function()? isCancelled,
   }) async {
     final res = await _call(
       () => _fetcher(url, kDoubanHeaders, timeout: timeout),
+      isCancelled: isCancelled,
     );
     if (res.status == 403) {
       if (!noBackoff) _note403();
@@ -451,9 +468,11 @@ class DoubanService {
     String url,
     Map<String, String> headers, {
     Duration timeout = const Duration(seconds: 10),
+    bool Function()? isCancelled,
   }) async {
     final res = await _call(
       () => _fetcher(url, headers, timeout: timeout),
+      isCancelled: isCancelled,
     );
     if (res.status == 403) {
       _note403();
@@ -465,7 +484,11 @@ class DoubanService {
     return res.body;
   }
 
-  Future<String?> _suggestId(String title, {int year = 0}) async {
+  Future<String?> _suggestId(
+    String title, {
+    int year = 0,
+    bool Function()? isCancelled,
+  }) async {
     try {
       final res = await _call(
         () => _fetcher(
@@ -473,6 +496,7 @@ class DoubanService {
           kDoubanHeaders,
           timeout: const Duration(seconds: 8),
         ),
+        isCancelled: isCancelled,
       );
       if (res.status == 403) {
         _note403();
@@ -500,7 +524,10 @@ class DoubanService {
     }
   }
 
-  Future<String?> _searchPageId(String title) async {
+  Future<String?> _searchPageId(
+    String title, {
+    bool Function()? isCancelled,
+  }) async {
     try {
       final html = await _text(
         'https://www.douban.com/search?cat=1002&q=${Uri.encodeComponent(title)}',
@@ -509,6 +536,7 @@ class DoubanService {
           'Referer': 'https://www.douban.com/',
         },
         timeout: const Duration(seconds: 10),
+        isCancelled: isCancelled,
       );
       return parseDoubanSearchPageId(html);
     } catch (_) {
@@ -523,15 +551,19 @@ class DoubanService {
   /// desktop-search and builtin fallbacks carry no year, so a wrong
   /// id from them is still caught later by detail()'s abstract-year
   /// check, which evicts the cached link.
-  Future<String?> resolveId(String title, {int year = 0}) async {
+  Future<String?> resolveId(
+    String title, {
+    int year = 0,
+    bool Function()? isCancelled,
+  }) async {
     final key = doubanTitleKey(title);
     final cached = _cache.idForTitle(key);
     if (cached != null) return cached;
     String? id;
     if (!_cache.suggestDisabled) {
-      id = await _suggestId(title, year: year);
+      id = await _suggestId(title, year: year, isCancelled: isCancelled);
     }
-    id ??= await _searchPageId(title);
+    id ??= await _searchPageId(title, isCancelled: isCancelled);
     if (id == null || id.isEmpty) {
       final base = vodStripSeasonSuffix(title).base;
       id = kDoubanBuiltinIds[title] ?? kDoubanBuiltinIds[base];
@@ -543,8 +575,19 @@ class DoubanService {
   /// Full detail flow, race-capped at 15 s (returns null on timeout).
   /// Never throws for upstream failures — returns null.
   Future<DoubanDetail?> detail(String title, String year) async {
+    // D-P1-1: the 15 s timeout used to orphan the chain — run() kept
+    // going (each _call up to 6-10 s + the 1 s serial gap), and a
+    // stale success could setDetail AFTER the timeout, poisoning the
+    // cache; the next detail() also queued behind the orphan's
+    // leftover _calls. `cancelled` is set by onTimeout; run() checks
+    // it after every await and before setDetail, and every _call in
+    // the chain takes isCancelled so queued steps throw immediately
+    // instead of fetching.
+    var cancelled = false;
+    bool isCancelled() => cancelled;
+
     Future<DoubanDetail?> run() async {
-      if (blocked) return null;
+      if (blocked || cancelled) return null;
       final strip = vodStripSeasonSuffix(title);
       final base = strip.base;
       final wantYear = _parseYear(year);
@@ -553,8 +596,12 @@ class DoubanService {
       // resolves to the 庆余年 series entry (2019). Enforce the year
       // only when no season suffix was stripped.
       final useYear = !strip.stripped && wantYear != 0;
-      var id = await resolveId(base, year: useYear ? wantYear : 0);
-      if (id == null || id.isEmpty) return null;
+      var id = await resolveId(
+        base,
+        year: useYear ? wantYear : 0,
+        isCancelled: isCancelled,
+      );
+      if (cancelled || id == null || id.isEmpty) return null;
       final cached = _cache.detail(id);
       if (cached != null) {
         if (_yearsMismatch(cached.year, useYear, wantYear)) {
@@ -566,8 +613,12 @@ class DoubanService {
           // check below still guards what gets shown.
           _cache.removeIdForTitle(doubanTitleKey(base));
           _cache.removeDetail(id);
-          final id2 = await resolveId(base, year: useYear ? wantYear : 0);
-          if (id2 == null || id2.isEmpty) return null;
+          final id2 = await resolveId(
+            base,
+            year: useYear ? wantYear : 0,
+            isCancelled: isCancelled,
+          );
+          if (cancelled || id2 == null || id2.isEmpty) return null;
           if (id2 != id) {
             id = id2;
             final cached2 = _cache.detail(id);
@@ -587,12 +638,13 @@ class DoubanService {
         ab = parseDoubanAbstract(
           await _json(
             'https://movie.douban.com/j/subject_abstract?subject_id=$id',
+            isCancelled: isCancelled,
           ),
         );
       } catch (_) {
         ab = null;
       }
-      if (ab == null) return null;
+      if (cancelled || ab == null) return null;
       if (_yearsMismatch(ab.year, useYear, wantYear)) {
         // Wrong film confirmed by its own year: never cache it, never
         // show its score / poster / overview — and drop the title→id
@@ -606,37 +658,50 @@ class DoubanService {
         final html = await _text(
           'https://m.douban.com/movie/subject/$id/',
           kDoubanHeaders,
+          isCancelled: isCancelled,
         );
         mp = parseDoubanMPage(html);
       } catch (_) {}
+      if (cancelled) return null;
+      // D-P1-2: desktop page + Baike lookups in PARALLEL (was serial:
+      // desktop up to 6 s, THEN Baike 5 s — up to 11+ s after the m
+      // page, past the 15 s budget). Desktop wins on merge. Baike
+      // runs for all cast names (desktop "almost always yields
+      // nothing" in production — login-walled — so the extra lookups
+      // are the common case anyway); a failed/slow desktop or Baike
+      // side degrades to {} and never kills the detail.
+      final desktopFuture = _text(
+        'https://movie.douban.com/subject/$id/',
+        kDoubanHeaders,
+        timeout: const Duration(seconds: 6),
+        isCancelled: isCancelled,
+      )
+          .timeout(const Duration(seconds: 6))
+          .then(parseDoubanDesktopCast)
+          .catchError((_) => <String, String>{});
+      final castNames = ab.castNames;
+      final baikeFuture = castNames.isEmpty
+          ? Future.value(<String, String>{})
+          : Future.wait(castNames.map(_castPhotoFetcher)).then((got) {
+              final byName = <String, String>{};
+              for (var i = 0; i < castNames.length; i++) {
+                if (got[i].isNotEmpty) byName[castNames[i]] = got[i];
+              }
+              return byName;
+            });
+      final photoResults = await Future.wait([
+        desktopFuture,
+        baikeFuture,
+      ]);
+      if (cancelled) return null;
       // Desktop page: cast avatar photos (best effort — a slow or
       // failed fetch must never kill the detail). NOTE: in production
       // this almost always yields nothing — the desktop subject page
       // is login-walled for anonymous requests (302 to sec.douban.com,
       // then `error code: 008, please Login`), so the parser finds no
-      // celebrity blocks. The Baike fallback below fills those gaps.
-      var byName = <String, String>{};
-      try {
-        final desktopHtml = await _text(
-          'https://movie.douban.com/subject/$id/',
-          kDoubanHeaders,
-          timeout: const Duration(seconds: 6),
-        ).timeout(const Duration(seconds: 6));
-        byName = parseDoubanDesktopCast(desktopHtml);
-      } catch (_) {}
-      // Baike fallback (parallel, 5 s each — NOT through the serialised
-      // Douban chain, different host, no shared rate limit): one lookup
-      // per name the desktop page didn't cover. Douban photos win when
-      // present; Baike fills the rest.
-      final missing = ab.castNames
-          .where((n) => (byName[n] ?? '').isEmpty)
-          .toList();
-      if (missing.isNotEmpty) {
-        final got = await Future.wait(missing.map(_castPhotoFetcher));
-        for (var i = 0; i < missing.length; i++) {
-          if (got[i].isNotEmpty) byName[missing[i]] = got[i];
-        }
-      }
+      // celebrity blocks. The Baike fallback fills those gaps.
+      // Douban photos win when present; Baike fills the rest.
+      final byName = {...photoResults[1], ...photoResults[0]};
       final castPhotos =
           ab.castNames.map((n) => byName[n] ?? '').toList();
       final d = DoubanDetail(
@@ -655,6 +720,7 @@ class DoubanService {
         castPhotos: castPhotos,
         episodes: ab.episodes,
       );
+      if (cancelled) return null;
       _cache.setDetail(id, d);
       return d;
     }
@@ -662,7 +728,10 @@ class DoubanService {
     try {
       return await run().timeout(
         const Duration(seconds: 15),
-        onTimeout: () => null,
+        onTimeout: () {
+          cancelled = true;
+          return null;
+        },
       );
     } catch (_) {
       return null;

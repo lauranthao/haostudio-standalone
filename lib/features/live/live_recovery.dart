@@ -120,6 +120,18 @@ class LiveRecovery {
     return next;
   }
 
+  /// True when a fresh fetch is currently throttled: a SUCCESSFUL
+  /// fetch happened within [freshFetchThrottle], so the current lines
+  /// are still fresh. This is how the room tells the two nulls of
+  /// [fetchFresh] apart (L-P1-4): throttled-null may fall through to
+  /// [advanceLine] (the list is fresh), but a fetch-failure null
+  /// (network error / timeout / empty parse — no recent success) must
+  /// NOT open an old line whose anti-code is already expired; the
+  /// room shows the failure card instead.
+  bool get freshFetchThrottled =>
+      _lastFreshFetchAt != null &&
+      _now().difference(_lastFreshFetchAt!) < freshFetchThrottle;
+
   /// Re-parse a FRESH resolution from the platform. Never returns the old
   /// URLs: recovery must RE-PARSE, never retry the same URL. Returns null
   /// when throttled, timed out, or the room is offline / parse failed.

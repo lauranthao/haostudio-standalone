@@ -61,6 +61,10 @@ class SearchPrewarm {
           MusicStore.quality,
           song.title,
           artist: song.artist,
+          // M-P1-5: background resolve — a prewarm failure must not
+          // cool the source or pollute the speed ranking; only a
+          // success updates the ranking.
+          background: true,
         );
       } catch (_) {
         // Best-effort: one song failing must not break the next.

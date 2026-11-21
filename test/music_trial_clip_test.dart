@@ -61,10 +61,16 @@ class _FakeApi extends MusicApi {
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async {
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
     altLookups.add(title);
-    if (altCompleter != null) return altCompleter!.future;
+    if (altCompleter != null) {
+      // Honour the timeout like the real findAltPlatform (model fake
+      // in music_playback_reliability_test.dart); the parked lookup
+      // here is completed manually, well inside any cap.
+      return altCompleter!.future.timeout(timeout, onTimeout: () => null);
+    }
     return alt;
   }
 }
@@ -90,6 +96,8 @@ class _FakeResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     return altResult;
   }

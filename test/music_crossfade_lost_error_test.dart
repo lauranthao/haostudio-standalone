@@ -104,6 +104,8 @@ class _UrlResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     resolvedIds.add(songId);
     return PlayUrlResult(

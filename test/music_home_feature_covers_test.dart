@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,12 +66,17 @@ class _CoverFakeApi extends MusicApi {
   }
 
   @override
-  Future<({String name, List<Song> tracks})> importPlaylist(
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importPlaylist(
     MusicPlatform pf,
-    String id,
-  ) async {
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     importCalls++;
-    if (chartSongCover == null) return (name: '', tracks: <Song>[]);
+    if (chartSongCover == null) {
+      return (name: '', tracks: <Song>[], missing: 0, note: '');
+    }
     return (
       name: '飙升榜',
       tracks: [
@@ -83,6 +89,8 @@ class _CoverFakeApi extends MusicApi {
           dur: 200,
         ),
       ],
+      missing: 0,
+      note: '',
     );
   }
 }

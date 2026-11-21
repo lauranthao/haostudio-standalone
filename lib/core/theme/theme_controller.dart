@@ -156,6 +156,15 @@ class ThemeController extends GetxController {
     if (box != null) box.put(_glassIntensityKey, glassIntensity.value);
   }
 
+  /// Memory-only preview for the slider drag (G-P2-3): updates the
+  /// Rx so the theme rebuilds live, but does NOT touch Hive — a drag
+  /// fires onChanged every tick, and a Hive put per tick is what made
+  /// dragging stutter. The value is persisted once, on drag end, via
+  /// [setGlassIntensity] (Slider.onChangeEnd).
+  void setGlassIntensityPreview(double value) {
+    glassIntensity.value = value.clamp(0.0, 1.0);
+  }
+
   ThemeData get lightTheme {
     final family = customFontFamily.value;
     return HaoThemes.of(

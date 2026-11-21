@@ -38,7 +38,6 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
     hide GlassCard, GlassShadow;
 
-import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/liquid_glass_theme.dart';
@@ -56,7 +55,6 @@ class EqualizerPage extends StatelessWidget {
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) => Scaffold(
-        backgroundColor: tabScaffoldBackground(context),
         appBar: AppBar(
           title: const Text('均衡器'),
           centerTitle: true,

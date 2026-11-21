@@ -31,6 +31,7 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -101,6 +102,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       widget.detailService ?? VideoDetailService();
   final _douban = DoubanService();
 
+  /// Cancels the in-flight detail race when the page is left
+  /// (V-P1-4): without it the CMS requests run on to their 8 s
+  /// timeouts after the user has already gone. A cancellation is
+  /// never recorded as a source failure.
+  final _loadToken = CancelToken();
+
+  @override
+  void dispose() {
+    _loadToken.cancel();
+    super.dispose();
+  }
+
   VideoDetail? _detail;
   dynamic _detailSourceId;
   String _detailVodId = '';
@@ -142,6 +155,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       widget.sourceId,
       widget.vodId,
       preload: widget.preload,
+      cancelToken: _loadToken,
     );
     if (!mounted) return;
     if (result == null) {
@@ -687,10 +701,12 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                   ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
+                                // No manual width/height (G-P1-2):
+                                // RefererImage sizes itself from the
+                                // 84×112 layout constraints now, so
+                                // one sizing path exists, not two.
                                 child: RefererImage(
                                   url: photo,
-                                  width: 84,
-                                  height: 112,
                                   fallback: Text(
                                     name.isEmpty ? '?' : name[0],
                                     style: TextStyle(

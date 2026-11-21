@@ -52,6 +52,25 @@ Future<Map<String, LiveStatus>> refreshRoomStatuses(
   LiveSite Function(String platformId)? siteOf,
   Duration perItemTimeout = const Duration(seconds: 8),
 }) async {
+  final withWatching = await refreshRoomStatusesWithWatching(
+    rooms,
+    siteOf: siteOf,
+    perItemTimeout: perItemTimeout,
+  );
+  return withWatching.map((k, v) => MapEntry(k, v.status));
+}
+
+/// Same check as [refreshRoomStatuses], but each entry also carries
+/// the room's watching count from the same fresh detail (B-P1-1:
+/// the follow card's watching pill needs the number — the detail
+/// was already fetched for the status, so it costs no extra request).
+/// Watching is 0 when the room is offline or the check failed.
+Future<Map<String, ({LiveStatus status, int watching})>>
+    refreshRoomStatusesWithWatching(
+  List<LiveRoom> rooms, {
+  LiveSite Function(String platformId)? siteOf,
+  Duration perItemTimeout = const Duration(seconds: 8),
+}) async {
   final resolve = siteOf ?? Sites.of;
   final results = await Future.wait(
     rooms.map((room) async {
@@ -61,11 +80,18 @@ Future<Map<String, LiveStatus>> refreshRoomStatuses(
         final detail = await site
             .getRoomDetail(room)
             .timeout(perItemTimeout);
-        return MapEntry(key, detail.liveStatus
-            ? LiveStatus.live
-            : LiveStatus.offline);
+        return MapEntry(
+          key,
+          (
+            status: detail.liveStatus ? LiveStatus.live : LiveStatus.offline,
+            watching: detail.watching,
+          ),
+        );
       } catch (_) {
-        return MapEntry(key, LiveStatus.unknown);
+        return MapEntry(
+          key,
+          (status: LiveStatus.unknown, watching: 0),
+        );
       }
     }),
   );

@@ -62,7 +62,14 @@ class HaoLiquidGlass {
   /// glass, byte for byte), 0.0 fades thickness / blur / frost /
   /// tint / rim to nothing. Only the optics move — never the layout.
   /// Thickness floors at 1.0 so the refraction pass never sees a
-  /// zero depth.
+  /// zero depth. The optical leftovers scale too (G-P2-6): at 0 the
+  /// refractive index eases to 1.0 (no bending) and glow / light /
+  /// chromatic aberration fade to zero — and `visibility` scales with
+  /// the intensity as well, because the library still paints a faint
+  /// body wash at 0 with visibility left at 1.0 (measured: 5.0% of
+  /// pixels differ from the bare backdrop without it, ~0.2% — text
+  /// antialiasing only — with it). So 0% glass is optically clear,
+  /// not just visually faint.
   static LiquidGlassSettings _scale(
     LiquidGlassSettings base,
     double intensity,
@@ -77,6 +84,11 @@ class HaoLiquidGlass {
       glassColor: base.glassColor.withValues(alpha: base.glassColor.a * i),
       rimLight: base.rimLight * i,
       rimShade: base.rimShade * i,
+      refractiveIndex: 1.0 + (base.refractiveIndex - 1.0) * i,
+      glowIntensity: base.glowIntensity * i,
+      lightIntensity: base.lightIntensity * i,
+      chromaticAberration: base.chromaticAberration * i,
+      visibility: base.visibility * i,
     );
   }
 
@@ -98,26 +110,6 @@ class HaoLiquidGlass {
     LiquidGlassSettings.ios27(context),
     Theme.of(context).extension<HaoTheme>()?.glassIntensity ?? 1.0,
   );
-
-  /// Pill lens (chen 2026-11-20: NetEase tab-bar animation — the lens
-  /// magnifies / distorts the icons + labels passing under it).
-  ///
-  /// Base is the library's iOS 27 indicator preset
-  /// (`LiquidGlassSettings.ios27Indicator`: clear paraxial lens,
-  /// blur/frost 0, transparent glassColor, bright rim) with a
-  /// stronger lens so the magnification reads like NetEase's frames
-  /// (netease_pill_anim frame_005/011: the icon under the lens is
-  /// ~1.3-1.5x, warped at the rim): refractiveIndex 1.17 -> 1.35,
-  /// thickness 28 -> 36. Verified in the zz_pill_experiment goldens:
-  /// the grouped pill (old structure) shows no lens at all, the
-  /// own-layer pill above the icon row bends the grid + enlarges the
-  /// icon under it. On a real device (Impeller premium) the refraction
-  /// renders stronger than in the Skia test goldens.
-  static LiquidGlassSettings pillLensSettings(BuildContext context) =>
-      LiquidGlassSettings.ios27Indicator.copyWith(
-        refractiveIndex: 1.35,
-        thickness: 36,
-      );
 
   /// Floating-chrome glass (tab bar shell + mini player bar) for the
   /// unified page (chen 2026-11-19: "不要有那种分开的感觉，就是一个
@@ -151,16 +143,28 @@ class HaoLiquidGlass {
   /// Theme-only (no appearance state): the same settings blend on a
   /// solid page and stay transparent over a wallpaper, so no reactive
   /// rebuild is needed when the wallpaper toggles. The pill does NOT
-  /// inherit this preset any more: it is its own layer with
-  /// [pillLensSettings], so its shader can sample + magnify the icons
-  /// (bug 5, chen 2026-11-20).
+  /// inherit this preset any more: it is a plain matte Container
+  /// (see app_shell.dart), not a glass layer — no lens/magnification
+  /// is wired in. Wiring a lens would change the tab-bar look, so it
+  /// waits on chen's phone verdict (G-P1-4, build 27: the old pill
+  /// lens settings definition was dead code with zero callers and
+  /// was deleted; its "verified in the zz_pill_experiment goldens"
+  /// note described an experiment, not the shipped bar).
   static LiquidGlassSettings chromeSettings(BuildContext context) {
     final base = LiquidGlassSettings.ios27(context);
-    final page = HaoTheme.of(context).scaffoldBackground;
+    // G-P2-4: same nullable read as ios27Settings — no HaoTheme
+    // extension in the ambient theme (plain ThemeData, e.g. a test
+    // harness) reads as intensity 1.0 — today's chrome — instead of
+    // crashing on the `!` in HaoTheme.of. The page colour falls back
+    // to the Material scaffold colour in that case.
+    final theme = Theme.of(context).extension<HaoTheme>();
+    final page =
+        theme?.scaffoldBackground ??
+        Theme.of(context).scaffoldBackgroundColor;
     // Glass intensity (chen 2026-11-21): 1.0 is identity — the values
     // below are today's chrome; lower values fade the frost / tint /
     // rim / thickness toward clear glass.
-    final intensity = HaoTheme.of(context).glassIntensity.clamp(0.0, 1.0);
+    final intensity = (theme?.glassIntensity ?? 1.0).clamp(0.0, 1.0);
     return base.copyWith(
       glassColor: page.withValues(alpha: 0.12 * intensity),
       frostOpacity: 0.55 * intensity,
@@ -168,6 +172,17 @@ class HaoLiquidGlass {
       rimLight: 1.5 * intensity,
       thickness: math.max(1.0, base.thickness * intensity),
       bodyShade: 0.0,
+      // G-P2-6, same as _scale: at 0 the chrome must be optically
+      // clear too — refractive index to 1.0, glow / light /
+      // chromatic aberration to zero, visibility to zero (the
+      // library paints a body wash at 0 with visibility left at
+      // 1.0). All five are identity at 1.0, so today's chrome is
+      // untouched.
+      refractiveIndex: 1.0 + (base.refractiveIndex - 1.0) * intensity,
+      glowIntensity: base.glowIntensity * intensity,
+      lightIntensity: base.lightIntensity * intensity,
+      chromaticAberration: base.chromaticAberration * intensity,
+      visibility: base.visibility * intensity,
       // chen 2026-11-21: 不要有影子了 — the ios27 preset carries an
       // explicit light-mode drop shadow (0x0F000000, r12, y6) in its
       // `shadow` list, which IGNORES shadowElevation (the library's

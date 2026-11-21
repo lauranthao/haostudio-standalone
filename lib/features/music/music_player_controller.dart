@@ -1253,20 +1253,29 @@ class MusicPlayerController extends GetxController
     required bool auto,
     required String reason,
   }) async {
-    // The resolving flag stays up while the alt lookup runs (up to 5 s
-    // after the findAltPlatform cap). try/finally so a throw in the
-    // lookup / open still clears the flag; the gen guard makes the
-    // clear a no-op if a newer load owns it by then.
+    // The resolving flag stays up while the alt lookup runs (up to
+    // 5 s after the findAltPlatform cap, 2 s on the auto path —
+    // M-P1-4). try/finally so a throw in the lookup / open still
+    // clears the flag; the gen guard makes the clear a no-op if a
+    // newer load owns it by then.
     final g = gen < 0 ? _playGen : gen;
     _setResolving(true, g);
     try {
       if (!_altTried) {
         _altTried = true;
+        // M-P1-4: the auto path is silent (the previous song already
+        // ended), so the alt rescue gets a tight combined budget —
+        // 2 s for the lookup + 2 s for the re-resolve — instead of
+        // the 5 s + 8 s that used to stretch the silence to ~21 s.
+        // Manual loads keep the full budgets: the old song is still
+        // playing while they run, so there is no silence to bound.
         final alt = await _api.findAltPlatform(
           song.title,
           song.artist,
           song.platform,
           song.album,
+          timeout:
+              auto ? const Duration(seconds: 2) : const Duration(seconds: 5),
         );
         if (alt != null) {
           final r = await _resolvers.resolvePlayUrl(
@@ -1275,6 +1284,9 @@ class MusicPlayerController extends GetxController
             userQuality.value,
             alt.title,
             artist: alt.artist,
+            totalBudget: auto
+                ? const Duration(seconds: 2)
+                : const Duration(seconds: 8),
           );
           if (r != null && r.url.isNotEmpty) {
             // The track may have advanced while the alt lookup was in
@@ -1435,6 +1447,10 @@ class MusicPlayerController extends GetxController
         userQuality.value,
         tr.title,
         artist: tr.artist,
+        // M-P1-5: background resolve — a prefetch failure must not
+        // cool the source or pollute the speed ranking; only a
+        // success updates the ranking.
+        background: true,
       )
           .then((r) {
         if (r != null && r.url.isNotEmpty) {

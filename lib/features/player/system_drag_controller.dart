@@ -15,11 +15,13 @@
 // the middle mid-drag switches sides, seeding from that side's cache
 // so the value never jumps.
 //
-// What the controller owns: the per-side level caches, the drag-start
-// seed read (brightness is re-read live from the channel, 300 ms
-// cap; volume comes from the live volumeChanges stream), the drag
+// What the controller owns: the per-side level caches, the drag
 // value notifier, the HUD side notifier (null = HUD hidden), the HUD
-// linger timer, and the SystemVolume subscription.
+// linger timer, and the SystemVolume subscription. Brightness is
+// re-read fresh at drag start (300 ms cap, cache on failure) and
+// ticks that arrive while the read is in flight are banked and
+// applied at the fresh anchor when it lands (L-P2-5 option 2);
+// volume comes from the live volumeChanges stream.
 //
 // What the page still owns: WHERE the drag may start (gesture guards
 // — system home-gesture zone, locked controls, failed/ended player),
@@ -68,13 +70,24 @@ class SystemDragController {
 
   /// Per-side level caches. Volume stays live through the
   /// volumeChanges stream (+ an init-time read); brightness through
-  /// an init-time read, the drag-start re-read, and the drag itself.
+  /// an init-time read, a fresh re-read at every drag start (the
+  /// anchor — Control Center may have moved it since the cache was
+  /// seeded), and the drag itself. Ticks that arrive while the
+  /// re-read is in flight are banked and applied the moment the seed
+  /// lands (L-P2-5 option 2), so the first 300 ms of the gesture is
+  /// never dropped.
   double brightnessLevel = 0.5;
   double volumeLevel = 1.0;
 
   bool _seedReady = false;
   bool _disposed = false;
   Timer? _hudTimer;
+
+  /// L-P2-5 option 2: vertical travel (px) that arrived while the
+  /// brightness seed was still being re-read at drag start. Applied
+  /// once, anchored at the FRESH seed, the moment the seed lands —
+  /// never dropped, never anchored at the stale cache.
+  double _pendingBrightnessDy = 0;
 
   /// Start-generation: end/cancel bumps it, so a drag-start seed
   /// that lands AFTER the drag already ended is dropped instead of
@@ -108,44 +121,76 @@ class SystemDragController {
     } catch (_) {}
   }
 
-  /// Drag start: pick the side from the x position, seed the value
-  /// (brightness re-read live from the channel — a stale seed would
-  /// jump the screen back to the old level on the first move; volume
-  /// needs no re-read, its cache is live), show the HUD. Updates
-  /// arriving before the seed lands are dropped ([seedReady]).
-  /// No-op when the surface has no width.
+  /// Drag start: pick the side from the x position, show the HUD
+  /// with the cached level at once. The brightness seed is then
+  /// re-read FRESH (Control Center may have moved it since the
+  /// cache was seeded — anchoring at the stale cache would jump
+  /// the screen back on the first move); ticks that arrive while
+  /// the read is in flight are banked in [_pendingBrightnessDy]
+  /// and applied the moment the seed lands, so a fast short swipe
+  /// is never dropped (L-P2-5 option 2). Volume needs no re-read,
+  /// its cache is live. No-op when the surface has no width.
   Future<void> startDrag(Offset localPosition, Size size) async {
-    _seedReady = false;
     if (size.width <= 0) return;
     final epoch = ++_seedEpoch;
     final isBrightnessSide = localPosition.dx <= size.width / 2;
-    var seed = isBrightnessSide ? brightnessLevel : volumeLevel;
-    if (isBrightnessSide) {
-      try {
-        seed = await ScreenBrightness.getBrightness().timeout(
-          const Duration(milliseconds: 300),
-        );
-      } catch (_) {}
-      brightnessLevel = seed.clamp(0.0, 1.0);
-      seed = brightnessLevel;
-    }
-    if (_disposed || epoch != _seedEpoch) return;
+    final seed = isBrightnessSide ? brightnessLevel : volumeLevel;
+    _pendingBrightnessDy = 0;
     side.value =
         isBrightnessSide ? SystemDragSide.brightness : SystemDragSide.volume;
     value.value = seed;
+    _seedReady = !isBrightnessSide;
+    if (!isBrightnessSide) return;
+    double fresh;
+    try {
+      fresh = (await ScreenBrightness.getBrightness().timeout(
+        const Duration(milliseconds: 300),
+      )).clamp(0.0, 1.0);
+    } catch (_) {
+      fresh = brightnessLevel;
+    }
+    if (_disposed || epoch != _seedEpoch) return;
+    brightnessLevel = fresh;
+    value.value = fresh;
     _seedReady = true;
+    final banked = _pendingBrightnessDy;
+    _pendingBrightnessDy = 0;
+    if (banked != 0) {
+      _showHud();
+      final target = (fresh - banked / kFullRangePixels).clamp(0.0, 1.0);
+      if ((target - fresh).abs() > 0.001) {
+        value.value = target;
+        brightnessLevel = target;
+        unawaited(ScreenBrightness.setBrightness(target));
+      }
+    }
   }
 
   /// Drag update: apply the vertical delta at the shared sensitivity.
   /// A side change mid-drag re-seeds from the new side's cache (no
   /// channel read) so the value continues from that side's real level
-  /// instead of jumping. Tiny ticks are dropped.
+  /// instead of jumping. Tiny ticks are dropped. While the brightness
+  /// seed is still landing, ticks are banked in
+  /// [_pendingBrightnessDy] instead of being dropped (L-P2-5 option
+  /// 2); sliding to the volume side mid-wait switches at once — the
+  /// volume cache is live — and drops the pending brightness seed.
   void updateDrag(DragUpdateDetails details, Size size) {
-    if (!_seedReady) return;
     if (size.height <= 0) return;
     final delta = details.delta;
     if (delta.distance < 0.5) return;
     final isBrightnessSide = details.localPosition.dx <= size.width / 2;
+    if (!_seedReady) {
+      if (!isBrightnessSide && isBrightness) {
+        ++_seedEpoch;
+        side.value = SystemDragSide.volume;
+        value.value = volumeLevel;
+        _pendingBrightnessDy = 0;
+        _seedReady = true;
+      } else if (isBrightnessSide) {
+        _pendingBrightnessDy += delta.dy;
+        return;
+      }
+    }
     if (isBrightness != isBrightnessSide) {
       side.value =
           isBrightnessSide
@@ -177,6 +222,7 @@ class SystemDragController {
   void endDrag() {
     _seedReady = false;
     ++_seedEpoch;
+    _pendingBrightnessDy = 0;
     _armHudTimer();
   }
 
@@ -184,6 +230,7 @@ class SystemDragController {
   void cancelDrag() {
     _seedReady = false;
     ++_seedEpoch;
+    _pendingBrightnessDy = 0;
     _hideHudNow();
   }
 

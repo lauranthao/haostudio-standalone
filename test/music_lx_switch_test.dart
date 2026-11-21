@@ -130,6 +130,8 @@ class _ControlledResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     resolvedTitles.add(title);
     final c = pending[title];
@@ -179,8 +181,9 @@ class _FakeApi extends MusicApi {
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async =>
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async =>
       null;
 }
 

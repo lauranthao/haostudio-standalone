@@ -277,7 +277,9 @@ class GlassTabBarState extends State<GlassTabBar>
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
+    // G-P2-4: non-throwing read — the bar must render under a bare
+    // ThemeData (e.g. a test harness) instead of throwing.
+    final theme = HaoTheme.ofOrDefault(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),

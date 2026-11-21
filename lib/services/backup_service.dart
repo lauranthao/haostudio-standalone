@@ -23,9 +23,9 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 /// Backup file schema version. Bump only when the envelope changes in a
@@ -93,30 +93,20 @@ class BackupService {
   /// the Hive relative names point). A missing/unreadable subdir
   /// contributes nothing; a missing [documentsDir] means the zip
   /// holds only the JSON (same content as the old export).
+  ///
+  /// The file reads + zip encoding run in a worker isolate via
+  /// [compute] (G-P1-5): the sync `ZipEncoder` used to run in the UI
+  /// callback and block the main thread for seconds on a big download
+  /// library. Only the JSON envelope is built here — the Hive box
+  /// lives on the main isolate.
   Future<Uint8List> exportZip({Directory? documentsDir, DateTime? now}) async {
-    final archive = Archive();
-    final jsonBytes = utf8.encode(exportJson(now: now));
-    archive.addFile(
-      ArchiveFile(kBackupZipJsonName, jsonBytes.length, jsonBytes),
+    return compute(
+      _encodeBackupZip,
+      _ExportZipMessage(
+        json: exportJson(now: now),
+        documentsDirPath: documentsDir?.path,
+      ),
     );
-    final docs = documentsDir;
-    if (docs != null) {
-      for (final sub in kBackupFileSubdirs) {
-        final dir = Directory('${docs.path}/$sub');
-        if (!await dir.exists()) continue;
-        await for (final entity in dir.list(recursive: true)) {
-          if (entity is! File) continue;
-          try {
-            final bytes = await entity.readAsBytes();
-            final rel = entity.path.substring(docs.path.length + 1);
-            archive.addFile(ArchiveFile(rel, bytes.length, bytes));
-          } catch (_) {
-            // One unreadable file must not fail the whole export.
-          }
-        }
-      }
-    }
-    return Uint8List.fromList(ZipEncoder().encode(archive));
   }
 
   /// Restore from a backup zip ([exportZip] output). The JSON part
@@ -138,7 +128,10 @@ class BackupService {
   }) async {
     Archive archive;
     try {
-      archive = ZipDecoder().decodeBytes(bytes);
+      // The sync zip decode runs in a worker isolate (G-P1-5); the
+      // JSON import below stays on the main isolate — the Hive box
+      // and its snapshot/rollback semantics live there.
+      archive = await compute(_decodeBackupZip, bytes);
     } catch (_) {
       return (BackupImportResult.invalidJson, 0, 0);
     }
@@ -259,4 +252,51 @@ class BackupService {
     }
     return false;
   }
+}
+
+/// Message for [_encodeBackupZip]: the JSON envelope (built on the
+/// main isolate — the Hive box lives there) + the documents dir path
+/// (null = JSON-only zip). Only sendable fields, so [compute] can
+/// carry it to the worker isolate.
+class _ExportZipMessage {
+  const _ExportZipMessage({required this.json, required this.documentsDirPath});
+
+  final String json;
+  final String? documentsDirPath;
+}
+
+/// Worker-isolate half of [BackupService.exportZip]: reads the user
+/// files + zip-encodes off the main thread (G-P1-5). Sync file reads
+/// are fine here — they block only this isolate, never the UI. One
+/// unreadable file still must not fail the whole export.
+Uint8List _encodeBackupZip(_ExportZipMessage message) {
+  final archive = Archive();
+  final jsonBytes = utf8.encode(message.json);
+  archive.addFile(
+    ArchiveFile(kBackupZipJsonName, jsonBytes.length, jsonBytes),
+  );
+  final docsPath = message.documentsDirPath;
+  if (docsPath != null) {
+    for (final sub in kBackupFileSubdirs) {
+      final dir = Directory('$docsPath/$sub');
+      if (!dir.existsSync()) continue;
+      for (final entity in dir.listSync(recursive: true)) {
+        if (entity is! File) continue;
+        try {
+          final bytes = entity.readAsBytesSync();
+          final rel = entity.path.substring(docsPath.length + 1);
+          archive.addFile(ArchiveFile(rel, bytes.length, bytes));
+        } catch (_) {
+          // One unreadable file must not fail the whole export.
+        }
+      }
+    }
+  }
+  return Uint8List.fromList(ZipEncoder().encode(archive));
+}
+
+/// Worker-isolate half of [BackupService.importZip]: the sync
+/// [ZipDecoder] used to run on the main thread.
+Archive _decodeBackupZip(List<int> bytes) {
+  return ZipDecoder().decodeBytes(bytes);
 }

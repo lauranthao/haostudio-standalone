@@ -13,6 +13,7 @@
 //    cover tint for the blurred-cover background; an empty cover falls
 //    back to the theme gradient, never a grey block.
 
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
@@ -137,7 +138,8 @@ void main() {
       expect(find.text('正在播放'), findsNothing);
       expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
       expect(find.byIcon(Icons.format_quote), findsOneWidget);
-      expect(find.byIcon(Icons.tune), findsNWidgets(2));
+      // PL-P1-6: tune only in the top bar now (one, not two).
+      expect(find.byIcon(Icons.tune), findsOneWidget);
       final screen = tester.getSize(find.byType(Scaffold).first);
       for (final icon in [
         Icons.skip_previous,
@@ -266,13 +268,30 @@ void main() {
       return data!.buffer.asUint8List();
     }
 
-    test('solid red image -> red tint', () async {
+    test('solid red image -> red tint (brightness clamped 0.32-0.5)', () async {
       final bytes = await solidPng(const Color(0xFFD43A2F));
       final tint = await dominantCoverColor(bytes);
       expect(tint, isNotNull);
-      expect((tint!.r * 255).round(), greaterThan(180));
+      // HSV(~4 deg, 0.72, 0.5): red-dominant but dark — the clamp caps
+      // value at 0.5, so r is ~128, not ~212.
+      expect((tint!.r * 255).round(), inInclusiveRange(110, 145));
       expect((tint.g * 255).round(), lessThan(110));
       expect((tint.b * 255).round(), lessThan(110));
+    });
+
+    test('solid black image -> tint lightness >= 0.32 (Kumone clamp)', () async {
+      final bytes = await solidPng(const Color(0xFF000000));
+      final tint = await dominantCoverColor(bytes);
+      expect(tint, isNotNull);
+      expect(HSLColor.fromColor(tint!).lightness, greaterThanOrEqualTo(0.32));
+    });
+
+    test('solid white image -> tint lightness <= 0.5 (Kumone clamp)', () async {
+      final bytes = await solidPng(const Color(0xFFFFFFFF));
+      final tint = await dominantCoverColor(bytes);
+      expect(tint, isNotNull);
+      // 0.5 * 255 = 127.5 rounds to 128 in 8-bit, so allow 0.51.
+      expect(HSLColor.fromColor(tint!).lightness, lessThanOrEqualTo(0.51));
     });
 
     test('garbage bytes -> null (fallback)', () async {
@@ -610,14 +629,16 @@ void main() {
       },
     );
 
-    testWidgets('top lyrics toggle flips cover/lyrics (Kumone)', (
+    testWidgets('bottom lyrics toggle flips cover/lyrics (PL-P0-3 + PL-P2-5)', (
       tester,
     ) async {
       final c = await pumpLyrics(tester);
-      // On the lyrics side: tap the top-bar quote icon -> back to cover.
-      // (The bottom lyrics icon was removed in the Kumone redo; the
-      // toggle now lives in the top bar, next to the equalizer icon.)
-      await tester.tap(find.byIcon(Icons.format_quote));
+      // On the lyrics side the bottom key shows music.note in accent;
+      // tap it -> back to cover. Wait out the 420ms flip fade first:
+      // the outgoing cover face still holds its music.note placeholder
+      // until the fade finishes, so the icon is ambiguous before that.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byIcon(Icons.music_note));
       // Flip-back fades the lyrics out (420 ms); settle so the outgoing
       // child is actually removed before asserting it is gone.
       await tester.pumpAndSettle();
@@ -748,19 +769,80 @@ void main() {
         );
         // Release snaps to the nearest row boundary in 300 ms — but the
         // drag's ballistic tail runs first, and the deferred snap needs
-        // a frame to start ticking, so allow ~900 ms total. Row targets
-        // are idx*50 + 65 (Kumone 50pt stride, centre offset 65 at the
-        // 300pt cover height), so the settled offset must sit on one.
+        // a frame to start ticking, so allow ~900 ms total. The snap
+        // target is the nearest row's measured centre (PL-P1-4), so
+        // the line nearest the face centre must sit within 2pt of it.
         await tester.pump(const Duration(milliseconds: 300));
         await tester.pump(const Duration(milliseconds: 300));
         await tester.pump(const Duration(milliseconds: 300));
         final px = scrollable.position.pixels;
-        final rel = (px - 65) / 50;
         expect(px, greaterThan(0));
-        expect((rel - rel.round()).abs(), lessThan(0.05));
+        final faceRect = tester.getRect(face);
+        var best = double.infinity;
+        for (var i = 1; i <= 20; i++) {
+          final line = find.text('第$i句');
+          if (line.evaluate().isEmpty) continue;
+          final r = tester.getRect(line);
+          best = math.min(best, (r.center.dy - faceRect.center.dy).abs());
+        }
+        expect(best, lessThan(2.0));
         // Drain the 5 s resume timer so teardown sees no pending timers.
         await tester.pump(const Duration(seconds: 6));
         expect(c.showLyrics.value, isTrue);
+      },
+    );
+
+    testWidgets(
+      'auto-scroll centres the current line within 2pt, with translations (PL-P1-4)',
+      (tester) async {
+        // Every line has a translation, but only the current line shows
+        // it — so the current row is ~74pt and the rest ~50pt. The old
+        // fixed 50pt stride put every line after the current one ~24pt
+        // off-centre; measured offsets must land within 2pt.
+        final c = await pumpLyrics(
+          tester,
+          lines: List.generate(
+            10,
+            (i) => LyricLine(
+              t: i * 10.0,
+              text: '第${i + 1}句',
+              translation: 'Line ${i + 1}',
+            ),
+          ),
+        );
+        Future<void> checkLine(int lineNo, Duration pos) async {
+          c.position.value = pos;
+          // Same pump pattern as the font-size test: 500 ms (frame
+          // that starts the spring) + 500 ms (baseline tick) + 500 ms
+          // (spring runs to settled) + a bare pump to apply the
+          // rebuild. One extra 500 ms for the longer jump to line 10.
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump();
+          final faceRect = tester.getRect(
+            find.byKey(const ValueKey('playerLyrics')),
+          );
+          // The ROW centre is what scrolls to the viewport centre
+          // (Kumone scrollTo anchor:.center centres the whole cell).
+          // The row is Padding(13) + Column[main line + translation],
+          // so its centre is (main-line top + translation bottom) / 2.
+          // (The main line itself sits ~13pt above the row centre
+          // while its translation hangs below — that is the cell
+          // shape, not a scroll error.)
+          final lineRect = tester.getRect(find.text('第$lineNo句'));
+          final transRect = tester.getRect(find.text('Line $lineNo'));
+          final rowCentre = (lineRect.top + transRect.bottom) / 2;
+          expect(
+            (rowCentre - faceRect.center.dy).abs(),
+            lessThan(2.0),
+            reason: 'line $lineNo row must sit at the viewport centre',
+          );
+        }
+
+        await checkLine(5, const Duration(seconds: 42));
+        await checkLine(10, const Duration(seconds: 92));
       },
     );
   });
@@ -899,33 +981,41 @@ void main() {
       return c;
     }
 
-    testWidgets('time row: elapsed left, TOTAL right (was remaining)', (
+    testWidgets('time row: elapsed left, REMAINING right (PL-P1-7)', (
       tester,
     ) async {
       await pumpPlayer(tester);
       expect(find.text('1:05'), findsOneWidget);
-      expect(find.text('3:20'), findsOneWidget);
-      expect(find.text('-1:55'), findsNothing);
+      // 200 s total - 65 s elapsed = 135 s remaining -> '-2:15'.
+      expect(find.text('-2:15'), findsOneWidget);
+      expect(find.text('3:20'), findsNothing);
       expect(find.text('-0:00'), findsNothing);
       // 10.5pt tabular figures, white 0.55.
-      final style = tester.widget<Text>(find.text('3:20')).style!;
+      final style = tester.widget<Text>(find.text('-2:15')).style!;
       expect(style.fontSize, 10.5);
       expect(style.fontFeatures, contains(FontFeature.tabularFigures()));
       expect((style.color!.a * 255).round(), closeTo(0.55 * 255, 2));
     });
 
-    testWidgets('title centred, 21 bold / artist 13.5 white 0.65', (
-      tester,
-    ) async {
-      await pumpPlayer(tester);
-      final title = tester.widget<Text>(find.text('Song One'));
-      expect(title.style?.fontSize, 21);
-      expect(title.style?.fontWeight, FontWeight.w700);
-      expect(title.textAlign, TextAlign.center);
-      final artist = tester.widget<Text>(find.text('A'));
-      expect(artist.style?.fontSize, 13.5);
-      expect((artist.style!.color!.a * 255).round(), closeTo(0.65 * 255, 2));
-    });
+    testWidgets(
+      'title left-aligned, 21 bold / artist 13.5 white 0.65 (PL-P0-2)',
+      (tester) async {
+        await pumpPlayer(tester);
+        final title = tester.widget<Text>(find.text('Song One'));
+        expect(title.style?.fontSize, 21);
+        expect(title.style?.fontWeight, FontWeight.w700);
+        expect(title.textAlign, TextAlign.left);
+        final artist = tester.widget<Text>(find.text('A'));
+        expect(artist.style?.fontSize, 13.5);
+        expect(
+          (artist.style!.color!.a * 255).round(),
+          closeTo(0.65 * 255, 2),
+        );
+        // Star + more sit on the title row's right (44x44 each).
+        expect(find.byIcon(Icons.star_border), findsOneWidget);
+        expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      },
+    );
 
     testWidgets('cover is the Kumone classic square (300 at 420x912)', (
       tester,
@@ -936,23 +1026,28 @@ void main() {
       expect(rect.height, closeTo(300, 1));
     });
 
-    testWidgets('play button is a solid white 58 circle', (tester) async {
+    testWidgets('transport row is three bare white triangles (PL-P0-1)', (
+      tester,
+    ) async {
       await pumpPlayer(tester);
-      final play = find.byWidgetPredicate(
+      // Kumone CompactTransportControls: prev/next 25, play 36, all
+      // pure white, no background circles.
+      final play = tester.widget<Icon>(find.byIcon(Icons.play_arrow));
+      expect(play.size, 36);
+      expect(play.color, Colors.white);
+      expect(tester.widget<Icon>(find.byIcon(Icons.skip_previous)).size, 25);
+      expect(tester.widget<Icon>(find.byIcon(Icons.skip_next)).size, 25);
+      final whiteCircle = find.byWidgetPredicate(
         (w) =>
             w is Container &&
-            w.constraints?.maxWidth == 58 &&
             w.decoration is BoxDecoration &&
             (w.decoration as BoxDecoration).color == Colors.white &&
             (w.decoration as BoxDecoration).shape == BoxShape.circle,
       );
-      expect(play, findsOneWidget);
-      final icon = tester.widget<Icon>(find.byIcon(Icons.play_arrow));
-      expect(icon.size, 21);
-      expect((icon.color!.a * 255).round(), closeTo(0.85 * 255, 2));
+      expect(whiteCircle, findsNothing);
     });
 
-    testWidgets('star in the transport row really toggles favourite', (
+    testWidgets('star in the title row really toggles favourite (PL-P0-2)', (
       tester,
     ) async {
       final c = await pumpPlayer(tester);
@@ -967,18 +1062,31 @@ void main() {
       expect(c.isFav(c.currentSong!), isTrue);
     });
 
-    testWidgets('shuffle button really toggles shuffle on/off', (
-      tester,
-    ) async {
-      final c = await pumpPlayer(tester);
-      expect(c.mode, PlayMode.sequential);
-      await tester.tap(find.byIcon(Icons.shuffle));
-      await tester.pump();
-      expect(c.mode, PlayMode.shuffle);
-      await tester.tap(find.byIcon(Icons.shuffle));
-      await tester.pump();
-      expect(c.mode, PlayMode.sequential);
-    });
+    testWidgets(
+      'shuffle lives in the more sheet: mode row cycles to shuffle (PL-P0-1)',
+      (tester) async {
+        final c = await pumpPlayer(tester);
+        expect(c.mode, PlayMode.sequential);
+        // Cycle order: sequential -> listLoop -> singleLoop -> shuffle.
+        // Each tap on the mode row pops the sheet, so reopen it per tap.
+        for (final label in ['顺序播放', '列表循环', '单曲循环']) {
+          await tester.tap(find.byIcon(Icons.more_horiz));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.tap(find.text(label));
+          // Sheet exit: 500 ms (baseline tick) + 500 ms (runs to
+          // dismissed) + a bare pump for the removal frame — same as
+          // the quality-sheet tests.
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump();
+          // The mode-change snackbar lives 4 s; let it dismiss so the
+          // next iteration's find.text(label) is unique.
+          await tester.pump(const Duration(seconds: 5));
+        }
+        expect(c.mode, PlayMode.shuffle);
+      },
+    );
 
     testWidgets('quality badge opens the quality sheet (GlassContainer)', (
       tester,
@@ -1033,11 +1141,14 @@ void main() {
       }
     });
 
-    testWidgets('sleep timer icon opens the sleep sheet (GlassContainer)', (
+    testWidgets('sleep timer lives in the more sheet (PL-P0-3)', (
       tester,
     ) async {
       await pumpPlayer(tester);
-      await tester.tap(find.byIcon(Icons.timer));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('睡眠定时'));
       await tester.pump();
       // Entry animation (~300 ms): pump 500 ms so the sheet is fully
       // on-screen and its 取消 button is hittable.
@@ -1061,9 +1172,17 @@ void main() {
       tester,
     ) async {
       await pumpPlayer(tester);
-      await tester.tap(find.byIcon(Icons.timer));
+      await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.text('睡眠定时'));
+      await tester.pump();
+      // Let the track sheet finish exiting (its own 睡眠定时 row must
+      // be gone) and the sleep sheet finish entering, so find.text
+      // below is the sheet title only.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
       final rich = tester.widget<RichText>(
         find.descendant(
           of: find.text('睡眠定时'),
@@ -1097,23 +1216,160 @@ void main() {
       expect(find.text('下一首播放'), findsNothing);
     });
 
-    testWidgets('transport row does not overflow at 320pt wide (SE 1st gen)',
-        (tester) async {
-      // 7 fixed children total 6x40 + 58 = 298pt; at 320pt wide the
-      // page leaves 288pt, so the row shrinks its buttons (36/52)
-      // instead of overflowing.
+    testWidgets('transport row does not overflow at 320pt wide (SE 1st gen)', (
+      tester,
+    ) async {
+      // Three equal slots (compact): no fixed-width children, so the
+      // row cannot overflow at 320pt.
       await pumpPlayer(tester, physicalSize: const Size(960, 1704));
-      final play52 = find.byWidgetPredicate(
-        (w) =>
-            w is Container &&
-            w.constraints?.maxWidth == 52 &&
-            w.decoration is BoxDecoration &&
-            (w.decoration as BoxDecoration).color == Colors.white &&
-            (w.decoration as BoxDecoration).shape == BoxShape.circle,
-      );
-      expect(play52, findsOneWidget);
       expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      expect(tester.widget<Icon>(find.byIcon(Icons.play_arrow)).size, 36);
+      expect(find.byIcon(Icons.skip_previous), findsOneWidget);
+      expect(find.byIcon(Icons.skip_next), findsOneWidget);
       // A RenderFlex overflow raises a FlutterError during pump.
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('flex gaps capped at 24pt, excess pools to bottom padding (PL-P1-1c + PL-P2-6)', () {
+    Future<MusicPlayerController> pumpSized(
+      WidgetTester tester, {
+      required Size logicalSize,
+    }) async {
+      tester.view.physicalSize = Size(
+        logicalSize.width * 2,
+        logicalSize.height * 2,
+      );
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put(MusicPlayerController());
+      c.queue.assignAll([
+        Song(
+          songId: 's1',
+          title: 'Song One',
+          artist: 'A',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+      c.duration.value = const Duration(seconds: 200);
+      c.position.value = const Duration(seconds: 65);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      return c;
+    }
+
+    // Top-bar bottom edge: the top bar is Padding(horizontal 20,
+    // vertical 20) around the 36pt buttons.
+    double topBarBottom(WidgetTester tester) {
+      final bar = find.byWidgetPredicate(
+        (w) =>
+            w is Padding &&
+            w.padding ==
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      );
+      return tester.getRect(bar).bottom;
+    }
+
+    testWidgets('390x844: gaps capped at 24, bottom row pinned 24 + excess up', (
+      tester,
+    ) async {
+      await pumpSized(tester, logicalSize: const Size(390, 844));
+      // gap 1: cover top - top-bar bottom = 24 (capped; slack is 155).
+      final coverTop = tester
+          .getRect(find.byKey(const ValueKey('playerCover')))
+          .top;
+      expect(coverTop - topBarBottom(tester), closeTo(24, 1.5));
+      // gap 2: progress top - title ROW bottom = 20 fixed + 24 gap.
+      // (The row bottom is the artist line — the song title sits at
+      // the top of the row, ~21pt above the row bottom.)
+      final titleBottom = tester.getRect(find.text('A')).bottom;
+      final progressTop =
+          tester.getRect(find.byKey(const ValueKey('progressBar'))).top;
+      expect(progressTop - titleBottom, closeTo(44, 1.5));
+      // Bottom row: bottomPad = 24 + (155 - 72) = 107, so the row
+      // bottom sits 107pt above the screen bottom. Two font notes:
+      // getRect(find.byIcon(...)) returns the tight 44pt button box,
+      // not the 17pt glyph (the Icon's paragraph fills its parent's
+      // tight constraints), so no +13.5 offset. And the test font
+      // (Ahem) renders the title ~8pt taller than the audit's 46pt
+      // estimate (21pt -> 30pt line, 13.5pt -> 19pt), so the row
+      // lands ~8pt lower here than on a phone — hence the 12pt
+      // tolerance. The gap assertions above are the tight checks.
+      final rowBottom = tester.getRect(find.byIcon(Icons.queue_music)).bottom;
+      expect(rowBottom, closeTo(844 - 107, 12));
+    });
+
+    testWidgets('375x667: small screen gaps shrink together, no overflow', (
+      tester,
+    ) async {
+      await pumpSized(tester, logicalSize: const Size(375, 667));
+      final coverTop = tester
+          .getRect(find.byKey(const ValueKey('playerCover')))
+          .top;
+      // slack ~24.5 -> gap ~8.2 (badge/title height estimates move
+      // this by a few pt; the cap is what matters, not the digit).
+      expect(coverTop - topBarBottom(tester), inInclusiveRange(4, 14));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('long title stays left-aligned with ellipsis, star + more stay put (PL-P0-2)', () {
+    testWidgets('24-char title ellipsizes, buttons never squeezed', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(780, 1688);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      const longTitle = '这是一个超过二十个字的很长很长的歌曲标题用来测试';
+      final c = Get.put(MusicPlayerController());
+      c.queue.assignAll([
+        Song(
+          songId: 's1',
+          title: longTitle,
+          artist: 'A',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+      c.duration.value = const Duration(seconds: 200);
+      c.position.value = const Duration(seconds: 65);
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final title = tester.widget<Text>(find.text(longTitle));
+      expect(title.maxLines, 1);
+      expect(title.overflow, TextOverflow.ellipsis);
+      expect(title.textAlign, TextAlign.left);
+      // The title rect ends before the star button starts (no squeeze,
+      // no overlap); both right-hand keys are present.
+      final titleRect = tester.getRect(find.text(longTitle));
+      final starRect = tester.getRect(find.byIcon(Icons.star_border));
+      final moreRect = tester.getRect(find.byIcon(Icons.more_horiz));
+      expect(titleRect.right, lessThanOrEqualTo(starRect.left));
+      expect(starRect.right, lessThanOrEqualTo(moreRect.left));
       expect(tester.takeException(), isNull);
     });
   });

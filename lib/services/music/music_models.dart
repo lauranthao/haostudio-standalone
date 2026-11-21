@@ -335,8 +335,15 @@ class Song {
     if (localPath.isNotEmpty) 'localPath': localPath,
   };
 
-  /// Dedupe key for aggregated search (fix 12): platform + songId + title.
-  String get dedupeKey => '${platform.code}|$songId|$title';
+  /// Dedupe key for aggregated search (fix 12): platform + songId.
+  /// The title is deliberately NOT part of the key (M-P2-7): the same
+  /// recording listed as "Song" and "Song (Live)" is one result, not
+  /// two. An empty songId still falls back to title+artist (same
+  /// rule as [identityKey]): a bare 'platform|' key would collapse
+  /// every id-less song on the platform into one.
+  String get dedupeKey => songId.isNotEmpty
+      ? '${platform.code}|$songId'
+      : '${platform.code}||$title|$artist';
 
   /// Identity key for favourites / recent / listen log.
   /// Identity for queue / favourites / history / resume keys.

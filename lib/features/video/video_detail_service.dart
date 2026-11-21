@@ -30,6 +30,8 @@
 
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import '../../services/video/cms_client.dart';
 import 'video_models.dart';
 
@@ -57,8 +59,9 @@ class DetailRaceResult {
 
 typedef DetailFetcher = Future<VideoDetail> Function(
   dynamic sourceId,
-  String vodId,
-);
+  String vodId, {
+  CancelToken? cancelToken,
+});
 
 /// Alt sources carrying the same title, streamed fastest-first: each
 /// match is yielded the moment its source answers, instead of waiting
@@ -66,8 +69,9 @@ typedef DetailFetcher = Future<VideoDetail> Function(
 typedef AltSourcesStreamer = Stream<AltVideoSource> Function(
   String title,
   String year,
-  dynamic excludeSourceId,
-);
+  dynamic excludeSourceId, {
+  CancelToken? cancelToken,
+});
 
 class _CachedDetail {
   _CachedDetail({required this.at, this.result, this.pending});
@@ -83,10 +87,20 @@ class VideoDetailService {
     AltSourcesStreamer? findAlts,
     CmsClient? cms,
   })  : _fetchDetail = fetchDetail ??
-            ((sourceId, vodId) => (cms ?? CmsClient()).detail(sourceId, vodId)),
+            ((sourceId, vodId, {cancelToken}) =>
+                (cms ?? CmsClient()).detail(
+                  sourceId,
+                  vodId,
+                  cancelToken: cancelToken,
+                )),
         _findAlts = findAlts ??
-            ((title, year, exclude) =>
-                (cms ?? CmsClient()).altSourcesStream(title, year, exclude));
+            ((title, year, exclude, {cancelToken}) =>
+                (cms ?? CmsClient()).altSourcesStream(
+                  title,
+                  year,
+                  exclude,
+                  cancelToken: cancelToken,
+                ));
 
   final DetailFetcher _fetchDetail;
   final AltSourcesStreamer _findAlts;
@@ -97,9 +111,10 @@ class VideoDetailService {
   Stream<AltVideoSource> findAlts(
     String title,
     String year,
-    dynamic excludeSourceId,
-  ) =>
-      _findAlts(title, year, excludeSourceId);
+    dynamic excludeSourceId, {
+    CancelToken? cancelToken,
+  }) =>
+      _findAlts(title, year, excludeSourceId, cancelToken: cancelToken);
 
   final Map<String, _CachedDetail> _cache = {};
 
@@ -114,17 +129,40 @@ class VideoDetailService {
   String _key(dynamic sourceId, String vodId) => '$sourceId|$vodId';
 
   /// One direct detail fetch with the web's retry rule: one retry on
-  /// fast (non-timeout) failures only.
-  Future<VideoDetail> _directFetch(dynamic sourceId, String vodId) async {
+  /// fast (non-timeout) failures only. A caller cancellation is not a
+  /// failure and is never retried (V-P1-4).
+  Future<VideoDetail> _directFetch(
+    dynamic sourceId,
+    String vodId, {
+    CancelToken? cancelToken,
+  }) async {
     try {
-      final r = await _fetchDetail(sourceId, vodId);
+      final r = await _fetchDetail(
+        sourceId,
+        vodId,
+        cancelToken: cancelToken,
+      );
       if (!r.usable) throw StateError('direct detail fail');
       return r;
     } on CmsTimeoutException {
       rethrow;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) rethrow;
+      // Fast failure — one retry, then give up.
+      final r = await _fetchDetail(
+        sourceId,
+        vodId,
+        cancelToken: cancelToken,
+      );
+      if (!r.usable) throw StateError('direct detail fail');
+      return r;
     } catch (_) {
       // Fast failure — one retry, then give up.
-      final r = await _fetchDetail(sourceId, vodId);
+      final r = await _fetchDetail(
+        sourceId,
+        vodId,
+        cancelToken: cancelToken,
+      );
       if (!r.usable) throw StateError('direct detail fail');
       return r;
     }
@@ -132,7 +170,11 @@ class VideoDetailService {
 
   /// `vodDetGet(sid, vid)`: resolved results live 5 min; in-flight
   /// futures are shared (30 s window).
-  Future<VideoDetail> get(dynamic sourceId, String vodId) {
+  Future<VideoDetail> get(
+    dynamic sourceId,
+    String vodId, {
+    CancelToken? cancelToken,
+  }) {
     final k = _key(sourceId, vodId);
     final now = DateTime.now();
     final c = _cache[k];
@@ -147,7 +189,11 @@ class VideoDetailService {
       }
     }
     late final Future<VideoDetail> p;
-    p = _directFetch(sourceId, vodId).then((r) {
+    p = _directFetch(
+      sourceId,
+      vodId,
+      cancelToken: cancelToken,
+    ).then((r) {
       if (_cache[k]?.pending == p) {
         _cache[k] = _CachedDetail(at: DateTime.now(), result: r, pending: p);
       }
@@ -194,10 +240,14 @@ class VideoDetailService {
   ///
   /// [preload] is the list item the user tapped (cover + title on
   /// screen instantly; its title/year drive the alt-source sweep).
+  /// [cancelToken] (V-P1-4): the detail page cancels it on dispose;
+  /// the tapped fetch and the alt sweep both honour it, and a
+  /// cancellation is never retried as a failure.
   Future<DetailRaceResult?> loadWithRace(
     dynamic sourceId,
     String vodId, {
     VideoItem? preload,
+    CancelToken? cancelToken,
   }) async {
     final completer = Completer<DetailRaceResult?>();
     var settled = false;
@@ -227,7 +277,11 @@ class VideoDetailService {
     // 1. Tapped source — exact title/vodId. Raced, not awaited first:
     // when it is fast it wins (correct by construction); when slow,
     // the fastest alt below wins instead of making the user wait.
-    unawaited(get(sourceId, vodId).then((d) {
+    unawaited(get(
+      sourceId,
+      vodId,
+      cancelToken: cancelToken,
+    ).then((d) {
       settle(DetailRaceResult(
         detail: d,
         sourceId: sourceId,
@@ -246,10 +300,19 @@ class VideoDetailService {
       // first window): sources are scanned in priority order, each
       // match's detail is fetched the moment it is found (3 s each),
       // and the first usable detail wins.
-      altSub = _findAlts(title, year, sourceId).listen((alt) {
+      altSub = _findAlts(
+        title,
+        year,
+        sourceId,
+        cancelToken: cancelToken,
+      ).listen((alt) {
         if (settled) return;
         altInflight++;
-        unawaited(_fetchDetail(alt.source, alt.vodId)
+        unawaited(_fetchDetail(
+          alt.source,
+          alt.vodId,
+          cancelToken: cancelToken,
+        )
             .timeout(
               const Duration(seconds: 3),
               onTimeout: () => throw TimeoutException('alt detail timeout'),

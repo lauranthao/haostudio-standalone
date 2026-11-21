@@ -97,8 +97,9 @@ class _FakeApi extends MusicApi {
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async =>
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async =>
       alt;
 
   @override
@@ -123,6 +124,8 @@ class _ScriptedResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     calls++;
     lastResolveTruncated = truncated;

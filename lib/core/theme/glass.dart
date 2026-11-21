@@ -254,17 +254,31 @@ class GlassCard extends StatelessWidget {
   /// it as the default branch so the 28 frosted sites render exactly
   /// as before).
   Widget _buildFrosted(BuildContext context) {
-    final theme = HaoTheme.of(context);
+    // G-P2-4: nullable read — a bare ThemeData with no HaoTheme
+    // extension falls back to the appleGlass light defaults instead
+    // of throwing (same contract as ios27Settings).
+    final theme = HaoTheme.ofOrDefault(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Glass intensity (chen 2026-11-21): 1.0 is identity — today's
     // blur / surface / highlight; 0.0 is clear (no blur, no fill).
     final intensity = theme.glassIntensity.clamp(0.0, 1.0);
     final borderRadius = BorderRadius.circular(radius);
+    // G-P1-3: the border + shadow scale with the intensity too —
+    // at 0% the card is fully clear (transparent border, no shadow),
+    // matching the changelog's "0% 是全透明".
+    final borderColor = this.borderColor ?? theme.hairline;
+    final shadows = _shadowFor(context)
+        ?.map(
+          (s) => s.copyWith(
+            color: s.color.withValues(alpha: s.color.a * intensity),
+          ),
+        )
+        .toList();
     return Container(
       margin: margin,
       decoration: BoxDecoration(
         borderRadius: borderRadius,
-        boxShadow: _shadowFor(context),
+        boxShadow: shadows,
       ),
       child: ClipRRect(
         borderRadius: borderRadius,
@@ -279,7 +293,11 @@ class GlassCard extends StatelessWidget {
                 alpha: theme.surface.a * intensity,
               ),
               borderRadius: borderRadius,
-              border: Border.all(color: borderColor ?? theme.hairline),
+              border: Border.all(
+                color: borderColor.withValues(
+                  alpha: borderColor.a * intensity,
+                ),
+              ),
             ),
             child: Stack(
               children: [
@@ -365,7 +383,9 @@ class GlassSheetBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
+    // G-P2-4 (same as _buildFrosted): nullable read — a bare
+    // ThemeData falls back to the appleGlass light defaults.
+    final theme = HaoTheme.ofOrDefault(context);
     // Glass intensity (chen 2026-11-21): 1.0 is identity.
     final intensity = theme.glassIntensity.clamp(0.0, 1.0);
     return ClipRRect(

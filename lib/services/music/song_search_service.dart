@@ -144,8 +144,28 @@ List<Song> sortSongsByPlatformPriority(List<Song> songs) {
 /// Script-hit dedup key (same rule as the old merge): script ids are
 /// sometimes generated (溯音 falls back to `kw_<ts>_<rand>`), so
 /// title+artist — not id — is the only stable key.
+///
+/// Normalisation (M-P1-6) matches the cover-backfill / alt-platform
+/// rule: [normalizeName] strips case, spaces and punctuation, so
+/// "Song (Live)" and "song live" are the same song. The title ALSO
+/// goes through [baseSongTitle] (version suffix cut): a script hit
+/// titled "Song" must dedup against a platform hit titled
+/// "Song (Live)". Both keys are stored and either one matching drops
+/// the hit — plain normalizeName alone would miss the "Song" vs
+/// "Song (Live)" pair, baseSongTitle alone would miss the
+/// "Song (Live)" vs "song live" pair (it cuts "(Live)" to "song"
+/// but keeps "song live" as "songlive").
 String _titleArtistKey(Song s) =>
-    '${s.title.toLowerCase()}|${s.artist.toLowerCase()}';
+    '${normalizeName(s.title)}|${normalizeName(s.artist)}';
+
+String _titleArtistBaseKey(Song s) =>
+    '${baseSongTitle(s.title)}|${normalizeName(s.artist)}';
+
+/// Both dedup keys for [s] (see [_titleArtistKey]).
+Set<String> _titleArtistKeys(Song s) => {
+  _titleArtistKey(s),
+  _titleArtistBaseKey(s),
+};
 
 class SongSearchService {
   SongSearchService({MusicApi? api, LxScriptEngine? scriptEngine})
@@ -330,7 +350,7 @@ class SongSearchService {
         for (final s in songs) {
           if (seenKeys.contains(s.dedupeKey)) continue;
           seenKeys.add(s.dedupeKey);
-          shownTitles[pf]!.add(_titleArtistKey(s));
+          shownTitles[pf]!.addAll(_titleArtistKeys(s));
           accumulated.add(s);
         }
       } catch (_) {
@@ -357,10 +377,10 @@ class SongSearchService {
             final song = LxScriptEngine.lxSongFromJson(item, pf);
             if (song == null) continue;
             if (seenKeys.contains(song.dedupeKey)) continue;
-            final taKey = _titleArtistKey(song);
-            if (shownTitles[pf]!.contains(taKey)) continue;
+            final taKeys = _titleArtistKeys(song);
+            if (taKeys.any(shownTitles[pf]!.contains)) continue;
             seenKeys.add(song.dedupeKey);
-            shownTitles[pf]!.add(taKey);
+            shownTitles[pf]!.addAll(taKeys);
             accumulated.add(song);
           }
         } catch (_) {

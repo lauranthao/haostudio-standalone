@@ -31,7 +31,9 @@
 
 import '../../../../core/theme/hao_radius.dart';
 import 'dart:async';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -259,6 +261,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         _paused = status == PlaybackStatus.paused;
         if (playing) {
           _loading = false;
+          // L-P0-2: an automatic recovery that re-opens successfully
+          // lands here — clear the failure card with it. The only
+          // other place that clears _failed is the manual retry; the
+          // auto path had no clearing at all, so the black failure
+          // overlay kept covering a playing stream.
+          _failed = false;
           _showingStallNotice = false;
           _ladderHint = null;
           // Healthy playback resets the auto-recovery budget.
@@ -323,15 +331,39 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           ? preferredIndex
           : _fallbackQualityIndex(qualities, preferred);
       await _resolveAndPlay();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _loading = false;
           _failed = true;
-          _errorMessage = '加载失败';
+          // L-P2-6: one "加载失败" for every cause hid whether the
+          // room is offline, the anchor is off air, or the parse
+          // itself failed. Offline (transport/DNS) and parse failure
+          // are told apart here; the off-air case never reaches this
+          // catch — an empty resolution says "主播暂未开播或房间无法播放"
+          // in _resolveAndPlay.
+          _errorMessage = _isOfflineError(e) ? '网络异常，请检查网络后重试' : '解析失败，请重试';
         });
       }
     }
+  }
+
+  /// True when [e] looks like the device being offline (transport /
+  /// DNS failure), as opposed to a parse / adapter failure. Dio
+  /// wraps the underlying SocketException, so both the Dio type and
+  /// the raw socket error count; the message fallback covers adapters
+  /// that rethrow as plain text.
+  static bool _isOfflineError(Object e) {
+    if (e is SocketException || e is HttpException) return true;
+    if (e is DioException) {
+      return e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.error is SocketException;
+    }
+    final s = e.toString();
+    return s.contains('SocketException') ||
+        s.contains('Failed host lookup') ||
+        s.contains('Network is unreachable');
   }
 
   /// Read the danmaku display settings for this room's platform.
@@ -540,10 +572,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     final firstUrl = resolution.urls.first;
     final ok = await _session.open(
       url: firstUrl,
+      // L-P1-3: hand the ladder the whole resolution — every line is
+      // tried (per engine) before any fresh re-parse, instead of
+      // failing the room on urls.first alone.
+      urls: resolution.urls,
       isLive: true,
       headers: _playbackHeaders,
       declaredFormat: resolution.factsFor(0).format,
       refreshUrls: _refreshUrls,
+      excludeIjk: _excludeIjk,
     );
     if (epoch != _selectionEpoch || !mounted) return;
     if (!ok) {
@@ -554,6 +591,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       });
     }
   }
+
+  /// IJK is excluded from Huya/Douyu live (L-P0-1): fijk's
+  /// data-source call drops every request header, so those streams
+  /// die ~7 s after opening on IJK (the CDN cuts header-less
+  /// connections). The other three platforms keep the full ladder.
+  bool get _excludeIjk => _site.id == 'huya' || _site.id == 'douyu';
 
   /// Playback headers for this room — Pure Live PlaybackHeaderResolver:
   /// Huya/Douyu streams MUST carry UA + Origin + Referer or the CDN
@@ -654,7 +697,25 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(index).format,
         refreshUrls: _refreshUrls,
+        excludeIjk: _excludeIjk,
       );
+      return;
+    }
+    // L-P1-4: the two nulls are NOT the same. A throttled null means
+    // a fresh resolution landed within the last 60 s, so the current
+    // list is still fresh and the next line is worth opening. A
+    // fetch-failure null (network error / timeout / empty parse)
+    // means the list is old — Huya's anti-code is shared across ALL
+    // lines and expires ~100-130 s after issue, so an old line is
+    // almost certainly dead too; opening it only burns the recovery
+    // budget and delays the failure card. Show the card instead.
+    if (!_recovery.freshFetchThrottled) {
+      if (mounted) {
+        setState(() {
+          _failed = true;
+          _errorMessage = message;
+        });
+      }
       return;
     }
     final next = _recovery.advanceLine();
@@ -665,6 +726,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
+        excludeIjk: _excludeIjk,
       );
       return;
     }
@@ -690,6 +752,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       headers: _playbackHeaders,
       declaredFormat: _recovery.factsFor(index).format,
       refreshUrls: _refreshUrls,
+      excludeIjk: _excludeIjk,
     );
     if (epoch != _selectionEpoch || !mounted) return;
     setState(() {
@@ -794,6 +857,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       headers: _playbackHeaders,
       declaredFormat: resolution.factsFor(0).format,
       refreshUrls: _refreshUrls,
+      excludeIjk: _excludeIjk,
     );
     if (epoch != _selectionEpoch || !mounted) return;
     setState(() {
@@ -883,6 +947,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(index).format,
         refreshUrls: _refreshUrls,
+        excludeIjk: _excludeIjk,
       );
       return;
     }
@@ -894,6 +959,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         headers: _playbackHeaders,
         declaredFormat: _recovery.factsFor(_recovery.currentLineIndex).format,
         refreshUrls: _refreshUrls,
+        excludeIjk: _excludeIjk,
       );
     } else if (mounted) {
       setState(() {

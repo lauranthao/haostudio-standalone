@@ -40,10 +40,10 @@ class _FakeOrderEngine extends LxScriptEngine {
           assetLoader: (_) async => throw StateError('no assets'),
         );
 
-  final List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})> jobs;
+  final List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function({CancelToken? cancelToken}) fn})> jobs;
 
   @override
-  List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>
+  List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function({CancelToken? cancelToken}) fn})>
       scriptJobsFor(
     MusicPlatform platform,
     AudioQuality quality,
@@ -72,13 +72,13 @@ Dio _emptyDio() {
   return dio;
 }
 
-List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})> _jobs(
+List<({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function({CancelToken? cancelToken}) fn})> _jobs(
   List<String> calls,
 ) => [
       (
         key: 'lx:aaa',
         name: 'AAA',
-        fn: () async {
+        fn: ({CancelToken? cancelToken}) async {
           calls.add('aaa');
           return (url: 'https://example.com/a.mp3', actualQuality: null);
         },
@@ -86,7 +86,7 @@ List<({String key, String name, Future<({String url, AudioQuality? actualQuality
       (
         key: 'lx:bbb',
         name: 'BBB',
-        fn: () async {
+        fn: ({CancelToken? cancelToken}) async {
           calls.add('bbb');
           return (url: 'https://example.com/b.mp3', actualQuality: null);
         },
@@ -235,11 +235,11 @@ void main() {
       final calls = <String>[];
       final hanging =
           Completer<({String url, AudioQuality? actualQuality})>();
-      final jobs = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>[
+      final jobs = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function({CancelToken? cancelToken}) fn})>[
         (
           key: 'lx:aaa',
           name: 'AAA',
-          fn: () async {
+          fn: ({CancelToken? cancelToken}) async {
             calls.add('aaa');
             return (url: 'https://example.com/a.mp3', actualQuality: null);
           },
@@ -247,7 +247,7 @@ void main() {
         (
           key: 'lx:bbb',
           name: 'BBB',
-          fn: () {
+          fn: ({CancelToken? cancelToken}) {
             calls.add('bbb');
             return hanging.future;
           },

@@ -113,6 +113,15 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
   static HaoTheme of(BuildContext context) =>
       Theme.of(context).extension<HaoTheme>()!;
 
+  /// Non-throwing read (G-P2-4): the ambient extension when the
+  /// ThemeData carries one, else the appleGlass light defaults, so a
+  /// widget renders instead of throwing under a bare ThemeData (e.g.
+  /// a test harness). Production always carries the extension, so
+  /// this path never changes the real look.
+  static HaoTheme ofOrDefault(BuildContext context) =>
+      Theme.of(context).extension<HaoTheme>() ??
+      HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!;
+
   @override
   HaoTheme copyWith({
     Color? accent,

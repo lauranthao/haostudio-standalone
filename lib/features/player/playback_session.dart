@@ -94,6 +94,20 @@ class PlaybackSession {
   Map<String, String>? _headers;
   double _rate = 1.0;
 
+  /// IJK exclusion (L-P0-1): IJK's fijk data-source call drops every
+  /// request header, so Huya/Douyu live streams (which need UA +
+  /// Origin + Referer + cookie) die ~7 s after opening on IJK. The
+  /// room sets this on open(); it is remembered so the fresh-URL
+  /// recursion and [switchEngine] re-opens honour it too. VOD never
+  /// sets it (its headers are best-effort, and IJK stays available).
+  bool _excludeIjk = false;
+
+  /// Open generation: each [open] call bumps it, so a ladder attempt
+  /// from a superseded open (e.g. one cut short by [openBudget])
+  /// can never swap its backend in or emit status after the new open
+  /// started. Attempts check the generation after every await.
+  int _openGeneration = 0;
+
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<String>? _errorSub;
@@ -183,6 +197,7 @@ class PlaybackSession {
         isLive: _isLive,
         declaredFormat: _declaredFormat,
         headers: _headers,
+        excludeIjk: _excludeIjk,
       );
     }
     if (isManual) {
@@ -259,6 +274,22 @@ class PlaybackSession {
   /// [freshRounds] bounds the fresh-URL recursion (fix 3): at most 2
   /// fresh re-parses per open, so a room whose re-parse keeps returning
   /// dead URLs cannot loop forever.
+  ///
+  /// [urls] (L-P1-3): every URL of the current resolution, in line
+  /// order. The ladder tries them all (per engine) before any fresh
+  /// re-parse — a single-url caller only ever tries `url`. The winning
+  /// URL becomes [_currentUrl], so an engine switch re-opens what is
+  /// actually playing, not `urls.first`.
+  ///
+  /// [excludeIjk] (L-P0-1): drop IJK from the candidates — the room
+  /// passes it for Huya/Douyu live, where IJK drops the headers the
+  /// CDN requires.
+  ///
+  /// [openBudget] (V-P1-2): total budget for this open (VOD passes
+  /// 30 s). When it fires the open reports false at once; the
+  /// superseded ladder's attempts see the bumped generation and abort
+  /// before swapping anything in, so the caller can move on to the
+  /// next line/source immediately.
   Future<bool> open({
     required String url,
     required bool isLive,
@@ -266,32 +297,46 @@ class PlaybackSession {
     Map<String, String>? headers,
     RefreshUrls? refreshUrls,
     int freshRounds = 2,
+    List<String>? urls,
+    bool excludeIjk = false,
+    Duration? openBudget,
   }) async {
     if (_disposed) return false;
     _currentUrl = url;
     _isLive = isLive;
     _declaredFormat = declaredFormat;
     _headers = headers;
+    _excludeIjk = excludeIjk;
+    final generation = ++_openGeneration;
     _emitStatus(PlaybackStatus.opening);
     // Breadcrumb is best-effort telemetry: never let playback start wait
     // on a storage write.
     unawaited(LiveBreadcrumb.write('live-prepared'));
 
-    final engines = candidatesFor(
+    var engines = candidatesFor(
       url: url,
       declaredFormat: declaredFormat,
       isLive: isLive,
       preferred: _preferred,
     );
+    if (excludeIjk) {
+      engines = engines.where((e) => e != PlayerEngine.fijk).toList();
+    }
     if (engines.isEmpty) {
       _emitStatus(PlaybackStatus.error);
       _emitError('没有可用的播放器引擎');
       return false;
     }
 
+    // De-duplicated, in line order; the single-url path stays [url].
+    final ladderUrls = <String>[];
+    for (final u in urls ?? [url]) {
+      if (!ladderUrls.contains(u)) ladderUrls.add(u);
+    }
+
     final ladder = RecoveryLadder(
       engines: engines,
-      urls: [url],
+      urls: ladderUrls,
       onAttempt: (engine, url) {
         if (!_ladderAttemptController.isClosed) {
           _ladderAttemptController.add(engine);
@@ -303,6 +348,9 @@ class PlaybackSession {
         // (background audio after exit — the v1.0.5 bug: the film
         // kept playing after the player page was popped).
         if (_disposed) return false;
+        // Superseded by a newer open (budget cut or line switch):
+        // never start, and never swap in, on behalf of the old open.
+        if (generation != _openGeneration) return false;
         // A backend whose CONSTRUCTION throws (missing native library,
         // unregistered plugin) must fail just this attempt, not abort
         // the whole ladder — the next engine may still play. The catch
@@ -329,9 +377,10 @@ class PlaybackSession {
                 declaredFormat: declaredFormat,
               )
               .timeout(openTimeout);
-          if (_disposed) {
-            // Exit landed while this attempt was still opening: drop
-            // the candidate before it can start playing with no owner.
+          if (_disposed || generation != _openGeneration) {
+            // Exit landed while this attempt was still opening, or a
+            // newer open superseded it: drop the candidate before it
+            // can start playing with no owner / for the old open.
             await candidate.dispose();
             return false;
           }
@@ -342,6 +391,10 @@ class PlaybackSession {
           final ok = await candidate.waitForFirstFrame(
             timeout: const Duration(seconds: 18),
           );
+          if (generation != _openGeneration) {
+            await candidate.dispose();
+            return false;
+          }
           if (!ok) {
             await candidate.dispose();
             // Tell the page the ladder is moving to the next kernel
@@ -364,17 +417,30 @@ class PlaybackSession {
           if (candidate != null && candidate != _backend) {
             await candidate.dispose();
           }
+          if (generation != _openGeneration) return false;
           _emitStatus(PlaybackStatus.buffering);
           return false;
         }
       },
     );
 
-    final won = await ladder.run();
+    final ladderFuture = ladder.run();
+    final won = openBudget == null
+        ? await ladderFuture
+        : await ladderFuture.timeout(openBudget, onTimeout: () {
+            // Retire this open's ladder at once: an attempt still
+            // in flight must see the bumped generation at its next
+            // checkpoint and abort before swapping its backend in.
+            _openGeneration++;
+            return null;
+          });
     if (_disposed) return false;
+    if (generation != _openGeneration) return false;
     if (won != null) {
-      // Settings follows the engine actually playing.
+      // Settings follows the engine actually playing; the winning
+      // URL is what an engine switch re-opens (L-P1-3).
       _preferred = won.engine;
+      _currentUrl = won.url;
       _emitStatus(PlaybackStatus.playing);
       unawaited(LiveBreadcrumb.write('live-playing'));
       _startHealthWatch();
@@ -388,11 +454,14 @@ class PlaybackSession {
       if (fresh != null && fresh.isNotEmpty && fresh.first != url) {
         return open(
           url: fresh.first,
+          urls: fresh,
           isLive: isLive,
           declaredFormat: declaredFormat,
           headers: headers,
           refreshUrls: refreshUrls,
           freshRounds: freshRounds - 1,
+          excludeIjk: _excludeIjk,
+          openBudget: openBudget,
         );
       }
     }

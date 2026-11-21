@@ -1,8 +1,10 @@
 // Music player page — Kumone classic骨架 + immersive歌词态 (2026-11-18 重做).
 //
 // 结构 (Kumone NowPlayingView.swift classicCompactLayout :662-699):
-// 顶栏悬浮按钮 / 封面(或歌词) / 音质徽章 / 居中标题 / 进度条 / 控制行 /
-// 底部行。页面横向 padding 16，区块间距沿用现有值。
+// 顶栏悬浮按钮 / 封面(或歌词) / 音质徽章 / 左对齐标题 + 右侧星标/··· /
+// 进度条 / 控制行(三颗裸白三角，CompactTransportControls :1892-1920) /
+// 底部行(歌词/AirPlay/队列)。页面横向 padding 16，区块间距 20、底部
+// 控制组间距 12 (Kumone classic VStack :662-699)。
 //
 // 白字体系 (Kumone .preferredColorScheme(.dark), NowPlayingView.swift:133):
 // 本页是强制深色沉浸面 —— 背景是封面取色，与主题明暗无关 —— 所以文字 /
@@ -11,14 +13,19 @@
 // (HaoTheme.of(context).accent，Kumone 红 #EC4949 一律不抄)。四个浮层
 // sheet (队列 / 音质 / 睡眠 / ···) 继续沿用主题变量。
 //
+// 玻璃强度 (PL-P1-5, build 27 定稿：本页明确不跟强度滑块)：沉浸页是封面取
+// 色 + 白字体系，与玻璃强度无关；强度滑块只管 liquid glass chrome
+// (底栏 / mini 播放器 / 浮层 / 卡片)。背景 blur 与各白底圆的 alpha 写死，
+// 不乘 intensity —— 行为不动，特此写明。
+//
 // 行为 (不动): 歌词在封面后 (点封面出歌词、点行 seek、点空白回封面，
 // showLyrics 换歌不重置)；滑切歌只在封面面 (≥60px 且 |dx|>1.2|dy|)；
 // 无音量条 (音量恒 1.0)；进度拖动只改本地、松手才 seek 一次；AVPlayer /
 // just_audio / 跨 fade / 播放内核选择器 / lib/services/music/ 全部不动。
 // MiniLyrics 不抄 (封面下三行迷你歌词，小屏会溢出，且与封面后歌词重复)。
 // 不做逐字高亮 (没有 yrc 逐字数据，不许做假逐字)。
-// 手动滚动歌词时的中央虚线选择线 + 时间标签没做：行高是固定步长估算
-// (当前行译文会让后续行下移约 22pt)，选择线会指错行，所以不加。
+// 手动滚动歌词时的中央虚线选择线 + 时间标签没做：行高按每行实测偏移滚动
+// (PL-P1-4)；固定步长只作未建行的 fallback。选择线仍不加 (不在本轮)。
 //
 // Kumone 数值来源见各处注释 (文件:行号均为 ~/workspace/research/kumone
 // 仓库 2026-11-18 现状；设计值汇总见 research/kumone-player-study.md)。
@@ -30,21 +37,18 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
-import '../../../services/music/music_store.dart';
-import '../../../services/music/play_mode.dart';
-import '../../../services/music/sleep_timer.dart';
 import 'equalizer_page.dart';
 import 'music_player_controller.dart';
 import 'widgets/music_image.dart';
 import 'widgets/play_queue_panel.dart';
 import 'widgets/quality_sheet.dart';
-import 'widgets/sleep_timer_sheet.dart';
 import 'widgets/track_more_sheet.dart';
 
 class MusicPlayerPage extends StatefulWidget {
@@ -107,10 +111,16 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
 
   /// Kumone regular lyrics column (NowPlayingView.swift:1362,1445):
   /// 行距 26 + 20pt 非当前行 ≈ 50pt 步长；当前行中心偏移由歌词面高度算
-  /// (上留白 200 + 当前行半高约 15 − 面高/2)。固定步长是估算：当前行
-  /// 的译文会让它之后的行下移约 22pt，所以滚动落点在“行中心附近”，
-  /// 不是像素级精确 —— 见文件头注释。
+  /// (上留白 200 + 当前行半高约 15 − 面高/2)。滚动落点按每行实测的
+  /// RenderBox 偏移算 (PL-P1-4，Kumone scrollTo anchor:.center，
+  /// NowPlayingView.swift:1400)；固定步长只在目标行尚未建行时作
+  /// fallback（当前行带译文时实测约 74pt，比步长多约 24pt，旧算法
+  /// 在此必偏）。每行一个 GlobalKey，建行后才有 context。
   static const _lyricRowStride = 50.0;
+
+  /// One GlobalKey per lyric row (created once, reused across
+  /// rebuilds) so [_lyricRowCenterTarget] can measure real offsets.
+  final Map<int, GlobalKey> _lyricRowKeys = <int, GlobalKey>{};
   var _lyricsViewportHeight = 300.0;
   double get _lyricCenterOffset => 215.0 - _lyricsViewportHeight / 2;
 
@@ -211,22 +221,45 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     _panDy = 0;
   }
 
+  /// Scroll offset that centres lyric row [idx] in the viewport,
+  /// measured from the row's real RenderBox (Kumone scrollTo
+  /// anchor:.center). Null when the row is not laid out yet (the
+  /// builder only builds visible rows); callers fall back to the
+  /// fixed-stride estimate for that frame.
+  double? _lyricRowCenterTarget(int idx) {
+    final ctx = _lyricRowKeys[idx]?.currentContext;
+    if (ctx == null || !_lyricScroll.hasClients) return null;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    final viewport = RenderAbstractViewport.of(box);
+    return viewport
+        .getOffsetToReveal(box, 0.5)
+        .offset
+        .clamp(0.0, _lyricScroll.position.maxScrollExtent);
+  }
+
   void _scrollToLyric(int idx) {
     // Manual scroll in progress: never fight the finger (Beans).
     if (_lyricsUserScrolling) return;
     if (idx < 0 || !_lyricScroll.hasClients) return;
     if (idx == _lastLyricIdx) return;
     _lastLyricIdx = idx;
-    final target = math.max(0.0, idx * _lyricRowStride + _lyricCenterOffset);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_lyricScroll.hasClients) return;
       final pos = _lyricScroll.position;
-      final clamped = target.clamp(0.0, pos.maxScrollExtent);
+      // Real row offset when the row is built; stride estimate only
+      // when it is not (e.g. jumping several lines at once — the next
+      // call re-targets once the row exists).
+      final target =
+          _lyricRowCenterTarget(idx) ??
+          math
+              .max(0.0, idx * _lyricRowStride + _lyricCenterOffset)
+              .clamp(0.0, pos.maxScrollExtent);
       _lyricScrollController.animateWith(
         SpringSimulation(
           _lyricSpring,
           pos.pixels,
-          clamped,
+          target,
           _lyricScrollController.velocity,
         ),
       );
@@ -249,13 +282,31 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     if (!_lyricScroll.hasClients) return;
     final count = _c.lyrics.length;
     if (count == 0) return;
-    final idx = ((_lyricScroll.offset - _lyricCenterOffset) / _lyricRowStride)
-        .round()
-        .clamp(0, count - 1);
+    // Nearest BUILT row to the viewport centre (measured offsets);
+    // stride estimate only when no row is built yet.
+    var idx = -1;
+    var target = 0.0;
+    var bestDist = double.infinity;
+    for (final i in _lyricRowKeys.keys) {
+      if (i < 0 || i >= count) continue;
+      final centre = _lyricRowCenterTarget(i);
+      if (centre == null) continue;
+      final dist = (centre - _lyricScroll.offset).abs();
+      if (dist < bestDist) {
+        bestDist = dist;
+        idx = i;
+        target = centre;
+      }
+    }
+    if (idx < 0) {
+      idx = ((_lyricScroll.offset - _lyricCenterOffset) / _lyricRowStride)
+          .round()
+          .clamp(0, count - 1);
+      target = math
+          .max(0.0, idx * _lyricRowStride + _lyricCenterOffset)
+          .clamp(0.0, _lyricScroll.position.maxScrollExtent);
+    }
     _lastLyricIdx = idx;
-    final target = math
-        .max(0.0, idx * _lyricRowStride + _lyricCenterOffset)
-        .clamp(0.0, _lyricScroll.position.maxScrollExtent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_lyricScroll.hasClients) return;
       _lyricScroll.animateTo(
@@ -303,7 +354,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     ).toColor();
   }
 
-  /// Background: blurred cover打底 (1.25× + blur 32, unchanged) with
+  /// Background: blurred cover打底 (1.25× + blur 36, Beans
+  /// CoverBlurBackground.swift:223 — PL-P1-3) with
   /// Kumone's three layers on top (NowPlayingView.swift:243-260):
   /// diagonal primary→secondary gradient, top-left white 0.12 radial
   /// light (radius 700), bottom black 0.35 shade. Song changes
@@ -329,7 +381,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           Transform.scale(
             scale: 1.25,
             child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+              // Beans CoverBlurBackground radius 36 (PL-P1-3).
+              imageFilter: ui.ImageFilter.blur(sigmaX: 36, sigmaY: 36),
               child: Image(
                 image: MusicImageProvider(_bgCoverUrl),
                 fit: BoxFit.cover,
@@ -436,7 +489,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                           Expanded(
                             child: LayoutBuilder(
                               builder: (context, constraints) {
-                                final gap = _flexGap(
+                                final gaps = _flexGaps(
                                   constraints.maxHeight,
                                   MediaQuery.of(context).size,
                                 );
@@ -450,10 +503,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                                     child: Column(
                                       children: [
                                         // Leftover height spread over
-                                        // three equal flexible gaps:
-                                        // Kumone classic absorbs it all
-                                        // in its lyrics preview
-                                        // (NowPlayingView.swift
+                                        // three equal flexible gaps, each
+                                        // capped at 24pt (PL-P1-1c); the
+                                        // excess pools into the bottom
+                                        // padding instead of stretching
+                                        // the gaps. Kumone classic
+                                        // absorbs it all in its lyrics
+                                        // preview (NowPlayingView.swift
                                         // classicCompactLayout), which our
                                         // cover face doesn't have — so the
                                         // free height is shared instead of
@@ -464,20 +520,20 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                                         // On short screens the gaps shrink
                                         // to 0 and the scroll view clips
                                         // exactly as before — no overflow.
-                                        SizedBox(height: gap),
+                                        SizedBox(height: gaps.gap),
                                         _coverOrLyrics(song, lyricIdx),
-                                        const SizedBox(height: 14),
+                                        const SizedBox(height: 20),
                                         _qualityBadge(),
-                                        const SizedBox(height: 18),
+                                        const SizedBox(height: 20),
                                         _titleRow(song),
-                                        const SizedBox(height: 16),
-                                        SizedBox(height: gap),
+                                        const SizedBox(height: 20),
+                                        SizedBox(height: gaps.gap),
                                         _progressBar(),
-                                        SizedBox(height: gap),
-                                        _transportRow(song),
+                                        SizedBox(height: gaps.gap),
+                                        _transportRow(),
                                         const SizedBox(height: 12),
-                                        _bottomIconRow(song),
-                                        const SizedBox(height: 24),
+                                        _bottomIconRow(),
+                                        SizedBox(height: gaps.bottomPad),
                                       ],
                                     ),
                                   ),
@@ -505,14 +561,16 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     );
   }
 
-  /// Top bar (Kumone NowPlayingView.swift:73-111,199-210): three 36×36
+  /// Top bar (Kumone NowPlayingView.swift:73-111,199-210): 36×36
   /// white-0.12 circle buttons, 14pt icons in white 0.85, horizontal
-  /// padding 20. Left: collapse (chevron.down). Right: sound effects
-  /// (tune → equalizer page) + lyrics toggle (format_quote). Classic
-  /// has no centre "正在播放" text — removed.
+  /// padding 20, vertical padding 20 (PL-P2-6, Kumone's top padding).
+  /// Left: collapse (chevron.down). Right: sound effects only
+  /// (tune → equalizer page) — the lyrics toggle moved to the bottom
+  /// row (PL-P0-3), so it is not duplicated here. Classic has no
+  /// centre "正在播放" text — removed.
   Widget _topBar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Row(
         children: [
           _topCircleBtn(
@@ -531,14 +589,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                   ),
                 ),
               );
-            },
-          ),
-          const SizedBox(width: 8),
-          _topCircleBtn(
-            icon: Icons.format_quote,
-            onTap: () {
-              HaoHaptics.tap();
-              _toggleLyrics();
             },
           ),
         ],
@@ -576,24 +626,35 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// last choice and is NOT reset on song change.
   /// Kumone classic cover size (NowPlayingView.swift:663):
   /// min(width - 64, height * 0.38, 300). Single source of truth —
-  /// the layout math in [_flexGap] must use the same number.
+  /// the layout math in [_flexGaps] must use the same number.
   static double _coverSizeFor(Size size) =>
       math.min(math.min(size.width - 64, size.height * 0.38), 300.0);
 
-  /// One of the three flexible gaps in the player column. The other
-  /// sections have (near-)fixed heights: badge ~20 (6 padding +
-  /// 12pt text), title ~46 (21pt + 5 + 13.5pt), progress ~43 (24
-  /// bar + 5 + ~14 times row), bottom row 44, transport 58 wide /
-  /// 52 narrow (same <360 rule as _transportRow's LayoutBuilder,
-  /// measured on screen width - 32 outer padding); fixed gaps
-  /// 14/18/16/12 + 24 bottom padding. A few pt of estimate error
-  /// only leaves a hair of space or clips a hair — the scroll view
-  /// absorbs it, and the render goldens show the real result.
-  double _flexGap(double available, Size size) {
-    final transportH = size.width - 32 < 360 ? 52.0 : 58.0;
-    const rest = 14.0 + 20 + 18 + 46 + 16 + 43 + 12 + 44 + 24;
+  /// The three flexible gaps in the player column + the bottom
+  /// padding (PL-P1-1c). The other sections have (near-)fixed
+  /// heights: badge ~20, title ~46 (21pt + 5 + 13.5pt), progress
+  /// ~43 (24 bar + 5 + ~14 times row), bottom row 44, transport 64
+  /// (compact: minHeight 64, no width rule — three equal slots);
+  /// fixed gaps 20/20/20/12 (Kumone classic VStack spacing 20,
+  /// bottom control group spacing 12) + 24 base bottom padding.
+  /// Each gap is capped at 24pt; slack beyond 3×24 pools into the
+  /// bottom padding, so the column still exactly fills [available].
+  /// A few pt of estimate error only leaves a hair of space or clips
+  /// a hair — the scroll view absorbs it, and the render goldens
+  /// show the real result.
+  ///
+  /// NOTE: [available] is the Expanded height, already net of the
+  /// top bar — the top bar's height is NOT part of [rest], so the
+  /// P2-6 top-bar change (vertical 4→20) needs no rest adjustment
+  /// here; adding 32 to rest would double-count and leave a 32pt
+  /// blank band under the bottom row.
+  ({double gap, double bottomPad}) _flexGaps(double available, Size size) {
+    const transportH = 64.0;
+    const rest = 20.0 + 20 + 20 + 46 + 20 + 43 + 12 + 44 + 24;
     final slack = available - _coverSizeFor(size) - transportH - rest;
-    return slack > 0 ? slack / 3 : 0;
+    if (slack <= 0) return (gap: 0, bottomPad: 24);
+    final gap = math.min(slack / 3, 24.0);
+    return (gap: gap, bottomPad: 24 + (slack - gap * 3));
   }
 
   Widget _coverOrLyrics(Song song, int lyricIdx) {
@@ -725,6 +786,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                   final current = i == lyricIdx;
                   final translation = lines[i].translation;
                   return GestureDetector(
+                    key: _lyricRowKeys.putIfAbsent(i, () => GlobalKey()),
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _c.seek(
                       Duration(milliseconds: (lines[i].t * 1000).round()),
@@ -783,11 +845,18 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// classic size, corner radius 18, shadow black 0.45 / blur 36 /
   /// y 18, fade-in easeIn 0.25 on song change.
   Widget _cover(Song song, double size) {
+    // No-cover placeholder (Kumone :1045-1049): white 0.06 base +
+    // 48pt note in white 0.3. Material Icons.music_note has no light
+    // weight — the regular weight is the closest match.
     final placeholder = Container(
       width: size,
       height: size,
-      color: Colors.white.withValues(alpha: 0.15),
-      child: const Icon(Icons.music_note, color: Colors.white54, size: 72),
+      color: Colors.white.withValues(alpha: 0.06),
+      child: Icon(
+        Icons.music_note,
+        color: Colors.white.withValues(alpha: 0.3),
+        size: 48,
+      ),
     );
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 250),
@@ -800,7 +869,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(HaoRadius.panel),
+          borderRadius: BorderRadius.circular(18),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.45),
@@ -810,7 +879,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(HaoRadius.panel),
+          borderRadius: BorderRadius.circular(18),
           child: song.cover.isEmpty
               ? placeholder
               : Image(
@@ -839,11 +908,15 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           }
         }
       },
+      // Slim tag, not a button (PL-P2-4; Kumone QualityTag,
+      // Components.swift:178-193): no fill, hairline border only,
+      // 10.5pt, H8 V2 padding, radius 4 (HaoRadius.badge). The white
+      // 0.35 border stays (not Kumone's accent border — no red here).
+      // Tap still opens the quality sheet.
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(HaoRadius.small),
+          borderRadius: BorderRadius.circular(HaoRadius.badge),
           border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
         ),
         child: Obx(
@@ -851,7 +924,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             _c.actualQuality.value.badgeLabel,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 12,
+              fontSize: 10.5,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -860,41 +933,91 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     );
   }
 
-  /// Centred title block (Kumone trackMetaView, NowPlayingView
-  /// .swift:1066-1087): max width 400, song 21 bold white, artist
-  /// 13.5 white 0.65, 5pt between the lines. The star and `···`
-  /// moved out of this row — star to the transport row, `···` to
-  /// the bottom row.
+  /// Left-aligned title block (chen reference screenshot; Kumone
+  /// immersive CompactTrackHeader, NowPlayingView.swift:1776-1872):
+  /// song 21 bold white / artist 13.5 white 0.65 (classic values,
+  /// unchanged), 5pt between the lines; star + `···` on the right,
+  /// 44×44 each, 21pt icons in white 0.88, star active = theme
+  /// accent. Long titles ellipsize — the two buttons never squeeze.
   Widget _titleRow(Song song) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              song.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 21,
-                fontWeight: FontWeight.w700,
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                song.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.left,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              song.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.65),
-                fontSize: 13.5,
+              const SizedBox(height: 5),
+              Text(
+                song.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontSize: 13.5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        // NOTE: no Obx here — isFav() reads Hive (not an Rx
+        // observable), so an Obx around this button threw "improper
+        // use of GetX" on every build and corrupted the title-row
+        // layout (the old transport-row star had the same bug). The
+        // star refreshes via the setState() in onTap below, and the
+        // page's outer Obx rebuilds on every position tick anyway.
+        _titleIconBtn(
+          icon: _c.isFav(song) ? Icons.star : Icons.star_border,
+          active: _c.isFav(song),
+          onTap: () async {
+            HaoHaptics.tap();
+            await _c.toggleFav(song);
+            setState(() {});
+          },
+        ),
+        _titleIconBtn(
+          icon: Icons.more_horiz,
+          onTap: () {
+            HaoHaptics.tap();
+            _openTrackMore(song);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// One 44×44 title-row icon (Kumone CompactTrackHeader:
+  /// 21pt medium icon, white 0.88; active = theme accent).
+  Widget _titleIconBtn({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool active = false,
+  }) {
+    final theme = HaoTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Icon(
+          icon,
+          size: 21,
+          weight: 500,
+          color: active
+              ? _activeOnDark(theme.accent)
+              : Colors.white.withValues(alpha: 0.88),
         ),
       ),
     );
@@ -909,8 +1032,9 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// played pure white; thumb (13 white, shadow black 0.3 / r2 / y1)
   /// only while dragging; NO bubble (Kumone has none); time 10.5pt
   /// tabular figures white 0.55 below the track, elapsed left /
-  /// TOTAL right (was remaining). 24pt hit area; drag only moves the
-  /// local scrub position, seek fires once on release.
+  /// REMAINING right ('-m:ss', v1.0.4 format — chen reference;
+  /// Kumone shows total, see audit PL-P1-7). 24pt hit area; drag
+  /// only moves the local scrub position, seek fires once on release.
   Widget _progressBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1031,9 +1155,22 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 );
               }),
               Obx(() {
+                // Remaining time, '-m:ss' (v1.0.4 format: total<=0
+                // shows '-0:00', never a bare total). While scrubbing
+                // it follows the finger, like the elapsed label.
                 final total = _c.duration.value;
+                final pos = _scrubFrac != null && total.inMilliseconds > 0
+                    ? Duration(
+                        milliseconds: (total.inMilliseconds * _scrubFrac!)
+                            .round(),
+                      )
+                    : _c.position.value;
+                final remain = total - pos;
+                final text = total.inSeconds <= 0
+                    ? '-0:00'
+                    : '-${formatDuration(remain.inSeconds < 0 ? 0 : remain.inSeconds)}';
                 return Text(
-                  formatDuration(total.inSeconds),
+                  text,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.55),
                     fontSize: 10.5,
@@ -1082,140 +1219,149 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
     );
   }
 
-  /// Transport row (Kumone classic controls(), NowPlayingView
-  /// .swift:1125-1240): 7 items in a Row + spaceEvenly — no Expanded
-  /// around the 58pt play circle (it overflows). Left to right: fav
-  /// star, shuffle, prev, play, next, AirPlay, sound effects.
-  /// Circle buttons are 40×40 white 0.1, icons white 0.8, active
-  /// theme accent. Play is a solid white 58 circle, 21pt black 0.85
-  /// icon, shadow black 0.3 / r12 / y4; icon swaps by opacity fade
-  /// 200ms (.contentTransition(.opacity)).
-  Widget _transportRow(Song song) {
-    // 7 fixed children total 6x40 + 58 = 298pt; at 320pt wide the
-    // page leaves 288pt, so shrink the buttons instead of
-    // overflowing (iPhone SE 1st gen). 375pt and up keep Kumone's
-    // 40 / 58.
-    return LayoutBuilder(
-      // NOTE: the builder's context parameter is intentionally `_` so
-      // it does not shadow State.context — the onTap closures below
-      // use context after awaits (AirPlay picker) and are guarded by
-      // `mounted`, which only guards State.context.
-      builder: (_, constraints) {
-        final narrow = constraints.maxWidth < 360;
-        final side = narrow ? 36.0 : 40.0;
-        final play = narrow ? 52.0 : 58.0;
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // NOTE: no Obx here — isFav() reads Hive (not an Rx observable),
-            // so an Obx around this button threw "improper use of GetX" on
-            // every build and corrupted the title-row layout (the row blew
-            // up to 100000pt tall, pushing all controls off-screen). The
-            // star refreshes via the setState() in onPressed below, and
-            // the page's outer Obx rebuilds on every position tick anyway.
-            _circleBtn(
-              icon: _c.isFav(song) ? Icons.star : Icons.star_border,
-              iconSize: 15,
-              size: side,
-              active: _c.isFav(song),
-              onTap: () async {
-                HaoHaptics.tap();
-                await _c.toggleFav(song);
-                setState(() {});
-              },
-            ),
-            Obx(() {
-              final isShuffle = _c.mode == PlayMode.shuffle;
-              return _circleBtn(
-                icon: Icons.shuffle,
-                iconSize: 14,
-                size: side,
-                active: isShuffle,
-                onTap: _toggleShuffle,
-              );
-            }),
-            _circleBtn(
-              icon: Icons.skip_previous,
-              iconSize: 16,
-              size: side,
-              onTap: () {
-                HaoHaptics.tap();
-                _c.prev();
-              },
-            ),
-            Obx(() {
-              // Resolving a URL with nothing sounding yet: show a
-              // spinner in place of the play button so a tap never
-              // looks dead for the seconds a resolve can take. While a
-              // song is playing (auto-advance / crossfade) the old
-              // track keeps sounding, so no spinner. The box is 58×58,
-              // the same size as the play circle it replaces, so the
-              // prev/next buttons do not shift.
-              if (_c.isResolving.value && !_c.isPlaying.value) {
-                return SizedBox(
-                  width: play,
-                  height: play,
-                  child: Center(
-                    child: SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    ),
-                  ),
-                );
-              }
-              final playing = _c.isPlaying.value;
-              return GestureDetector(
+  /// Transport row (Kumone CompactTransportControls,
+  /// NowPlayingView.swift:1892-1920): three equal slots, no
+  /// background circles — bare white triangles. Prev/next 25pt
+  /// semibold, min height 58; play/pause 36pt bold, min height 64.
+  /// Star → title row (PL-P0-2), AirPlay → bottom row (PL-P0-3),
+  /// tune → top bar only (PL-P1-6), shuffle → the `···` sheet's
+  /// play-mode row (PL-P0-1; the queue panel header mode button is
+  /// untouched). Only the surface changed; playback logic is intact.
+  Widget _transportRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: 58,
+            child: Center(
+              child: _transportTriangle(
+                icon: Icons.skip_previous,
+                size: 25,
                 onTap: () {
                   HaoHaptics.tap();
-                  _c.togglePlayPause();
+                  _c.prev();
                 },
-                child: Container(
-                  width: play,
-                  height: play,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Color.fromRGBO(0, 0, 0, 0.3),
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, animation) =>
-                          FadeTransition(opacity: animation, child: child),
-                      child: Icon(
-                        playing ? Icons.pause : Icons.play_arrow,
-                        key: ValueKey(playing),
-                        color: Colors.black.withValues(alpha: 0.85),
-                        size: 21,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-            _circleBtn(
-              icon: Icons.skip_next,
-              iconSize: 16,
-              size: side,
-              onTap: () {
-                HaoHaptics.tap();
-                _c.next();
-              },
+              ),
             ),
-            _circleBtn(
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 64,
+            child: Center(
+              child: Obx(() {
+                // Resolving a URL with nothing sounding yet: show a
+                // spinner in place of the play button so a tap never
+                // looks dead for the seconds a resolve can take. While a
+                // song is playing (auto-advance / crossfade) the old
+                // track keeps sounding, so no spinner.
+                if (_c.isResolving.value && !_c.isPlaying.value) {
+                  return const SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                  );
+                }
+                final playing = _c.isPlaying.value;
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: _transportTriangle(
+                    key: ValueKey(playing),
+                    icon: playing ? Icons.pause : Icons.play_arrow,
+                    size: 36,
+                    bold: true,
+                    onTap: () {
+                      HaoHaptics.tap();
+                      _c.togglePlayPause();
+                    },
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 58,
+            child: Center(
+              child: _transportTriangle(
+                icon: Icons.skip_next,
+                size: 25,
+                onTap: () {
+                  HaoHaptics.tap();
+                  _c.next();
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// One bare white triangle (Kumone compact transport): no circle,
+  /// no background — the glyph is the button. [bold] maps the 36pt
+  /// play/pause glyph to weight 700, the 25pt prev/next glyphs to
+  /// 600 (Icon weight is a no-op on the static Material font, kept
+  /// as the documented mapping).
+  Widget _transportTriangle({
+    Key? key,
+    required IconData icon,
+    required double size,
+    required VoidCallback onTap,
+    bool bold = false,
+  }) {
+    return GestureDetector(
+      key: key,
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Icon(
+        icon,
+        size: size,
+        weight: bold ? 700 : 600,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  /// Bottom row (Kumone immersive CompactSecondaryControls,
+  /// NowPlayingView.swift:2005-2075, reduced to our 3 actions): 3
+  /// equal slots, each a centred 44×44 white-0.08 circle button,
+  /// 17pt icon, inactive white 0.72, active theme accent. No labels.
+  /// Lyrics toggle / AirPlay / queue (chen reference). Sleep timer
+  /// lives in the `···` sheet (PL-P0-3; the sheet already has a
+  /// sleep entry, so it is not duplicated here); the `···` key itself
+  /// moved to the title row (PL-P0-2). The lyrics key carries the
+  /// active state (PL-P2-5): lyrics face shows music.note in accent,
+  /// cover face shows format_quote in white 0.72.
+  Widget _bottomIconRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: Center(
+            child: Obx(
+              () => _bottomBtn(
+                icon: _c.showLyrics.value
+                    ? Icons.music_note
+                    : Icons.format_quote,
+                active: _c.showLyrics.value,
+                onTap: () {
+                  HaoHaptics.tap();
+                  _toggleLyrics();
+                },
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: _bottomBtn(
               icon: Icons.airplay,
-              iconSize: 15,
-              size: side,
               onTap: () async {
                 // Real AirPlay: ask iOS to open the system route picker
                 // (AVRoutePickerView). The picker itself shows the
@@ -1232,80 +1378,8 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 }
               },
             ),
-            _circleBtn(
-              icon: Icons.tune,
-              iconSize: 15,
-              size: side,
-              onTap: () {
-                HaoHaptics.tap();
-                unawaited(
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const EqualizerPage(),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Shuffle toggle. The controller has five modes (play_mode.dart)
-  /// including shuffle, so this button is a real shuffle on/off
-  /// switch — not the five-mode cycle (that lives in the queue panel
-  /// and the `···` sheet). Writes the mode the same two lines
-  /// cyclePlayMode() uses (Rx value + Hive persist); no playback
-  /// logic is touched.
-  void _toggleShuffle() {
-    HaoHaptics.tap();
-    final next = _c.mode == PlayMode.shuffle
-        ? PlayMode.sequential
-        : PlayMode.shuffle;
-    _c.playMode.value = next.code;
-    unawaited(MusicStore.setPlayMode(next.code));
-  }
-
-  /// One 40×40 white-0.1 circle button (Kumone circleButton,
-  /// NowPlayingView.swift:1284-1292).
-  Widget _circleBtn({
-    required IconData icon,
-    required double iconSize,
-    required VoidCallback onTap,
-    bool active = false,
-    double size = 40,
-  }) {
-    final theme = HaoTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
+          ),
         ),
-        child: Icon(
-          icon,
-          size: iconSize,
-          color: active
-              ? _activeOnDark(theme.accent)
-              : Colors.white.withValues(alpha: 0.8),
-        ),
-      ),
-    );
-  }
-
-  /// Bottom row (Kumone immersive CompactSecondaryControls,
-  /// NowPlayingView.swift:2005-2075, reduced to our 3 actions): 3
-  /// equal slots, each a centred 44×44 white-0.08 circle button,
-  /// 17pt icon, inactive white 0.72, active theme accent. No labels.
-  /// Queue / sleep timer / `···`.
-  Widget _bottomIconRow(Song song) {
-    return Row(
-      children: [
         Expanded(
           child: Center(
             child: _bottomBtn(
@@ -1313,28 +1387,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               onTap: () {
                 HaoHaptics.tap();
                 _c.showQueuePanel.value = true;
-              },
-            ),
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: Obx(
-              () => _bottomBtn(
-                icon: Icons.timer,
-                active: _c.sleepOption.value != SleepTimerOption.off,
-                onTap: _openSleepTimer,
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: _bottomBtn(
-              icon: Icons.more_horiz,
-              onTap: () {
-                HaoHaptics.tap();
-                _openTrackMore(song);
               },
             ),
           ),
@@ -1364,21 +1416,6 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           color: active
               ? _activeOnDark(theme.accent)
               : Colors.white.withValues(alpha: 0.72),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _openSleepTimer() async {
-    HaoHaptics.tap();
-    final picked = await showSleepTimerSheet(context);
-    if (picked == null || !mounted) return;
-    _c.setSleepTimer(picked);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          picked == SleepTimerOption.off ? '睡眠定时已关闭' : '睡眠定时：${_c.sleepLabel}',
         ),
       ),
     );

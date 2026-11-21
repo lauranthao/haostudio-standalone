@@ -1,6 +1,7 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 // Music home — Kumone redo (P0+P1, 2026-11-18).
@@ -215,6 +216,11 @@ class _MusicTabPageState extends State<MusicTabPage>
   List<UserPlaylist> _lists = [];
   List<Song> _recent = [];
   var _importing = false;
+  // M-P1-7: live import progress + cancel. [_importCancel] aborts the
+  // in-flight import (its Dio requests are cancelled, not just
+  // abandoned); [_importProgress] is the "已导入 x/总数 首" line.
+  CancelToken? _importCancel;
+  var _importProgress = '';
 
   /// Live listenable for the recent-plays key (bug3, chen 2026-11-20:
   /// “下面的最近播放也不会实时变化”). _recent used to be read only
@@ -380,9 +386,32 @@ class _MusicTabPageState extends State<MusicTabPage>
   Future<void> _importLink() async {
     final url = _importController.text.trim();
     if (url.isEmpty || _importing) return;
-    setState(() => _importing = true);
+    final cancelToken = CancelToken();
+    setState(() {
+      _importing = true;
+      _importCancel = cancelToken;
+      _importProgress = '';
+    });
     try {
-      final r = await MusicApi().importFromLink(url);
+      final r = await MusicApi().importFromLink(
+        url,
+        cancelToken: cancelToken,
+        onProgress: (done, total) {
+          if (!mounted) return;
+          setState(() {
+            _importProgress = total != null
+                ? '已导入 $done/$total 首'
+                : '已导入 $done 首';
+          });
+        },
+      );
+      if (cancelToken.isCancelled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已取消导入')),
+        );
+        return;
+      }
       if (r == null || r.tracks.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -403,18 +432,31 @@ class _MusicTabPageState extends State<MusicTabPage>
       _importController.clear();
       _refresh();
       if (!mounted) return;
+      // M-P1-3 / M-P1-7: a partial import says so (missing count +
+      // reason), instead of reporting a short success.
+      final okMsg = res.dropped > 0
+          ? '导入成功 ${res.added} 首，还有 ${res.dropped} 首没进来（每歌单最多 ${MusicStore.maxTracksPerList} 首）→ ${list.name}'
+          : '导入成功 ${res.added} 首 → ${list.name}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            res.dropped > 0
-                ? '导入成功 ${res.added} 首，还有 ${res.dropped} 首没进来（每歌单最多 ${MusicStore.maxTracksPerList} 首）→ ${list.name}'
-                : '导入成功 ${res.added} 首 → ${list.name}',
+            r.note.isNotEmpty ? '$okMsg（${r.note}）' : okMsg,
           ),
         ),
       );
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) {
+        setState(() {
+          _importing = false;
+          _importCancel = null;
+          _importProgress = '';
+        });
+      }
     }
+  }
+
+  void _cancelImport() {
+    _importCancel?.cancel();
   }
 
   void _playSong(Song song, List<Song> queue) {
@@ -615,7 +657,18 @@ class _MusicTabPageState extends State<MusicTabPage>
     final theme = HaoTheme.of(context);
     return Obx(
       () => Scaffold(
-        backgroundColor: tabScaffoldBackground(context),
+        // G-P2-5: no explicit color when no wallpaper is active — the
+        // ThemeData default is the single source of truth (same as
+        // the 29 places converged in build 26). A wallpaper still
+        // needs a transparent Scaffold so it shows through; this
+        // read is also what keeps the Obx subscribed — deleting the
+        // whole line threw GetX's "improper use of Obx" (the builder
+        // then read no observable) and broke all 4 music-home
+        // goldens, so the literal deletion is not viable here.
+        backgroundColor:
+            AppearanceController.ensure().backgroundActive.value
+                ? Colors.transparent
+                : null,
         // P0-4: no AppBar — the tab bar already says 音乐; the feature
         // shelf below is the page's visual anchor.
         body: SafeArea(
@@ -1069,32 +1122,48 @@ class _MusicTabPageState extends State<MusicTabPage>
 
   /// P1-9 (a) slim import row: radius-12 field, ~40 high, capsule
   /// button; the old 12pt note below is merged into the hint.
+  /// While importing (M-P1-7) the button becomes 取消 and the live
+  /// "已导入 x/总数 首" progress shows below the row.
   Widget _importRow(HaoTheme theme) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: GlassCard(
-            radius: 12,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-            child: TextField(
-              controller: _importController,
-              decoration: InputDecoration(
-                hintText: '粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接',
-                hintStyle: TextStyle(color: theme.textMuted, fontSize: 13),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        Row(
+          children: [
+            Expanded(
+              child: GlassCard(
+                radius: 12,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                child: TextField(
+                  controller: _importController,
+                  decoration: InputDecoration(
+                    hintText: '粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接',
+                    hintStyle: TextStyle(color: theme.textMuted, fontSize: 13),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
               ),
             ),
+            const SizedBox(width: 8),
+            _CapsuleButton(
+              label: _importing ? '取消' : '导入',
+              enabled: true,
+              onTap: _importing ? _cancelImport : _importLink,
+            ),
+          ],
+        ),
+        if (_importing && _importProgress.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text(
+              _importProgress,
+              style: TextStyle(color: theme.textMuted, fontSize: 12),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        _CapsuleButton(
-          label: _importing ? '导入中…' : '导入',
-          enabled: !_importing,
-          onTap: _importLink,
-        ),
       ],
     );
   }

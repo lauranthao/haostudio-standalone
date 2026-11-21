@@ -10,6 +10,7 @@
 // returns null in tests).
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -189,8 +190,8 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final service = VideoDetailService(
-      fetchDetail: (_, _) async => _cannedDetail(),
-      findAlts: (_, _, _) => const Stream.empty(),
+      fetchDetail: (_, _, {CancelToken? cancelToken}) async => _cannedDetail(),
+      findAlts: (_, _, _, {CancelToken? cancelToken}) => const Stream.empty(),
     );
     await tester.pumpWidget(
       GetMaterialApp(

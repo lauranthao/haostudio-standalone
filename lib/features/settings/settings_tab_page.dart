@@ -184,7 +184,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final theme = HaoTheme.of(context);
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
-      backgroundColor: tabScaffoldBackground(context),
       // No AppBar (chen 2026-11-21, screenshot): the title is a big
       // bold header at the top-left of the list (26 w800), like his
       // 我的片库 screenshot — not a small top-bar title. The title
@@ -263,8 +262,28 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             value: _wallpaperOn,
             onChanged: (value) async {
               HaoHaptics.select();
-              await AppearanceController.ensure().setWallpaperEnabled(value);
-              setState(() => _loadAppearance());
+              // G-P2-2: optimistic flip — the thumb moves on this
+              // frame; the Hive write lands in the background. The
+              // store swallows write errors (AppearanceStore catches
+              // them), so a failed write surfaces as "the value
+              // didn't stick": _loadAppearance() re-reads the
+              // persisted value and flips the thumb back, and we
+              // tell the user. The catch only covers errors thrown
+              // outside the store.
+              final previous = _wallpaperOn;
+              setState(() => _wallpaperOn = value);
+              try {
+                await AppearanceController.ensure().setWallpaperEnabled(value);
+                if (!mounted) return;
+                setState(() => _loadAppearance());
+                if (_wallpaperOn != value) {
+                  Get.snackbar('设置失败', '壁纸开关保存失败，请重试');
+                }
+              } catch (_) {
+                if (!mounted) return;
+                setState(() => _wallpaperOn = previous);
+                Get.snackbar('设置失败', '壁纸开关保存失败，请重试');
+              }
             },
           ),
           const SizedBox(height: 12),
@@ -294,8 +313,25 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             value: _bgOn,
             onChanged: (value) async {
               HaoHaptics.select();
-              await AppearanceController.ensure().setBackgroundEnabled(value);
-              setState(() => _loadAppearance());
+              // G-P2-2: optimistic flip, same as the wallpaper
+              // switch above — thumb first, Hive write behind it;
+              // a write that didn't stick (the store swallows the
+              // error) flips the thumb back via _loadAppearance()
+              // and gets a snackbar.
+              final previous = _bgOn;
+              setState(() => _bgOn = value);
+              try {
+                await AppearanceController.ensure().setBackgroundEnabled(value);
+                if (!mounted) return;
+                setState(() => _loadAppearance());
+                if (_bgOn != value) {
+                  Get.snackbar('设置失败', '背景色开关保存失败，请重试');
+                }
+              } catch (_) {
+                if (!mounted) return;
+                setState(() => _bgOn = previous);
+                Get.snackbar('设置失败', '背景色开关保存失败，请重试');
+              }
             },
           ),
           if (_bgOn) ...[
@@ -328,7 +364,8 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           // Liquid-glass intensity (chen 2026-11-21): whole-app
           // frosted-glass strength, 0% = clear, 100% = today's
           // glass. The slider previews live — the theme rebuilds
-          // on every tick (ThemeController.glassIntensity).
+          // on every tick (ThemeController.glassIntensity); Hive is
+          // written once when the drag ends, not per tick (G-P2-3).
           HaoGlassCard(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
             child: Column(
@@ -362,7 +399,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ),
                 Slider(
                   value: themeController.glassIntensity.value,
+                  // G-P2-3: dragging only previews in memory (the
+                  // theme rebuilds live per tick); Hive is written
+                  // once when the drag ends, so a drag no longer
+                  // pays a Hive put per tick.
                   onChanged: (v) =>
+                      themeController.setGlassIntensityPreview(v),
+                  onChangeEnd: (v) =>
                       themeController.setGlassIntensity(v, box: HiveStore.box),
                 ),
               ],

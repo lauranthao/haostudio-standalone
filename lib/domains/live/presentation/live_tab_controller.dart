@@ -81,6 +81,20 @@ class LiveTabController extends ChangeNotifier {
   int _epoch = 0;
   bool _disposed = false;
 
+  /// Short cross-instance throttle (G-P1-1): the tab page is rebuilt
+  /// on every switch (no KeepAlive), so a fresh controller would
+  /// re-fetch the same first page each time. A successful first-page
+  /// load is stashed process-wide for 60 s, keyed by the site object
+  /// identity + platform + category. Production adapters are
+  /// process-wide singletons (Sites.of), so switching back restores
+  /// instantly with no network; tests inject a fresh fake site per
+  /// test, so the stash never leaks across tests. Pull-to-refresh,
+  /// retry, and platform/category switches bypass the stash — they
+  /// call [_load] directly, and a successful [_load] refreshes it.
+  static _LiveTabStash? _stash;
+
+  static const _initialLoadTtl = Duration(seconds: 60);
+
   @override
   void dispose() {
     _disposed = true;
@@ -88,7 +102,27 @@ class LiveTabController extends ChangeNotifier {
   }
 
   /// First load for the current platform (call once from the page).
-  Future<void> loadInitial() => _load();
+  /// Serves the stash when it is fresh; otherwise loads from the
+  /// network (and stashes the result).
+  Future<void> loadInitial() {
+    final stash = _stash;
+    if (stash != null &&
+        _selectedArea == null &&
+        stash.matches(_siteOf(_platform), _platform, null) &&
+        DateTime.now().difference(stash.at) < _initialLoadTtl) {
+      _page = stash.page;
+      _rooms = stash.rooms;
+      _categories = stash.categories;
+      _hasMore = stash.hasMore;
+      _loadingMore = false;
+      _loadMoreFailed = false;
+      _status = _rooms.isEmpty ? LiveTabStatus.empty : LiveTabStatus.ready;
+      _errorMessage = null;
+      notifyListeners();
+      return Future.value();
+    }
+    return _load();
+  }
 
   /// Pull-to-refresh / empty- and error-state retry.
   Future<void> refresh() => _load();
@@ -167,6 +201,16 @@ class LiveTabController extends ChangeNotifier {
       _categories = categories;
       _hasMore = rooms.length >= pageSize;
       _status = rooms.isEmpty ? LiveTabStatus.empty : LiveTabStatus.ready;
+      _stash = _LiveTabStash(
+        site: site,
+        platform: _platform,
+        areaId: _selectedArea?.areaId,
+        rooms: rooms,
+        categories: categories,
+        hasMore: _hasMore,
+        page: _page,
+        at: DateTime.now(),
+      );
     } catch (e) {
       if (_disposed || epoch != _epoch) return;
       _rooms = const [];
@@ -196,4 +240,32 @@ class LiveTabController extends ChangeNotifier {
       return const <LiveArea>[];
     }
   }
+}
+
+/// One stashed first-page load (see [LiveTabController._stash]).
+class _LiveTabStash {
+  const _LiveTabStash({
+    required this.site,
+    required this.platform,
+    required this.areaId,
+    required this.rooms,
+    required this.categories,
+    required this.hasMore,
+    required this.page,
+    required this.at,
+  });
+
+  final LiveSite site;
+  final String platform;
+  final String? areaId;
+  final List<LiveRoom> rooms;
+  final List<LiveArea> categories;
+  final bool hasMore;
+  final int page;
+  final DateTime at;
+
+  bool matches(LiveSite otherSite, String otherPlatform, String? otherAreaId) =>
+      identical(site, otherSite) &&
+      platform == otherPlatform &&
+      areaId == otherAreaId;
 }

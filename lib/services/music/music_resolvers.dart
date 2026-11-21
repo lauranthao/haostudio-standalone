@@ -92,17 +92,25 @@ typedef _ResolverFn = Future<_ResolvedUrl> Function(
   String title,
   // Expected artist for title-only resolvers (oiapi_kw, P1-L5):
   // '' = unknown, no singer check.
-  String artist,
-);
+  String artist, {
+  // Per-job cancellation (M-P1-1): the pass cancels this token when
+  // the job times out, so the underlying Dio request aborts instead
+  // of running on in the background.
+  CancelToken? cancelToken,
+});
 
 /// One resolution job: a built-in resolver or an LX script job, unified
 /// so [_resolvePass] runs them in measured-speed order. `order` is the
 /// declared order, used as the tie-break for never-measured jobs.
+/// `warmup`, when set, is awaited BEFORE the per-job timeout starts
+/// (M-P0-2 b): a prerequisite that is not the job itself (xinghai's
+/// token fetch) must not burn the job's 2 s timeout.
 typedef _Job = ({
   String key,
   String name,
   int order,
   _ResolverFn fn,
+  Future<void> Function()? warmup,
 });
 
 class _Resolver {
@@ -113,6 +121,7 @@ class _Resolver {
     required this.enabled,
     required this.order,
     required this.fn,
+    this.warmup,
   });
 
   final String key;
@@ -121,6 +130,10 @@ class _Resolver {
   final bool enabled;
   final int order;
   final _ResolverFn fn;
+
+  /// Prerequisite awaited before this resolver's per-job timeout
+  /// starts (M-P0-2 b). Null for resolvers with no prerequisite.
+  final Future<void> Function()? warmup;
 }
 
 /// In-memory play-URL cache (haoParseCache): key songId|platform|quality,
@@ -224,6 +237,25 @@ class _PlayUrlCache {
   }
 }
 
+/// What one job attempt actually was (M-P1-8): an empty answer is
+/// NOT a failure, an error is, a timeout cools at once.
+enum _AttemptOutcome {
+  /// A playable URL came back: EMA update, streak reset, cool cleared.
+  success,
+
+  /// The source answered fast with no stock at this tier — a
+  /// deliberate refusal (e.g. zddyr_kw above 320k) or an instant
+  /// API "no". Costs no time, so it is not a failure: no streak,
+  /// no cooldown, no EMA change.
+  empty,
+
+  /// The job threw, or returned a URL that is not playable.
+  error,
+
+  /// The job burned its whole per-job timeout.
+  timeout,
+}
+
 class MusicResolvers {
   MusicResolvers({Dio? dio, LxScriptEngine? scriptEngine})
       : _dio = dio ?? sharedDio(),
@@ -247,6 +279,15 @@ class MusicResolvers {
   final _speedCooledUntil = <String, DateTime>{};
   bool _speedLoaded = false;
   bool _speedDirty = false;
+  // M-P2-3: throttled mid-resolve persistence — _saveSpeeds runs at
+  // most every 10 attempts / 5 s during a resolve, so a process
+  // killed mid-resolve keeps what was learned so far instead of
+  // losing the whole resolve's EMA updates.
+  int _attemptsSinceSave = 0;
+  // Starts at construction: the 5 s rule only fires after 5 s of
+  // resolving without a save (an epoch start would fire it on the
+  // very first attempt of the first resolve).
+  DateTime _lastSaveAt = DateTime.now();
 
   static const _speedHiveKey = 'hao_resolver_speed';
   static const _unknownSpeedMs = 500;
@@ -287,6 +328,7 @@ class MusicResolvers {
   void _saveSpeeds() {
     if (!_speedDirty) return;
     _speedDirty = false;
+    _lastSaveAt = DateTime.now();
     try {
       final map = <String, Map<String, int>>{};
       for (final k in {
@@ -308,30 +350,62 @@ class MusicResolvers {
   }
 
   /// Record one job attempt. Success updates the EMA latency and
-  /// resets the failure streak; failure bumps the streak and cools
+  /// resets the failure streak; an error bumps the streak and cools
   /// the job down after [_coolAfterFails] in a row, so a dead
   /// "fastest" source stops blocking the race (换源). A TIMEOUT cools
   /// the job immediately for [_coolTimeoutFor]: the failure streak
   /// alone is too slow to learn — the speed average is never updated
   /// on failure, so a source that was fast once but hangs now would
   /// otherwise stay ranked first and burn a full per-job timeout on
-  /// every song until it has failed 3 times.
-  void _recordAttempt(String key, bool ok, int ms, {bool timedOut = false}) {
-    if (ok) {
-      final prev = _speedAvg[key];
-      _speedAvg[key] = prev == null ? ms : (prev * 7 + ms * 3) ~/ 10;
-      _speedFails.remove(key);
-      _speedCooledUntil.remove(key);
-    } else {
-      final fails = (_speedFails[key] ?? 0) + 1;
-      _speedFails[key] = fails;
-      if (timedOut) {
+  /// every song until it has failed 3 times. An EMPTY answer records
+  /// nothing at all (M-P1-8): a source that is fast but has no stock
+  /// at this tier must not be cooled out of the tiers it does serve.
+  ///
+  /// [background] (M-P1-5): prewarm / prefetch resolves must not
+  /// pollute the ranking — a background failure is never recorded
+  /// (no streak, no cooldown); only a background success updates
+  /// the speed, because it proves the source alive.
+  void _recordAttempt(
+    String key,
+    _AttemptOutcome outcome,
+    int ms, {
+    bool background = false,
+  }) {
+    switch (outcome) {
+      case _AttemptOutcome.success:
+        final prev = _speedAvg[key];
+        _speedAvg[key] = prev == null ? ms : (prev * 7 + ms * 3) ~/ 10;
+        _speedFails.remove(key);
+        _speedCooledUntil.remove(key);
+        _speedDirty = true;
+      case _AttemptOutcome.empty:
+        // A fast "no" is not a failure — nothing changes, in
+        // foreground or background.
+        return;
+      case _AttemptOutcome.error:
+        if (background) return;
+        final fails = (_speedFails[key] ?? 0) + 1;
+        _speedFails[key] = fails;
+        if (fails >= _coolAfterFails) {
+          _speedCooledUntil[key] = DateTime.now().add(_coolFor);
+        }
+        _speedDirty = true;
+      case _AttemptOutcome.timeout:
+        if (background) return;
+        final fails = (_speedFails[key] ?? 0) + 1;
+        _speedFails[key] = fails;
         _speedCooledUntil[key] = DateTime.now().add(_coolTimeoutFor);
-      } else if (fails >= _coolAfterFails) {
-        _speedCooledUntil[key] = DateTime.now().add(_coolFor);
-      }
+        _speedDirty = true;
     }
-    _speedDirty = true;
+    // M-P2-3: throttle mid-resolve persistence (every 10 attempts
+    // or every 5 s). The end-of-resolve _saveSpeeds calls stay.
+    _attemptsSinceSave++;
+    final now = DateTime.now();
+    if (_attemptsSinceSave >= 10 ||
+        now.difference(_lastSaveAt) >= const Duration(seconds: 5)) {
+      _attemptsSinceSave = 0;
+      _saveSpeeds();
+    }
   }
 
   bool _isCooled(String key, DateTime now) {
@@ -359,9 +433,22 @@ class MusicResolvers {
         Song(songId: songId, title: title, platform: pf, artist: artist);
     final jobs = <_Job>[
       for (final r in _applicable(pf))
-        (key: r.key, name: r.name, order: r.order, fn: r.fn),
+        (
+          key: r.key,
+          name: r.name,
+          order: r.order,
+          fn: r.fn,
+          warmup: r.warmup,
+        ),
       for (final s in _scriptEngine.scriptJobsFor(pf, q, song))
-        (key: s.key, name: s.name, order: 2, fn: (_, _, _, _, _) => s.fn()),
+        (
+          key: s.key,
+          name: s.name,
+          order: 2,
+          fn: (_, _, _, _, _, {CancelToken? cancelToken}) =>
+              s.fn(cancelToken: cancelToken),
+          warmup: null,
+        ),
     ];
     final now = DateTime.now();
     // Manual script order, read fresh per resolve so a drag in
@@ -400,11 +487,13 @@ class MusicResolvers {
     String? method,
     String? body,
     Duration timeout = const Duration(seconds: 5),
+    CancelToken? cancelToken,
   }) async {
     try {
       final res = await _dio.request<dynamic>(
         url,
         data: body,
+        cancelToken: cancelToken,
         options: Options(
           method: method ?? 'GET',
           headers: headers,
@@ -428,10 +517,15 @@ class MusicResolvers {
     }
   }
 
-  Future<String?> _fetchText(String url, {Duration? timeout}) async {
+  Future<String?> _fetchText(
+    String url, {
+    Duration? timeout,
+    CancelToken? cancelToken,
+  }) async {
     try {
       final res = await _dio.get<String>(
         url,
+        cancelToken: cancelToken,
         options: Options(
           receiveTimeout: timeout ?? const Duration(seconds: 10),
           responseType: ResponseType.plain,
@@ -457,7 +551,7 @@ class MusicResolvers {
     return d;
   }
 
-  Future<String> _getXhToken() async {
+  Future<String> _getXhToken({CancelToken? cancelToken}) async {
     if (_xhToken != null &&
         _xhTokenAt != null &&
         DateTime.now().difference(_xhTokenAt!) <
@@ -469,6 +563,7 @@ class MusicResolvers {
         '$_xhTokenUrl?device_id=${Uri.encodeComponent(_xhDeviceId())}',
         headers: {'User-Agent': 'lx-music'},
         timeout: const Duration(seconds: 6),
+        cancelToken: cancelToken,
       );
       final tk = (j?['data'] as Map<String, dynamic>?)?['token']?.toString() ?? '';
       if (tk.isNotEmpty) {
@@ -577,7 +672,7 @@ class MusicResolvers {
           // only if the service revives.
           enabled: false,
           order: 1,
-          fn: (id, pf, q, title, artist) async =>
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async =>
               _u(await _huibqUrl(id, pf, q)),
         ),
         _Resolver(
@@ -594,7 +689,7 @@ class MusicResolvers {
           // serve master live (see music_quality.dart).
           enabled: false,
           order: 2,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             // Master only: the ikun API is the only direct resolver
             // with a distinct master tier (quality=master). Other
             // tiers already have many resolvers; asking ikun for them
@@ -624,9 +719,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.tx],
           enabled: true,
           order: 15,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://tang.api.s01s.cn/music_open_api.php?mid=${Uri.encodeComponent(id)}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             if (j == null || j['song_play_url'] == null) return _u('');
@@ -656,9 +752,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 20,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://music.lzmhhh.com/api/music/url',
+              cancelToken: cancelToken,
               method: 'POST',
               headers: {
                 'User-Agent': _musicUa,
@@ -676,9 +773,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 25,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://yy.zddyr.top/lx/api/?source=wy&songmid=${Uri.encodeComponent(id)}&quality=${lxQuality(q)}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             if (j == null || j['code'] != 200) return _u('');
@@ -697,9 +795,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 30,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://music-api.gdstudio.xyz/api.php?types=url&id=${Uri.encodeComponent(id)}&source=netease&br=${gdBr(q)}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             return _u(toHttps(j?['url']?.toString() ?? ''));
@@ -715,8 +814,17 @@ class MusicResolvers {
           ],
           enabled: true,
           order: 40,
-          fn: (id, pf, q, title, artist) async {
-            final tk = await _getXhToken();
+          // M-P0-2 (b): the token fetch waits OUTSIDE the 2 s job
+          // timeout (see [_resolvePass]) — on a cold start the token
+          // can take seconds, and counting that against the job
+          // cooled xinghai for 2 min before it was ever really tried.
+          // The token is shared across resolves, so this only ever
+          // waits on the first song after launch / token expiry.
+          warmup: () async {
+            await _getXhToken();
+          },
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
+            final tk = await _getXhToken(cancelToken: cancelToken);
             if (tk.isEmpty) return _u('');
             const bs = {
               MusicPlatform.wy: 'wy',
@@ -732,6 +840,7 @@ class MusicResolvers {
             }
             final j = await _fetchJson(
               url,
+              cancelToken: cancelToken,
               headers: {
                 'User-Agent': 'lx-music',
                 'X-Client': 'XingHaiMusicSource/v3.2.19 (Linux)',
@@ -752,9 +861,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 60,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://oiapi.net/api/Music_163?id=${Uri.encodeComponent(id)}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             if (j == null || j['code'] != 0) return _u('');
@@ -770,9 +880,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 70,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://metings.qjqq.cn/Song_V1',
+              cancelToken: cancelToken,
               method: 'POST',
               headers: {
                 'User-Agent': _musicUa,
@@ -791,9 +902,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 80,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://ncm.kangqiovo.com/Song_V1',
+              cancelToken: cancelToken,
               method: 'POST',
               headers: {
                 'User-Agent': _musicUa,
@@ -812,9 +924,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 90,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://api.yutangxiaowu.cn/api/music/Song_V1?url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             if (j == null) return _u('');
@@ -832,10 +945,11 @@ class MusicResolvers {
           platforms: const [MusicPlatform.kw],
           enabled: true,
           order: 100,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             if (title.isEmpty) return _u('');
             final j = await _fetchJson(
               'https://oiapi.net/api/Kuwo?msg=${Uri.encodeComponent(title)}&n=1&br=${kwBr(q)}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             final data = j?['data'] as Map<String, dynamic>?;
@@ -863,7 +977,7 @@ class MusicResolvers {
           // Default OFF (direct-IP host, shared key) — same as the JS.
           enabled: false,
           order: 110,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://103.79.184.97/api/music/url?platform=wy&source=wy&songId=${Uri.encodeComponent(id)}&quality=320k',
               headers: {
@@ -884,9 +998,10 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy, MusicPlatform.kw],
           enabled: true,
           order: 120,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             final j = await _fetchJson(
               'https://c.wwwweb.top/music/url',
+              cancelToken: cancelToken,
               method: 'POST',
               headers: {
                 'User-Agent': 'lx-music-desktop/2.10.1',
@@ -912,7 +1027,7 @@ class MusicResolvers {
           platforms: const [MusicPlatform.kw],
           enabled: true,
           order: 130,
-          fn: (id, pf, q, title, artist) async {
+          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
             if (title.isEmpty) return _u('');
             // Refuses master/hires/lossless outright (returns empty → downgrade).
             if (q == AudioQuality.master ||
@@ -922,6 +1037,7 @@ class MusicResolvers {
             }
             final j = await _fetchJson(
               'https://yy.zddyr.top/lx/api/?source=kw&name=${Uri.encodeComponent(title)}&singer=&songmid=${Uri.encodeComponent(id)}&interval=&albumName=&quality=${q.code}',
+              cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
             return _u(
@@ -989,10 +1105,11 @@ class MusicResolvers {
     MusicPlatform pf,
     String title,
     Duration budget,
-    Set<String> skipTimedOut, [
+    Set<String> skipTimedOut, {
     Set<String> excludeNames = const <String>{},
     String artist = '',
-  ]) async {
+    bool background = false,
+  }) async {
     // LX script jobs (M-P0-6): kick off engine load on first use; jobs
     // appear once the engine has loaded, so the first resolve after
     // launch may predate them — later resolves include them.
@@ -1000,10 +1117,40 @@ class MusicResolvers {
     final jobs = _rankedJobs(pf, q, songId, title, artist: artist);
     if (jobs.isEmpty) return (result: null, incomplete: false);
     final deadline = DateTime.now().add(budget);
+    // Jobs still untried from [i] on (skipped-by-timeout / excluded
+    // jobs do not count: they were attempted, or deliberately not
+    // asked).
+    bool untriedFrom(int i) => jobs.skip(i).any(
+          (j) =>
+              !skipTimedOut.contains(j.key) &&
+              !excludeNames.contains(j.name),
+        );
     for (var i = 0; i < jobs.length; i++) {
       final job = jobs[i];
       if (excludeNames.contains(job.name)) continue;
       if (skipTimedOut.contains(job.key)) continue;
+      // M-P0-2 (b): a job prerequisite (xinghai's token) waits
+      // OUTSIDE the per-job timeout — the 2 s clock starts only
+      // once the token is in hand. Bounded by the pass budget, so
+      // a hung prerequisite cannot stall the pass past its budget.
+      if (job.warmup != null) {
+        final warmRemaining = deadline.difference(DateTime.now());
+        if (warmRemaining <= Duration.zero) {
+          return (result: null, incomplete: untriedFrom(i));
+        }
+        try {
+          await job.warmup!().timeout(warmRemaining);
+        } on TimeoutException {
+          // Budget died waiting for the prerequisite: the source
+          // itself was never asked — not a job timeout, so no
+          // cooldown and no skipTimedOut. Loop on; the top check
+          // reports the pass incomplete with jobs still untried.
+          continue;
+        } catch (_) {
+          // Warmup itself failed (token endpoint down): the job's
+          // own fn re-checks and answers empty fast; do not skip it.
+        }
+      }
       final remaining = deadline.difference(DateTime.now());
       if (remaining <= Duration.zero) {
         // Budget gone with this job (and any after it) still
@@ -1011,32 +1158,47 @@ class MusicResolvers {
         // available source was never asked. Skipped jobs (timed out
         // earlier in this resolve, or excluded by name) do not
         // count: they were attempted, or deliberately not asked.
-        final untried = jobs.skip(i).any(
-              (j) =>
-                  !skipTimedOut.contains(j.key) &&
-                  !excludeNames.contains(j.name),
-            );
-        return (result: null, incomplete: untried);
+        return (result: null, incomplete: untriedFrom(i));
       }
       final timeout =
           remaining < _perJobTimeout ? remaining : _perJobTimeout;
       final sw = Stopwatch()..start();
       _ResolvedUrl resolved;
+      var threw = false;
+      // M-P1-1: one token per job attempt. On timeout the token is
+      // cancelled, so the underlying Dio request / script poll loop
+      // aborts instead of running on in the background (a bare
+      // Future.timeout only abandons the wait).
+      final token = CancelToken();
       try {
-        resolved =
-            await job.fn(songId, pf, q, title, artist).timeout(timeout);
+        resolved = await job
+            .fn(songId, pf, q, title, artist, cancelToken: token)
+            .timeout(timeout);
       } on TimeoutException {
-        _recordAttempt(job.key, false, timeout.inMilliseconds,
-            timedOut: true);
+        token.cancel();
+        _recordAttempt(
+          job.key,
+          _AttemptOutcome.timeout,
+          timeout.inMilliseconds,
+          background: background,
+        );
         skipTimedOut.add(job.key);
         continue;
       } catch (_) {
+        // The job itself failed — record it as an error below, not
+        // as a deliberate "no stock" (M-P1-8).
+        threw = true;
         resolved = _u('');
       }
       sw.stop();
       final url = resolved.url;
       if (url.isEmpty) {
-        _recordAttempt(job.key, false, sw.elapsedMilliseconds);
+        _recordAttempt(
+          job.key,
+          threw ? _AttemptOutcome.error : _AttemptOutcome.empty,
+          sw.elapsedMilliseconds,
+          background: background,
+        );
         continue;
       }
       final https = toHttps(url);
@@ -1044,10 +1206,20 @@ class MusicResolvers {
       // AVURLAsset (v1.0.7 crash): treat it as a failed source and
       // try the next one, like any other unusable result.
       if (https.isEmpty || !isPlayableUrl(https)) {
-        _recordAttempt(job.key, false, sw.elapsedMilliseconds);
+        _recordAttempt(
+          job.key,
+          _AttemptOutcome.error,
+          sw.elapsedMilliseconds,
+          background: background,
+        );
         continue;
       }
-      _recordAttempt(job.key, true, sw.elapsedMilliseconds);
+      _recordAttempt(
+        job.key,
+        _AttemptOutcome.success,
+        sw.elapsedMilliseconds,
+        background: background,
+      );
       // First playable URL wins immediately. No hunting: even a
       // below-target URL plays now (per-song downgrade); the caller
       // still passes the user's chosen tier for the next song.
@@ -1075,6 +1247,13 @@ class MusicResolvers {
   /// served the trial URL. When non-empty the URL cache is bypassed
   /// for the read (the previous answer is exactly what is being
   /// excluded), but the new result is still cached.
+  /// [background] (M-P1-5): prewarm / prefetch calls — failures are
+  /// not recorded (no streak, no cooldown); only successes update
+  /// the speed ranking, so a background timeout can never demote a
+  /// source the user is about to tap.
+  /// [totalBudget] (M-P1-4): whole-resolve deadline. 8 s by default;
+  /// the auto-advance failure path passes a tighter budget so a dead
+  /// song fails over to the next track instead of silencing the app.
   Future<PlayUrlResult?> resolvePlayUrl(
     String songId,
     MusicPlatform platform,
@@ -1083,6 +1262,8 @@ class MusicResolvers {
     Set<String> excludeJobs = const <String>{},
     // Expected artist for title-only resolvers (oiapi_kw, P1-L5).
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     if (songId.isEmpty) {
       lastResolveTruncated = false;
@@ -1100,7 +1281,7 @@ class MusicResolvers {
     // is bounded by one global deadline — the old tier loop re-fired
     // every resolver at every tier (worst case ~15 s).
     final skipTimedOut = <String>{};
-    final deadline = DateTime.now().add(const Duration(seconds: 8));
+    final deadline = DateTime.now().add(totalBudget);
     var first = true;
     // OR across tiers: if ANY tier ran out of budget with jobs
     // still untried, the resolve did not exhaust the sources — a
@@ -1120,8 +1301,9 @@ class MusicResolvers {
         title,
         budget,
         skipTimedOut,
-        excludeJobs,
-        artist,
+        excludeNames: excludeJobs,
+        artist: artist,
+        background: background,
       );
       truncated = truncated || pass.incomplete;
       first = false;

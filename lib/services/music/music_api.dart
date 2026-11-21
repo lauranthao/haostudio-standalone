@@ -1447,7 +1447,17 @@ class MusicApi {
 
   // -- plaza import (app.js:762-830) -----------------------------------------
 
-  Future<({String name, List<Song> tracks})> importWyPlaylist(String id) async {
+  /// NetEase playlist import. [missing] counts songs known to be
+  /// missing (a chunk that failed twice, or ids the detail endpoint
+  /// never returned); [note] is '' when the import is complete, else
+  /// a user-facing reason. [onProgress] reports (imported, total);
+  /// [cancelToken] stops between chunks (in-flight requests abort).
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importWyPlaylist(
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     var name = '';
     var tids = <String>[];
     // One v6 detail fetch. Returns true when the call answered at
@@ -1458,6 +1468,7 @@ class MusicApi {
           'https://music.163.com/api/v6/playlist/detail?id=$id',
           headers: {'User-Agent': kMusicUa},
           timeout: const Duration(seconds: 15),
+          cancelToken: cancelToken,
         );
         if (j == null) return false;
         final pl = j['playlist'] as Map<String, dynamic>? ?? {};
@@ -1472,93 +1483,150 @@ class MusicApi {
       }
     }
 
-    final answered = await fetchV6();
-    if (tids.isEmpty && answered) {
-      // v6 answered but gave no ids (transient API error?) — retry
-      // once before falling back to the old endpoint, whose track
-      // list is truncated to ~10 for big playlists (measured
-      // 2026-11-17: 836-song playlist -> 10 tracks, no trackIds).
-      // Null = network/timeout: do not retry (same rule as
-      // searchKw/searchKg).
+    // v6: retry once (800 ms) whenever the first attempt leaves us
+    // with no ids — answered-but-empty AND network failure alike
+    // (M-P1-3). Two silent no-answers used to fall straight through
+    // to the old endpoint, whose track list truncates big playlists
+    // to ~10 (measured 2026-11-17: 836-song playlist -> 10 tracks,
+    // no trackIds) — and nothing said so.
+    var answered = await fetchV6();
+    if (tids.isEmpty && cancelToken?.isCancelled != true) {
       await Future<void>.delayed(const Duration(milliseconds: 800));
-      await fetchV6();
+      answered = await fetchV6();
     }
     if (tids.isEmpty) {
       final j = await _getJson(
         'https://music.163.com/api/playlist/detail?id=$id',
         headers: {'User-Agent': kMusicUa},
         timeout: const Duration(seconds: 15),
+        cancelToken: cancelToken,
       );
       final result = j?['result'] as Map<String, dynamic>? ?? {};
       final tr = _asList(result['tracks']);
-      return (
-        name: result['name']?.toString() ?? name,
-        tracks: tr
-            .map((t) {
-              final ars = _asList(t['artists']);
-              final alb = t['album'] as Map<String, dynamic>?;
-              final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
-              return Song(
-                songId: t['id']?.toString() ?? '',
-                title: t['name']?.toString() ?? '',
-                artist: ars.map((a) => a['name']?.toString() ?? '').join('/'),
-                album: alb?['name']?.toString() ?? '',
-                cover: coverHi(alb?['picUrl']?.toString() ?? ''),
-                platform: MusicPlatform.wy,
-                dur: (durMs / 1000).round(),
-              );
-            })
-            .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-            .toList(),
-      );
-    }
-    final out = <Song>[];
-    for (var i = 0; i < tids.length; i += 100) {
-      final chunk = tids.sublist(i, math.min(i + 100, tids.length));
-      try {
-        final j = await _getJson(
-          'https://music.163.com/api/song/detail/?ids=${Uri.encodeComponent('[${chunk.join(',')}]')}',
-          headers: {'User-Agent': kMusicUa},
-          timeout: const Duration(seconds: 15),
-        );
-        final byId = <String, Map<String, dynamic>>{};
-        for (final t in _asList(j?['songs'])) {
-          byId[t['id']?.toString() ?? ''] = t;
-        }
-        for (final cid in chunk) {
-          final t = byId[cid];
-          if (t == null) continue;
-          final ars = _asList(t['artists']).isNotEmpty
-              ? _asList(t['artists'])
-              : _asList(t['ar']);
-          final alb =
-              (t['album'] as Map<String, dynamic>?) ??
-              (t['al'] as Map<String, dynamic>?) ??
-              {};
-          final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
-          out.add(
-            Song(
+      final tracks = tr
+          .map((t) {
+            final ars = _asList(t['artists']);
+            final alb = t['album'] as Map<String, dynamic>?;
+            final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
+            return Song(
               songId: t['id']?.toString() ?? '',
               title: t['name']?.toString() ?? '',
               artist: ars.map((a) => a['name']?.toString() ?? '').join('/'),
-              album: alb['name']?.toString() ?? '',
-              cover: coverHi(alb['picUrl']?.toString() ?? ''),
+              album: alb?['name']?.toString() ?? '',
+              cover: coverHi(alb?['picUrl']?.toString() ?? ''),
               platform: MusicPlatform.wy,
               dur: (durMs / 1000).round(),
-            ),
+            );
+          })
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList();
+      return (
+        name: result['name']?.toString() ?? name,
+        tracks: tracks,
+        missing: 0,
+        // The old endpoint may have truncated a big playlist and we
+        // cannot know its true size when v6 never answered: say so
+        // instead of silently importing ~10 songs.
+        note: !answered
+            ? '网络不稳定，歌单可能未导全（仅 ${tracks.length} 首）'
+            : '',
+      );
+    }
+    final out = <Song>[];
+    var missing = 0;
+    final failedChunks = <String>[];
+    // Cancelled mid-import: return what we have, say so.
+    ({String name, List<Song> tracks, int missing, String note})
+    cancelled() => (
+      name: name,
+      tracks: out
+          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+          .toList(),
+      missing: tids.length - out.length,
+      note: '已取消导入，已导入 ${out.length} 首',
+    );
+    for (var i = 0; i < tids.length; i += 100) {
+      if (cancelToken?.isCancelled == true) return cancelled();
+      final chunk = tids.sublist(i, math.min(i + 100, tids.length));
+      Future<Map<String, dynamic>?> fetchChunk() async {
+        try {
+          return await _getJson(
+            'https://music.163.com/api/song/detail/?ids=${Uri.encodeComponent('[${chunk.join(',')}]')}',
+            headers: {'User-Agent': kMusicUa},
+            timeout: const Duration(seconds: 15),
+            cancelToken: cancelToken,
           );
+        } catch (_) {
+          return null;
         }
-      } catch (_) {}
+      }
+
+      var j = await fetchChunk();
+      if (j == null && cancelToken?.isCancelled != true) {
+        // One retry after 800 ms (M-P1-3, same rule as search legs).
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        if (cancelToken?.isCancelled != true) j = await fetchChunk();
+      }
+      if (j == null) {
+        if (cancelToken?.isCancelled == true) return cancelled();
+        missing += chunk.length;
+        failedChunks.add('第 ${i ~/ 100 + 1} 组');
+        onProgress?.call(out.length, tids.length);
+        continue;
+      }
+      final byId = <String, Map<String, dynamic>>{};
+      for (final t in _asList(j['songs'])) {
+        byId[t['id']?.toString() ?? ''] = t;
+      }
+      for (final cid in chunk) {
+        final t = byId[cid];
+        if (t == null) {
+          // Detail endpoint never returned this id: count it
+          // instead of silently dropping the song.
+          missing++;
+          continue;
+        }
+        final ars = _asList(t['artists']).isNotEmpty
+            ? _asList(t['artists'])
+            : _asList(t['ar']);
+        final alb =
+            (t['album'] as Map<String, dynamic>?) ??
+            (t['al'] as Map<String, dynamic>?) ??
+            {};
+        final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
+        out.add(
+          Song(
+            songId: t['id']?.toString() ?? '',
+            title: t['name']?.toString() ?? '',
+            artist: ars.map((a) => a['name']?.toString() ?? '').join('/'),
+            album: alb['name']?.toString() ?? '',
+            cover: coverHi(alb['picUrl']?.toString() ?? ''),
+            platform: MusicPlatform.wy,
+            dur: (durMs / 1000).round(),
+          ),
+        );
+      }
+      onProgress?.call(out.length, tids.length);
     }
     return (
       name: name,
       tracks: out
           .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
           .toList(),
+      missing: missing,
+      note: missing > 0
+          ? '其中 $missing 首因网络失败未导入'
+                '${failedChunks.isNotEmpty ? '（${failedChunks.join('、')}）' : ''}'
+          : '',
     );
   }
 
-  Future<({String name, List<Song> tracks})> importTxPlaylist(String id) async {
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importTxPlaylist(
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final j = await _getJson(
       'https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg',
       headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
@@ -1579,13 +1647,12 @@ class MusicApi {
         'needNewCode': '0',
       },
       timeout: const Duration(seconds: 15),
+      cancelToken: cancelToken,
     );
     final cd = _asList(j?['cdlist']).isNotEmpty
         ? _asList(j?['cdlist']).first
         : <String, dynamic>{};
-    return (
-      name: decodeEntities(cd['dissname']?.toString() ?? ''),
-      tracks: _asList(cd['songlist'])
+    final tracks = _asList(cd['songlist'])
           .map((x) {
             final singers = _asList(x['singer']);
             final album = x['album'] as Map<String, dynamic>?;
@@ -1604,30 +1671,56 @@ class MusicApi {
             );
           })
           .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-          .toList(),
+          .toList();
+    onProgress?.call(tracks.length, tracks.length);
+    return (
+      name: decodeEntities(cd['dissname']?.toString() ?? ''),
+      tracks: tracks,
+      missing: 0,
+      note: '',
     );
   }
 
-  Future<({String name, List<Song> tracks})> importKwPlaylist(String id) async {
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importKwPlaylist(
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final out = <Song>[];
     var name = '';
+    String? stoppedReason;
     for (var pn = 0; pn < 10; pn++) {
-      final j = await _getJson(
-        'https://nplserver.kuwo.cn/pl.svc',
-        headers: {'User-Agent': kMusicUa},
-        query: {
-          'op': 'getlistinfo',
-          'pid': id,
-          'pn': '$pn',
-          'rn': '100',
-          'encode': 'utf8',
-          'keyset': 'pl2012',
-          'vipver': '1',
-        },
-        timeout: const Duration(seconds: 15),
+      if (cancelToken?.isCancelled == true) {
+        stoppedReason = 'cancelled';
+        break;
+      }
+      final j = await _importPageWithRetry(
+        () => _getJson(
+          'https://nplserver.kuwo.cn/pl.svc',
+          headers: {'User-Agent': kMusicUa},
+          query: {
+            'op': 'getlistinfo',
+            'pid': id,
+            'pn': '$pn',
+            'rn': '100',
+            'encode': 'utf8',
+            'keyset': 'pl2012',
+            'vipver': '1',
+          },
+          timeout: const Duration(seconds: 15),
+          cancelToken: cancelToken,
+        ),
+        cancelToken,
       );
-      final list = _asList(j?['musiclist']);
-      if (pn == 0) name = j?['title']?.toString() ?? '';
+      if (j == null) {
+        stoppedReason = cancelToken?.isCancelled == true
+            ? 'cancelled'
+            : '第 ${pn + 1} 页获取失败';
+        break;
+      }
+      final list = _asList(j['musiclist']);
+      if (pn == 0) name = j['title']?.toString() ?? '';
       if (list.isEmpty) break;
       for (final x in list) {
         out.add(
@@ -1643,29 +1736,167 @@ class MusicApi {
           ),
         );
       }
+      onProgress?.call(out.length, null);
       if (list.length < 100) break;
     }
+    final tracks = out
+        .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+        .toList();
     return (
       name: name,
-      tracks: out
-          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-          .toList(),
+      tracks: tracks,
+      missing: 0,
+      note: switch (stoppedReason) {
+        null => '',
+        'cancelled' => '已取消导入，已导入 ${tracks.length} 首',
+        final r => '$r，仅导入 ${tracks.length} 首',
+      },
     );
   }
 
-  Future<({String name, List<Song> tracks})> importKgPlaylist(String id) async {
-    final out = <Song>[];
-    for (var pn = 1; pn <= 10; pn++) {
-      final j = await _getJson(
-        toHttps(
-          'http://mobilecdn.kugou.com/api/v3/special/song?specialid=$id&page=$pn&pagesize=100&showtype=1',
+  /// Kugou import page fetch with one retry (M-P1-7): [fetch]
+  /// returns null on network failure (never throws — _getJson
+  /// swallows). Returns null only when both attempts fail. A
+  /// cancelled token is never retried.
+  Future<Map<String, dynamic>?> _importPageWithRetry(
+    Future<Map<String, dynamic>?> Function() fetch,
+    CancelToken? cancelToken,
+  ) async {
+    var j = await fetch();
+    if (j != null) return j;
+    if (cancelToken?.isCancelled == true) return null;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (cancelToken?.isCancelled == true) return null;
+    return fetch();
+  }
+
+  /// How many Kugou import pages fly at once (M-P1-7): the old
+  /// serial loop took 40 pages x 15 s worst case. 3 at a time cuts a
+  /// 400-song plist from ~80 s to ~30 s at 2 s/page (mock) with no
+  /// extra load the API cannot take.
+  static const _kgImportConcurrency = 3;
+
+  /// Batched parallel page fetch for Kugou imports (M-P1-7).
+  ///
+  /// [fetchPage] fetches one page and returns its raw items plus
+  /// whether it is the last page (empty, or short of the page size),
+  /// or null when the page failed twice (after one retry). Pages are
+  /// fetched [_kgImportConcurrency] at a time and appended in page
+  /// order, so the result order matches the old serial loop. Stops at
+  /// [maxPages], on cancel, on a failed page, or on [totalTimeout];
+  /// [onPage] reports the cumulative imported count after each page.
+  /// Returns the pages in order plus why the import stopped early
+  /// ('' = complete, 'cancelled', 'timeout', or '第 X 页获取失败').
+  Future<({List<List<Map<String, dynamic>>> pages, String stoppedReason})>
+      _fetchKgPages({
+    required int maxPages,
+    required Future<({List<Map<String, dynamic>> items, bool last})?>
+        Function(int page)
+        fetchPage,
+    CancelToken? cancelToken,
+    Duration totalTimeout = const Duration(seconds: 180),
+    void Function(int doneItems)? onPage,
+  }) async {
+    final pages = <List<Map<String, dynamic>>>[];
+    final deadline = DateTime.now().add(totalTimeout);
+    var stoppedReason = '';
+    var doneItems = 0;
+    var page = 1;
+    while (page <= maxPages) {
+      if (cancelToken?.isCancelled == true) {
+        stoppedReason = 'cancelled';
+        break;
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        stoppedReason = 'timeout';
+        break;
+      }
+      final batch = <int>[
+        for (var k = 0;
+            k < _kgImportConcurrency && page + k <= maxPages;
+            k++)
+          page + k,
+      ];
+      final results = await Future.wait(batch.map(fetchPage));
+      var done = false;
+      for (var k = 0; k < batch.length; k++) {
+        final r = results[k];
+        if (r == null) {
+          // A null page while the token is cancelled is the user's
+          // cancel, not a page failure — report it honestly.
+          stoppedReason = cancelToken?.isCancelled == true
+              ? 'cancelled'
+              : '第 ${batch[k]} 页获取失败';
+          done = true;
+          break;
+        }
+        pages.add(r.items);
+        doneItems += r.items.length;
+        onPage?.call(doneItems);
+        if (r.items.isEmpty || r.last) {
+          done = true;
+          break;
+        }
+      }
+      if (done) break;
+      page += batch.length;
+    }
+    return (pages: pages, stoppedReason: stoppedReason);
+  }
+
+  /// Import-progress note for a Kugou import that stopped early.
+  /// [done] is the imported count, [total] the known total (0 when
+  /// unknown — then the missing count stays unknown too).
+  static String _kgStoppedNote(String reason, int done, int total) {
+    final missing = total > 0 ? total - done : 0;
+    final missingPart = missing > 0 ? '，缺 $missing 首' : '';
+    return switch (reason) {
+      'cancelled' => '已取消导入，已导入 $done 首$missingPart',
+      'timeout' => '导入超时，已导入 $done 首$missingPart',
+      '' => '',
+      final r => '$r，仅导入 $done 首$missingPart',
+    };
+  }
+
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importKgPlaylist(
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+    Duration totalTimeout = const Duration(seconds: 180),
+  }) async {
+    Future<({List<Map<String, dynamic>> items, bool last})?> fetchPage(
+      int pn,
+    ) async {
+      final j = await _importPageWithRetry(
+        () => _getJson(
+          toHttps(
+            'http://mobilecdn.kugou.com/api/v3/special/song?specialid=$id&page=$pn&pagesize=100&showtype=1',
+          ),
+          headers: {'User-Agent': kMusicUa},
+          timeout: const Duration(seconds: 15),
+          cancelToken: cancelToken,
         ),
-        headers: {'User-Agent': kMusicUa},
-        timeout: const Duration(seconds: 15),
+        cancelToken,
       );
-      final list = _asList(j?['data']?['info']);
-      if (list.isEmpty) break;
-      for (final x in list) {
+      if (j == null) return null;
+      final list = _asList(j['data']?['info']);
+      return (
+        items: [for (final x in list) Map<String, dynamic>.from(x as Map)],
+        last: list.isEmpty || list.length < 100,
+      );
+    }
+
+    final r = await _fetchKgPages(
+      maxPages: 10,
+      fetchPage: fetchPage,
+      cancelToken: cancelToken,
+      totalTimeout: totalTimeout,
+      onPage: (done) => onProgress?.call(done, null),
+    );
+    final out = <Song>[];
+    for (final page in r.pages) {
+      for (final x in page) {
         final fn = x['filename']?.toString() ?? '';
         final sep = fn.indexOf(' - ');
         final artist = sep >= 0 ? fn.substring(0, sep) : '';
@@ -1683,14 +1914,16 @@ class MusicApi {
           ),
         );
       }
-      if (list.length < 100) break;
     }
-    final name = await _kgSpecialTitle(id);
+    final name = await _kgSpecialTitle(id, cancelToken: cancelToken);
+    final tracks = out
+        .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+        .toList();
     return (
       name: name.isEmpty ? '酷狗歌单 $id' : name,
-      tracks: out
-          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-          .toList(),
+      tracks: tracks,
+      missing: 0,
+      note: _kgStoppedNote(r.stoppedReason, tracks.length, 0),
     );
   }
 
@@ -1698,21 +1931,50 @@ class MusicApi {
   /// Public playlists need no login (dsh-kugou-music lib/kugou.js
   /// fetchPlaylist). Name comes from the special-page title when it
   /// exists, else `酷狗歌单 <id>` - the plist JSON carries no name.
-  Future<({String name, List<Song> tracks})> importKgPlist(String id) async {
-    final out = <Song>[];
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importKgPlist(
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+    Duration totalTimeout = const Duration(seconds: 180),
+  }) async {
     var total = 0;
-    for (var p = 1; p <= 40; p++) {
-      final j = await _getJson(
-        'https://m.kugou.com/plist/list/$id',
-        headers: {'User-Agent': kMusicUa, 'Referer': 'https://www.kugou.com/'},
-        query: {'json': 'true', 'page': '$p', 'pagesize': '10'},
-        timeout: const Duration(seconds: 15),
+    Future<({List<Map<String, dynamic>> items, bool last})?> fetchPage(
+      int p,
+    ) async {
+      final j = await _importPageWithRetry(
+        () => _getJson(
+          'https://m.kugou.com/plist/list/$id',
+          headers: {
+            'User-Agent': kMusicUa,
+            'Referer': 'https://www.kugou.com/',
+          },
+          query: {'json': 'true', 'page': '$p', 'pagesize': '10'},
+          timeout: const Duration(seconds: 15),
+          cancelToken: cancelToken,
+        ),
+        cancelToken,
       );
-      final list = j?['list']?['list'] as Map<String, dynamic>?;
+      if (j == null) return null;
+      final list = j['list']?['list'] as Map<String, dynamic>?;
       final info = _asList(list?['info']);
       if (p == 1) total = (list?['total'] as num?)?.toInt() ?? info.length;
-      if (info.isEmpty) break;
-      for (final x in info) {
+      return (
+        items: [for (final x in info) Map<String, dynamic>.from(x as Map)],
+        last: info.isEmpty || info.length < 10,
+      );
+    }
+
+    final r = await _fetchKgPages(
+      maxPages: 40,
+      fetchPage: fetchPage,
+      cancelToken: cancelToken,
+      totalTimeout: totalTimeout,
+      onPage: (done) => onProgress?.call(done, total == 0 ? null : total),
+    );
+    final out = <Song>[];
+    for (final page in r.pages) {
+      for (final x in page) {
         final fn = x['filename']?.toString() ?? '';
         final sep = fn.indexOf(' - ');
         out.add(
@@ -1726,27 +1988,39 @@ class MusicApi {
           ),
         );
       }
-      if (out.length >= total || info.length < 10) break;
     }
-    final name = await _kgSpecialTitle(id);
+    final name = await _kgSpecialTitle(id, cancelToken: cancelToken);
+    final tracks = out
+        .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+        .toList();
     return (
       name: name.isEmpty ? '酷狗歌单 $id' : name,
-      tracks: out
-          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-          .toList(),
+      tracks: tracks,
+      // Only a stopped-early import has a known missing count; a
+      // complete import drops nothing it fetched.
+      missing: r.stoppedReason.isEmpty
+          ? 0
+          : (total > 0 ? math.max(0, total - tracks.length) : 0),
+      note: _kgStoppedNote(r.stoppedReason, tracks.length, total),
     );
   }
 
   /// Kugou 新版分享歌单 (t1.kugou.com short link -> share/zlist.html).
   /// m3ws.kugou.com/v2/zlist/list, signed with [kugouSign]; params come
   /// from the share landing URL. No login. Up to 500 songs (100/page).
-  Future<({String name, List<Song> tracks})> importKgShared(
-    KgShare share,
-  ) async {
-    final out = <Song>[];
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importKgShared(
+    KgShare share, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+    Duration totalTimeout = const Duration(seconds: 180),
+  }) async {
     var name = '';
     final now = DateTime.now().millisecondsSinceEpoch.toString();
-    for (var page = 1; page <= 10; page++) {
+    var fetched = 0;
+    Future<({List<Map<String, dynamic>> items, bool last})?> fetchPage(
+      int page,
+    ) async {
       final params = <String, String>{
         'srcappid': '2919',
         'clientver': '20000',
@@ -1766,17 +2040,40 @@ class MusicApi {
         if (share.collection.isNotEmpty)
           'global_collection_id': share.collection,
       };
-      final j = await _getJson(
-        'https://m3ws.kugou.com/v2/zlist/list',
-        headers: {'User-Agent': kMusicUa, 'Referer': 'https://www.kugou.com/'},
-        query: {...params, 'signature': kugouSign(params)},
-        timeout: const Duration(seconds: 15),
+      final j = await _importPageWithRetry(
+        () => _getJson(
+          'https://m3ws.kugou.com/v2/zlist/list',
+          headers: {
+            'User-Agent': kMusicUa,
+            'Referer': 'https://www.kugou.com/',
+          },
+          query: {...params, 'signature': kugouSign(params)},
+          timeout: const Duration(seconds: 15),
+          cancelToken: cancelToken,
+        ),
+        cancelToken,
       );
-      final info = j?['list'] as Map<String, dynamic>?;
+      if (j == null) return null;
+      final info = j['list'] as Map<String, dynamic>?;
       if (name.isEmpty) name = info?['name']?.toString() ?? '';
       final arr = _asList(info?['info']);
-      if (arr.isEmpty) break;
-      for (final s in arr) {
+      fetched += arr.length;
+      return (
+        items: [for (final s in arr) Map<String, dynamic>.from(s as Map)],
+        last: arr.isEmpty || arr.length < 100 || fetched >= 500,
+      );
+    }
+
+    final r = await _fetchKgPages(
+      maxPages: 10,
+      fetchPage: fetchPage,
+      cancelToken: cancelToken,
+      totalTimeout: totalTimeout,
+      onPage: (done) => onProgress?.call(done, null),
+    );
+    final out = <Song>[];
+    for (final page in r.pages) {
+      for (final s in page) {
         final full = s['name']?.toString() ?? '';
         final sep = full.indexOf(' - ');
         out.add(
@@ -1790,31 +2087,55 @@ class MusicApi {
           ),
         );
       }
-      if (arr.length < 100 || out.length >= 500) break;
     }
+    final tracks = out
+        .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
+        .take(500)
+        .toList();
     return (
       name: name,
-      tracks: out
-          .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
-          .toList(),
+      tracks: tracks,
+      missing: 0,
+      note: _kgStoppedNote(r.stoppedReason, tracks.length, 0),
     );
   }
 
-  Future<({String name, List<Song> tracks})> importPlaylist(
+  /// [missing]/[note] ride along from the platform import (M-P1-3 /
+  /// M-P1-7): a partial import is reported, not silently short.
+  Future<({String name, List<Song> tracks, int missing, String note})>
+      importPlaylist(
     MusicPlatform pf,
-    String id,
-  ) {
+    String id, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) {
     switch (pf) {
       case MusicPlatform.wy:
-        return importWyPlaylist(id);
+        return importWyPlaylist(
+          id,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+        );
       case MusicPlatform.tx:
-        return importTxPlaylist(id);
+        return importTxPlaylist(
+          id,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+        );
       case MusicPlatform.kg:
-        return importKgPlaylist(id);
+        return importKgPlaylist(
+          id,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+        );
       case MusicPlatform.kw:
-        return importKwPlaylist(id);
+        return importKwPlaylist(
+          id,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+        );
       case MusicPlatform.mg:
-        return Future.value((name: '', tracks: <Song>[]));
+        return Future.value((name: '', tracks: <Song>[], missing: 0, note: ''));
     }
   }
 
@@ -1985,9 +2306,13 @@ class MusicApi {
 
   /// Playlist name from the Kugou special page <title> (the JSON
   /// playlist APIs do not return a name). Fail-soft: '' on any failure.
-  Future<String> _kgSpecialTitle(String id) async {
+  Future<String> _kgSpecialTitle(
+    String id, {
+    CancelToken? cancelToken,
+  }) async {
     final html = await _getText(
       'https://www.kugou.com/yy/special/single/$id.html',
+      cancelToken: cancelToken,
     );
     if (html == null) return '';
     final m = RegExp(
@@ -2004,9 +2329,22 @@ class MusicApi {
 
   /// Import a playlist from a pasted public link (wy / kg / kw / tx).
   /// Returns null when the URL is not a recognised playlist link.
-  Future<({String name, List<Song> tracks, MusicPlatform pf})?> importFromLink(
-    String input,
-  ) async {
+  /// [missing]/[note] ride along from the platform import (M-P1-3 /
+  /// M-P1-7): a partial import is reported, not silently short.
+  Future<
+    ({
+      String name,
+      List<Song> tracks,
+      MusicPlatform pf,
+      int missing,
+      String note,
+    })?
+  >
+  importFromLink(
+    String input, {
+    void Function(int done, int? total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
     final url = extractUrlFromText(input);
     if (url == null) return null;
     final host = Uri.tryParse(url)?.host ?? '';
@@ -2017,8 +2355,18 @@ class MusicApi {
       for (final hop in await _followRedirects(url)) {
         final id = wyPlaylistIdFromUrl(hop);
         if (id != null) {
-          final r = await importWyPlaylist(id);
-          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.wy);
+          final r = await importWyPlaylist(
+            id,
+            onProgress: onProgress,
+            cancelToken: cancelToken,
+          );
+          return (
+            name: r.name,
+            tracks: r.tracks,
+            pf: MusicPlatform.wy,
+            missing: r.missing,
+            note: r.note,
+          );
         }
       }
       return null;
@@ -2029,18 +2377,48 @@ class MusicApi {
       for (final hop in await _followRedirects(url)) {
         final share = kgShareParamsFromUrl(hop);
         if (share != null) {
-          final r = await importKgShared(share);
-          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+          final r = await importKgShared(
+            share,
+            onProgress: onProgress,
+            cancelToken: cancelToken,
+          );
+          return (
+            name: r.name,
+            tracks: r.tracks,
+            pf: MusicPlatform.kg,
+            missing: r.missing,
+            note: r.note,
+          );
         }
         final special = kgSpecialIdFromUrl(hop);
         if (special != null) {
-          final r = await importKgPlaylist(special);
-          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+          final r = await importKgPlaylist(
+            special,
+            onProgress: onProgress,
+            cancelToken: cancelToken,
+          );
+          return (
+            name: r.name,
+            tracks: r.tracks,
+            pf: MusicPlatform.kg,
+            missing: r.missing,
+            note: r.note,
+          );
         }
         final plist = kgPlistIdFromUrl(hop);
         if (plist != null) {
-          final r = await importKgPlist(plist);
-          return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+          final r = await importKgPlist(
+            plist,
+            onProgress: onProgress,
+            cancelToken: cancelToken,
+          );
+          return (
+            name: r.name,
+            tracks: r.tracks,
+            pf: MusicPlatform.kg,
+            missing: r.missing,
+            note: r.note,
+          );
         }
       }
       return null;
@@ -2049,33 +2427,93 @@ class MusicApi {
     // Direct long forms (no redirect needed).
     final wyId = wyPlaylistIdFromUrl(url);
     if (wyId != null) {
-      final r = await importWyPlaylist(wyId);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.wy);
+      final r = await importWyPlaylist(
+        wyId,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.wy,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     final kgShare = kgShareParamsFromUrl(url);
     if (kgShare != null) {
-      final r = await importKgShared(kgShare);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+      final r = await importKgShared(
+        kgShare,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.kg,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     final kgSpecial = kgSpecialIdFromUrl(url);
     if (kgSpecial != null) {
-      final r = await importKgPlaylist(kgSpecial);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+      final r = await importKgPlaylist(
+        kgSpecial,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.kg,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     final kgPlist = kgPlistIdFromUrl(url);
     if (kgPlist != null) {
-      final r = await importKgPlist(kgPlist);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kg);
+      final r = await importKgPlist(
+        kgPlist,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.kg,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     final kw = RegExp(r'kuwo\.cn/playlist_detail/(\d+)').firstMatch(url);
     if (kw != null) {
-      final r = await importKwPlaylist(kw.group(1)!);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.kw);
+      final r = await importKwPlaylist(
+        kw.group(1)!,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.kw,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     final tx = RegExp(r'y\.qq\.com/.*playlist/(\d+)').firstMatch(url);
     if (tx != null) {
-      final r = await importTxPlaylist(tx.group(1)!);
-      return (name: r.name, tracks: r.tracks, pf: MusicPlatform.tx);
+      final r = await importTxPlaylist(
+        tx.group(1)!,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+      return (
+        name: r.name,
+        tracks: r.tracks,
+        pf: MusicPlatform.tx,
+        missing: r.missing,
+        note: r.note,
+      );
     }
     return null;
   }
@@ -2333,12 +2771,16 @@ class MusicApi {
   // Preference order tx > wy > kg > kw; exact normalised title + first
   // artist (+ album) match. Used when the current platform cannot play.
 
+  /// [timeout] (M-P1-4): whole-lookup cap. 5 s by default; the
+  /// auto-advance failure path passes 2 s so a dead song fails over
+  /// to the next track instead of silencing the app.
   Future<Song?> findAltPlatform(
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async {
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
     final others = [
       MusicPlatform.tx,
       MusicPlatform.wy,
@@ -2361,7 +2803,7 @@ class MusicApi {
           cancelToken: tokens[e.$1],
         ).catchError((_) => <Song>[]),
       ),
-    ).timeout(const Duration(seconds: 5), onTimeout: () {
+    ).timeout(timeout, onTimeout: () {
       for (final t in tokens) {
         t.cancel();
       }

@@ -56,6 +56,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
   /// Null = 全部 platforms; otherwise a platform id.
   String? _platformFilter;
   Map<String, LiveStatus> _statuses = const {};
+  Map<String, int> _watching = const {};
   bool _refreshing = false;
   bool _hasRefreshed = false;
   int _failedCount = 0;
@@ -70,16 +71,17 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     if (_refreshing) return;
     setState(() => _refreshing = true);
     final follows = LiveFollowStore.getAll();
-    final statuses = await refreshRoomStatuses(
+    final statuses = await refreshRoomStatusesWithWatching(
       follows.map((f) => f.toRoom()).toList(),
       siteOf: widget.siteOf,
     );
     if (!mounted) return;
     setState(() {
-      _statuses = statuses;
+      _statuses = statuses.map((k, v) => MapEntry(k, v.status));
+      _watching = statuses.map((k, v) => MapEntry(k, v.watching));
       _refreshing = false;
       _hasRefreshed = true;
-      _failedCount = statuses.values
+      _failedCount = _statuses.values
           .where((s) => s == LiveStatus.unknown)
           .length;
     });
@@ -256,6 +258,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                                 return _FollowCard(
                                   follow: follow,
                                   status: _statusOf(follow),
+                                  watching: _watching[follow.identityKey] ?? 0,
                                   onTap: () => _openFollow(follow),
                                   onUnfollow: () => _unfollow(follow),
                                 );
@@ -436,12 +439,17 @@ class _FollowCard extends StatelessWidget {
   const _FollowCard({
     required this.follow,
     required this.status,
+    this.watching = 0,
     required this.onTap,
     required this.onUnfollow,
   });
 
   final LiveFollow follow;
   final LiveStatus status;
+
+  /// Watching count from the same fresh detail the status came from
+  /// (0 = unknown/offline — no pill, same rule as the live tab).
+  final int watching;
   final VoidCallback onTap;
   final VoidCallback onUnfollow;
 
@@ -514,6 +522,43 @@ class _FollowCard extends StatelessWidget {
                   left: 8,
                   child: LiveStatusBadge(status: status),
                 ),
+                // Watching pill (B-P1-1): same style/position as the
+                // live tab's card (bottom-right, black-alpha pill).
+                // Shown only when the count is known and > 0.
+                if (watching > 0)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xA6000000),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.visibility_outlined,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            _formatWatching(watching),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 Positioned(
                   left: 12,
                   right: 12,
@@ -522,6 +567,10 @@ class _FollowCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // B-P1-1: same rule as the live tab's card — an
+                      // empty title renders one nick line only; the
+                      // second line is skipped, so the nick never
+                      // shows twice.
                       Text(
                         follow.title.isEmpty ? follow.nick : follow.title,
                         maxLines: 1,
@@ -532,16 +581,18 @@ class _FollowCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${follow.nick} · ${platformName(follow.platform)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 12,
+                      if (follow.title.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '${follow.nick} · ${platformName(follow.platform)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -581,4 +632,14 @@ class _FollowCard extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Watching count: 12345 -> "1.2万", smaller counts as-is.
+/// Local copy of the live tab's formatWatching — the tab page imports
+/// this file, so importing it back would be a cycle.
+String _formatWatching(int watching) {
+  if (watching >= 10000) {
+    return '${(watching / 10000).toStringAsFixed(1)}万';
+  }
+  return '$watching';
 }

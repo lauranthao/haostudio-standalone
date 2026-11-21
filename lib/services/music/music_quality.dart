@@ -219,12 +219,20 @@ String? lxQualityForScript(AudioQuality q, List<String> available) {
 ///
 /// Master gate: only resolvers with a verified real Master path may
 /// claim Master — 'ikun' (direct ikun API, quality=master), 'zddyr'
-/// and 'xinghai' (LX APIs), and 'lx:*' script resolvers (the engine
-/// only creates a master job when the script lists 'master' for the
-/// platform). Every other resolver caps at hires: its best output at
-/// the master tier is a hires-level stream, and the resolver loop drops
-/// non-master candidates at that tier, so these never surface as
-/// Master.
+/// and 'xinghai' (LX APIs). Every other resolver caps at hires: its
+/// best output at the master tier is a hires-level stream, and the
+/// resolver loop drops non-master candidates at that tier, so these
+/// never surface as Master.
+///
+/// LX scripts ('lx:*') are capped at hires here too (M-P0-1): a
+/// script that returns a bare URL string carries NO tier signal, so
+/// its declared label must not claim Master — the script only gets
+/// a master job because it lists 'master' for the platform, which
+/// is a claim, not a verification. A script keeps Master ONLY when
+/// it returns a `{url, quality: 'master'}` map: that report travels
+/// as [actualQuality] ([LxScriptEngine.getMusicUrlWithTier] /
+/// `reportedTierFor`) and the resolver loop labels the result with
+/// it instead of this declared label.
 ///
 /// This is the DECLARED label only (used when a resolver reports no
 /// tier). The actual label is verified per response (P1-L1):
@@ -241,7 +249,9 @@ AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
       case 'xinghai':
         return AudioQuality.master;
       default:
-        if (key.startsWith('lx:')) return AudioQuality.master;
+        // M-P0-1: 'lx:*' included — a bare-string script URL has no
+        // tier signal, so it caps at hires; only a map-reported
+        // quality: 'master' (via actualQuality) keeps Master.
         return AudioQuality.hires;
     }
   }

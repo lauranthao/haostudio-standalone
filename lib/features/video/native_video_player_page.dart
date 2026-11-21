@@ -305,6 +305,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   }
 
   /// Open the current episode's URL through the kernel ladder.
+  /// One open is capped at 30 s total (V-P1-2): three engines ×
+  /// (10 s open + 18 s first frame) is ~84 s worst case, and a
+  /// source switch then re-tries up to 3 more sources — minutes of
+  /// spinner before the failure card. The 10 s / 18 s per-attempt
+  /// budgets are untouched; the session-level budget just cuts the
+  /// whole attempt short so the next line/source can be tried.
   Future<bool> _openEpisodeUrl() async {
     final url = _episode.url;
     return _session.open(
@@ -312,7 +318,46 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       isLive: false,
       declaredFormat: _declaredFormat(url),
       headers: _playHeaders(),
+      openBudget: const Duration(seconds: 30),
     );
+  }
+
+  /// Same-episode, other-line fallback (V-P1-1): the current
+  /// episode's URL is dead — try the SAME episode on the other lines
+  /// of THIS detail first (local data, zero network requests) before
+  /// any cross-source sweep. Returns true when one plays. The
+  /// episode name match reuses [resolveSwitchTarget]'s rule: same
+  /// name = same episode, so the saved position follows it.
+  Future<bool> _tryOtherLines() async {
+    final epName = _episode.name;
+    final fromLine = _lineIdx;
+    final fromEp = _epIdx;
+    final savedPosition = _resumePosition;
+    for (var li = 0; li < _detail.lines.length; li++) {
+      if (li == fromLine) continue;
+      final eps = _detail.lines[li].episodes;
+      final ei = eps.indexWhere((e) => e.name == epName);
+      if (ei < 0) continue;
+      if (!mounted) return false;
+      setState(() {
+        _lineIdx = li;
+        _epIdx = ei;
+        _resumeSought = false;
+        _resumePosition = savedPosition;
+      });
+      if (await _openEpisodeUrl()) return true;
+    }
+    // Nothing on the other lines played: restore the original
+    // line/episode so the cross-source switch starts from the same
+    // episode it was asked for, not the last dead line tried.
+    if (mounted) {
+      setState(() {
+        _lineIdx = fromLine;
+        _epIdx = fromEp;
+        _resumePosition = savedPosition;
+      });
+    }
+    return false;
   }
 
   /// Play-time source switch (chen 2026-11-17: 换源播放，直到找到能播
@@ -408,6 +453,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       _resumeSought = false;
     });
     var ok = await _openEpisodeUrl();
+    if (!ok) {
+      // Play URL dead — first the other lines of THIS detail (same
+      // episode, zero network — V-P1-1), then a cross-source switch.
+      if (mounted) setState(() => _loadingHint = '正在切换线路…');
+      ok = await _tryOtherLines();
+    }
     if (!ok) {
       // Play URL dead — switch source and keep looking until one
       // plays (chen 2026-11-17: 换源播放，直到找到能播的为止).
@@ -530,13 +581,24 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     await _openCurrent();
   }
 
+  /// Manual line switch (V-P2-3): keep the current episode — find
+  /// the same episode NAME on the new line (not found → episode 0) —
+  /// and keep its played position, so switching lines mid-episode
+  /// resumes where it was instead of restarting from the top. A
+  /// different episode never inherits the old position (P1-15 rule:
+  /// only the same episode resumes).
   Future<void> _switchLine(int line) async {
     if (line == _lineIdx) return;
     await _saveProgress();
-    _resumePosition = 0;
+    final epName = _episode.name;
+    final position = _position;
+    final eps = _detail.lines[line].episodes;
+    final ei = eps.indexWhere((e) => e.name == epName);
+    final sameEpisode = ei >= 0;
+    _resumePosition = sameEpisode ? position : 0;
     setState(() {
       _lineIdx = line;
-      _epIdx = 0;
+      _epIdx = sameEpisode ? ei : 0;
     });
     await _openCurrent();
   }

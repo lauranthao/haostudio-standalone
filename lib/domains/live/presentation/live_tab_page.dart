@@ -17,7 +17,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/models/live_models.dart';
-import '../../../core/theme/appearance_store.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../features/settings/source_stores.dart';
 import '../../../features/video/widgets/referer_image.dart';
@@ -84,8 +83,16 @@ class _LiveTabPageState extends State<LiveTabPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Obx(() => Scaffold(
-      backgroundColor: tabScaffoldBackground(context),
+    // G-P2-5: no explicit backgroundColor — the Scaffold falls back
+    // to ThemeData.scaffoldBackgroundColor (transparent while the
+    // wallpaper is on), so the two background mechanisms cannot drift.
+    // No Obx either: the deleted backgroundColor line was this
+    // builder's ONLY GetX observable read (tabScaffoldBackground
+    // reads AppearanceController.backgroundActive); without it GetX
+    // throws "improper use of GetX" and the page never renders.
+    // The body already rebuilds via ListenableBuilder / setState /
+    // InheritedWidget, so nothing here needs an Obx.
+    return Scaffold(
       // No AppBar (chen 2026-11-21, screenshot): the title is a big
       // bold header at the top-left of the page body (26 w800), with
       // the actions on the same row — like his 我的片库 screenshot.
@@ -151,7 +158,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
           );
         },
       ),
-    ));
+    );
   }
 
   Widget _buildBody(HaoTheme theme) {

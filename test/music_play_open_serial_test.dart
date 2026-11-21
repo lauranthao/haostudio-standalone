@@ -107,8 +107,9 @@ class _FakeApi extends MusicApi {
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async => null;
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async => null;
 
   @override
   Future<List<LyricLine>> lyrics(Song song) async => [];
@@ -131,6 +132,8 @@ class _ScriptedResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     resolvedIds.add(songId);
     return await script(songId);

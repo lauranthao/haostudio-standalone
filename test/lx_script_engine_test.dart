@@ -276,6 +276,41 @@ void main() {
         '6869',
       );
     });
+
+    test('M-P2-2 btoa/atob and Buffer shims (xinghai + helloworld)', () async {
+      // xinghai.js calls Buffer.isBuffer / Buffer.from(...).toString,
+      // helloworld.js calls btoa(unescape(encodeURIComponent(...))).
+      // QuickJS has none of these; the prelude provides them on the
+      // same inline impls (M-P2-2).
+      final rt = getJavascriptRuntime(xhr: false);
+      addTearDown(() {
+        try {
+          rt.dispose();
+        } catch (_) {}
+      });
+      final pre = rt.evaluate(kLxPrelude);
+      expect(pre.isError, isFalse, reason: pre.stringResult);
+      expect(rt.evaluate('typeof btoa').stringResult, 'function');
+      expect(rt.evaluate('typeof atob').stringResult, 'function');
+      expect(rt.evaluate('typeof Buffer').stringResult, 'object');
+      expect(rt.evaluate("btoa('hello')").stringResult, 'aGVsbG8=');
+      expect(rt.evaluate("atob('aGVsbG8=')").stringResult, 'hello');
+      expect(
+        rt
+            .evaluate("Buffer.from('aGVsbG8=','base64').toString('utf-8')")
+            .stringResult,
+        'hello',
+      );
+      expect(
+        rt.evaluate("Buffer.from('hello','utf-8').toString('base64')").stringResult,
+        'aGVsbG8=',
+      );
+      expect(
+        rt.evaluate("Buffer.isBuffer(Buffer.from('x'))").stringResult,
+        'true',
+      );
+      expect(rt.evaluate("Buffer.isBuffer('x')").stringResult, 'false');
+    });
   }, skip: _linuxSkip);
 
   group('bundled scripts', () {

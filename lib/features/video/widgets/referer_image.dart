@@ -65,6 +65,10 @@ class _RefererImageState extends State<RefererImage> {
   Uint8List? _bytes;
   bool _failed = false;
 
+  /// D-P2-1: one automatic retry, 2 s after the first failure.
+  bool _retried = false;
+  Timer? _retryTimer;
+
   @override
   void initState() {
     super.initState();
@@ -77,8 +81,32 @@ class _RefererImageState extends State<RefererImage> {
     if (oldWidget.url != widget.url) {
       _bytes = null;
       _failed = false;
+      _retried = false;
+      _retryTimer?.cancel();
       _load();
     }
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  /// First failure schedules one retry 2 s later (D-P2-1); the
+  /// second failure is terminal. Scroll-back rebuilds already
+  /// reload from scratch, so one retry is all this needs.
+  void _failOnce() {
+    if (!mounted || widget.url.isEmpty) return;
+    if (!_retried) {
+      _retried = true;
+      final url = widget.url;
+      _retryTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted && widget.url == url) _load();
+      });
+      return;
+    }
+    setState(() => _failed = true);
   }
 
   Future<void> _load() async {
@@ -122,7 +150,7 @@ class _RefererImageState extends State<RefererImage> {
       if (!mounted || widget.url != url) return;
       final data = res.data;
       if (res.statusCode != 200 || data == null || data.isEmpty) {
-        setState(() => _failed = true);
+        _failOnce();
         return;
       }
       final bytes = Uint8List.fromList(data);
@@ -130,7 +158,7 @@ class _RefererImageState extends State<RefererImage> {
       unawaited(DiskImageCache.put(url, bytes));
       setState(() => _bytes = bytes);
     } catch (_) {
-      if (mounted && widget.url == url) setState(() => _failed = true);
+      if (mounted && widget.url == url) _failOnce();
     }
   }
 
@@ -140,15 +168,34 @@ class _RefererImageState extends State<RefererImage> {
     if (_failed || bytes == null) {
       return widget.fallback ?? const SizedBox.shrink();
     }
-    return Image.memory(
-      bytes,
-      width: widget.width,
-      height: widget.height,
-      fit: widget.fit,
-      // Downsample the decode to the displayed size (P1-P1): a grid
-      // card never needs the full-resolution poster decoded.
-      cacheWidth: _cacheDimension(widget.width),
-      cacheHeight: _cacheDimension(widget.height),
+    // G-P1-2: downsample from the LAYOUT size, not from an
+    // opt-in widget.width/height — the five hottest call sites
+    // (poster wall, live/follow/search cards, detail hero) never
+    // passed one, so every poster decoded at full resolution.
+    // LayoutBuilder reads the constraints the parent already gives
+    // this image; an explicit widget size still wins, and an
+    // unbounded layout falls back to no downsampling (as before).
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layoutWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : null;
+        final layoutHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : null;
+        final width = widget.width ?? layoutWidth;
+        final height = widget.height ?? layoutHeight;
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: widget.fit,
+          // Downsample the decode to the displayed size (P1-P1): a grid
+          // card never needs the full-resolution poster decoded.
+          cacheWidth: _cacheDimension(width),
+          cacheHeight: _cacheDimension(height),
+        );
+      },
     );
   }
 

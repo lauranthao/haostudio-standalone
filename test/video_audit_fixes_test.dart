@@ -6,6 +6,7 @@
 //   failure while saving the cache must not turn a good fetch into
 //   an error for the caller.
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:standalone/features/video/video_home_service.dart';
 import 'package:standalone/features/video/video_models.dart';
@@ -105,5 +106,5 @@ class _FakeCms extends CmsClient {
   final VideoHomeData _home;
 
   @override
-  Future<VideoHomeData> home() async => _home;
+  Future<VideoHomeData> home({CancelToken? cancelToken}) async => _home;
 }

@@ -89,7 +89,9 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
   @override
   Widget build(BuildContext context) {
     final player = MusicPlayerController.ensure();
-    final theme = HaoTheme.of(context);
+    // G-P2-4: non-throwing read — the bar must render under a bare
+    // ThemeData (e.g. a test harness) instead of throwing.
+    final theme = HaoTheme.ofOrDefault(context);
     return Obx(() {
       final song = player.currentSong;
       if (song == null) return const SizedBox.shrink();

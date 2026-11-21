@@ -268,6 +268,50 @@ void main() {
         expect(await File('${docs.path}/evil.txt').exists(), isFalse);
         expect(box.get('videoPlayerKey'), 'ijk');
       });
+
+      test('large package: 50 downloaded songs round-trip (G-P1-5)',
+          () async {
+        box.put('videoPlayerKey', 'ijk');
+        final dl = Directory('${docs.path}/music_downloads');
+        await dl.create(recursive: true);
+        // 50 songs x 256 KiB of patterned bytes (~12.5 MiB): enough
+        // deflate work that the old main-thread encode was visibly
+        // slow. The encode/decode now run in a worker isolate, so
+        // the wall clock below is off-thread time, not UI jank.
+        final pattern = List<int>.generate(256 * 1024, (i) => (i * 7) % 251);
+        for (var i = 0; i < 50; i++) {
+          await File('${dl.path}/song_$i.mp3').writeAsBytes(pattern);
+        }
+        final service = BackupService(box: box);
+        final stopwatch = Stopwatch()..start();
+        final zip = await service.exportZip(documentsDir: docs);
+        final exportMs = stopwatch.elapsedMilliseconds;
+        stopwatch.reset();
+        await box.clear();
+        await docs.delete(recursive: true);
+        await docs.create();
+        final (result, entries, files) = await service.importZip(
+          zip,
+          documentsDir: docs,
+        );
+        final importMs = stopwatch.elapsedMilliseconds;
+        expect(result, BackupImportResult.ok);
+        expect(entries, 1);
+        expect(files, 50);
+        expect(
+          await File(
+            '${docs.path}/music_downloads/song_49.mp3',
+          ).readAsBytes(),
+          pattern,
+        );
+        // Timing is informational (isolate wall clock, not a jank
+        // proof): the assertion is the round-trip, not the clock.
+        // ignore: avoid_print
+        print(
+          'G-P1-5 large package: export ${exportMs}ms, import '
+          '${importMs}ms, zip ${zip.length} bytes',
+        );
+      });
     });
   });
 }

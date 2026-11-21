@@ -14,6 +14,7 @@
 
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -36,11 +37,21 @@ class VideoSearchPage extends StatefulWidget {
   State<VideoSearchPage> createState() => _VideoSearchPageState();
 }
 
+/// Max chips shown in one chip section (history / hot) — was a bare
+/// `.take(8)` in two places (G-P2-1).
+const int kMaxSearchChips = 8;
+
 class _VideoSearchPageState extends State<VideoSearchPage> {
   final _cms = CmsClient();
   final _detailService = VideoDetailService();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+
+  /// The in-flight search's token (V-P1-4): a new query — or leaving
+  /// the page — cancels the previous search instead of letting it
+  /// run to its 55 s timeout. A cancellation is never a source
+  /// failure; the generation guard already drops stale results.
+  CancelToken? _searchToken;
 
   List<VideoItem> _results = [];
   final Set<String> _seenKeys = {};
@@ -69,9 +80,10 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
   @override
   void initState() {
     super.initState();
-    _controller.addListener(() {
-      if (mounted) setState(() {});
-    });
+    // G-P2-1: the search box used to setState() the WHOLE page on
+    // every keystroke. The input area below is wrapped in a
+    // ValueListenableBuilder on the controller instead, so only the
+    // input rebuilds while typing; the results/chips below it do not.
     _scrollController.addListener(_onScroll);
     unawaited(_loadHot());
   }
@@ -84,7 +96,11 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
       );
       if (!mounted) return;
       setState(() {
-        _hotNames = daily.map((e) => e.name).where((n) => n.isNotEmpty).take(8).toList();
+        _hotNames = daily
+            .map((e) => e.name)
+            .where((n) => n.isNotEmpty)
+            .take(kMaxSearchChips)
+            .toList();
       });
     } catch (_) {}
   }
@@ -100,6 +116,9 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     final q = query.trim();
     if (q.isEmpty) return;
     final seq = ++_searchSeq;
+    // A new query cancels the previous search's requests (V-P1-4).
+    _searchToken?.cancel();
+    final token = _searchToken = CancelToken();
     setState(() {
       _query = q;
       _searching = true;
@@ -113,10 +132,12 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     await VideoHistoryStore.saveSearchQuery(q);
     List<VideoItem> pageItems;
     try {
-      pageItems = await _cms.search(q, page: 1).timeout(
-        const Duration(seconds: 55),
-        onTimeout: () => throw TimeoutException('search timeout'),
-      );
+      pageItems = await _cms
+          .search(q, page: 1, cancelToken: token)
+          .timeout(
+            const Duration(seconds: 55),
+            onTimeout: () => throw TimeoutException('search timeout'),
+          );
     } catch (_) {
       if (seq != _searchSeq || !mounted) return;
       setState(() {
@@ -149,12 +170,28 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     setState(() => _loadingMore = true);
     List<VideoItem> pageItems;
     try {
-      pageItems = await _cms.search(_query, page: _page + 1);
+      // G-P2-1: the first search has an explicit 55 s timeout; the
+      // pager had none (a hung page left _loadingMore true forever
+      // and dead-locked pagination). Same timeout, same failure
+      // reset as the first search.
+      pageItems = await _cms
+          .search(_query, page: _page + 1, cancelToken: _searchToken)
+          .timeout(
+            const Duration(seconds: 55),
+            onTimeout: () => throw TimeoutException('search timeout'),
+          );
     } catch (_) {
       if (mounted) setState(() => _loadingMore = false);
       return;
     }
-    if (seq != _searchSeq || !mounted) return;
+    if (!mounted) return;
+    if (seq != _searchSeq) {
+      // A new query superseded this page: reset the flag, or the
+      // abandoned load leaves _loadingMore true forever and
+      // dead-locks pagination (same reset as the failure path).
+      setState(() => _loadingMore = false);
+      return;
+    }
     final fresh = pageItems
         .where(
           (item) => _seenKeys.add(
@@ -184,6 +221,7 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
 
   @override
   void dispose() {
+    _searchToken?.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -200,29 +238,35 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-            // Library glass search bar (SKILL.md: inputs are a control
-            // surface; the bar is a standalone top-of-page control, not
-            // a row inside a scrolling list, so `glass` is correct
-            // here, not `solid`). The built-in clear button replaces
-            // our suffixIcon clear; textInputAction.search is the
-            // library search variant's default; the cursor follows
-            // DefaultSelectionStyle -> colorScheme.primary = accent.
-            child: GlassSearchBar(
-              controller: _controller,
-              autofocus: true,
-              placeholder: '搜索影片、剧集…',
-              placeholderStyle: TextStyle(color: theme.textMuted),
-              textStyle: TextStyle(
-                color: theme.textPrimary,
-                fontSize: 16,
+          // G-P2-1: only the input area rebuilds per keystroke
+          // (ValueListenableBuilder on the controller) — the chips
+          // and results below do not.
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _controller,
+            builder: (context, _, _) => Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+              // Library glass search bar (SKILL.md: inputs are a control
+              // surface; the bar is a standalone top-of-page control, not
+              // a row inside a scrolling list, so `glass` is correct
+              // here, not `solid`). The built-in clear button replaces
+              // our suffixIcon clear; textInputAction.search is the
+              // library search variant's default; the cursor follows
+              // DefaultSelectionStyle -> colorScheme.primary = accent.
+              child: GlassSearchBar(
+                controller: _controller,
+                autofocus: true,
+                placeholder: '搜索影片、剧集…',
+                placeholderStyle: TextStyle(color: theme.textMuted),
+                textStyle: TextStyle(
+                  color: theme.textPrimary,
+                  fontSize: 16,
+                ),
+                searchIconColor: theme.textMuted,
+                clearIconColor: theme.textMuted,
+                onSubmitted: _search,
               ),
-              searchIconColor: theme.textMuted,
-              clearIconColor: theme.textMuted,
-              onSubmitted: _search,
             ),
-        ),
+          ),
           if (!_searched) ...[
             if (history.isNotEmpty)
               _ChipSection(
@@ -337,7 +381,7 @@ class _ChipSection extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: chips
-                .take(8)
+                .take(kMaxSearchChips)
                 .map(
                   (c) => GlassPressScale(
                     pressedScale: 0.97,
@@ -436,7 +480,9 @@ class _EmptyResults extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('🔍', style: TextStyle(fontSize: 40)),
+            // B-P2-5: the empty state was an emoji 🔍; every other
+            // empty state in the app is a theme-coloured icon.
+            Icon(Icons.search, size: 40, color: theme.textMuted),
             const SizedBox(height: 12),
             Text(
               '没有找到相关影片：$query',

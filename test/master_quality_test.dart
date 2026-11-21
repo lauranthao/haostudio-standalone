@@ -113,13 +113,22 @@ void main() {
         extraQuality('xinghai', AudioQuality.master, 'wy'),
         AudioQuality.master,
       );
+    });
+
+    test('script URLs cap at hires at the master tier (M-P0-1)', () {
+      // A bare-string script URL carries no tier signal: the script
+      // only gets a master job because it LISTS 'master', which is
+      // a claim, not a verification. Only a map-reported
+      // quality: 'master' (via actualQuality) keeps Master — see
+      // reportedTierFor and the resolver-level test in
+      // b27_music_fixes_test.dart.
       expect(
         extraQuality('lx:ikun', AudioQuality.master, 'wy'),
-        AudioQuality.master,
+        AudioQuality.hires,
       );
       expect(
         extraQuality('lx:suyin', AudioQuality.master, 'tx'),
-        AudioQuality.master,
+        AudioQuality.hires,
       );
     });
 

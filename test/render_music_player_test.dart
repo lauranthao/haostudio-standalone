@@ -102,9 +102,18 @@ void main() {
     Get.reset();
   });
 
-  Future<void> pumpPlayer(WidgetTester tester, ThemeData theme) async {
-    // iPhone-ish 390x844 logical @2x.
-    tester.view.physicalSize = const Size(780, 1688);
+  Future<void> pumpPlayer(
+    WidgetTester tester,
+    ThemeData theme, {
+    Size logicalSize = const Size(390, 844),
+    bool favoured = false,
+    bool lyricsFace = false,
+  }) async {
+    // iPhone-ish 390x844 logical @2x by default.
+    tester.view.physicalSize = Size(
+      logicalSize.width * 2,
+      logicalSize.height * 2,
+    );
     tester.view.devicePixelRatio = 2.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
@@ -123,6 +132,13 @@ void main() {
       ),
     ]);
     c.currentIndex.value = 0;
+    // Favourite deterministically: toggleFav flips, so guard with isFav
+    // — otherwise the 8-combination loop would un-favourite on every
+    // second iteration (the Hive box persists across iterations).
+    if (favoured && !c.isFav(c.currentSong!)) {
+      await c.toggleFav(c.currentSong!);
+    }
+    if (lyricsFace) c.showLyrics.value = true;
     c.duration.value = const Duration(seconds: 245);
     c.position.value = const Duration(seconds: 65);
     // Playing (not resolving): pause icon, cover at full scale.
@@ -161,5 +177,69 @@ void main() {
       find.byType(GetMaterialApp),
       matchesGoldenFile('goldens/music_player_dark.png'),
     );
+  });
+
+  // PL-P1-1: the three flex gaps at the other two heights (844 is the
+  // light/dark pair above). The cover is empty on purpose (see the file
+  // header) — the layout math is identical with a real cover, since the
+  // cover face is a fixed-size square either way.
+  testWidgets('render music player 667pt tall', (tester) async {
+    await pumpPlayer(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
+      logicalSize: const Size(375, 667),
+    );
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/music_player_h667.png'),
+    );
+  });
+
+  testWidgets('render music player 932pt tall', (tester) async {
+    await pumpPlayer(
+      tester,
+      _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
+      logicalSize: const Size(430, 932),
+    );
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/music_player_h932.png'),
+    );
+  });
+
+  // 8 combinations (4 themes x light/dark): favourited star (title row,
+  // theme accent) + lyrics face open (bottom lyrics key shows music.note
+  // in accent) so the accent states are actually visible in the shot —
+  // the default cover face has no active key at all.
+  testWidgets('render music player favoured + lyrics, 8 theme combinations', (
+    tester,
+  ) async {
+    const themes = <(HaoThemeId, String)>[
+      (HaoThemeId.appleGlass, 'appleGlass'),
+      (HaoThemeId.darkGold, 'darkGold'),
+      (HaoThemeId.freshMint, 'freshMint'),
+      (HaoThemeId.polarIce, 'polarIce'),
+    ];
+    for (final entry in themes) {
+      for (final mode in ['light', 'dark']) {
+        Get.reset();
+        await pumpPlayer(
+          tester,
+          _cjkTheme(
+            mode == 'light'
+                ? HaoThemes.of(entry.$1).light
+                : HaoThemes.of(entry.$1).dark,
+          ),
+          favoured: true,
+          lyricsFace: true,
+        );
+        await expectLater(
+          find.byType(GetMaterialApp),
+          matchesGoldenFile(
+            'goldens/music_player_fav_${entry.$2}_$mode.png',
+          ),
+        );
+      }
+    }
   });
 }

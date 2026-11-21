@@ -365,8 +365,8 @@ void main() {
   group('Detail race / timeout (VideoDetailService)', () {
     test('fast first fetch wins immediately', () async {
       final service = VideoDetailService(
-        fetchDetail: (s, v) async => usableDetail(s, v),
-        findAlts: (_, _, _) => Stream<AltVideoSource>.empty(),
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async => usableDetail(s, v),
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream<AltVideoSource>.empty(),
       );
       final r = await service.loadWithRace(12, '1');
       expect(r, isNotNull);
@@ -376,14 +376,14 @@ void main() {
 
     test('slow first + fast alt: alt wins, result cached', () async {
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           if (s.toString() == '12') {
             await Future<void>.delayed(const Duration(seconds: 4));
             return usableDetail(s, v);
           }
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) =>
+        findAlts: (_, _, _, {CancelToken? cancelToken}) =>
             Stream.value(const AltVideoSource(source: 6, vodId: '2')),
       );
       final stopwatch = Stopwatch()..start();
@@ -415,14 +415,14 @@ void main() {
       // fastest source had the title immediately. Now the sweep races
       // from the start.
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           if (s.toString() == '12') {
             await Future<void>.delayed(const Duration(seconds: 6));
             return usableDetail(s, v);
           }
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) async* {
+        findAlts: (_, _, _, {CancelToken? cancelToken}) async* {
           await Future<void>.delayed(const Duration(milliseconds: 100));
           yield const AltVideoSource(source: 6, vodId: '2');
         },
@@ -455,7 +455,7 @@ void main() {
             lines: const [],
           );
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           if (s.toString() == '12') {
             await Future<void>.delayed(const Duration(seconds: 6));
             return usableDetail(s, v);
@@ -463,7 +463,7 @@ void main() {
           if (v == 'a' || v == 'b') return unusable(s, v);
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) => Stream.fromIterable(const [
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream.fromIterable(const [
           AltVideoSource(source: 6, vodId: 'a'),
           AltVideoSource(source: 7, vodId: 'b'),
           AltVideoSource(source: 8, vodId: 'c'),
@@ -488,14 +488,14 @@ void main() {
 
     test('slow first still wins when alts have nothing', () async {
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           if (s.toString() == '12') {
             await Future<void>.delayed(const Duration(seconds: 1));
             return usableDetail(s, v);
           }
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) => Stream<AltVideoSource>.empty(),
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream<AltVideoSource>.empty(),
       );
       final r = await service.loadWithRace(
         12,
@@ -515,10 +515,10 @@ void main() {
 
     test('nothing usable within the windows -> null (error card)', () async {
       final service = VideoDetailService(
-        fetchDetail: (_, _) async {
+        fetchDetail: (_, _, {CancelToken? cancelToken}) async {
           throw StateError('boom');
         },
-        findAlts: (_, _, _) => Stream<AltVideoSource>.empty(),
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream<AltVideoSource>.empty(),
       );
       final stopwatch = Stopwatch()..start();
       final r = await service.loadWithRace(
@@ -539,11 +539,11 @@ void main() {
     test('result cache: second get reuses the first fetch', () async {
       var calls = 0;
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           calls++;
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) => Stream<AltVideoSource>.empty(),
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream<AltVideoSource>.empty(),
       );
       final a = await service.get(12, '1');
       final b = await service.get(12, '1');
@@ -554,12 +554,12 @@ void main() {
     test('pending cache: concurrent gets share one fetch', () async {
       var calls = 0;
       final service = VideoDetailService(
-        fetchDetail: (s, v) async {
+        fetchDetail: (s, v, {CancelToken? cancelToken}) async {
           calls++;
           await Future<void>.delayed(const Duration(milliseconds: 200));
           return usableDetail(s, v);
         },
-        findAlts: (_, _, _) => Stream<AltVideoSource>.empty(),
+        findAlts: (_, _, _, {CancelToken? cancelToken}) => Stream<AltVideoSource>.empty(),
       );
       final results = await Future.wait([
         service.get(12, '1'),
@@ -1029,7 +1029,7 @@ void main() {
       );
     });
 
-    test('cast photos: desktop parse wins, Baike not called', () async {
+    test('cast photos: desktop parse wins over parallel Baike', () async {
       var baikeCalls = 0;
       Future<({int status, String body})> fetcher(
         String url,
@@ -1068,7 +1068,10 @@ void main() {
         cache: MemoryDoubanCache(),
         castPhotoFetcher: (name) async {
           baikeCalls++;
-          return '';
+          // A different URL for the same name: the merge must still
+          // prefer the desktop photo (D-P1-2: Baike runs in parallel,
+          // desktop wins on merge).
+          return 'https://baike.example.com/zhang.jpg';
         },
       );
       final d = await service.detail('庆余年', '2019');
@@ -1076,7 +1079,7 @@ void main() {
       expect(d!.castPhotos, [
         'https://img1.doubanio.com/view/celebrity/s_ratio_celebrity/public/p123.jpg',
       ]);
-      expect(baikeCalls, 0);
+      expect(baikeCalls, 1);
     });
 
     test('cached detail with empty cast photos is re-fetched, not stale',

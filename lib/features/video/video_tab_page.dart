@@ -23,10 +23,9 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
-import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
@@ -66,6 +65,12 @@ class _VideoTabPageState extends State<VideoTabPage> {
   bool _stale = false;
   bool _dailyFailed = false;
 
+  /// Cancels the in-flight home/daily fetches when the tab is left
+  /// or a refresh supersedes them (V-P1-4). Separate tokens: a home
+  /// refresh must never cancel an in-flight daily load, or vice versa.
+  CancelToken? _homeToken;
+  CancelToken? _dailyToken;
+
   @override
   void initState() {
     super.initState();
@@ -79,8 +84,23 @@ class _VideoTabPageState extends State<VideoTabPage> {
     unawaited(_refreshDaily());
   }
 
-  Future<void> _refreshHome() async {
-    final fresh = await _homeService.fetchFresh();
+  @override
+  void dispose() {
+    _homeToken?.cancel();
+    _dailyToken?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshHome({bool force = false}) async {
+    // G-P1-1: a fresh Hive cache means this tab was just rebuilt
+    // after a switch — fetchFresh serves it with no network. A
+    // forced refresh (pull-to-refresh / error retry) bypasses it.
+    _homeToken?.cancel();
+    final token = _homeToken = CancelToken();
+    final fresh = await _homeService.fetchFresh(
+      force: force,
+      cancelToken: token,
+    );
     if (!mounted) return;
     if (fresh != null) {
       setState(() {
@@ -104,7 +124,11 @@ class _VideoTabPageState extends State<VideoTabPage> {
   }
 
   Future<void> _refreshDaily() async {
-    final daily = await _homeService.fetchDaily();
+    _dailyToken?.cancel();
+    final token = _dailyToken = CancelToken();
+    final daily = await _homeService.fetchDaily(
+      cancelToken: token,
+    );
     if (!mounted) return;
     setState(() {
       _daily = daily;
@@ -172,8 +196,16 @@ class _VideoTabPageState extends State<VideoTabPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Obx(() => Scaffold(
-      backgroundColor: tabScaffoldBackground(context),
+    // G-P2-5: no explicit backgroundColor — the Scaffold falls back
+    // to ThemeData.scaffoldBackgroundColor (transparent while the
+    // wallpaper is on), so the two background mechanisms cannot drift.
+    // No Obx either: the deleted backgroundColor line was this
+    // builder's ONLY GetX observable read (tabScaffoldBackground
+    // reads AppearanceController.backgroundActive); without it GetX
+    // throws "improper use of GetX" and the page never renders.
+    // The body already rebuilds via ListenableBuilder / setState /
+    // InheritedWidget, so nothing here needs an Obx.
+    return Scaffold(
       // Full-bleed, no card wrapper (Infuse H1): the artwork IS the UI.
       body: SafeArea(
         child: _loading
@@ -181,12 +213,12 @@ class _VideoTabPageState extends State<VideoTabPage> {
             : _failed
                 ? _HomeError(onRetry: () {
                     setState(() => _loading = true);
-                    unawaited(_refreshHome());
+                    unawaited(_refreshHome(force: true));
                   })
                 : RefreshIndicator(
                     onRefresh: () async {
                       await Future.wait([
-                        _refreshHome(),
+                        _refreshHome(force: true),
                         _refreshDaily(),
                       ]);
                     },
@@ -455,7 +487,7 @@ class _VideoTabPageState extends State<VideoTabPage> {
                     ),
                   ),
       ),
-    ));
+    );
   }
 }
 

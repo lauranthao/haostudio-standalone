@@ -69,8 +69,9 @@ import 'music_quality.dart';
 
 /// JS prelude injected into every script runtime before the script
 /// itself. Pure JS, no host dependencies beyond `sendMessage` (provided
-/// by flutter_js) — no atob/btoa/TextEncoder (QuickJS lacks them), so
-/// base64/UTF-8 are implemented inline.
+/// by flutter_js) — QuickJS has no atob/btoa/TextEncoder/Buffer, so
+/// base64/UTF-8 are implemented inline and `btoa`/`atob`/`Buffer`
+/// are shimmed on top of them (M-P2-2).
 const String kLxPrelude = r'''
 (function () {
   if (globalThis.__haoLxInstalled) return;
@@ -257,6 +258,47 @@ const String kLxPrelude = r'''
     }
     return __utf8Decode(bytes);
   }
+  // btoa / atob / Buffer (M-P2-2): QuickJS provides none of these,
+  // and two scripts fall back to them (helloworld's token builder
+  // uses btoa; xinghai's safeBase64Encode uses Buffer.from +
+  // isBuffer). They used to be unreachable because lx.utils.buffer
+  // exists — but a fallback that silently yields '' / the raw string
+  // is worse than a working shim. Reuses __b64encode / __b64decode /
+  // __bufFrom / __bufToString above. btoa/atob use binary-string
+  // semantics (one char per byte), matching the browser.
+  function __btoa(s) {
+    s = String(s);
+    var bytes = [];
+    for (var i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 255);
+    return __b64encode(bytes);
+  }
+  function __atob(s) {
+    var bytes = __b64decode(s);
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+    return out;
+  }
+  globalThis.btoa = __btoa;
+  globalThis.atob = __atob;
+  globalThis.Buffer = {
+    from: function (data, encoding) {
+      var buf;
+      if (data && data.__haoBuf) {
+        buf = data;
+      } else if (data && typeof data === 'object' && typeof data.length === 'number') {
+        var bytes = [];
+        for (var i = 0; i < data.length; i++) bytes.push(data[i] & 255);
+        buf = { __haoBuf: true, bytes: bytes };
+      } else {
+        buf = __bufFrom(data, encoding);
+      }
+      if (buf.toString === Object.prototype.toString) {
+        buf.toString = function (enc) { return __bufToString(buf, enc || 'utf-8'); };
+      }
+      return buf;
+    },
+    isBuffer: function (o) { return !!(o && o.__haoBuf); },
+  };
   globalThis.lx = {
     EVENT_NAMES: { inited: 'inited', request: 'request', updateAlert: 'updateAlert', showConfigView: 'showConfigView' },
     request: __request,
@@ -277,6 +319,11 @@ class LxScriptException implements Exception {
   @override
   String toString() => 'LxScriptException: $message';
 }
+
+/// A [requestAction] dispatch was cancelled via its [CancelToken]
+/// (M-P1-1: the resolver pass gave up on the job). Callers treat it
+/// as "no result" — the late result, if any, is discarded.
+class _LxDispatchCancelled implements Exception {}
 
 /// Injectable JS runtime factory (production: flutter_js).
 typedef LxRuntimeFactory = JavascriptRuntime Function();
@@ -755,11 +802,23 @@ class LxScriptEngine {
     return _initFuture!;
   }
 
+  /// Batch size for parallel script loading (M-P1-2): the old serial
+  /// loop made one slow script (up to 10 s `inited` wait) block every
+  /// script after it — worst case 20 x 10 s = 200 s before the last
+  /// script registered. Batches of 5 bound the worst case to 4 x 10 s
+  /// and keep the runtime-creation burst small. A single script
+  /// failing / timing out never blocks the other scripts in its
+  /// batch (each load catches its own error).
+  static const _initBatchSize = 5;
+
   Future<void> _init() async {
-    for (final spec in kBundledLxScripts) {
-      // Deleted bundled scripts are gone: never re-seeded, never
-      // loaded — including after an app restart.
-      if (LxScriptSourcesStore.isBundledDeleted(spec.id)) continue;
+    final specs = [
+      for (final spec in kBundledLxScripts)
+        // Deleted bundled scripts are gone: never re-seeded, never
+        // loaded — including after an app restart.
+        if (!LxScriptSourcesStore.isBundledDeleted(spec.id)) spec,
+    ];
+    Future<void> loadBundled(LxBundledScript spec) async {
       String? code;
       final fs = _fileStore;
       if (fs != null) {
@@ -792,23 +851,40 @@ class LxScriptEngine {
         );
       }
     }
-    for (final saved in LxScriptSourcesStore.customScripts()) {
-      try {
-        await _loadScript(
-          id: saved.id,
-          name: saved.name,
-          code: saved.code,
-          origin: saved.url,
-          isCustom: true,
-        );
-      } catch (e) {
-        _scripts[saved.id] = LxScriptInfo.failed(
-          id: saved.id,
-          name: saved.name,
-          origin: saved.url,
-          error: e.toString(),
-        );
-      }
+
+    for (var i = 0; i < specs.length; i += _initBatchSize) {
+      final batch = specs.sublist(
+        i,
+        (i + _initBatchSize).clamp(0, specs.length),
+      );
+      await Future.wait(batch.map(loadBundled));
+    }
+    final customs = LxScriptSourcesStore.customScripts();
+    for (var i = 0; i < customs.length; i += _initBatchSize) {
+      final batch = customs.sublist(
+        i,
+        (i + _initBatchSize).clamp(0, customs.length),
+      );
+      await Future.wait(
+        batch.map((saved) async {
+          try {
+            await _loadScript(
+              id: saved.id,
+              name: saved.name,
+              code: saved.code,
+              origin: saved.url,
+              isCustom: true,
+            );
+          } catch (e) {
+            _scripts[saved.id] = LxScriptInfo.failed(
+              id: saved.id,
+              name: saved.name,
+              origin: saved.url,
+              error: e.toString(),
+            );
+          }
+        }),
+      );
     }
   }
 
@@ -1096,14 +1172,19 @@ class LxScriptEngine {
   /// [payload] ({action, source, info}) and await its result. Returns
   /// the raw JS value (String / List / Map / null). Throws
   /// [LxScriptException] on script error, [TimeoutException] on
-  /// timeout. Prefer [getMusicUrl]/[search] unless you need a raw
-  /// action (pic / lyric).
+  /// timeout, [_LxDispatchCancelled] when [cancelToken] is cancelled.
+  /// Prefer [getMusicUrl]/[search] unless you need a raw action (pic
+  /// / lyric). [cancelToken] (M-P1-1): the resolver pass cancels it
+  /// when the job times out — the poll loop stops at once and the
+  /// in-flight HTTP aborts via [_pumpHttp], instead of polling up
+  /// to the 8 s timeout after the caller already gave up.
   Future<dynamic> requestAction({
     required String scriptId,
     required String action,
     required String source,
     required Map<String, dynamic> info,
     Duration timeout = const Duration(seconds: 8),
+    CancelToken? cancelToken,
   }) async {
     final rt = _runtimes[scriptId];
     if (rt == null) {
@@ -1129,13 +1210,22 @@ class LxScriptEngine {
       if (_runtimes[scriptId] != rt) {
         throw LxScriptException('脚本已卸载: $scriptId');
       }
-      await _pumpHttp(rt);
+      // M-P1-1: the caller gave up (job timeout) — stop polling at
+      // once and discard any late result. The script's own promise
+      // may still settle later; its dispatch entry is never read.
+      if (cancelToken?.isCancelled == true) {
+        throw _LxDispatchCancelled();
+      }
+      await _pumpHttp(rt, cancelToken);
       // _pumpHttp awaits HTTP: the runtime may have been disposed /
       // replaced while a request was in flight. Never evaluate the
       // dispatch result on a released JSContext — re-check identity
       // after the await, same guard as the loop top.
       if (_runtimes[scriptId] != rt) {
         throw LxScriptException('脚本已卸载: $scriptId');
+      }
+      if (cancelToken?.isCancelled == true) {
+        throw _LxDispatchCancelled();
       }
       final resRaw =
           rt.js.evaluate('__haoLxDispatchResult($id)').stringResult;
@@ -1160,9 +1250,12 @@ class LxScriptEngine {
 
   /// Perform every pending `lx.request` HTTP job for [rt] via Dio and
   /// deliver each result back into JS. Sequential: scripts issue
-  /// requests one at a time.
-  Future<void> _pumpHttp(_ScriptRuntime rt) async {
+  /// requests one at a time. [cancelToken] (M-P1-1): when cancelled
+  /// the in-flight Dio request aborts at once and pumping stops —
+  /// the caller already gave up on this dispatch.
+  Future<void> _pumpHttp(_ScriptRuntime rt, [CancelToken? cancelToken]) async {
     while (rt.httpJobs.isNotEmpty) {
+      if (cancelToken?.isCancelled == true) return;
       // Same disposed-runtime guard as requestAction: never evaluate
       // on a JSContext that has been released.
       if (_runtimes[rt.scriptId] != rt) return;
@@ -1176,6 +1269,7 @@ class LxScriptEngine {
         final res = await _dio.request<String>(
           job.url,
           data: job.body,
+          cancelToken: cancelToken,
           options: Options(
             method: job.method,
             headers: job.headers,
@@ -1253,18 +1347,19 @@ class LxScriptEngine {
 
   /// Play URL + the tier the script actually served, for the resolver
   /// loop's Master gate (P1-L1). Most scripts return a bare URL
-  /// string — no tier signal — so the job only exists when the script
-  /// declares the tier (see [scriptJobsFor]) and the declared label
-  /// stands (`actualQuality` null). A script that returns a
-  /// `{url, quality}` / `{url, type}` map is held to the tier it
-  /// reports: at a master request anything but `'master'` is hires,
-  /// never master. Other tiers keep the declared label.
+  /// string — no tier signal — so at a master request the job's
+  /// declared label is hires (M-P0-1: [extraQuality] caps `lx:*` at
+  /// hires; a bare string must never wear the Master badge). A script
+  /// that returns a `{url, quality}` / `{url, type}` map is held to
+  /// the tier it reports: at a master request anything but `'master'`
+  /// is hires, never master. Other tiers keep the declared label.
   Future<({String url, AudioQuality? actualQuality})?> getMusicUrlWithTier({
     required String scriptId,
     required String platform,
     required Song song,
     required AudioQuality quality,
     Map<String, dynamic>? musicInfo,
+    CancelToken? cancelToken,
   }) async {
     final info = _scripts[scriptId];
     if (info == null || !info.loaded) return null;
@@ -1292,6 +1387,7 @@ class LxScriptEngine {
         action: 'musicUrl',
         source: platform,
         info: {'musicInfo': mi, 'type': qStr},
+        cancelToken: cancelToken,
       );
       if (v is String && v.isNotEmpty) {
         return (url: toHttps(v), actualQuality: null);
@@ -1421,7 +1517,10 @@ class LxScriptEngine {
     ({
       String key,
       String name,
-      Future<({String url, AudioQuality? actualQuality})> Function() fn,
+      Future<({String url, AudioQuality? actualQuality})> Function({
+        CancelToken? cancelToken,
+      })
+      fn,
     })
   >
       scriptJobsFor(
@@ -1429,7 +1528,7 @@ class LxScriptEngine {
     AudioQuality quality,
     Song song,
   ) {
-    final out = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function() fn})>[];
+    final out = <({String key, String name, Future<({String url, AudioQuality? actualQuality})> Function({CancelToken? cancelToken}) fn})>[];
     for (final info in _scripts.values) {
       if (!info.loaded) continue;
       if (!LxScriptSourcesStore.isEnabled(info.id)) continue;
@@ -1440,12 +1539,13 @@ class LxScriptEngine {
         (
           key: 'lx:${info.id}',
           name: info.name,
-          fn: () async =>
+          fn: ({CancelToken? cancelToken}) async =>
               await getMusicUrlWithTier(
                 scriptId: info.id,
                 platform: platform.code,
                 song: song,
                 quality: quality,
+                cancelToken: cancelToken,
               ) ??
               (url: '', actualQuality: null),
         ),

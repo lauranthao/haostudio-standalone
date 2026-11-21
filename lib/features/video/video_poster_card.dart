@@ -1,7 +1,8 @@
 // Video poster card — Infuse copy (H4 + H9).
 //
-// - 2:3 portrait poster, FIXED 10px radius (NOT the theme radius —
-//   media art looks identical in all 4 themes).
+// - 2:3 portrait poster, radius 8 via HaoRadius.standard (B-P2-2:
+//   the old "FIXED 10px radius" comment here was wrong — the code
+//   has always used the theme radius).
 // - Title 13px/600 below, one muted 12px meta line (`year · type`).
 // - NO rating badge on the poster (rating lives on the detail page
 //   only, as in Infuse). NO coloured corner badge: the episode-count

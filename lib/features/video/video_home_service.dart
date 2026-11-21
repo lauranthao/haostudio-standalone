@@ -16,6 +16,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import '../../core/storage/hive_store.dart';
 import '../../services/video/cms_client.dart';
 import 'cms_sources.dart';
@@ -26,13 +28,31 @@ class VideoHomeService {
 
   final CmsClient _cms;
 
-  /// First-result window 12 s, then 5 s grace for a late result.
-  static const Duration firstWindow = Duration(seconds: 12);
-  static const Duration lateGrace = Duration(seconds: 5);
+  /// First-result window 9 s (V-P2-1): this used to be 12 s + a 5 s
+  /// grace, but `CmsClient.home()` settles on its own 9 s total
+  /// budget, so the second window only ever waited on an already
+  /// settled future — dead numbers. One 9 s window, no grace.
+  static const Duration firstWindow = Duration(seconds: 9);
 
+  /// Freshness window for the Hive home cache (G-P1-1): inside it a
+  /// background refresh is skipped — the page was just rebuilt after
+  /// a tab switch and the cached rows are still fresh. A forced
+  /// refresh (pull-to-refresh / error retry) bypasses it.
+  static const Duration cacheFreshTtl = Duration(seconds: 60);
+
+  /// A Hive failure on read must never fail the caller either (same
+  /// rule as [_saveCache] on write): no cache is just "no cache".
+  /// G-P1-1 made fetchFresh read the cache first, so an uninitialised
+  /// / closed box used to throw LateInitializationError out of the
+  /// fetch instead of returning fresh data.
   VideoHomeData? loadCached() {
-    final raw = HiveStore.box.get(HiveKeys.videoHomeCache);
-    if (raw is! String || raw.isEmpty) return null;
+    String? raw;
+    try {
+      raw = HiveStore.box.get(HiveKeys.videoHomeCache) as String?;
+    } catch (_) {
+      return null;
+    }
+    if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
@@ -54,26 +74,29 @@ class VideoHomeService {
     } catch (_) {}
   }
 
-  /// Fresh home fetch with the 12 s + 5 s windows. Returns null when
-  /// nothing usable arrives in time (caller keeps cached data + stale
-  /// flag, or shows the error state when nothing was cached).
-  Future<VideoHomeData?> fetchFresh() async {
-    final pending = _cms.home();
+  /// Fresh home fetch with the 9 s first-result window. Returns null
+  /// when nothing usable arrives in time (caller keeps cached data +
+  /// stale flag, or shows the error state when nothing was cached).
+  /// [force] skips the fresh-cache shortcut (pull-to-refresh /
+  /// error retry are deliberate user actions); [cancelToken] cancels
+  /// the in-flight CMS requests on dispose (V-P1-4).
+  Future<VideoHomeData?> fetchFresh({
+    bool force = false,
+    CancelToken? cancelToken,
+  }) async {
+    if (!force) {
+      // G-P1-1: the Hive cache is fresh — the page was just rebuilt
+      // after a tab switch. Serve it with no network at all.
+      final cached = loadCached();
+      if (cached != null &&
+          DateTime.now().difference(cached.fetchedAt) < cacheFreshTtl) {
+        return cached;
+      }
+    }
+    final pending = _cms.home(cancelToken: cancelToken);
     VideoHomeData? result;
     try {
       result = await pending.timeout(firstWindow);
-    } on TimeoutException {
-      result = null;
-    } catch (_) {
-      result = null;
-    }
-    if (result != null) {
-      await _saveCache(result);
-      return result;
-    }
-    // Grace: a late result may still land within 5 s.
-    try {
-      result = await pending.timeout(lateGrace);
     } on TimeoutException {
       result = null;
     } catch (_) {
@@ -88,9 +111,9 @@ class VideoHomeService {
 
   /// Daily picks, independent background load (returns empty on
   /// failure — never blocks home).
-  Future<List<VideoItem>> fetchDaily() async {
+  Future<List<VideoItem>> fetchDaily({CancelToken? cancelToken}) async {
     try {
-      return await _cms.daily().timeout(
+      return await _cms.daily(cancelToken: cancelToken).timeout(
         const Duration(seconds: 12),
         onTimeout: () => <VideoItem>[],
       );

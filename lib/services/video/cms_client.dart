@@ -178,7 +178,10 @@ List<PlayLine> parsePlayLines(String playUrl, String playFrom) {
 }
 
 /// Fallback: synthesise one 直链 line when no lines parse but the CMS
-/// content contains an m3u8 URL.
+/// content contains a direct media URL (V-P2-2: m3u8 first, then mp4,
+/// then flv — a source whose `vod_play_url` is empty but whose
+/// `vod_content` embeds an MP4 link is playable, not "找不到这部影片").
+/// Only the FIRST direct link of the winning extension is taken.
 List<PlayLine> parsePlayLinesWithContentFallback(
   String playUrl,
   String playFrom,
@@ -186,16 +189,18 @@ List<PlayLine> parsePlayLinesWithContentFallback(
 ) {
   final lines = parsePlayLines(playUrl, playFrom);
   if (lines.isNotEmpty) return lines;
-  final m = RegExp(
-    r'[\$]?(https?://[^\s"<>]+[.]m3u8[^\s"<>]*)',
-  ).firstMatch(content);
-  if (m != null) {
-    return [
-      PlayLine(
-        name: '直链',
-        episodes: [PlayEpisode(name: '正片', url: toHttps(m.group(1)!))],
-      )
-    ];
+  for (final ext in ['m3u8', 'mp4', 'flv']) {
+    final m = RegExp(
+      '[\$]?(https?://[^\\s"<>]+[.]$ext[^\\s"<>]*)',
+    ).firstMatch(content);
+    if (m != null) {
+      return [
+        PlayLine(
+          name: '直链',
+          episodes: [PlayEpisode(name: '正片', url: toHttps(m.group(1)!))],
+        )
+      ];
+    }
   }
   return lines;
 }
@@ -321,7 +326,11 @@ class CmsClient {
   /// fan-out: the fast sources (金鹰/非凡, measured 0.4–0.8 s) answer
   /// first and the search returns on the overall cap with whatever
   /// arrived from ALL sources.
-  Future<List<VideoItem>> search(String query, {int page = 1}) async {
+  Future<List<VideoItem>> search(
+    String query, {
+    int page = 1,
+    CancelToken? cancelToken,
+  }) async {
     final results = <VideoItem>[];
     var anyOk = false;
 
@@ -333,6 +342,15 @@ class CmsClient {
       final tokens = <CancelToken>[
         for (var i = 0; i < _sources.length; i++) CancelToken(),
       ];
+      // V-P1-4: an external cancellation (new query / page disposed)
+      // cancels the in-flight source jobs too, not just the wait.
+      if (cancelToken != null) {
+        unawaited(cancelToken.whenCancel.then((_) {
+          for (final t in tokens) {
+            if (!t.isCancelled) t.cancel();
+          }
+        }));
+      }
       final jobs = _sources.indexed.map<Future<void>>((e) async {
         final s = e.$2;
         try {
@@ -362,9 +380,16 @@ class CmsClient {
         const Duration(seconds: 3),
         const Duration(milliseconds: 3500),
       );
+      if (cancelToken?.isCancelled == true) {
+        throw DioException(
+          requestOptions: RequestOptions(path: query),
+          type: DioExceptionType.cancel,
+        );
+      }
       if (results.isEmpty && !anyOk) {
         final fbStart = DateTime.now();
         for (final s in _sources) {
+          if (cancelToken?.isCancelled == true) break;
           if (DateTime.now().difference(fbStart) >
               const Duration(seconds: 15)) {
             break;
@@ -391,6 +416,12 @@ class CmsClient {
 
     if (results.isEmpty && !anyOk) {
       throw CmsException('video source unreachable');
+    }
+    if (cancelToken?.isCancelled == true) {
+      throw DioException(
+        requestOptions: RequestOptions(path: query),
+        type: DioExceptionType.cancel,
+      );
     }
     return dedupeAndRankSearch(results, query);
   }
@@ -444,12 +475,20 @@ class CmsClient {
 
   /// `directVideoDetail(sid, vid)` (app.js:1096): 8 s timeout, throws
   /// '找不到这部影片' when absent or when no lines parse.
-  Future<VideoDetail> detail(dynamic sourceId, String vodId) async {
+  /// [cancelToken] (V-P1-4): the detail page cancels it on dispose;
+  /// a cancellation rethrows as [DioExceptionType.cancel] and is
+  /// never recorded as a source failure.
+  Future<VideoDetail> detail(
+    dynamic sourceId,
+    String vodId, {
+    CancelToken? cancelToken,
+  }) async {
     final s = sourceById(sourceId) ?? sourceByName(sourceId.toString());
     if (s == null) throw CmsException('unknown source');
     final json = await _fetcher(
       '${s.apiUrl}?ac=videolist&ids=${Uri.encodeComponent(vodId)}',
       timeout: const Duration(seconds: 8),
+      cancelToken: cancelToken,
     );
     final parsed = parseCmsDetail(s, vodId, json);
     if (parsed == null) throw CmsException('找不到这部影片');
@@ -472,6 +511,7 @@ class CmsClient {
     String year,
     dynamic excludeSourceId, {
     int maxAlts = 5,
+    CancelToken? cancelToken,
   }) {
     final controller = StreamController<AltVideoSource>();
     final qn = videoNormTitle(title);
@@ -483,6 +523,23 @@ class CmsClient {
         closed = true;
         controller.close();
       }
+    }
+
+    // V-P1-4: one token for the whole scan (the caller's own when
+    // given, else a fresh one the stream owns). Cancelling the
+    // subscription cancels the in-flight fetches ONLY when the stream
+    // owns the token — a caller's token is never cancelled by a
+    // stream cancel (the detail race settles by cancelling this
+    // stream, and the same token is still needed for a retry).
+    // A caller cancellation still reaches the fetches via the
+    // forwarding below; a cancellation is never a source failure
+    // (the worker swallows it like any other fetch error).
+    final token = cancelToken ?? CancelToken();
+    final ownsToken = cancelToken == null;
+    if (cancelToken != null) {
+      unawaited(cancelToken.whenCancel.then((_) {
+        if (!token.isCancelled) token.cancel();
+      }));
     }
 
     // P1-T1: the 15 s cap used to be an orphan Timer — it stayed
@@ -497,6 +554,7 @@ class CmsClient {
     controller.onCancel = () {
       capTimer.cancel();
       closed = true;
+      if (ownsToken && !token.isCancelled) token.cancel();
     };
 
     Future<void> worker() async {
@@ -507,6 +565,7 @@ class CmsClient {
           final json = await _fetcher(
             '${s.apiUrl}?ac=videolist&wd=${Uri.encodeComponent(title)}&pg=1',
             timeout: const Duration(seconds: 5),
+            cancelToken: token,
           );
           if (closed) return;
           final list = (json['list'] as List<dynamic>? ?? const []);
@@ -576,7 +635,7 @@ class CmsClient {
   /// 动漫/连续剧) could land on a source where it holds ~0 items.
   /// Children come from each source's own class table (`type_pid`):
   /// items live under leaf type_ids, never under a parent id.
-  Future<Map<String, CmsTypeEntry>> typeMap() async {
+  Future<Map<String, CmsTypeEntry>> typeMap({CancelToken? cancelToken}) async {
     if (_typeMap != null &&
         _typeMapAt != null &&
         DateTime.now().difference(_typeMapAt!) <
@@ -597,6 +656,7 @@ class CmsClient {
         final json = await _fetcher(
           '${s.apiUrl}?ac=list',
           timeout: const Duration(seconds: 8),
+          cancelToken: cancelToken,
         );
         tables.add(_SourceClassTable(s, json));
       } catch (_) {}
@@ -625,8 +685,15 @@ class CmsClient {
         candidates: g.value.skip(1).toList(),
       );
     }
-    _typeMap = map;
-    _typeMapAt = DateTime.now();
+    // V-P1-3: a partial table (fewer than half the play sources
+    // answered inside the 6 s cap) is NOT written to the 10-minute
+    // cache — the next call re-fetches instead of serving a thin
+    // table for 10 minutes while the slow sources have recovered.
+    // A complete table is cached exactly as before.
+    if (tables.length * 2 >= playSources.length) {
+      _typeMap = map;
+      _typeMapAt = DateTime.now();
+    }
     return map;
   }
 
@@ -640,11 +707,13 @@ class CmsClient {
     String typeId,
     int page, {
     String extraQ = '',
+    CancelToken? cancelToken,
   }) async {
     try {
       final json = await _fetcher(
         '${s.apiUrl}?ac=videolist&t=${Uri.encodeComponent(typeId)}&pg=$page$extraQ',
         timeout: const Duration(seconds: 8),
+        cancelToken: cancelToken,
       );
       final items = (json['list'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
@@ -667,14 +736,43 @@ class CmsClient {
     }
   }
 
+  /// Fetch one page per child type id, at most [_parentFanout] in
+  /// flight at once (V-P2-4): a parent with 20 children used to fan
+  /// out 20 requests at once onto the shared Dio. Results stay in
+  /// child order, so callers see the same merge as before.
+  static const int _parentFanout = 5;
+
+  Future<List<_CmsTypePage?>> _fetchChildPages(
+    VideoSource s,
+    List<String> childTypeIds,
+    int page, {
+    CancelToken? cancelToken,
+  }) async {
+    final out = <_CmsTypePage?>[];
+    for (var i = 0; i < childTypeIds.length; i += _parentFanout) {
+      final end = i + _parentFanout < childTypeIds.length
+          ? i + _parentFanout
+          : childTypeIds.length;
+      out.addAll(
+        await Future.wait(
+          childTypeIds
+              .sublist(i, end)
+              .map((tid) => _fetchTypePage(s, tid, page, cancelToken: cancelToken)),
+        ),
+      );
+    }
+    return out;
+  }
+
   /// One home row: leaf → `?ac=videolist&t=<typeId>&pg=1` on the
   /// primary source, falling back to same-name candidates when it
   /// answers empty or with the wrong type; parent → all child
   /// type_ids in parallel, merged. 8 s timeout (caller-side).
   Future<VideoHomeRow?> homeRowOne(
     String typeName,
-    CmsTypeEntry entry,
-  ) async {
+    CmsTypeEntry entry, {
+    CancelToken? cancelToken,
+  }) async {
     // At most 4 attempts (primary + 3 candidates): the outer home()
     // call caps each row at 8 s anyway, but a cap keeps one row from
     // burning the whole window on dead sources.
@@ -683,8 +781,11 @@ class CmsClient {
       final s = sourceById(target.source);
       if (s == null) continue;
       if (target.isParent) {
-        final fetched = await Future.wait(
-          target.childTypeIds.map((tid) => _fetchTypePage(s, tid, 1)),
+        final fetched = await _fetchChildPages(
+          s,
+          target.childTypeIds,
+          1,
+          cancelToken: cancelToken,
         );
         final pages = fetched.whereType<_CmsTypePage>().toList();
         if (pages.isEmpty) continue;
@@ -698,7 +799,12 @@ class CmsClient {
           items: items,
         );
       }
-      final pg = await _fetchTypePage(s, target.typeId, 1);
+      final pg = await _fetchTypePage(
+        s,
+        target.typeId,
+        1,
+        cancelToken: cancelToken,
+      );
       if (pg == null || !_leafPageMatches(typeName, pg.items)) continue;
       return VideoHomeRow(
         name: typeName,
@@ -721,9 +827,30 @@ class CmsClient {
   /// and no longer holds the whole load hostage. True per-row
   /// streaming to the UI is a separate step (the tab already renders
   /// the Hive cache first, so there is no blank screen to fix).
-  Future<VideoHomeData> home() async {
+  /// Short cross-call throttle (G-P1-1): a home load is expensive (a
+  /// type-map fetch + up to 12 row fetches). Within 60 s, repeat calls
+  /// return the cached rows instead of re-hitting the network — tab
+  /// switches re-create the page (no KeepAlive) but must not re-fetch.
+  /// Static because every page build owns a fresh [CmsClient]; the key
+  /// is the fetcher identity + the source list, so tests with injected
+  /// fetchers never share a production entry. Failures are never cached.
+  static VideoHomeData? _homeCache;
+  static DateTime? _homeCacheAt;
+  static String? _homeCacheKey;
+  static const _homeCacheTtl = Duration(seconds: 60);
+
+  Future<VideoHomeData> home({CancelToken? cancelToken}) async {
+    final key =
+        '${identityHashCode(_fetcher)}|${_sources.map((s) => s.apiUrl).join(',')}';
+    final cachedAt = _homeCacheAt;
+    if (_homeCache != null &&
+        _homeCacheKey == key &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _homeCacheTtl) {
+      return _homeCache!;
+    }
     final started = DateTime.now();
-    final map = await typeMap();
+    final map = await typeMap(cancelToken: cancelToken);
     final names = map.keys.toList()
       ..sort((a, b) {
         final ia = kVideoTypePriority.indexOf(a);
@@ -739,7 +866,11 @@ class CmsClient {
     if (rowBudget > Duration.zero) {
       Future<void> loadRow(String nm) async {
         try {
-          final row = await homeRowOne(nm, map[nm]!).timeout(
+          final row = await homeRowOne(
+            nm,
+            map[nm]!,
+            cancelToken: cancelToken,
+          ).timeout(
             const Duration(seconds: 8),
             onTimeout: () => null,
           );
@@ -755,14 +886,18 @@ class CmsClient {
     got.sort((a, b) => b.count.compareTo(a.count));
     final rows = got.take(10).toList();
     if (rows.isEmpty) throw CmsException('video source unreachable');
-    return VideoHomeData(rows: rows, fetchedAt: DateTime.now());
+    final data = VideoHomeData(rows: rows, fetchedAt: DateTime.now());
+    _homeCache = data;
+    _homeCacheAt = DateTime.now();
+    _homeCacheKey = key;
+    return data;
   }
 
   /// `directVideoDaily` (app.js:1372): 3 workers over all play sources,
   /// `?ac=videolist&pg=1`; dedupe by name|year (higher score wins);
   /// require name + pic; drop adult; series first (type contains 剧),
   /// then the rest; take 12. Throws when empty.
-  Future<List<VideoItem>> daily() async {
+  Future<List<VideoItem>> daily({CancelToken? cancelToken}) async {
     final playSources = _sources.where((s) => s.isPlay).toList();
     final all = <VideoItem>[];
     var cursor = 0;
@@ -774,6 +909,7 @@ class CmsClient {
           final json = await _fetcher(
             '${s.apiUrl}?ac=videolist&pg=1',
             timeout: const Duration(seconds: 8),
+            cancelToken: cancelToken,
           );
           for (final x in (json['list'] as List<dynamic>? ?? const [])
               .whereType<Map<String, dynamic>>()) {
@@ -831,8 +967,9 @@ class CmsClient {
     String area = 'all',
     String year = 'all',
     String by = '',
+    CancelToken? cancelToken,
   }) async {
-    final map = await typeMap();
+    final map = await typeMap(cancelToken: cancelToken);
     final entry = map[name];
     if (entry == null) throw CmsException('type not found');
     if (entry.isParent) {
@@ -843,6 +980,7 @@ class CmsClient {
         area: area,
         year: year,
         by: by,
+        cancelToken: cancelToken,
       );
     }
     return _byLeafType(
@@ -852,6 +990,7 @@ class CmsClient {
       area: area,
       year: year,
       by: by,
+      cancelToken: cancelToken,
     );
   }
 
@@ -868,6 +1007,7 @@ class CmsClient {
     required String area,
     required String year,
     required String by,
+    CancelToken? cancelToken,
   }) async {
     final filtered = (area != 'all') || (year != 'all');
     const win = 10;
@@ -897,6 +1037,7 @@ class CmsClient {
             final json = await _fetcher(
               '${s.apiUrl}?ac=videolist&$baseQ&pg=$p$extraQ',
               timeout: const Duration(seconds: 8),
+              cancelToken: cancelToken,
             );
             anyOk = true;
             return json;
@@ -961,6 +1102,7 @@ class CmsClient {
     required String area,
     required String year,
     required String by,
+    CancelToken? cancelToken,
   }) async {
     final filtered = (area != 'all') || (year != 'all');
     final attempts = [entry, ...entry.candidates].take(4).toList();
@@ -971,13 +1113,21 @@ class CmsClient {
       if (s == null) continue;
       List<_CmsTypePage> pages;
       if (target.isParent) {
-        final fetched = await Future.wait(
-          target.childTypeIds.map((tid) => _fetchTypePage(s, tid, page)),
+        final fetched = await _fetchChildPages(
+          s,
+          target.childTypeIds,
+          page,
+          cancelToken: cancelToken,
         );
         pages = fetched.whereType<_CmsTypePage>().toList();
         if (pages.isNotEmpty) anyOk = true;
       } else {
-        final pg = await _fetchTypePage(s, target.typeId, page);
+        final pg = await _fetchTypePage(
+          s,
+          target.typeId,
+          page,
+          cancelToken: cancelToken,
+        );
         if (pg == null) continue;
         anyOk = true;
         if (!_leafPageMatches(name, pg.items)) continue;

@@ -14,7 +14,6 @@
 import 'package:flutter/material.dart';
 
 import '../../app/changelog.dart';
-import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 
@@ -25,7 +24,6 @@ class ChangelogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: tabScaffoldBackground(context),
       appBar: AppBar(
         title: const Text('更新日志'),
         centerTitle: true,

@@ -68,10 +68,17 @@ class _FakeApi extends MusicApi {
     String title,
     String artist,
     MusicPlatform excludePf,
-    String album,
-  ) async {
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
     altLookups.add(title);
-    if (altCompleter != null) return altCompleter!.future;
+    // M-P1-4: honour the timeout like the real findAltPlatform
+    // (it cancels its search tokens when the cap fires); the
+    // parked-lookup test completes its completer in ~50 ms, well
+    // inside any cap.
+    if (altCompleter != null) {
+      return altCompleter!.future.timeout(timeout, onTimeout: () => null);
+    }
     return alt;
   }
 
@@ -103,6 +110,8 @@ class _ScriptedResolvers extends MusicResolvers {
     String title, {
     Set<String> excludeJobs = const <String>{},
     String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
   }) async {
     calls.add((
       songId: songId,
@@ -461,6 +470,54 @@ void main() {
       expect(c.queue[2].title, 'C歌');
       expect(c.lastNotice.value, contains('B歌'));
       expect(c.lastNotice.value, contains('已跳到下一首'));
+    });
+
+    test('M-P1-4 auto-advance failure gives up in ~2s, not ~4s+',
+        () async {
+      // Same shape as the test above, but the alt lookup would only
+      // answer after 4 s. The auto path caps it at 2 s, so the skip
+      // to C must land at ~2 s: the old 5 s cap made the silence
+      // ~4 s (and ~21 s with the old 8 s re-resolve budget).
+      resolvers = _ScriptedResolvers((songId, excludeJobs) {
+        if (songId == 'b-id') return null;
+        final url = _url(songId);
+        return PlayUrlResult(
+          url: url,
+          candidates: [url],
+          quality: AudioQuality.hires,
+          via: 'test',
+        );
+      });
+      c = makeController();
+      // Capture the completer locally: the group-level `api` is
+      // reassigned by the next test's setUp, so a delayed callback
+      // that reads `api.altCompleter` would null-check a fresh
+      // _FakeApi after this test already completed.
+      final completer = Completer<Song?>();
+      api.altCompleter = completer;
+      unawaited(
+        Future<void>.delayed(const Duration(seconds: 4)).then(
+          (_) {
+            if (!completer.isCompleted) completer.complete(null);
+          },
+        ),
+      );
+      final sw = Stopwatch()..start();
+      final errors = await _runCatchingAsyncErrors(() async {
+        await c.playQueue(
+          [_wy('a-id', 'A歌'), _wy('b-id', 'B歌'), _wy('c-id', 'C歌')],
+          0,
+        );
+        await c.next(auto: true);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      sw.stop();
+      // ignore: avoid_print
+      print('B27 P1-4 controller ms=${sw.elapsedMilliseconds}');
+      expect(errors, isEmpty);
+      expect(c.currentIndex.value, 2);
+      expect(c.lastNotice.value, contains('已跳到下一首'));
+      expect(sw.elapsedMilliseconds, lessThan(3500));
     });
 
     test('give-up at the queue end stops the previous song', () async {
