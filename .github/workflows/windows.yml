@@ -76,7 +76,7 @@ jobs:
           $version = (Select-String -Path pubspec.yaml -Pattern '^version: (.+)\+').Matches.Groups[1].Value
           "version=$version" >> $env:GITHUB_OUTPUT
 
-- name: Zip the Release folder
+      - name: Zip the Release folder
         shell: pwsh
         run: |
           Compress-Archive -Path build/windows/x64/runner/Release/* `
