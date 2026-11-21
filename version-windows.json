@@ -5,6 +5,7 @@
     "en": "Windows desktop edition 1.1.5 (build 26): the music player now has a volume control — speaker plus slider, tap to mute and tap again to restore, dragging applies live, and it follows the Settings volume slider; live and settings pages got big bold top-left titles; a new “liquid glass intensity” slider in Settings → Appearance adjusts the glass effect across the app; wallpaper and background color now apply app-wide; shadows removed from the bottom bar and mini player."
   },
   "exeBuild": 26,
+  "exeSize": 33698758,
   "exeUrl": "https://chen-hao-shop-production.up.railway.app/HAoStudio-standalone-v1.1.5-windows.zip",
   "version": "1.1.5"
 }
