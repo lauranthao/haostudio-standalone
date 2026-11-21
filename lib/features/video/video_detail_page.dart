@@ -28,6 +28,7 @@
 // - Episode cards use a numbered dark tile — CMS provides no
 //   per-episode stills, and repeating the poster is visibly wrong.
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -411,7 +412,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       // Rounded rectangle (14px), NOT a pill (Infuse D5).
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                       ),
                       elevation: 2,
                       shadowColor: theme.accent.withValues(alpha: 0.35),
@@ -681,7 +682,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: theme.surface,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(HaoRadius.large),
                                   border: Border.all(
                                     color: theme.hairline,
                                   ),
@@ -862,7 +863,7 @@ class _MetaLine extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     border: Border.all(color: theme.hairline),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(HaoRadius.badge),
                   ),
                   child: Text(
                     '豆瓣',
@@ -955,7 +956,7 @@ class _EpisodeCard extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: selected ? theme.accentSoft : theme.surface,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(HaoRadius.large),
                 border: Border.all(
                   color:
                       selected ? theme.accent : theme.hairline,

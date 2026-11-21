@@ -12,6 +12,7 @@
 //   (Infuse Phase 2; lookup is prebuilt once per render by the caller
 //   via [isWatched]).
 
+import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
@@ -73,7 +74,7 @@ class VideoPosterCard extends StatelessWidget {
                   // in all four light modes. Over real artwork the
                   // badges below still use black scrims (on-photo).
                   color: theme.surfaceStrong,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(HaoRadius.standard),
                   border: Border.all(color: theme.hairline),
                   // Soft lift in light modes; invisible (harmless)
                   // on dark scaffolds. Shadow is black-alpha, not a
@@ -115,7 +116,7 @@ class VideoPosterCard extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xA6000000),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(HaoRadius.standard),
                           ),
                           child: Text(
                             '$total 集',

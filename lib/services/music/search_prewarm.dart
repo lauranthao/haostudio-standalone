@@ -60,6 +60,7 @@ class SearchPrewarm {
           song.platform,
           MusicStore.quality,
           song.title,
+          artist: song.artist,
         );
       } catch (_) {
         // Best-effort: one song failing must not break the next.

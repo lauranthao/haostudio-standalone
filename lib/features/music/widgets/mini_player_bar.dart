@@ -1,3 +1,4 @@
+import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -140,7 +141,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                     children: [
                       Container(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(HaoRadius.small),
                           boxShadow: const [
                             BoxShadow(
                               color: Color.fromRGBO(0, 0, 0, 0.15),
@@ -150,7 +151,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                           ],
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(HaoRadius.small),
                           child: song.cover.isEmpty
                               ? Container(
                                   width: 32,

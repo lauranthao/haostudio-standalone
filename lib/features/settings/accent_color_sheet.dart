@@ -19,13 +19,14 @@
 // app-wide accent (ThemeController, opaque form): switches,
 // selected chips, play buttons, progress and highlights all follow.
 // No confirm step; × closes. "恢复默认" (bottom right) deletes the
-// stored colour: the tab bar returns to NetEase red and the theme
-// accent returns to the per-theme default. The colour is stored
-// with its opacity and controls the tab-bar selected state
-// (icon + label) plus every accent-role usage in the app —
-// semantic red (LIVE badge, recording dot, destructive confirms)
-// and brand/logo colours never read it and never change.
+// stored colour: the theme accent returns to the per-theme default
+// and the ring / picker show that actual accent (never an invented
+// default). The colour is stored with its opacity and controls the
+// tab-bar selected state (icon + label) plus every accent-role usage
+// in the app — semantic red (LIVE badge, recording dot) and
+// brand/logo colours never read it and never change.
 
+import '../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -69,6 +70,19 @@ Future<void> showAccentColorSheet(BuildContext context) {
   );
 }
 
+/// The accent actually in effect: the stored custom colour when
+/// one exists, else the current theme's own accent (P0-5 — no
+/// invented default). Reads ThemeController when registered, else
+/// the ThemeData extension (same value: the ThemeData was built from
+/// the controller, or directly from HaoThemes in tests).
+Color _effectiveAccent(BuildContext context) {
+  if (Get.isRegistered<ThemeController>()) {
+    return Get.find<ThemeController>()
+        .effectiveAccent(Theme.of(context).brightness);
+  }
+  return HaoTheme.of(context).accent;
+}
+
 /// The rainbow-ring button (settings row trailing): a conic rainbow
 /// ring with the current accent colour in the middle (the reference
 /// row's right-hand control). Rebuilds live through the accent Rx.
@@ -79,7 +93,7 @@ class AccentRingButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = TabBarAccentController.ensure();
     return Obx(() {
-      final color = accent.color.value;
+      final color = accent.color.value ?? _effectiveAccent(context);
       return SizedBox(
         width: 44,
         height: 44,
@@ -99,7 +113,7 @@ class AccentRingButton extends StatelessWidget {
                     Color(0xFF00FF00),
                     Color(0xFF00FFFF),
                     Color(0xFF0000FF),
-                    Color(0xFFFF00FF),
+                    // P1-U6: no magenta — blue goes straight back to red.
                     Color(0xFFFF0000),
                   ],
                 ),
@@ -145,16 +159,32 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
   late double _opacity;
   var _mode = _AccentMode.grid;
   late List<Color> _customs;
+  // didChangeDependencies runs before the first build (and again if
+  // an inherited widget changes): the starting colour resolves once.
+  var _initialized = false;
 
   Color get _color => _hsv.toColor().withValues(alpha: _opacity);
 
   @override
   void initState() {
     super.initState();
-    final current = TabBarAccentController.ensure().color.value;
+    _customs = AccentPresetStore.loadCustoms();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The starting colour needs the theme (Theme.of), which is not
+    // available in initState — resolve it here, once, before the
+    // first build. Stored custom colour when one exists, else the
+    // theme's actual accent (P0-5): the picker HSV starts from what
+    // the user actually sees, never from an invented red.
+    if (_initialized) return;
+    _initialized = true;
+    final current =
+        TabBarAccentController.ensure().color.value ?? _effectiveAccent(context);
     _hsv = HSVColor.fromColor(current);
     _opacity = current.a;
-    _customs = AccentPresetStore.loadCustoms();
   }
 
   Future<void> _apply(HSVColor hsv, double opacity) async {
@@ -171,8 +201,9 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
     }
   }
 
-  /// Restore defaults: tab bar back to NetEase red, theme accent
-  /// back to the per-theme default, stored colour deleted.
+  /// Restore defaults: no custom colour — the stored key is deleted
+  /// and the theme accent returns to the per-theme default, which is
+  /// what the picker restarts from (P0-5).
   Future<void> _resetToDefault() async {
     HaoHaptics.select();
     await TabBarAccentController.ensure().reset();
@@ -181,7 +212,8 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
     }
     if (!mounted) return;
     setState(() {
-      final current = TabBarAccentController.ensure().color.value;
+      final current =
+          TabBarAccentController.ensure().color.value ?? _effectiveAccent(context);
       _hsv = HSVColor.fromColor(current);
       _opacity = current.a;
     });
@@ -304,7 +336,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   color: theme.surfaceStrong,
                 ),
                 child: Text(
@@ -330,7 +362,7 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(HaoRadius.panel),
                   color: _color,
                   border: Border.all(color: theme.hairline),
                 ),
@@ -365,8 +397,8 @@ class _AccentColorSheetState extends State<_AccentColorSheet> {
             ],
           ),
           const SizedBox(height: 8),
-          // Reset: tab bar back to NetEase red, theme accent back to
-          // the per-theme default. Plain secondary text, not an
+          // Reset: no custom colour — theme accent back to the
+          // per-theme default. Plain secondary text, not an
           // accent-role usage — it stays textSecondary.
           Align(
             alignment: Alignment.centerRight,
@@ -445,7 +477,7 @@ class _Segments extends StatelessWidget {
             height: 40,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(HaoRadius.panel),
               color: selected ? theme.surfaceSolid : Colors.transparent,
             ),
             child: Text(
@@ -465,7 +497,7 @@ class _Segments extends StatelessWidget {
       height: 44,
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(HaoRadius.panel),
         color: theme.surfaceStrong,
       ),
       child: Row(
@@ -490,8 +522,10 @@ class _GridPicker extends StatelessWidget {
   final double opacity;
   final ValueChanged<Color> onPick;
 
+  // P1-U6: no purple/magenta hues (260°–320° dropped) — blue goes
+  // straight back to red.
   static const List<double> hues = [
-    180, 210, 240, 270, 300, 330, 0, 25, 45, 60, 85, 130,
+    180, 210, 240, 330, 0, 25, 45, 60, 85, 130,
   ];
   static const int rows = 9;
 
@@ -515,7 +549,7 @@ class _GridPicker extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(HaoRadius.large),
       child: Column(
         children: [
           SizedBox(
@@ -568,7 +602,7 @@ class _SpectrumPicker extends StatelessWidget {
       Color(0xFF00FF00),
       Color(0xFF00FFFF),
       Color(0xFF0000FF),
-      Color(0xFFFF00FF),
+      // P1-U6: no magenta — blue goes straight back to red.
       Color(0xFFFF0000),
     ],
   );
@@ -592,7 +626,7 @@ class _SpectrumPicker extends StatelessWidget {
                   Container(
                     height: 28,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(HaoRadius.large),
                       gradient: _rainbow,
                     ),
                   ),
@@ -618,7 +652,7 @@ class _SpectrumPicker extends StatelessWidget {
               onTapDown: (d) => _pickSv(d.localPosition, width, height),
               onPanUpdate: (d) => _pickSv(d.localPosition, width, height),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(HaoRadius.large),
                 child: Stack(
                   children: [
                     Container(
@@ -740,7 +774,7 @@ class _SlidersPicker extends StatelessWidget {
               Color(0xFF00FF00),
               Color(0xFF00FFFF),
               Color(0xFF0000FF),
-              Color(0xFFFF00FF),
+              // P1-U6: no magenta — blue goes straight back to red.
               Color(0xFFFF0000),
             ],
           ),
@@ -814,7 +848,7 @@ class _GradientSlider extends StatelessWidget {
               Container(
                 height: 28,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   gradient: gradient,
                 ),
               ),

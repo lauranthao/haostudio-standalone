@@ -29,6 +29,7 @@
 // (never the same URL), 60 s throttle, 10 s fallback restores the failure
 // UI. Prefetch a new URL ~100 s after issue.
 
+import '../../../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -41,7 +42,6 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../../../core/logging/app_log.dart';
 import '../../../../core/models/live_models.dart';
-import '../../../../core/native/system_volume.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
@@ -55,6 +55,7 @@ import '../../../../features/player/desktop_shortcuts.dart';
 import '../../../../features/player/fullscreen_controller.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../features/player/screen_brightness.dart';
+import '../../../../features/player/system_drag_controller.dart';
 import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
@@ -160,35 +161,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // only — the transport keeps running; hides the portrait list and
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
-  // System volume (MethodChannel): the vertical drag drives the
-  // device volume, not the player gain.
-  final SystemVolume _systemVolume = SystemVolume();
-  StreamSubscription<double>? _volumeSub;
-  // Per-side level caches (chen 2026-11-20: volume drag is choppy):
-  // the drag seeds from the cache of the side it starts on, so a
-  // mid-drag side change never re-reads the channel and never jumps
-  // the value. Volume stays live through the volumeChanges stream
-  // (+ an init-time read); brightness through an init-time read and
-  // the drag itself.
-  double _volumeLevel = 1.0;
-  double _brightnessLevel = 0.5;
-  // Drag HUD state (Pure Live PlayerGestureLayerState): full travel of
-  // the surface maps to a quarter of the level range per half-height
-  // (see _applyDrag); the card hides 1 s after the last drag.
-  bool _dragHudVisible = false;
-  bool _dragIsBrightness = true;
-  // The drag HUD value. A ValueNotifier, not a setState field — see
-  // the VOD player: pointer ticks rebuild only the HUD card, never
-  // the whole room page.
-  final ValueNotifier<double> _dragValueNotifier =
-      ValueNotifier<double>(1.0);
-  Timer? _dragHudTimer;
+  // Vertical drag brightness/volume (P1-U2): shared
+  // [SystemDragController] with the VOD player — same seed, HUD and
+  // sensitivity (300 px = full range). The vertical drag drives the
+  // DEVICE volume, not the player gain. HUD linger 1 s (live value).
+  final SystemDragController _drag = SystemDragController(
+    hudLinger: const Duration(seconds: 1),
+  );
   bool _dragInSystemZone = false;
-  // True once the drag-start seed has landed; updates arriving
-  // before that are dropped (the brightness seed awaits the channel
-  // for up to 300 ms — the VOD player drops them the same way, by
-  // leaving the drag side unset until the seed completes).
-  bool _dragSeedReady = false;
   // Fullscreen barrage pool (Pure Live PlayerDanmakuSurface +
   // LivePlayerFacade.floatingDanmaku): rendered over the video in
   // fullscreen only; the portrait list below stays the danmaku
@@ -309,16 +289,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(LiveBreadcrumb.write('live-present'));
     unawaited(_loadRoom());
     // Keep the HUD on the real level when hardware keys / Control
-    // Center move it. The drag itself reads the level live.
-    _volumeSub = _systemVolume.volumeChanges.listen(_onExternalVolume);
-    // Seed the per-side caches at entry (best-effort): the first drag
-    // must start from the real levels, not the 1.0 / 0.5 defaults —
-    // the old code re-read inside the drag update instead and raced
-    // with the drag itself, jumping the value mid-drag.
-    unawaited(_systemVolume.getVolume().then((v) => _volumeLevel = v));
-    unawaited(
-      ScreenBrightness.getBrightness().then((v) => _brightnessLevel = v),
-    );
+    // Center move it. The drag itself reads the level live; the
+    // controller owns the volume stream + per-side caches.
+    _drag.init();
   }
 
   Future<void> _loadRoom() async {
@@ -889,7 +862,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   /// Manual retry: same order as automatic recovery (Pure Live
   /// _runRecoverTask) — HELD prefetched plan first, then a FRESH
-  /// re-parse, then the next line, never the dead URL.
+  /// re-parse, then the next line, never the dead URL. The fresh
+  /// re-parse is FORCED (P1-T2): a manual retry is a deliberate user
+  /// action, so it re-parses at once even inside the 60 s throttle
+  /// window a successful automatic fetch stamped.
   Future<void> _manualRetry() async {
     setState(() {
       _failed = false;
@@ -898,7 +874,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _ladderHint = null;
       _consecutiveAutoFailures = 0; // user-initiated, fresh retry budget
     });
-    final fresh = _recovery.takeHeld() ?? await _recovery.fetchFresh();
+    final fresh =
+        _recovery.takeHeld() ?? await _recovery.fetchFresh(force: true);
     if (fresh != null && fresh.urls.isNotEmpty && mounted) {
       // takeHeld/fetchFresh already matched the line by URL identity — open the
       // matched line, not urls.first (the refresh may re-order lines).
@@ -1131,108 +1108,31 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     return localPosition.dy >= size.height - zone;
   }
 
+  /// Vertical drag: left half brightness, right half volume (Pure Live
+  /// PlayerGestureLayer). Volume is the SYSTEM volume. The seed,
+  /// sensitivity (300 px = full range, shared with the VOD player)
+  /// and HUD all live in [_drag]; this page only guards where a drag
+  /// may start (system home-gesture zone, locked controls).
   Future<void> _onVerticalDragStart(DragStartDetails details) async {
     final size = _videoSurfaceKey.currentContext?.size;
     _dragInSystemZone =
         size != null &&
         _startsInSystemHomeGestureZone(details.localPosition, size);
-    _dragSeedReady = false;
     if (_dragInSystemZone || _controlsLocked) return;
     if (size == null || size.width <= 0) return;
-    // Seed the drag from the side's cache. Volume needs no re-read —
-    // the cache is live through the volumeChanges stream. Brightness
-    // gets a best-effort re-read with a short timeout, like the VOD
-    // player (a stale brightness seed would jump the screen back to
-    // the old level on the first move); updates arriving before it
-    // lands are dropped (see _dragSeedReady) instead of racing it.
-    final isBrightness = details.localPosition.dx <= size.width / 2;
-    // Windows: no screen-brightness API and no brightness UI — a
-    // vertical drag starting on the left half is a no-op here (not
-    // brightness, and never a fake HUD value). Right-half volume
-    // still works.
-    if (Platform.isWindows && isBrightness) return;
-    if (isBrightness) {
-      try {
-        final v = await ScreenBrightness.getBrightness().timeout(
-          const Duration(milliseconds: 300),
-        );
-        if (!mounted) return;
-        _brightnessLevel = v.clamp(0.0, 1.0);
-      } catch (_) {}
-    }
-    if (!mounted) return;
-    _dragIsBrightness = isBrightness;
-    _dragValueNotifier.value =
-        isBrightness ? _brightnessLevel : _volumeLevel;
-    _dragSeedReady = true;
+    await _drag.startDrag(details.localPosition, size);
   }
 
-  /// Hardware keys / Control Center changed the system volume:
-  /// keep the cached level and the drag HUD on the same value. A
-  /// brightness HUD already on screen is left alone.
-  void _onExternalVolume(double volume) {
-    if (!mounted) return;
-    _volumeLevel = volume;
-    if (_dragHudVisible && _dragIsBrightness) return;
-    // Own-set echoes never reach here (SystemVolume suppresses them);
-    // a genuine hardware-key / Control Center change updates the HUD
-    // value directly — no page rebuild beyond the pill visibility.
-    _dragValueNotifier.value = volume;
-    setState(() {
-      _dragIsBrightness = false;
-    });
-    _keepDragHudVisible();
-  }
-
-  /// Vertical drag: left half brightness, right half volume (Pure Live
-  /// PlayerGestureLayer._apply, verbatim formula). Volume is the
-  /// SYSTEM volume (SystemVolume channel).
   void _onVerticalDragUpdate(DragUpdateDetails details) {
     if (_dragInSystemZone || _controlsLocked) return;
-    if (!_dragSeedReady) return;
     final size = _videoSurfaceKey.currentContext?.size;
     if (size == null || size.height <= 0) return;
-    final delta = details.delta;
-    if (delta.distance < 0.5) return;
-    // Windows has no brightness zone: a drag wandering into the
-    // left half keeps doing volume instead of flipping to a fake
-    // brightness HUD.
-    final isBrightness =
-        !Platform.isWindows && details.localPosition.dx <= size.width / 2;
-    // Side change mid-drag: seed from the new side's cache (no
-    // channel read) so the value continues from that side's real
-    // level instead of jumping. The old code awaited getVolume /
-    // getBrightness here and the re-read overwrote the drag value
-    // while later ticks were already applying deltas to it.
-    if (_dragIsBrightness != isBrightness) {
-      _dragIsBrightness = isBrightness;
-      _dragValueNotifier.value =
-          isBrightness ? _brightnessLevel : _volumeLevel;
-    }
-    _keepDragHudVisible();
-    // Full travel of the surface maps to a quarter of the level range
-    // per half-height: target = value - dy / (height / 2) * 0.25.
-    final target =
-        (_dragValueNotifier.value - delta.dy / (size.height / 2) * 0.25)
-            .clamp(0.0, 1.0);
-    if ((target - _dragValueNotifier.value).abs() <= 0.001) return;
-    // HUD first, through the notifier only — the page is NOT rebuilt
-    // per tick. The platform call is coalesced inside
-    // SystemVolume.setVolume, so a fast drag sends the latest value
-    // instead of a queue of stale ones.
-    _dragValueNotifier.value = target;
-    if (isBrightness) {
-      _brightnessLevel = target;
-      unawaited(ScreenBrightness.setBrightness(target));
-    } else {
-      _volumeLevel = target;
-      unawaited(_systemVolume.setVolume(target));
-    }
+    _drag.updateDrag(details, size);
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
     _dragInSystemZone = false;
-    _dragSeedReady = false;
+    _drag.endDrag();
   }
 
   // -- Windows desktop keyboard + mouse wheel (step 2, phase 2). --
@@ -1269,31 +1169,18 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// vertical drag (the drag HUD is the only volume readout in this
   /// room, so a keyboard/wheel change without it would be silent).
   /// Also re-shows the fullscreen controls, like any interaction.
+  /// Volume goes through the shared [SystemDragController], which
+  /// owns the system-volume call and the HUD.
   void _applyVolumeStep(double delta) {
-    final next = (_volumeLevel + delta).clamp(0.0, 1.0);
-    _volumeLevel = next;
-    unawaited(_systemVolume.setVolume(next));
-    setState(() {
-      _dragIsBrightness = false;
-      _dragHudVisible = true;
-    });
-    _dragValueNotifier.value = next;
-    _keepDragHudVisible();
+    final next = (_drag.volumeLevel + delta).clamp(0.0, 1.0);
+    unawaited(_drag.setVolumeLevel(next));
     _showControls();
-  }
-
-  void _keepDragHudVisible() {
-    _dragHudTimer?.cancel();
-    _dragHudTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _dragHudVisible = false);
-    });
-    if (!_dragHudVisible) setState(() => _dragHudVisible = true);
   }
 
   /// Drag HUD icon (Pure Live PlayerGestureLayerState._icon).
   IconData get _dragHudIcon {
-    final value = _dragValueNotifier.value;
-    if (_dragIsBrightness) {
+    final value = _drag.value.value;
+    if (_drag.isBrightness) {
       if (value <= 0) return Icons.brightness_low;
       return value < 0.5 ? Icons.brightness_medium : Icons.brightness_high;
     }
@@ -1424,7 +1311,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       horizontal: 20,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(HaoRadius.large),
                     ),
                     title: Text(
                       _qualities[i].quality,
@@ -1482,7 +1369,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       horizontal: 20,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(HaoRadius.large),
                     ),
                     title: Text(
                       '线路 ${i + 1}',
@@ -1522,10 +1409,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _hideControlsTimer?.cancel();
     _fullscreenWorker?.dispose();
     _fullscreenWorker = null;
-    _dragHudTimer?.cancel();
-    _dragValueNotifier.dispose();
-    _volumeSub?.cancel();
-    _systemVolume.dispose();
+    _drag.dispose();
     _barrageController.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
     _danmakuScroll.dispose();
@@ -1689,17 +1573,21 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               onVerticalDragEnd: _onVerticalDragEnd,
               onVerticalDragCancel: () {
                 _dragInSystemZone = false;
-                _dragSeedReady = false;
+                _drag.cancelDrag();
               },
             ),
           ),
-          // Drag HUD (Pure Live PlayerGestureLayer card).
-          if (_dragHudVisible)
-            Center(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _dragHudVisible ? 0.8 : 0.0,
-                  duration: const Duration(milliseconds: 300),
+          // Drag HUD (Pure Live PlayerGestureLayer card). Only this
+          // card listens to the drag state: ticks rebuild the card,
+          // never the room page. The HUD hides the moment the shared
+          // controller clears the side (the old 300 ms fade is gone
+          // with the shared controller; the 1 s linger stays).
+          ValueListenableBuilder<SystemDragSide?>(
+            valueListenable: _drag.side,
+            builder: (context, dragSide, _) {
+              if (dragSide == null) return const SizedBox.shrink();
+              return Center(
+                child: IgnorePointer(
                   // Over-video HUD: dark glass — the blur is real
                   // (BackdropFilter over the video), black stays
                   // legible over any frame in every theme/mode.
@@ -1708,7 +1596,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     // Only this card listens to the drag value: ticks
                     // rebuild the card, never the room page.
                     child: ValueListenableBuilder<double>(
-                      valueListenable: _dragValueNotifier,
+                      valueListenable: _drag.value,
                       builder: (context, value, _) => Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -1722,7 +1610,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(HaoRadius.standard),
                                 child: SizedBox(
                                   width: 100,
                                   height: 20,
@@ -1750,8 +1638,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
+          ),
           // Top bar — fullscreen only (portrait already has the AppBar;
           // Pure Live fullscreen has no AppBar, its TopActionBar is the
           // overlay). Back exits fullscreen; title is the room title.
@@ -2079,7 +1968,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             decoration: BoxDecoration(
                               // Red ONLY for the LIVE badge (standing rule).
                               color: theme.liveRed,
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(HaoRadius.small),
                             ),
                             child: const Text(
                               'LIVE',
@@ -2119,7 +2008,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                           selected: selected,
                           selectedColor: theme.accentSoft,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(HaoRadius.panel),
                           ),
                           side: BorderSide(
                             color: selected
@@ -2162,7 +2051,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                           selected: selected,
                           selectedColor: theme.accentSoft,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(HaoRadius.panel),
                           ),
                           side: BorderSide(
                             color: selected

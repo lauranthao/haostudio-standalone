@@ -16,6 +16,7 @@
 // never a hardcoded colour; no purple anywhere. Frosted-glass card in
 // the same style as the audio-quality sheet.
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -129,7 +130,7 @@ Future<UpdateDialogAction?> showUpdateDialog(
                       foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                       ),
                     ),
                     child: const Text(

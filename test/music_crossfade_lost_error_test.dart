@@ -103,6 +103,7 @@ class _UrlResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     resolvedIds.add(songId);
     return PlayUrlResult(

@@ -2,6 +2,9 @@
 // import validates before writing anything, and a round-trip restores
 // every entry.
 
+import 'dart:io';
+
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:standalone/services/backup_service.dart';
@@ -40,33 +43,33 @@ void main() {
       );
     });
 
-    test('round-trip restores all entries', () {
+    test('round-trip restores all entries', () async {
       box.put('videoPlayerKey', 'ijk');
       box.put('skippedVersion', '1.0.3');
       final service = BackupService(box: box);
       final json = service.exportJson();
       box.put('videoPlayerKey', 'mpv');
       box.delete('skippedVersion');
-      final (result, count) = service.importJson(json);
+      final (result, count) = await service.importJson(json);
       expect(result, BackupImportResult.ok);
       expect(count, 2);
       expect(box.get('videoPlayerKey'), 'ijk');
       expect(box.get('skippedVersion'), '1.0.3');
     });
 
-    test('invalid JSON writes nothing', () {
+    test('invalid JSON writes nothing', () async {
       box.put('videoPlayerKey', 'mpv');
       final service = BackupService(box: box);
-      final (result, count) = service.importJson('not json{');
+      final (result, count) = await service.importJson('not json{');
       expect(result, BackupImportResult.invalidJson);
       expect(count, 0);
       expect(box.get('videoPlayerKey'), 'mpv');
     });
 
-    test('wrong schema writes nothing', () {
+    test('wrong schema writes nothing', () async {
       box.put('videoPlayerKey', 'mpv');
       final service = BackupService(box: box);
-      final (result, count) = service.importJson(
+      final (result, count) = await service.importJson(
         '{"schema":99,"data":{"videoPlayerKey":"ijk"}}',
       );
       expect(result, BackupImportResult.wrongSchema);
@@ -74,19 +77,19 @@ void main() {
       expect(box.get('videoPlayerKey'), 'mpv');
     });
 
-    test('empty data writes nothing', () {
+    test('empty data writes nothing', () async {
       final service = BackupService(box: box);
-      final (result, count) = service.importJson(
+      final (result, count) = await service.importJson(
         '{"schema":1,"data":{}}',
       );
       expect(result, BackupImportResult.emptyData);
       expect(count, 0);
     });
 
-    test('top-level array JSON writes nothing', () {
+    test('top-level array JSON writes nothing', () async {
       box.put('videoPlayerKey', 'mpv');
       final service = BackupService(box: box);
-      final (result, count) = service.importJson(
+      final (result, count) = await service.importJson(
         '[{"schema":1,"data":{}}]',
       );
       expect(result, BackupImportResult.invalidJson);
@@ -94,10 +97,10 @@ void main() {
       expect(box.get('videoPlayerKey'), 'mpv');
     });
 
-    test('non-integer schema writes nothing', () {
+    test('non-integer schema writes nothing', () async {
       box.put('videoPlayerKey', 'mpv');
       final service = BackupService(box: box);
-      final (result, count) = service.importJson(
+      final (result, count) = await service.importJson(
         '{"schema":"1","data":{"videoPlayerKey":"ijk"}}',
       );
       expect(result, BackupImportResult.wrongSchema);
@@ -121,7 +124,7 @@ void main() {
       final service = BackupService(box: box);
       final json = service.exportJson();
       await box.clear();
-      final (result, count) = service.importJson(json);
+      final (result, count) = await service.importJson(json);
       expect(result, BackupImportResult.ok);
       expect(count, 3);
       final lists = box.get('hao_lists') as List;
@@ -130,5 +133,168 @@ void main() {
       expect(box.get('hao_fav'), ['wy|123', 'kg|789']);
       expect(box.get('musicVolume'), 0.8);
     });
+
+    test('write failure mid-import rolls back to the snapshot (P1-L4)',
+        () async {
+      box.put('a', 'old-a');
+      box.put('b', 'old-b');
+      const json = '{"schema":1,"data":{"a":"new-a","c":"new-c"}}';
+      // The 2nd put throws (disk error): the 1st write already
+      // landed, so without a rollback the box would be half-imported.
+      final service = BackupService(box: _FailingBox(box, 2));
+      final (result, count) = await service.importJson(json);
+      expect(result, BackupImportResult.writeFailed);
+      expect(count, 0);
+      expect(box.get('a'), 'old-a');
+      expect(box.get('b'), 'old-b');
+      expect(box.containsKey('c'), isFalse);
+    });
+
+    group('zip export/import (P1-L3)', () {
+      late Directory docs;
+
+      setUp(() async {
+        docs = await Directory.systemTemp.createTemp('hao-backup-test-');
+      });
+
+      tearDown(() async {
+        if (await docs.exists()) await docs.delete(recursive: true);
+      });
+
+      Future<void> seedFiles() async {
+        final dl = Directory('${docs.path}/music_downloads');
+        await dl.create(recursive: true);
+        await File('${dl.path}/song.mp3').writeAsBytes([1, 2, 3, 4]);
+        final wp = Directory('${docs.path}/wallpapers');
+        await wp.create(recursive: true);
+        await File(
+          '${wp.path}/bg.jpg',
+        ).writeAsBytes([9, 8, 7]);
+        final nested = Directory('${docs.path}/local_music/sub');
+        await nested.create(recursive: true);
+        await File('${nested.path}/track.flac').writeAsBytes([5, 5, 5]);
+      }
+
+      test('zip round-trip restores entries AND files', () async {
+        box.put('videoPlayerKey', 'ijk');
+        box.put('music_downloads_index', ['music_downloads/song.mp3']);
+        await seedFiles();
+        final service = BackupService(box: box);
+        final zip = await service.exportZip(documentsDir: docs);
+        // Wipe everything: box + files.
+        await box.clear();
+        await docs.delete(recursive: true);
+        await docs.create();
+        final (result, entries, files) = await service.importZip(
+          zip,
+          documentsDir: docs,
+        );
+        expect(result, BackupImportResult.ok);
+        expect(entries, 2);
+        expect(files, 3);
+        expect(box.get('videoPlayerKey'), 'ijk');
+        expect(
+          await File(
+            '${docs.path}/music_downloads/song.mp3',
+          ).readAsBytes(),
+          [1, 2, 3, 4],
+        );
+        expect(
+          await File('${docs.path}/wallpapers/bg.jpg').readAsBytes(),
+          [9, 8, 7],
+        );
+        expect(
+          await File(
+            '${docs.path}/local_music/sub/track.flac',
+          ).readAsBytes(),
+          [5, 5, 5],
+        );
+      });
+
+      test('zip without files still imports the JSON', () async {
+        box.put('videoPlayerKey', 'ijk');
+        final service = BackupService(box: box);
+        final zip = await service.exportZip(documentsDir: docs);
+        await box.clear();
+        final (result, entries, files) = await service.importZip(
+          zip,
+          documentsDir: docs,
+        );
+        expect(result, BackupImportResult.ok);
+        expect(entries, 1);
+        expect(files, 0);
+        expect(box.get('videoPlayerKey'), 'ijk');
+      });
+
+      test('garbage bytes are invalid, zip without backup.json too',
+          () async {
+        final service = BackupService(box: box);
+        final (r1, _, _) = await service.importZip(
+          [0, 1, 2, 3],
+          documentsDir: docs,
+        );
+        expect(r1, BackupImportResult.invalidJson);
+        final archive = Archive();
+        archive.addFile(ArchiveFile('other.txt', 3, [1, 2, 3]));
+        final zip = ZipEncoder().encode(archive);
+        final (r2, _, _) = await service.importZip(
+          zip,
+          documentsDir: docs,
+        );
+        expect(r2, BackupImportResult.invalidJson);
+        expect(box.isEmpty, isTrue);
+      });
+
+      test('zip-slip entries are never written', () async {
+        box.put('videoPlayerKey', 'ijk');
+        final service = BackupService(box: box);
+        final zip = await service.exportZip(documentsDir: docs);
+        // Rebuild the zip with a hostile entry added.
+        final archive = ZipDecoder().decodeBytes(zip);
+        archive.addFile(
+          ArchiveFile('../evil.txt', 4, [1, 2, 3, 4]),
+        );
+        archive.addFile(
+          ArchiveFile('/abs.txt', 4, [1, 2, 3, 4]),
+        );
+        final hostile = ZipEncoder().encode(archive);
+        await box.clear();
+        final (result, _, files) = await service.importZip(
+          hostile,
+          documentsDir: docs,
+        );
+        expect(result, BackupImportResult.ok);
+        expect(files, 0);
+        expect(await File('${docs.path}/evil.txt').exists(), isFalse);
+        expect(box.get('videoPlayerKey'), 'ijk');
+      });
+    });
   });
+}
+
+/// A box that throws on the Nth put (simulates a disk error
+/// mid-import). Everything the service touches forwards to the real
+/// box; anything else falls through to Fake's noSuchMethod.
+class _FailingBox extends Fake implements Box<dynamic> {
+  _FailingBox(this._inner, this.failOnPut);
+
+  final Box<dynamic> _inner;
+  final int failOnPut;
+  var _puts = 0;
+
+  @override
+  Iterable<dynamic> get keys => _inner.keys;
+
+  @override
+  dynamic get(dynamic key, {dynamic defaultValue}) =>
+      _inner.get(key, defaultValue: defaultValue);
+
+  @override
+  Future<void> put(dynamic key, dynamic value) async {
+    if (++_puts == failOnPut) throw StateError('disk full (test)');
+    await _inner.put(key, value);
+  }
+
+  @override
+  Future<void> delete(dynamic key) => _inner.delete(key);
 }

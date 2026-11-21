@@ -1,7 +1,8 @@
 // HAo Studio standalone — Flutter v1.0.4 (version 1.0.4, build 5).
 //
-// Entry: Hive init (app_settings box) -> ThemeController -> GetMaterialApp
-// with the 4-theme system (immediate switching, light/dark/system).
+// Entry: Hive init (app_settings box) -> runApp on default theme /
+// system font -> post-first-frame warm-up (ThemeController / font /
+// appearance / log / shader pre-warm, see _warmUpAfterFirstFrame).
 // No login / community / shop / admin: video / live / music + settings +
 // backup/restore only. Player is native (media_kit / fijk / AVPlayer),
 // never a web <video>.
@@ -15,6 +16,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:media_kit/media_kit.dart';
@@ -54,21 +56,87 @@ Future<void> main() async {
     await windowManager.focus();
   }
 
-  // Liquid glass shader pipeline: pre-warm fragment shaders before
-  // runApp so the first glass frame has no white flash / jank
-  // (liquid_glass_widgets SKILL.md §2). No-op cost on Skia-only
-  // platforms (Linux tests / web): premium preload is skipped there
-  // by the library's own static probe.
-  await LiquidGlassWidgets.initialize();
+  // P0-2: runApp 前只留 HiveStore.init() — the serial awaits that
+  // used to sit here (LiquidGlassWidgets.initialize, LocalPaths,
+  // AppLog, font, appearance) locked cold start to ~2 s+ before the
+  // first frame. Everything else now runs after the first frame (see
+  // [_warmUpAfterFirstFrame]): the first frame paints on the default
+  // theme / system font, and the stored theme / font / appearance
+  // land a moment later and refresh once. HiveStore.init() does NOT
+  // depend on LocalPaths.ensureDocumentsPath (plain Hive.initFlutter
+  // + openBox), so nothing else needs to stay in front of runApp.
+  //
+  // The two Get.put calls below are synchronous registrations, not
+  // initialization work: HAoApp.build does Get.find<ThemeController>
+  // on the first frame, so the controller must exist before runApp.
+  // Their loads (loadFromBox / migrate + load) move to the warm-up.
+  // (LiquidGlassWidgets.initialize also moved to the warm-up — it is
+  // NOT Windows-only, so it stays out of the pre-runApp path here.)
+  await HiveStore.init();
 
+  // P0-3: lock portrait before the first frame. Info.plist declares
+  // Portrait + LandscapeLeft + LandscapeRight (fullscreen needs the
+  // landscape orientations), so without this a cold start with the
+  // phone turned rotates the whole app until the first fullscreen
+  // exit locks it. The fullscreen controller's own enter/exit logic
+  // is untouched.
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+
+  final themeController = Get.put(ThemeController());
+  final appearanceController = Get.put(AppearanceController());
+
+  // First frame first: the warm-up below runs once the first frame
+  // has painted.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(
+      _warmUpAfterFirstFrame(themeController, appearanceController),
+    ),
+  );
+
+  runApp(
+    LiquidGlassWidgets.wrap(
+      // Dynamically benchmarks the device raster budget and scales
+      // quality (premium on capable devices, down on weak ones).
+      adaptiveQuality: true,
+      // Degrades on Reduce Motion / Reduce Transparency.
+      respectSystemAccessibility: true,
+      // Bridges Material ThemeMode so glass honours our light/dark/
+      // system modes even when the OS disagrees.
+      brightnessResolver: Theme.maybeBrightnessOf,
+      // ios27 defaults; our 4 themes map at widget level, see
+      // liquid_glass_theme.dart (no global quality override, Rule 5).
+      theme: HaoLiquidGlass.themeData,
+      child: const HAoApp(),
+    ),
+  );
+}
+
+/// Everything that used to block the first frame, now deferred until
+/// after it has painted (P0-2). Order inside is the old order:
+/// media_kit first (any Player() created from here on needs it;
+/// mpv_backend re-ensures it itself before building a Player), then
+/// shader pre-warm, Documents path, log, audio session, equalizer,
+/// theme / font / appearance loads, and the automatic update check.
+/// The splash animation itself (#4, chen's pick) is untouched.
+Future<void> _warmUpAfterFirstFrame(
+  ThemeController themeController,
+  AppearanceController appearanceController,
+) async {
   // media_kit native library MUST be initialised before any Player()
   // is created. Without this, NativeLibrary.path throws on first
   // Player() construction (music tab blank, live/video stuck loading).
   // Idempotent: media_kit guards with an internal _initialized flag.
   MediaKit.ensureInitialized();
 
-  // Crash breadcrumb: read before anything else (fix 1).
-  await HiveStore.init();
+  // Liquid glass shader pipeline: pre-warm fragment shaders so glass
+  // frames have no white flash / jank (liquid_glass_widgets SKILL.md
+  // §2). No-op cost on Skia-only platforms (Linux tests / web):
+  // premium preload is skipped there by the library's own static
+  // probe.
+  await LiquidGlassWidgets.initialize();
+
   // Warm the Documents-directory cache so every synchronous
   // LocalPaths.resolveSync on the playback hot path (downloads /
   // wallpapers) has a current container to resolve against. Without
@@ -100,21 +168,20 @@ Future<void> main() async {
   // call returns false there and the Hive values stay the truth).
   unawaited(EqualizerStore.ensure().syncToNative());
 
-  final themeController = Get.put(ThemeController());
+  // Stored theme / mode / custom font / custom accent: the first
+  // frame already painted on the defaults; applying the stored values
+  // now rebuilds GetMaterialApp once via the root Obx.
   themeController.loadFromBox(HiveStore.box);
 
   // Custom font (stage 2, Beans `FontManager.reinstallIfNeeded`):
-  // re-register the stored font before the first frame so the custom
-  // family is already available when ThemeData applies it.
+  // re-register the stored font; the theme rebuild above picks the
+  // family up once the font is registered.
   await CustomFontService().loadPersisted();
 
-  // Appearance (stage 2: wallpaper / background colour): load the
-  // stored background state before the first frame so the AppShell
-  // layer paints immediately. The v1.1.5 migration runs first (turn
-  // a stored wallpaper-on off once — the unified page needs the
-  // theme background, not a photo), so load() already reads the
-  // migrated state.
-  final appearanceController = Get.put(AppearanceController());
+  // Appearance (stage 2: wallpaper / background colour): the v1.1.5
+  // migration runs first (turn a stored wallpaper-on off once — the
+  // unified page needs the theme background, not a photo), so load()
+  // already reads the migrated state.
   await appearanceController.migrateWallpaperOffOnce();
   await appearanceController.load();
 
@@ -133,23 +200,6 @@ Future<void> main() async {
       if (context == null || !context.mounted) return;
       await showUpdateDialog(context, info, service: updateService);
     }),
-  );
-
-  runApp(
-    LiquidGlassWidgets.wrap(
-      // Dynamically benchmarks the device raster budget and scales
-      // quality (premium on capable devices, down on weak ones).
-      adaptiveQuality: true,
-      // Degrades on Reduce Motion / Reduce Transparency.
-      respectSystemAccessibility: true,
-      // Bridges Material ThemeMode so glass honours our light/dark/
-      // system modes even when the OS disagrees.
-      brightnessResolver: Theme.maybeBrightnessOf,
-      // ios27 defaults; our 4 themes map at widget level, see
-      // liquid_glass_theme.dart (no global quality override, Rule 5).
-      theme: HaoLiquidGlass.themeData,
-      child: const HAoApp(),
-    ),
   );
 }
 

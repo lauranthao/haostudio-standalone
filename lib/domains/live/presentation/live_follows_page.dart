@@ -18,6 +18,7 @@
 // Pure Live reference: features/favorite/favorite_page.dart,
 // favorite_rules.dart (`roomsOf`, `groupOf`).
 
+import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -337,7 +338,7 @@ class _PlatformChip extends StatelessWidget {
         selected: selected,
         selectedColor: theme.accentSoft,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
         ),
         side: BorderSide(
           color: selected ? theme.accent : theme.hairline,
@@ -454,13 +455,13 @@ class _FollowCard extends StatelessWidget {
       children: [
         InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: Container(
             decoration: BoxDecoration(
               // Theme surface so the tile adapts to all 8 combos
               // (was hard-coded 0xFF1C1C1E).
               color: theme.surfaceSolid,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(HaoRadius.panel),
               border: Border.all(color: theme.hairline),
               boxShadow: [
                 BoxShadow(

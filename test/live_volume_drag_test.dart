@@ -147,6 +147,11 @@ void main() {
       // Right-half upward drag; the mock echoes every set back
       // quantized to 1/16 (real iOS behaviour). The HUD must keep
       // showing the dragged value, never the lagging echo.
+      // P1-U2: shared 300 px = full-range sensitivity (was: a full
+      // surface height mapped to only 25%): 100 px up from 0.6
+      // reaches ~0.87 (the first ~20 px are gesture slop, only
+      // ~80 px reach the handler: 0.6 + 80/300). The old bound
+      // (0.6, 0.72] encoded the old live-only formula.
       await tester.dragFrom(
         const Offset(600, 200),
         const Offset(0, -100),
@@ -164,8 +169,8 @@ void main() {
       expect(systemSets, isNotEmpty);
       var lastSet =
           (systemSets.last.arguments as Map)['volume'] as double;
-      expect(lastSet, greaterThan(0.6));
-      expect(lastSet, lessThanOrEqualTo(0.72));
+      expect(lastSet, greaterThan(0.8));
+      expect(lastSet, lessThanOrEqualTo(0.94));
       expect(backend.setVolumes, isEmpty);
       expect(find.text('${(lastSet * 100).round()}%'), findsOneWidget);
       final echoValue = (lastSet * 16).round() / 16.0;

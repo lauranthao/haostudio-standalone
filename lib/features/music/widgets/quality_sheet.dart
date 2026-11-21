@@ -12,6 +12,7 @@
 // unavailable the resolver downgrades and the badge shows hires (or
 // whatever really played) — a hires stream is never labelled Master.
 
+import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -100,7 +101,7 @@ class _QualityRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
         ),
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Row(

@@ -110,7 +110,141 @@ const httpFetch = (url, options = {}) => new Promise((resolve, reject) => {
     });
 });
 
-const md5 = (str) => utils.crypto.md5(str);
+// ==================== 本地 crypto 兜底 ====================
+// 桌面版 LX 提供 utils.crypto（md5 / aesEncrypt），但本 App 的
+// lx prelude 只给了 utils.buffer（见 lx_script_engine.dart 的
+// kLxPrelude），utils.crypto 是 undefined —— wyEapi 里调 md5 会
+// 抛 TypeError: cannot read property 'md5' of undefined（logcat
+// 2026-11-19：md5 (<eval>) / wyEapi (<eval>:97) / fetch (<eval>:1000)，
+// 就是这里）。有 utils.crypto 时照旧走它；缺失时走下面两个纯 JS
+// 实现（只含算法本身，不含任何密钥），行为与桌面版一致：md5 返回
+// 小写 hex；aesEncrypt 只兜底 wyEapi 用的 aes-128-ecb，返回 prelude
+// 的 buffer 形态 {__haoBuf: true, bytes}，供 buf2hex 使用。
+const __haoMd5 = (str) => {
+  const s = unescape(encodeURIComponent(str))
+  const bytes = []
+  for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i) & 255)
+  const bitLen = bytes.length * 8
+  bytes.push(0x80)
+  while (bytes.length % 64 !== 56) bytes.push(0)
+  for (let i = 0; i < 4; i++) bytes.push((bitLen >>> (i * 8)) & 255)
+  bytes.push(0, 0, 0, 0)
+  const rotl = (x, n) => (x << n) | (x >>> (32 - n))
+  const S = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21]
+  const K = []
+  for (let i = 0; i < 64; i++) K.push(Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) >>> 0)
+  let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476
+  for (let off = 0; off < bytes.length; off += 64) {
+    const M = []
+    for (let i = 0; i < 16; i++) {
+      M.push(bytes[off + i * 4] | (bytes[off + i * 4 + 1] << 8) | (bytes[off + i * 4 + 2] << 16) | (bytes[off + i * 4 + 3] << 24))
+    }
+    let A = a0, B = b0, C = c0, D = d0
+    for (let i = 0; i < 64; i++) {
+      let F, g
+      if (i < 16) { F = (B & C) | (~B & D); g = i }
+      else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) % 16 }
+      else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) % 16 }
+      else { F = C ^ (B | ~D); g = (7 * i) % 16 }
+      F = (F + A + K[i] + M[g]) >>> 0
+      A = D; D = C; C = B
+      B = (B + rotl(F, S[i])) >>> 0
+    }
+    a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0
+  }
+  const hex = (x) => {
+    let out = ''
+    for (let i = 0; i < 4; i++) out += ('0' + ((x >>> (i * 8)) & 255).toString(16)).slice(-2)
+    return out
+  }
+  return hex(a0) + hex(b0) + hex(c0) + hex(d0)
+}
+
+// AES-128-ECB 加密（PKCS#7 填充），data/key 为 UTF-8 字符串，返回
+// prelude buffer 形态。S 盒由 GF(2^8) 逆元 + 仿射变换现算，避免
+// 抄 256 字节常量表抄错。
+const __haoAesSbox = (() => {
+  const mul = (a, b) => {
+    let p = 0
+    for (let i = 0; i < 8; i++) {
+      if (b & 1) p ^= a
+      const hi = a & 0x80
+      a = (a << 1) & 255
+      if (hi) a ^= 0x1b
+      b >>= 1
+    }
+    return p
+  }
+  const inv = (x) => {
+    if (x === 0) return 0
+    let r = 1
+    for (let i = 0; i < 254; i++) r = mul(r, x)
+    return r
+  }
+  const box = []
+  for (let i = 0; i < 256; i++) {
+    const y = inv(i)
+    const s = y ^ ((y << 1) | (y >> 7)) ^ ((y << 2) | (y >> 6)) ^ ((y << 3) | (y >> 5)) ^ ((y << 4) | (y >> 4)) ^ 0x63
+    box.push(s & 255)
+  }
+  return box
+})()
+const __haoAesEcb = (data, key) => {
+  const toBytes = (str) => {
+    const s = unescape(encodeURIComponent(str))
+    const b = []
+    for (let i = 0; i < s.length; i++) b.push(s.charCodeAt(i) & 255)
+    return b
+  }
+  const keyB = toBytes(key)
+  const dataB = toBytes(data)
+  const pad = 16 - (dataB.length % 16)
+  for (let i = 0; i < pad; i++) dataB.push(pad)
+  const w = []
+  for (let i = 0; i < 4; i++) w.push([keyB[i * 4], keyB[i * 4 + 1], keyB[i * 4 + 2], keyB[i * 4 + 3]])
+  const Rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36]
+  for (let i = 4; i < 44; i++) {
+    let t = w[i - 1].slice()
+    if (i % 4 === 0) {
+      t = [__haoAesSbox[t[1]] ^ Rcon[i / 4 - 1], __haoAesSbox[t[2]], __haoAesSbox[t[3]], __haoAesSbox[t[0]]]
+    }
+    w.push([w[i - 4][0] ^ t[0], w[i - 4][1] ^ t[1], w[i - 4][2] ^ t[2], w[i - 4][3] ^ t[3]])
+  }
+  const xtime = (x) => ((x << 1) ^ ((x & 0x80) ? 0x1b : 0)) & 255
+  const mul = (x, n) => n === 1 ? x : n === 2 ? xtime(x) : xtime(x) ^ x
+  const out = []
+  for (let off = 0; off < dataB.length; off += 16) {
+    const s = []
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) s.push(dataB[off + c * 4 + r])
+    const addKey = (round) => {
+      for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) s[c * 4 + r] ^= w[round * 4 + c][r]
+    }
+    const sub = () => { for (let i = 0; i < 16; i++) s[i] = __haoAesSbox[s[i]] }
+    const shift = () => {
+      const t = s.slice()
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) s[c * 4 + r] = t[((c + r) % 4) * 4 + r]
+    }
+    const mix = () => {
+      for (let c = 0; c < 4; c++) {
+        const a0 = s[c * 4], a1 = s[c * 4 + 1], a2 = s[c * 4 + 2], a3 = s[c * 4 + 3]
+        s[c * 4] = mul(a0, 2) ^ mul(a1, 3) ^ a2 ^ a3
+        s[c * 4 + 1] = a0 ^ mul(a1, 2) ^ mul(a2, 3) ^ a3
+        s[c * 4 + 2] = a0 ^ a1 ^ mul(a2, 2) ^ mul(a3, 3)
+        s[c * 4 + 3] = mul(a0, 3) ^ a1 ^ a2 ^ mul(a3, 2)
+      }
+    }
+    addKey(0)
+    for (let round = 1; round < 10; round++) { sub(); shift(); mix(); addKey(round) }
+    sub(); shift(); addKey(10)
+    for (let i = 0; i < 16; i++) out.push(s[i])
+  }
+  return { __haoBuf: true, bytes: out }
+}
+
+const md5 = (str) => (utils && utils.crypto ? utils.crypto.md5(str) : __haoMd5(str));
 const randomGuid = () => {
     const hex = '0123456789abcdef';
     let guid = '';
@@ -119,7 +253,9 @@ const randomGuid = () => {
 };
 const aesEncrypt = (data, key, iv, mode) => {
     if (!version) mode = mode.split('-').pop();
-    return utils.crypto.aesEncrypt(data, mode, key, iv);
+    if (utils && utils.crypto) return utils.crypto.aesEncrypt(data, mode, key, iv);
+    // 本 App 内 utils.crypto 缺失：只兜底 wyEapi 用的 aes-128-ecb。
+    return __haoAesEcb(data, key);
 };
 const buf2hex = (buffer) => {
     return version

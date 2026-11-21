@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Playlist plaza (fix 9).
@@ -245,7 +246,7 @@ class _PlazaPageState extends State<PlazaPage> {
                               final p = items[i];
                               return ListTile(
                                 leading: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(HaoRadius.standard),
                                   child: p.cover.isEmpty
                                       ? Container(
                                           width: 52,
@@ -522,7 +523,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                       child: Row(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(HaoRadius.large),
                             child: p.cover.isEmpty
                                 ? Container(
                                     width: 96,

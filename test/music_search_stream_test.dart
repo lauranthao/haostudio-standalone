@@ -9,6 +9,7 @@
 // DateTime.now() — the search path uses no wall-clock reads, only
 // per-leg timeouts, so fake time is exact here.
 
+import 'package:dio/dio.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:standalone/services/music/lx_script_engine.dart';
@@ -29,7 +30,7 @@ class _FakeApi extends MusicApi {
   final Set<MusicPlatform> throwFor;
 
   @override
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) async {
+  Future<List<Song>> searchOne(MusicPlatform pf, String q, {CancelToken? cancelToken}) async {
     await Future<void>.delayed(delays[pf] ?? Duration.zero);
     if (throwFor.contains(pf)) throw StateError('leg failed');
     return List.of(results[pf] ?? const []);

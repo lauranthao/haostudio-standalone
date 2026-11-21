@@ -115,7 +115,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
       title: '删除歌单',
       content: '确定删除这个歌单吗？里面的歌也会一起删除。',
       confirmLabel: '删除',
-      confirmColor: HaoTheme.of(context).liveRed,
     );
     if (ok != true) return;
     final lists = MusicStore.getLists()
@@ -225,7 +224,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                             title: '删除歌曲',
                             content: '确定删除这首歌吗？',
                             confirmLabel: '删除',
-                            confirmColor: HaoTheme.of(context).liveRed,
                           );
                           return ok == true;
                         },

@@ -10,7 +10,11 @@
 // - top highlight: white 0.25 gradient over the top of the card
 // - shadow: light mode black 0.08 / dark mode black 0.35, radius 9 y 3
 //   for cards, radius 14 y 8 for floating panels
-// - radii: cards 24, rows 16, mini player 18, floating panels 22
+// - radii (HaoRadius, 定稿): badge 4, small 6, standard 8, large 12,
+//   panel 20, sheet 24 — see lib/core/theme/hao_radius.dart. Beans'
+//   own recipe numbers (cards 24, rows 16, mini player 18, floating
+//   panels 22) are NOT used; the defaults below are the HaoRadius
+//   values (GlassCard radius = panel 20).
 //
 // Mapping onto our themes (no Beans colour is copied — every value
 // below is derived from the active [HaoTheme], so all 4 themes x
@@ -36,6 +40,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
+import 'hao_radius.dart';
 import 'hao_themes.dart';
 import 'liquid_glass_theme.dart';
 
@@ -151,7 +156,7 @@ class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
     required this.child,
-    this.radius = 20,
+    this.radius = HaoRadius.panel,
     this.padding = const EdgeInsets.all(16),
     this.shadow = GlassShadow.card,
     this.margin,
@@ -343,7 +348,7 @@ class DarkGlass extends StatelessWidget {
   const DarkGlass({
     super.key,
     required this.child,
-    this.radius = 12,
+    this.radius = HaoRadius.large,
     this.sigma = 20,
     this.color = Colors.black54,
   });
@@ -375,7 +380,7 @@ class GlassSheetBackground extends StatelessWidget {
   const GlassSheetBackground({
     super.key,
     required this.child,
-    this.radius = 24,
+    this.radius = HaoRadius.sheet,
   });
 
   final Widget child;

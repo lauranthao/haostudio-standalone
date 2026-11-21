@@ -102,6 +102,7 @@ class _ScriptedResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     calls.add((
       songId: songId,
@@ -386,6 +387,55 @@ void main() {
       expect(playerB.openedUrls, isEmpty);
     });
 
+    test('manual tap keeps the old song playing while resolving (P0-1)',
+        () async {
+      // Old behaviour paused the old song up front, so a slow resolve
+      // silenced the queue for the whole wait. New behaviour: the old
+      // song is only paused once the new URL is in hand. Park B's
+      // resolve and check no pause happens during the wait — and that
+      // a failed resolve leaves the old song sounding (no pause at
+      // all for the failed tap).
+      final bCompleter = Completer<PlayUrlResult?>();
+      resolvers = _ScriptedResolvers((songId, excludeJobs) {
+        if (songId == 'b-id') return bCompleter.future;
+        final url = _url(songId);
+        return PlayUrlResult(
+          url: url,
+          candidates: [url],
+          quality: AudioQuality.hires,
+          via: 'test',
+        );
+      });
+      c = makeController();
+      final errors = await _runCatchingAsyncErrors(() async {
+        await c.playQueue([_wy('a-id', 'A歌'), _wy('b-id', 'B歌')], 0);
+        // A's manual load paused once (URL in hand, then open).
+        expect(playerA.pauseCalls, 1);
+        expect(playerA.openedUrls, [_url('a-id')]);
+        // Tap B: its resolve parks (the prefetch after A's load parks
+        // on the same future, one Completer awaited twice).
+        final tap = c.playQueue([_wy('a-id', 'A歌'), _wy('b-id', 'B歌')], 1);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        // Still resolving: no new pause, nothing opened — A keeps
+        // sounding through the wait.
+        expect(playerA.pauseCalls, 1);
+        expect(playerA.openedUrls, [_url('a-id')]);
+        bCompleter.complete(PlayUrlResult(
+          url: _url('b-id'),
+          candidates: [_url('b-id')],
+          quality: AudioQuality.hires,
+          via: 'test',
+        ));
+        await tap;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      expect(errors, isEmpty);
+      expect(c.currentIndex.value, 1);
+      // URL in hand: the old song is paused once, then B opens.
+      expect(playerA.pauseCalls, 2);
+      expect(playerA.openedUrls, [_url('a-id'), _url('b-id')]);
+    });
+
     test('auto-advance failure skips with a notice', () async {
       resolvers = _ScriptedResolvers((songId, excludeJobs) {
         if (songId == 'b-id') return null;
@@ -433,7 +483,8 @@ void main() {
       expect(errors, isEmpty);
       // Still on B (no next track) — and the previous song A, which
       // the crossfade fallback left sounding, is now paused: the
-      // manual load paused it once up front, the give-up once.
+      // manual load paused it once (after its URL was in hand, P0-1),
+      // the give-up once.
       expect(c.currentIndex.value, 1);
       expect(playerA.pauseCalls, 2);
       expect(c.lastNotice.value, contains('已是最后一首'));
@@ -712,11 +763,11 @@ void main() {
       expect(errors, isEmpty);
       expect(c.currentIndex.value, 1);
       expect(playerA.openedUrls, contains(_url('b-id')));
-      // Three pauses on the active player: A's manual load up-front
-      // pause, B's manual load up-front pause, then the sleep check
-      // after the landing open. Without the fix the third pause is
-      // missing (pauseCalls == 2) and the song sounds past the
-      // deadline.
+      // Three pauses on the active player: A's manual load pause
+      // (once its URL was in hand, P0-1), B's manual load pause the
+      // same way, then the sleep check after the landing open.
+      // Without the fix the third pause is missing (pauseCalls == 2)
+      // and the song sounds past the deadline.
       expect(playerA.pauseCalls, 3);
     });
     test('local song with a stale container path plays from the new '

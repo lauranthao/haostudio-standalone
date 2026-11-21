@@ -3,6 +3,7 @@
 // LIVE is the only red in the app; offline / unknown use a muted dark
 // pill so a failed check is never shown as live.
 
+import '../../../core/theme/hao_radius.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/hao_themes.dart';
@@ -22,7 +23,7 @@ class LiveStatusBadge extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
             color: theme.liveRed,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(HaoRadius.small),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.30),
@@ -62,7 +63,7 @@ class _MutedPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xA6000000),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(HaoRadius.small),
       ),
       child: Text(
         label,

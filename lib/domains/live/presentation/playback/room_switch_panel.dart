@@ -21,6 +21,7 @@
 // The sheet never fakes rooms: every group with no data shows an
 // honest empty state.
 
+import '../../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -286,7 +287,7 @@ class _GroupTitle extends StatelessWidget {
             height: 13,
             decoration: BoxDecoration(
               color: theme.accent,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(HaoRadius.badge),
             ),
           ),
           const SizedBox(width: 8),
@@ -379,7 +380,7 @@ class _RoomRow extends StatelessWidget {
         // side lives in `shape` (its RoundedRectangleBorder already
         // carries the same 14 radius).
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
           side: BorderSide(
             color: isCurrent
                 ? theme.accent.withValues(alpha: 0.45)
@@ -402,7 +403,7 @@ class _RoomRow extends StatelessWidget {
             child: Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(HaoRadius.standard),
                   child: room.cover.isEmpty
                       ? Container(
                           width: 96,
@@ -459,7 +460,7 @@ class _RoomRow extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: theme.accent,
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(HaoRadius.small),
                               ),
                               child: Text(
                                 '当前',

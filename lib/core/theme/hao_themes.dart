@@ -12,11 +12,17 @@
 // - Higher transparency: frosted-glass backgrounds (cards, sheets, tab bar,
 //   player, settings rows) use lower alpha in all four themes; text stays
 //   readable by increasing backdrop blur, never by darkening the background.
+// - EXCEPTION (P1-U4): the home feature cards (搜歌 / 歌单广场 / 排行榜 /
+//   听歌报告) are Kumone-style coloured artwork, not theme surfaces —
+//   their colours are fixed artwork and deliberately do NOT follow the
+//   theme. Everything else follows the rules above; do not "fix" the
+//   cards to match the theme.
 //
 // Theme switching takes effect immediately everywhere (ThemeController
 // rebuilds the app root with the new ThemeData; no restart, no stale
 // cached colours).
 
+import 'hao_radius.dart';
 import 'package:flutter/material.dart';
 
 /// The four HAo Studio themes. Visual style stays HAo Studio's own —
@@ -219,27 +225,11 @@ ThemeData _buildThemeData({
         color: textPrimary,
       ),
     ),
-    bottomNavigationBarTheme: BottomNavigationBarThemeData(
-      backgroundColor: surface,
-      selectedItemColor: accent,
-      unselectedItemColor: textMuted,
-      elevation: 0,
-      selectedLabelStyle: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-      ),
-      unselectedLabelStyle: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-      ),
-      selectedIconTheme: const IconThemeData(size: 24),
-      unselectedIconTheme: const IconThemeData(size: 22),
-    ),
     cardTheme: CardThemeData(
       color: surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(HaoRadius.panel),
         side: BorderSide(color: hairline),
       ),
     ),
@@ -305,7 +295,7 @@ ThemeData _buildThemeData({
         ),
         side: WidgetStateProperty.all(BorderSide(color: hairline)),
         shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
         ),
         padding: WidgetStateProperty.all(
           const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -325,14 +315,14 @@ ThemeData _buildThemeData({
         color: textSecondary,
       ),
       side: BorderSide(color: hairline),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       elevation: 0,
       pressElevation: 0,
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: surfaceSolid,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.sheet)),
       titleTextStyle: TextStyle(
         fontSize: 17,
         fontWeight: FontWeight.w700,
@@ -356,7 +346,7 @@ ThemeData _buildThemeData({
           const EdgeInsets.symmetric(vertical: 13, horizontal: 20),
         ),
         shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
         ),
         textStyle: WidgetStateProperty.all(
           const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -378,15 +368,15 @@ ThemeData _buildThemeData({
       filled: true,
       fillColor: surface,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         borderSide: BorderSide(color: hairline),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         borderSide: BorderSide(color: hairline),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         borderSide: BorderSide(color: accent, width: 1.5),
       ),
       hintStyle: TextStyle(color: textMuted, fontSize: 14),

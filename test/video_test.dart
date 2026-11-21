@@ -11,6 +11,8 @@
 //   empty name -> 正片, non-CJK line name -> 线路N.
 // - Title helpers: normTitle / stripSeasonSuffix / rankSort parity.
 
+import 'package:dio/dio.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:standalone/features/video/video_detail_page.dart';
 import 'package:standalone/features/video/video_detail_service.dart';
@@ -165,7 +167,11 @@ void main() {
         const VideoSource(id: 2, name: '慢源', apiUrl: 'https://slow.example.com/api.php/provide/vod', sort: 2),
         const VideoSource(id: 3, name: '快源B', apiUrl: 'https://b.example.com/api.php/provide/vod', sort: 3),
       ];
-      Future<Map<String, dynamic>> fetcher(String url, {Duration timeout = const Duration(seconds: 8)}) async {
+      Future<Map<String, dynamic>> fetcher(
+        String url, {
+        Duration timeout = const Duration(seconds: 8),
+        CancelToken? cancelToken,
+      }) async {
         if (url.contains('slow.example.com')) {
           await Future<void>.delayed(const Duration(seconds: 10));
           return oneItem('慢片', '99');
@@ -584,6 +590,7 @@ void main() {
       Future<Map<String, dynamic>> fakeFetcher(
         String url, {
         Duration timeout = const Duration(seconds: 8),
+        CancelToken? cancelToken,
       }) async {
         if (url.contains('fast.example.com')) {
           await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -624,6 +631,7 @@ void main() {
       Future<Map<String, dynamic>> fakeFetcher(
         String url, {
         Duration timeout = const Duration(seconds: 8),
+        CancelToken? cancelToken,
       }) async {
         return {
           'list': [
@@ -1261,6 +1269,7 @@ void main() {
       Future<Map<String, dynamic>> fetcher(
         String url, {
         Duration timeout = const Duration(seconds: 8),
+        CancelToken? cancelToken,
       }) async {
         fetchLog?.add(url);
         if (url.contains('?ac=list')) {
@@ -1409,6 +1418,78 @@ void main() {
       final r = await client.byType('剧情片', 1);
       expect(r.items.map((v) => v.name).toList(), ['剧情片G1']);
       expect(r.total, 40);
+    });
+
+    test('home: 9 s total cap returns the rows that arrived (P1-P6)', () {
+      fakeAsync((async) {
+        const typeNameById = {
+          '3': '欧美剧',
+          '5': '韩剧',
+          '9': '动作片',
+          '11': '喜剧片',
+          '24': '中国动漫',
+          '30': '大陆综艺',
+        };
+        Future<Map<String, dynamic>> fetcher(
+          String url, {
+          Duration timeout = const Duration(seconds: 8),
+          CancelToken? cancelToken,
+        }) async {
+          if (url.contains('?ac=list')) {
+            if (url.contains('a.example.com')) return classA;
+            return classB;
+          }
+          final uri = Uri.parse(url);
+          final t = uri.queryParameters['t'] ?? '';
+          if (t == '14') {
+            // Slow leaf (30 s): past the 8 s per-row cap and the 9 s
+            // total cap. Poisons both the 电影 parent row (child 14)
+            // and the 剧情片 leaf row — neither may hold the load.
+            await Future<void>.delayed(const Duration(seconds: 30));
+            return listJson(
+              [item('p1', '剧情片P1', '剧情片')],
+              total: 30,
+            );
+          }
+          if (t == '26') throw CmsException('boom');
+          final name = typeNameById[t];
+          if (name == null) return listJson(const []);
+          return listJson(
+            [item('x$t', '$name-X', name)],
+            total: 10,
+          );
+        }
+
+        final client = CmsClient(
+          sources: const [sourceA, sourceB],
+          fetcher: fetcher,
+        );
+        VideoHomeData? out;
+        Object? failure;
+        client.home().then((v) => out = v, onError: (e, _) => failure = e);
+        async.flushMicrotasks();
+        expect(out, isNull, reason: 'slow rows still pending at t=0');
+        async.elapse(const Duration(seconds: 8));
+        async.flushMicrotasks();
+        expect(failure, isNull);
+        expect(out, isNotNull, reason: 'home returns once the 8 s row caps fire');
+        // Fast rows arrived; the poisoned / throwing rows did not.
+        expect(
+          out!.rows.map((r) => r.name).toSet(),
+          {
+            '电视剧',
+            '综艺',
+            '动漫',
+            '动作片',
+            '喜剧片',
+            '韩剧',
+            '欧美剧',
+            '中国动漫',
+          },
+        );
+        // Highest-count row first (电视剧 merges two children).
+        expect(out!.rows.first.name, '电视剧');
+      });
     });
 
     test('byType leaf falls back on empty', () async {

@@ -14,6 +14,7 @@
 // completion inside the widget-test zone — with the real resolvers the
 // first URL resolution stalls there and the player page never opens.
 
+import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -64,7 +65,7 @@ class _FakeApi extends MusicApi {
   Completer<void>? searchGate;
 
   @override
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) async {
+  Future<List<Song>> searchOne(MusicPlatform pf, String q, {CancelToken? cancelToken}) async {
     if (searchGate != null) await searchGate!.future;
     return byQuery[q] ?? [];
   }
@@ -95,6 +96,7 @@ class _ScriptedResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async => PlayUrlResult(
     url: _url(songId),
     candidates: [_url(songId)],

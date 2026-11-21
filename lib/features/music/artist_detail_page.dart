@@ -1,3 +1,4 @@
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 // Artist detail page (fix 5).
@@ -321,7 +322,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
         color: Colors.transparent,
         child: ListTile(
       leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(HaoRadius.standard),
         child: album.cover.isEmpty
             ? Container(
                 width: 48,

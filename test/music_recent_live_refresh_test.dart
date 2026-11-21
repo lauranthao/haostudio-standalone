@@ -51,6 +51,7 @@ class _AlwaysOkResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async => PlayUrlResult(
     url: 'https://example.com/$songId.mp3',
     candidates: ['https://example.com/$songId.mp3'],

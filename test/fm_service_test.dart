@@ -7,6 +7,7 @@
 // offline fallback (seeds themselves) to prove the card → player →
 // ⋯ → 不喜欢 wiring.
 
+import 'package:dio/dio.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -35,7 +36,7 @@ class FakeMusicApi extends MusicApi {
   var searches = 0;
 
   @override
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) async {
+  Future<List<Song>> searchOne(MusicPlatform pf, String q, {CancelToken? cancelToken}) async {
     searches++;
     return byQuery[q] ?? [];
   }

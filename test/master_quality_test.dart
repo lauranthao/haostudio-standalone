@@ -270,6 +270,122 @@ void main() {
       expect(r.via, 'zddyr');
     });
 
+    test('zddyr master answered with a fallback stream is hires (P1-L1)',
+        () async {
+      final log = <String>[];
+      final dio = buildFakeDio(
+        log: log,
+        respond: (url) {
+          if (url.contains('yy.zddyr.top') &&
+              url.contains('quality=master')) {
+            return {
+              'status': 200,
+              'body':
+                  '{"code":200,"url":"https://m801.music.126.net/fallback.flac","quality":"hires","quality_fallback":true}',
+            };
+          }
+          return {'status': 404, 'body': '{}'};
+        },
+      );
+      final resolvers = MusicResolvers(
+        dio: dio,
+        scriptEngine: LxScriptEngine(
+        dio: dio,
+        assetLoader: (_) async => throw StateError('no assets'),
+      ),
+      );
+      final r = await resolvers.resolvePlayUrl(
+        '1851244162',
+        MusicPlatform.wy,
+        AudioQuality.master,
+        'Test',
+      );
+      expect(r, isNotNull);
+      // The API served a fallback stream: labelled hires, never master.
+      expect(r!.quality, AudioQuality.hires);
+      expect(r.url, 'https://m801.music.126.net/fallback.flac');
+      expect(r.via, 'zddyr');
+    });
+
+    test('zddyr master answered with quality hires is hires (P1-L1)',
+        () async {
+      final log = <String>[];
+      final dio = buildFakeDio(
+        log: log,
+        respond: (url) {
+          if (url.contains('yy.zddyr.top') &&
+              url.contains('quality=master')) {
+            return {
+              'status': 200,
+              'body':
+                  '{"code":200,"url":"https://m801.music.126.net/h.flac","quality":"hires"}',
+            };
+          }
+          return {'status': 404, 'body': '{}'};
+        },
+      );
+      final resolvers = MusicResolvers(
+        dio: dio,
+        scriptEngine: LxScriptEngine(
+        dio: dio,
+        assetLoader: (_) async => throw StateError('no assets'),
+      ),
+      );
+      final r = await resolvers.resolvePlayUrl(
+        '1851244163',
+        MusicPlatform.wy,
+        AudioQuality.master,
+        'Test',
+      );
+      expect(r, isNotNull);
+      expect(r!.quality, AudioQuality.hires);
+      expect(r.url, 'https://m801.music.126.net/h.flac');
+      expect(r.via, 'zddyr');
+    });
+
+    test('xinghai master answered with a fallback stream is hires (P1-L1)',
+        () async {
+      final log = <String>[];
+      final dio = buildFakeDio(
+        log: log,
+        respond: (url) {
+          if (url.contains('token.php')) {
+            return {
+              'status': 200,
+              'body': '{"data":{"token":"tk-test"}}',
+            };
+          }
+          if (url.contains('yy1.zddyr.top') &&
+              url.contains('quality=master')) {
+            return {
+              'status': 200,
+              'body':
+                  '{"code":200,"url":"https://m801.music.126.net/xh.flac","quality":"master","quality_fallback":true}',
+            };
+          }
+          return {'status': 404, 'body': '{}'};
+        },
+      );
+      final resolvers = MusicResolvers(
+        dio: dio,
+        scriptEngine: LxScriptEngine(
+        dio: dio,
+        assetLoader: (_) async => throw StateError('no assets'),
+      ),
+      );
+      final r = await resolvers.resolvePlayUrl(
+        '1851244164',
+        MusicPlatform.wy,
+        AudioQuality.master,
+        'Test',
+      );
+      expect(r, isNotNull);
+      // quality says master but the fallback flag is set: hires.
+      expect(r!.quality, AudioQuality.hires);
+      expect(r.url, 'https://m801.music.126.net/xh.flac');
+      expect(r.via, '星海');
+    });
+
     test('ikun direct resolver is disabled: never requested (2026-11-19)', () async {
       // api.ikunshare.com is dead (curl-verified 2026-11-19, logcat
       // Failed host lookup) — the ikun resolver is disabled, so even
@@ -393,6 +509,73 @@ void main() {
       expect(r, isNotNull);
       expect(r!.quality, AudioQuality.hires);
       expect(r.via, 'zddyr');
+    });
+  });
+
+  group('oiapi_kw singer check (P1-L5)', () {
+    MusicResolvers resolversWithKuwo(String singer) {
+      final log = <String>[];
+      final dio = buildFakeDio(
+        log: log,
+        respond: (url) {
+          if (url.contains('oiapi.net/api/Kuwo')) {
+            return {
+              'status': 200,
+              'body':
+                  '{"data":{"song":"Test Song","singer":"$singer","album":"Alb","url":"https://cdn.example.com/kw.mp3"}}',
+            };
+          }
+          return {'status': 404, 'body': '{}'};
+        },
+      );
+      return MusicResolvers(
+        dio: dio,
+        scriptEngine: LxScriptEngine(
+        dio: dio,
+        assetLoader: (_) async => throw StateError('no assets'),
+      ),
+      );
+    }
+
+    test('a same-title hit by another singer is not a result', () async {
+      final resolvers = resolversWithKuwo('Wrong Singer');
+      final r = await resolvers.resolvePlayUrl(
+        'kw-1',
+        MusicPlatform.kw,
+        AudioQuality.hires,
+        'Test Song',
+        artist: 'Right Singer',
+      );
+      // The only hit names the wrong singer: the source yields
+      // nothing and the loop finds nothing else either.
+      expect(r, isNull);
+    });
+
+    test('a singer-matching hit plays', () async {
+      final resolvers = resolversWithKuwo('Right Singer');
+      final r = await resolvers.resolvePlayUrl(
+        'kw-1',
+        MusicPlatform.kw,
+        AudioQuality.hires,
+        'Test Song',
+        artist: 'Right Singer',
+      );
+      expect(r, isNotNull);
+      expect(r!.url, 'https://cdn.example.com/kw.mp3');
+      expect(r.via, 'oiapi-酷我');
+    });
+
+    test('singer match ignores case and spaces', () async {
+      final resolvers = resolversWithKuwo('RightSinger');
+      final r = await resolvers.resolvePlayUrl(
+        'kw-1',
+        MusicPlatform.kw,
+        AudioQuality.hires,
+        'Test Song',
+        artist: 'Right Singer',
+      );
+      expect(r, isNotNull);
+      expect(r!.via, 'oiapi-酷我');
     });
   });
 

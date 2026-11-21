@@ -823,22 +823,21 @@ class MusicPlayerController extends GetxController
     _trialRetries = 0;
     _trialExcluded.clear();
     _lastResolveVia = '';
-    // LX (lx-music-mobile player.ts handlePlay, ~line 256): stop the
-    // old song FIRST, before resolving the new one — never let the old
-    // song keep sounding under the new song's UI while the resolve
-    // runs. The v1.0.9 video bug was exactly that: the UI had moved to
-    // 蜜蜂 while 生而为人 kept playing — its resolve was still in
-    // flight, so _openOn never ran, and the position stream kept
-    // reporting the old song's playhead under the new song's name with
-    // duration stuck at -0:00. Manual loads have no crossfade to
-    // preserve, so pause up front; auto loads keep the crossfade
-    // overlap (the fade itself stops the old player). A stale fade
-    // timer is cancelled on a manual load so it cannot fight the new
-    // song's volume or pause the wrong player when it ends.
+    // P0-1: a MANUAL load does NOT pause the old song up front. The
+    // resolve below can take 1–6 s, and pausing first silences the
+    // queue for the whole wait (worst case ~8 s of silence on a cold
+    // tap). The old song keeps playing while this load resolves; it
+    // is only stopped once the new URL is in hand, right before the
+    // open below — the same "resolve first, then stop the old song"
+    // model as the auto crossfade. A failed resolve therefore leaves
+    // the old song sounding; _giveUpOnSong only records the failure.
+    // (The v1.0.9 bug this used to guard — position stream reporting
+    // the old song's playhead under the new song's name — is covered
+    // by the gen/identity guards on the resolve result, not by the
+    // up-front pause.) A stale fade timer is still cancelled on a
+    // manual load so it cannot fight the new song's volume or pause
+    // the wrong player when it ends.
     if (!auto) _fadeTimer?.cancel();
-    if (!auto && _playersReady) {
-      await _active.pause();
-    }
     // LX identity stamp (player.ts createGettingUrlId / setMusicUrl):
     // the URL this load resolves belongs to THIS song only. The gen
     // check below catches a newer load; the identity check catches a
@@ -924,6 +923,7 @@ class MusicPlayerController extends GetxController
             song.platform,
             userQuality.value,
             song.title,
+            artist: song.artist,
           );
         } catch (_) {
           AppLog.warn('解析播放地址失败：${song.title}');
@@ -964,10 +964,24 @@ class MusicPlayerController extends GetxController
     // problem, not this streak's).
     _consecutiveAutoFailures = 0;
     // Best-effort history write: a Hive failure must not break
-    // playback (and must not leave isResolving stuck).
-    try {
-      await MusicStore.addRecent(song);
-    } catch (_) {}
+    // playback (and must not leave isResolving stuck). P1-P4: fire
+    // and forget — the write is a whole-table JSON rewrite that must
+    // not sit on the track-change hot path. The home page's 最近播放
+    // still updates in real time: it listens to hao_recent writes.
+    unawaited(
+      MusicStore.addRecent(song).catchError((_) {}),
+    );
+    // P0-1 (continued): the new URL is in hand — only now stop the
+    // old song, right before the open. The gen guard: a newer load
+    // may have started while this one was resolving, and pausing
+    // would then stop a player it already owns.
+    if (gen != _playGen || _disposed) {
+      _setResolving(false, gen);
+      return;
+    }
+    if (!auto && _playersReady) {
+      await _active.pause();
+    }
     // try/finally: if the open throws, the spinner must still clear.
     _openedUrl = url;
     try {
@@ -1162,6 +1176,7 @@ class MusicPlayerController extends GetxController
           userQuality.value,
           song.title,
           excludeJobs: _trialExcluded,
+          artist: song.artist,
         );
       } catch (_) {
         r = null;
@@ -1270,6 +1285,7 @@ class MusicPlayerController extends GetxController
             alt.platform,
             userQuality.value,
             alt.title,
+            artist: alt.artist,
           );
           if (r != null && r.url.isNotEmpty) {
             // The track may have advanced while the alt lookup was in
@@ -1286,6 +1302,13 @@ class MusicPlayerController extends GetxController
             // The alt is a new URL for this slot: its real duration
             // gets its own trial check.
             _trialChecked = false;
+            // P0-1: same rule as the main path — the old song kept
+            // playing through the alt lookup; stop it only now that
+            // the alt URL is in hand (manual loads only; auto keeps
+            // the crossfade fallback behaviour).
+            if (!auto && _playersReady) {
+              await _active.pause();
+            }
             await _openOn(_active, r.url, auto: auto, gen: g);
             // The alt song's audio is in the active player now (same
             // guards as [_loadCurrent]: a diverted open must not
@@ -1312,8 +1335,9 @@ class MusicPlayerController extends GetxController
   ///
   /// Manual load (the user tapped this song): NEVER auto-skip — stop
   /// on the song, record the failure for the player UI, and notice
-  /// with 重试 / 下一首 actions. The old player was already paused
-  /// up front by the manual load.
+  /// with 重试 / 下一首 actions. The old song keeps playing: a manual
+  /// load only pauses it once a new URL is in hand (P0-1), so a
+  /// failed resolve never silenced it in the first place.
   ///
   /// Auto-advance (the previous song ended, or a skip chain): advance
   /// to the next DIFFERENT track with a notice naming the skipped
@@ -1416,8 +1440,13 @@ class MusicPlayerController extends GetxController
     final key = '${tr.songId}|${tr.platform.code}|${userQuality.value.code}';
     if (_nextCache != null && _nextCache!.key == key) return;
     unawaited(
-      _resolvers
-          .resolvePlayUrl(tr.songId, tr.platform, userQuality.value, tr.title)
+      _resolvers.resolvePlayUrl(
+        tr.songId,
+        tr.platform,
+        userQuality.value,
+        tr.title,
+        artist: tr.artist,
+      )
           .then((r) {
         if (r != null && r.url.isNotEmpty) {
           // LX: a fetched URL only lands where it was fetched for.
@@ -1740,6 +1769,7 @@ class MusicPlayerController extends GetxController
       song.platform,
       q,
       song.title,
+      artist: song.artist,
     );
     if (r == null || r.url.isEmpty) return false;
     userQuality.value = q;

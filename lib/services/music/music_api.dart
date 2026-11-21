@@ -16,6 +16,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/network/http_client.dart';
 import 'music_models.dart';
+import 'music_store.dart';
 
 /// UA for all music search/detail/lyrics/comments/plaza calls.
 const String kMusicUa =
@@ -47,11 +48,13 @@ class MusicApi {
     Map<String, String>? headers,
     Map<String, dynamic>? query,
     Duration timeout = const Duration(seconds: 10),
+    CancelToken? cancelToken,
   }) async {
     try {
       final res = await _dio.get<dynamic>(
         url,
         queryParameters: query,
+        cancelToken: cancelToken,
         options: Options(
           headers: headers,
           receiveTimeout: timeout,
@@ -78,6 +81,7 @@ class MusicApi {
     Map<String, String> fields, {
     Map<String, String>? headers,
     Duration timeout = const Duration(seconds: 10),
+    CancelToken? cancelToken,
   }) async {
     try {
       final body = fields.entries
@@ -89,6 +93,7 @@ class MusicApi {
       final res = await _dio.post<dynamic>(
         url,
         data: body,
+        cancelToken: cancelToken,
         options: Options(
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -111,10 +116,12 @@ class MusicApi {
     String url, {
     Map<String, String>? headers,
     Duration timeout = const Duration(seconds: 10),
+    CancelToken? cancelToken,
   }) async {
     try {
       final res = await _dio.get<String>(
         url,
+        cancelToken: cancelToken,
         options: Options(
           headers: headers,
           receiveTimeout: timeout,
@@ -143,13 +150,17 @@ class MusicApi {
   // -- song search (app.js:482-518) ----------------------------------------
 
   /// NetEase: POST music.163.com/api/cloudsearch/pc, type=1.
-  Future<List<Song>> searchWy(String q, int limit) async {
+  Future<List<Song>> searchWy(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async {
     final j = await _postFormJson('https://music.163.com/api/cloudsearch/pc', {
       's': q,
       'type': '1',
       'limit': '$limit',
       'offset': '0',
-    });
+    }, cancelToken: cancelToken);
     final songs = _asList(j?['result']?['songs']);
     return songs.map((x) {
       final durMs = (x['duration'] as num?) ?? (x['dt'] as num?) ?? 0;
@@ -168,10 +179,15 @@ class MusicApi {
   }
 
   /// QQ: GET c.y.qq.com search_for_qq_cp. songId is the songmid.
-  Future<List<Song>> searchTx(String q, int limit) async {
+  Future<List<Song>> searchTx(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async {
     final j = await _getJson(
       'https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp',
       headers: {'Referer': 'https://y.qq.com/', 'User-Agent': kMusicUa},
+      cancelToken: cancelToken,
       query: {
         'g_tk': '5381',
         'uin': '0',
@@ -221,11 +237,16 @@ class MusicApi {
   /// then 0 within minutes). A null fetch (network/timeout) is NOT
   /// retried: burning another 10 s timeout for a dead leg only holds
   /// the whole aggregated search hostage.
-  Future<List<Song>> searchKg(String q, int limit) async {
+  Future<List<Song>> searchKg(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       final j = await _getJson(
         'https://songsearch.kugou.com/song_search_v2',
         headers: {'User-Agent': kMusicUa},
+        cancelToken: cancelToken,
         query: {
           'keyword': q,
           'page': '1',
@@ -259,11 +280,19 @@ class MusicApi {
   Future<List<Song>> searchKw(String q, int limit) => searchKwQuery(q, limit);
 
   /// Kuwo search with the query string built into the URL.
-  Future<List<Song>> searchKwQuery(String q, int limit) async {
+  Future<List<Song>> searchKwQuery(
+    String q,
+    int limit, {
+    CancelToken? cancelToken,
+  }) async {
     final url =
         'https://search.kuwo.cn/r.s?all=${Uri.encodeComponent(q)}&ft=music&rformat=json&encoding=utf8&rn=$limit';
     for (var attempt = 0; attempt < 2; attempt++) {
-      final txt = await _getText(url, headers: {'User-Agent': kMusicUa});
+      final txt = await _getText(
+        url,
+        headers: {'User-Agent': kMusicUa},
+        cancelToken: cancelToken,
+      );
       // Null = network/timeout: do not retry (see searchKg).
       if (txt == null) return [];
       final out = _parseKwSongs(txt);
@@ -341,16 +370,28 @@ class MusicApi {
 
   /// Single-platform dispatch (directSearchOne). Aggregated search lives
   /// in SongSearchService and calls these four in parallel.
-  Future<List<Song>> searchOne(MusicPlatform pf, String q) {
+  ///
+  /// [cancelToken] (P1-P5): when the caller gives up on the leg
+  /// (timeout / new search), cancelling the token aborts the Dio
+  /// request itself instead of letting it run in the background. A
+  /// cancelled request surfaces as null here (the helpers swallow
+  /// every error) — it is NOT recorded as a platform failure or
+  /// cooldown, because cancellation is the caller's decision, not a
+  /// platform outage.
+  Future<List<Song>> searchOne(
+    MusicPlatform pf,
+    String q, {
+    CancelToken? cancelToken,
+  }) {
     switch (pf) {
       case MusicPlatform.wy:
-        return searchWy(q, 20);
+        return searchWy(q, 20, cancelToken: cancelToken);
       case MusicPlatform.tx:
-        return searchTx(q, 20);
+        return searchTx(q, 20, cancelToken: cancelToken);
       case MusicPlatform.kg:
-        return searchKg(q, 15);
+        return searchKg(q, 15, cancelToken: cancelToken);
       case MusicPlatform.kw:
-        return searchKwQuery(q, 15);
+        return searchKwQuery(q, 15, cancelToken: cancelToken);
       case MusicPlatform.mg:
         return Future.value([]);
     }
@@ -2308,12 +2349,24 @@ class MusicApi {
     // has a 10 s internal timeout, and Future.wait holds the whole
     // error path hostage until the slowest leg answers — up to 10 s
     // of silence while the player waits for an alt. On timeout the
-    // in-flight legs keep running in the background (not cancelled)
-    // but their results are discarded and the caller falls through
-    // to the next song.
+    // in-flight legs are CANCELLED (P1-P5): their Dio requests abort
+    // instead of running on in the background, and a cancelled leg
+    // contributes nothing — it is not recorded as a failure.
+    final tokens = <CancelToken>[for (var i = 0; i < others.length; i++) CancelToken()];
     final settled = await Future.wait(
-      others.map((pf) => searchOne(pf, title).catchError((_) => <Song>[])),
-    ).timeout(const Duration(seconds: 5), onTimeout: () => <List<Song>>[]);
+      others.indexed.map(
+        (e) => searchOne(
+          e.$2,
+          title,
+          cancelToken: tokens[e.$1],
+        ).catchError((_) => <Song>[]),
+      ),
+    ).timeout(const Duration(seconds: 5), onTimeout: () {
+      for (final t in tokens) {
+        t.cancel();
+      }
+      return <List<Song>>[];
+    });
     final all = settled.expand((l) => l).toList();
     final order = {
       MusicPlatform.tx: 0,
@@ -2402,7 +2455,20 @@ class MusicApi {
     }).toList();
   }
 
+  /// Lyrics for a song, cached (P1-P7): memory + Hive, keyed by
+  /// identityKey. A song played again reuses its lyrics instead of
+  /// re-fetching on every load. Empty results are NOT cached.
   Future<List<LyricLine>> lyrics(Song song) async {
+    final cached = MusicStore.getLyrics(song.identityKey);
+    if (cached != null) return cached;
+    final lines = await _fetchLyrics(song);
+    if (lines.isNotEmpty) {
+      unawaited(MusicStore.putLyrics(song.identityKey, lines));
+    }
+    return lines;
+  }
+
+  Future<List<LyricLine>> _fetchLyrics(Song song) async {
     try {
       switch (song.platform) {
         case MusicPlatform.wy:

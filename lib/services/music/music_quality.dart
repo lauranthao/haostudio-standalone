@@ -219,12 +219,20 @@ String? lxQualityForScript(AudioQuality q, List<String> available) {
 ///
 /// Master gate: only resolvers with a verified real Master path may
 /// claim Master — 'ikun' (direct ikun API, quality=master), 'zddyr'
-/// and 'xinghai' (LX APIs, quality=master verified live 2026-11-16),
-/// and 'lx:*' script resolvers (the engine only creates a master job
-/// when the script lists 'master' for the platform). Every other
-/// resolver caps at hires: its best output at the master tier is a
-/// hires-level stream, and the resolver loop drops non-master
-/// candidates at that tier, so these never surface as Master.
+/// and 'xinghai' (LX APIs), and 'lx:*' script resolvers (the engine
+/// only creates a master job when the script lists 'master' for the
+/// platform). Every other resolver caps at hires: its best output at
+/// the master tier is a hires-level stream, and the resolver loop drops
+/// non-master candidates at that tier, so these never surface as
+/// Master.
+///
+/// This is the DECLARED label only (used when a resolver reports no
+/// tier). The actual label is verified per response (P1-L1):
+/// zddyr/xinghai must answer `quality == 'master'` with no
+/// `quality_fallback` or the result is labelled hires
+/// ([MusicResolvers._lxApiServedTier]); a script that returns a
+/// `{url, quality}` map is held to the tier it reports
+/// ([LxScriptEngine.getMusicUrlWithTier]).
 AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
   if (q == AudioQuality.master) {
     switch (key) {

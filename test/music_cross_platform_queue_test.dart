@@ -68,6 +68,7 @@ class _FakeResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     calls.add((songId, platform));
     final url = 'https://example.com/$songId.mp3';

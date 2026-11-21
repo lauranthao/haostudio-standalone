@@ -129,6 +129,7 @@ class _ControlledResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     resolvedTitles.add(title);
     final c = pending[title];
@@ -218,8 +219,8 @@ void main() {
     return c;
   }
 
-  group('LX: stop the old song first (the v1.0.9 video bug)', () {
-    test('manual next pauses the old song while the new one resolves',
+  group('P0-1: manual switch resolves first, then stops the old song', () {
+    test('manual next keeps the old song playing while resolving',
         () async {
       final playerA = _FakePlayer();
       final playerB = _FakePlayer();
@@ -246,15 +247,21 @@ void main() {
 
       expect(c.currentIndex.value, 1);
       expect(c.isResolving.value, isTrue);
-      // LX handlePlay: the old song is stopped FIRST. Pre-fix the old
-      // player kept sounding here (pauseCalls unchanged, playing true)
-      // while the UI already showed B.
-      expect(playerA.pauseCalls, greaterThan(pausesAfterPlay));
-      expect(playerA.playing, isFalse);
+      // P0-1: the old song keeps sounding while the new one resolves
+      // (pausing up front silenced the queue for the whole 1–6 s
+      // resolve). It is only stopped once B's URL is in hand. The
+      // v1.0.9 symptom this used to guard — the position stream
+      // reporting the old song under the new song's name — is covered
+      // by the gen/identity guards on the resolve result, not by the
+      // up-front pause.
+      expect(playerA.pauseCalls, pausesAfterPlay);
+      expect(playerA.playing, isTrue);
 
-      // The resolve lands: B opens on the same player and plays.
+      // The resolve lands: the old song is paused once, then B opens
+      // on the same player and plays.
       resolvers.resolve('B');
       await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(playerA.pauseCalls, pausesAfterPlay + 1);
       expect(playerA.openedUrls.last, _urlForTitle('B'));
       expect(playerA.playing, isTrue);
       expect(c.isResolving.value, isFalse);

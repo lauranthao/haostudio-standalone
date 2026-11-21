@@ -170,7 +170,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('25%'), findsOneWidget);
     final color = TabBarAccentController.ensure().color.value;
-    expect(color.a, closeTo(0.25, 0.02));
+    expect(color, isNotNull);
+    expect(color!.a, closeTo(0.25, 0.02));
     // The tab bar no longer follows the accent (Muse bar: all icons
     // theme text) — the icon stays opaque theme text.
     final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
@@ -184,29 +185,36 @@ void main() {
       (tester) async {
     await pumpBarWithSheet(tester);
     await openSheet(tester);
-    // The default red is not one of the 5 built-ins, so + adds it.
+    // Fresh install: the picker starts from the theme accent
+    // (appleGlass light: black), which IS one of the 5 built-ins —
+    // so + on the untouched sheet adds nothing. Pick a non-preset
+    // grid cell first (P0-5: the starting colour is the real theme
+    // accent, not an invented red), then + adds it.
+    final picked = HSVColor.fromAHSV(1.0, 0, 0.55, 0.6).toColor();
+    await tester.tap(find.byKey(const ValueKey('accent-grid-0.0-4')));
+    await tester.pumpAndSettle();
+    expect(TabBarAccentController.ensure().color.value, picked);
     await tester.tap(find.byKey(const ValueKey('accent-preset-add')));
     await tester.pumpAndSettle();
-    final red = TabBarAccentController.defaultColor;
     expect(
-      find.byKey(ValueKey('accent-preset-${red.toARGB32()}')),
+      find.byKey(ValueKey('accent-preset-${picked.toARGB32()}')),
       findsOneWidget,
     );
     expect(
       AccentPresetStore.loadCustoms(),
-      contains(red),
+      contains(picked),
     );
 
     // Long-press the custom preset: it is removed.
     await tester.longPress(
-      find.byKey(ValueKey('accent-preset-${red.toARGB32()}')),
+      find.byKey(ValueKey('accent-preset-${picked.toARGB32()}')),
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(ValueKey('accent-preset-${red.toARGB32()}')),
+      find.byKey(ValueKey('accent-preset-${picked.toARGB32()}')),
       findsNothing,
     );
-    expect(AccentPresetStore.loadCustoms(), isNot(contains(red)));
+    expect(AccentPresetStore.loadCustoms(), isNot(contains(picked)));
 
     // Long-press a built-in (black): it stays.
     const black = Color(0xFF000000);
@@ -262,6 +270,43 @@ void main() {
     expect(find.text('网格'), findsOneWidget);
   });
 
+  testWidgets('fresh install: ring shows the theme accent, not red',
+      (tester) async {
+    // SettingsTabPage reads ThemeController via Get.find.
+    Get.put(ThemeController());
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      GetMaterialApp(
+        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+        home: const SettingsTabPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final ring = find.byType(AccentRingButton);
+    expect(ring, findsOneWidget);
+    // P0-5: nothing stored, so the ring's centre is the theme's
+    // actual accent (appleGlass light: black) — never the old fake
+    // NetEase red.
+    final inners = <Container>[];
+    for (final e in find
+        .descendant(of: ring, matching: find.byType(Container))
+        .evaluate()) {
+      if (e.size == const Size(30, 30)) inners.add(e.widget as Container);
+    }
+    expect(inners, hasLength(1));
+    final themeAccent = HaoThemes.of(HaoThemeId.appleGlass)
+        .light
+        .extension<HaoTheme>()!
+        .accent;
+    expect((inners.single.decoration as BoxDecoration).color, themeAccent);
+    expect(themeAccent, isNot(const Color(0xFFFA2D2D)));
+  });
+
   testWidgets('sheet opens cleanly in all 4 themes x light/dark',
       (tester) async {
     for (final id in HaoThemeId.values) {
@@ -299,15 +344,19 @@ void main() {
           findsOneWidget,
           reason: 'sheet opens in $id ${dark ? 'dark' : 'light'}',
         );
-        // The preview shows the default red in every theme/mode.
+        // The preview shows the theme's actual accent in every
+        // theme/mode (P0-5) — never an invented red.
         final preview = tester.widget<Container>(
           find.byKey(const ValueKey('accent-preview')),
         );
         final decoration = preview.decoration as BoxDecoration;
+        final expectedAccent = (dark ? themes.dark : themes.light)
+            .extension<HaoTheme>()!
+            .accent;
         expect(
           decoration.color,
-          TabBarAccentController.defaultColor,
-          reason: 'preview is default red in $id ${dark ? 'dark' : 'light'}',
+          expectedAccent,
+          reason: 'preview is the theme accent in $id ${dark ? 'dark' : 'light'}',
         );
         await tester.tap(find.byKey(const ValueKey('accent-close')));
         await tester.pumpAndSettle();

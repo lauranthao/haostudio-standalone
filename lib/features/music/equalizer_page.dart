@@ -31,6 +31,7 @@
 //    system (4 themes x light/dark), so every combination stays
 //    readable.
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -138,7 +139,7 @@ class _ResponseCard extends StatelessWidget {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   color: theme.textPrimary.withValues(alpha: 0.035),
                   border: Border.all(
                     color: theme.textPrimary.withValues(alpha: 0.07),
@@ -548,11 +549,11 @@ class _PresetCard extends StatelessWidget {
               Expanded(
                 child: InkWell(
                   onTap: () => _showSavePresetDialog(context, store),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(HaoRadius.standard),
                   child: Container(
                     height: 34,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(HaoRadius.standard),
                       color: theme.textPrimary.withValues(alpha: 0.055),
                     ),
                     alignment: Alignment.center,
@@ -584,12 +585,12 @@ class _PresetCard extends StatelessWidget {
                   HaoHaptics.select();
                   unawaited(store.reset());
                 },
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(HaoRadius.standard),
                 child: Container(
                   width: 42,
                   height: 34,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(HaoRadius.standard),
                     color: theme.textPrimary.withValues(alpha: 0.055),
                   ),
                   child: Icon(

@@ -20,6 +20,7 @@
 //   Trending — TMDB is OUT of the standalone.
 // - Poster cards prefetch the detail on pointer-down (max 3 inflight).
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -48,17 +49,14 @@ class VideoTabPage extends StatefulWidget {
   State<VideoTabPage> createState() => _VideoTabPageState();
 }
 
-/// Stutter fix (chen 2026-11-20): keep-alive, see LiveTabPage.
-/// Safe here: initState renders from cache + refreshes once in the
-/// background; no timers, streams or polling that would keep running
-/// while hidden.
-class _VideoTabPageState extends State<VideoTabPage>
-    with AutomaticKeepAliveClientMixin {
+/// No KeepAlive (P1-P3): initState renders from the Hive cache +
+/// refreshes once in the background; no timers, streams or polling
+/// that would keep running while hidden. The page rebuilds from the
+/// Hive cache on every tab switch, so it never sits resident in
+/// memory; scroll position is lost on switch, data is not.
+class _VideoTabPageState extends State<VideoTabPage> {
   final _homeService = VideoHomeService();
   final _detailService = VideoDetailService();
-
-  @override
-  bool get wantKeepAlive => true;
 
   VideoHomeData? _home;
   List<VideoItem> _daily = [];
@@ -173,7 +171,6 @@ class _VideoTabPageState extends State<VideoTabPage>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // AutomaticKeepAliveClientMixin
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
@@ -579,7 +576,7 @@ class _ContinueCard extends StatelessWidget {
                   // modes). The progress scrim below stays black —
                   // it sits ON the artwork.
                   color: theme.surfaceStrong,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(HaoRadius.large),
                   border: Border.all(color: theme.hairline),
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -686,7 +683,7 @@ class _CollectionCard extends StatelessWidget {
                             // Theme glass, not a hardcoded dark tile
                             // (black hole in light modes).
                             color: theme.surfaceStrong,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(HaoRadius.standard),
                             border: Border.all(
                               color: theme.hairline,
                             ),

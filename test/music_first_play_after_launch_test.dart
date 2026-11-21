@@ -130,6 +130,7 @@ class _ScriptedResolvers extends MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    String artist = '',
   }) async {
     resolvedIds.add(songId);
     final script = _script;

@@ -73,11 +73,26 @@ class PlayUrlResult {
   final String via;
 }
 
-typedef _ResolverFn = Future<String> Function(
+/// What one resolver call actually produced: the URL ('' = no result)
+/// and, when the resolver KNOWS the tier it served (its upstream
+/// reports it — zddyr/xinghai's `quality` / `quality_fallback`), that
+/// tier. The loop labels the result with it instead of the declared
+/// [extraQuality]; null = unknown, keep the declared label.
+/// (P1-L1 Master gate: only a verified master answer may be labelled
+/// master.)
+typedef _ResolvedUrl = ({String url, AudioQuality? actualQuality});
+
+/// A resolver that only knows its URL returns [_u] (unknown tier).
+_ResolvedUrl _u(String url) => (url: url, actualQuality: null);
+
+typedef _ResolverFn = Future<_ResolvedUrl> Function(
   String songId,
   MusicPlatform platform,
   AudioQuality quality,
   String title,
+  // Expected artist for title-only resolvers (oiapi_kw, P1-L5):
+  // '' = unknown, no singer check.
+  String artist,
 );
 
 /// One resolution job: a built-in resolver or an LX script job, unified
@@ -336,15 +351,17 @@ class MusicResolvers {
     MusicPlatform pf,
     AudioQuality q,
     String songId,
-    String title,
-  ) {
+    String title, {
+    String artist = '',
+  }) {
     _loadSpeeds();
-    final song = Song(songId: songId, title: title, platform: pf);
+    final song =
+        Song(songId: songId, title: title, platform: pf, artist: artist);
     final jobs = <_Job>[
       for (final r in _applicable(pf))
         (key: r.key, name: r.name, order: r.order, fn: r.fn),
       for (final s in _scriptEngine.scriptJobsFor(pf, q, song))
-        (key: s.key, name: s.name, order: 2, fn: (_, _, _, _) => s.fn()),
+        (key: s.key, name: s.name, order: 2, fn: (_, _, _, _, _) => s.fn()),
     ];
     final now = DateTime.now();
     // Manual script order, read fresh per resolve so a drag in
@@ -517,6 +534,35 @@ class MusicResolvers {
     return first;
   }
 
+  /// Singer-name containment check (P1-L5): normalize case + whitespace,
+  /// then either side must contain the other. An empty reported singer
+  /// cannot verify — the API names its singer, so a missing name means
+  /// the hit is unusable for a title-only lookup.
+  static bool _singerMatches(String reported, String expected) {
+    String norm(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final r = norm(reported);
+    final e = norm(expected);
+    if (r.isEmpty || e.isEmpty) return false;
+    return r.contains(e) || e.contains(r);
+  }
+
+  /// Master honesty gate (P1-L1): the LX APIs (zddyr / xinghai) report
+  /// the tier they actually served — `quality` + `quality_fallback`.
+  /// Only `quality == 'master'` with no fallback keeps the master
+  /// label at a master request; anything else the API served is hires
+  /// (its best fallback tier). Other tiers carry no verifiable signal
+  /// in the response, so they keep the declared label (null).
+  static AudioQuality? _lxApiServedTier(
+    Map<String, dynamic> j,
+    AudioQuality q,
+  ) {
+    if (q != AudioQuality.master) return null;
+    final servedMaster =
+        j['quality'] == 'master' && j['quality_fallback'] != true;
+    return servedMaster ? AudioQuality.master : AudioQuality.hires;
+  }
+
   // -- the 14 resolvers (order = try order) ----------------------------------
 
   List<_Resolver> get _resolvers => [
@@ -531,7 +577,8 @@ class MusicResolvers {
           // only if the service revives.
           enabled: false,
           order: 1,
-          fn: (id, pf, q, title) => _huibqUrl(id, pf, q),
+          fn: (id, pf, q, title, artist) async =>
+              _u(await _huibqUrl(id, pf, q)),
         ),
         _Resolver(
           key: 'ikun',
@@ -547,14 +594,14 @@ class MusicResolvers {
           // serve master live (see music_quality.dart).
           enabled: false,
           order: 2,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             // Master only: the ikun API is the only direct resolver
             // with a distinct master tier (quality=master). Other
             // tiers already have many resolvers; asking ikun for them
             // would only add load on a fragile API.
             // iOS note: plain http:// — blocked by ATS unless an
             // exception is added; zddyr/xinghai are https.
-            if (q != AudioQuality.master) return '';
+            if (q != AudioQuality.master) return _u('');
             final j = await _fetchJson(
               'http://api.ikunshare.com/url?source=wy&songId=${Uri.encodeComponent(id)}&quality=master',
               headers: {
@@ -564,9 +611,11 @@ class MusicResolvers {
               },
               timeout: const Duration(seconds: 8),
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            return _u(
+              (j != null && j['code'] == 200)
+                  ? toHttps(j['url']?.toString() ?? '')
+                  : '',
+            );
           },
         ),
         _Resolver(
@@ -575,12 +624,12 @@ class MusicResolvers {
           platforms: const [MusicPlatform.tx],
           enabled: true,
           order: 15,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://tang.api.s01s.cn/music_open_api.php?mid=${Uri.encodeComponent(id)}',
               headers: {'User-Agent': _musicUa},
             );
-            if (j == null || j['song_play_url'] == null) return '';
+            if (j == null || j['song_play_url'] == null) return _u('');
             // QQ top tier field is `song_play_url_pq` — it is the hires
             // tier's URL source, not a separate Master tier (see
             // music_quality.dart header). Master caps at the same
@@ -594,8 +643,10 @@ class MusicResolvers {
                     : q == AudioQuality.q320k
                         ? 'song_play_url_hq'
                         : 'song_play_url_standard';
-            return toHttps(
-              j[field]?.toString() ?? j['song_play_url']?.toString() ?? '',
+            return _u(
+              toHttps(
+                j[field]?.toString() ?? j['song_play_url']?.toString() ?? '',
+              ),
             );
           },
         ),
@@ -605,7 +656,7 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 20,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://music.lzmhhh.com/api/music/url',
               method: 'POST',
@@ -616,7 +667,7 @@ class MusicResolvers {
               },
               body: 'id=${Uri.encodeComponent(id)}&type=wy',
             );
-            return toHttps(j?['data']?.toString() ?? '');
+            return _u(toHttps(j?['data']?.toString() ?? ''));
           },
         ),
         _Resolver(
@@ -625,14 +676,19 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 25,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://yy.zddyr.top/lx/api/?source=wy&songmid=${Uri.encodeComponent(id)}&quality=${lxQuality(q)}',
               headers: {'User-Agent': _musicUa},
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            if (j == null || j['code'] != 200) return _u('');
+            // P1-L1: verify the tier the API actually served — a
+            // master request answered with a fallback stream is
+            // hires, never master.
+            return (
+              url: toHttps(j['url']?.toString() ?? ''),
+              actualQuality: _lxApiServedTier(j, q),
+            );
           },
         ),
         _Resolver(
@@ -641,12 +697,12 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 30,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://music-api.gdstudio.xyz/api.php?types=url&id=${Uri.encodeComponent(id)}&source=netease&br=${gdBr(q)}',
               headers: {'User-Agent': _musicUa},
             );
-            return toHttps(j?['url']?.toString() ?? '');
+            return _u(toHttps(j?['url']?.toString() ?? ''));
           },
         ),
         _Resolver(
@@ -659,9 +715,9 @@ class MusicResolvers {
           ],
           enabled: true,
           order: 40,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final tk = await _getXhToken();
-            if (tk.isEmpty) return '';
+            if (tk.isEmpty) return _u('');
             const bs = {
               MusicPlatform.wy: 'wy',
               MusicPlatform.tx: 'qq',
@@ -682,9 +738,12 @@ class MusicResolvers {
                 'X-Token': tk,
               },
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            if (j == null || j['code'] != 200) return _u('');
+            // P1-L1: same served-tier verification as zddyr.
+            return (
+              url: toHttps(j['url']?.toString() ?? ''),
+              actualQuality: _lxApiServedTier(j, q),
+            );
           },
         ),
         _Resolver(
@@ -693,16 +752,16 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 60,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://oiapi.net/api/Music_163?id=${Uri.encodeComponent(id)}',
               headers: {'User-Agent': _musicUa},
             );
-            if (j == null || j['code'] != 0) return '';
+            if (j == null || j['code'] != 0) return _u('');
             final data = j['data'] as List<dynamic>?;
-            if (data == null || data.isEmpty) return '';
+            if (data == null || data.isEmpty) return _u('');
             final first = data.first as Map<String, dynamic>?;
-            return toHttps(first?['url']?.toString() ?? '');
+            return _u(toHttps(first?['url']?.toString() ?? ''));
           },
         ),
         _Resolver(
@@ -711,7 +770,7 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 70,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://metings.qjqq.cn/Song_V1',
               method: 'POST',
@@ -723,7 +782,7 @@ class MusicResolvers {
                   'url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
             );
             final data = j?['data'] as Map<String, dynamic>?;
-            return toHttps(data?['url']?.toString() ?? '');
+            return _u(toHttps(data?['url']?.toString() ?? ''));
           },
         ),
         _Resolver(
@@ -732,7 +791,7 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 80,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://ncm.kangqiovo.com/Song_V1',
               method: 'POST',
@@ -744,7 +803,7 @@ class MusicResolvers {
                   'url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
             );
             final data = j?['data'] as Map<String, dynamic>?;
-            return toHttps(data?['url']?.toString() ?? '');
+            return _u(toHttps(data?['url']?.toString() ?? ''));
           },
         ),
         _Resolver(
@@ -753,15 +812,17 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy],
           enabled: true,
           order: 90,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://api.yutangxiaowu.cn/api/music/Song_V1?url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
               headers: {'User-Agent': _musicUa},
             );
-            if (j == null) return '';
+            if (j == null) return _u('');
             final data = j['data'] as Map<String, dynamic>?;
-            return toHttps(
-              j['url']?.toString() ?? data?['url']?.toString() ?? '',
+            return _u(
+              toHttps(
+                j['url']?.toString() ?? data?['url']?.toString() ?? '',
+              ),
             );
           },
         ),
@@ -771,14 +832,28 @@ class MusicResolvers {
           platforms: const [MusicPlatform.kw],
           enabled: true,
           order: 100,
-          fn: (id, pf, q, title) async {
-            if (title.isEmpty) return '';
+          fn: (id, pf, q, title, artist) async {
+            if (title.isEmpty) return _u('');
             final j = await _fetchJson(
               'https://oiapi.net/api/Kuwo?msg=${Uri.encodeComponent(title)}&n=1&br=${kwBr(q)}',
               headers: {'User-Agent': _musicUa},
             );
             final data = j?['data'] as Map<String, dynamic>?;
-            return toHttps(data?['url']?.toString() ?? '');
+            final url = toHttps(data?['url']?.toString() ?? '');
+            if (url.isEmpty) return _u('');
+            // P1-L5: the request is title-only, so the API's first
+            // hit can be a different song with the same title. The
+            // response names its singer — when the expected artist
+            // is known, require a match; a mismatch is "no result
+            // from this source", and the loop asks the next source.
+            if (artist.isNotEmpty &&
+                !_singerMatches(
+                  data?['singer']?.toString() ?? '',
+                  artist,
+                )) {
+              return _u('');
+            }
+            return _u(url);
           },
         ),
         _Resolver(
@@ -788,7 +863,7 @@ class MusicResolvers {
           // Default OFF (direct-IP host, shared key) — same as the JS.
           enabled: false,
           order: 110,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://103.79.184.97/api/music/url?platform=wy&source=wy&songId=${Uri.encodeComponent(id)}&quality=320k',
               headers: {
@@ -796,9 +871,11 @@ class MusicResolvers {
                 'X-Card-Key': '6C1F-53W0-GRKI-EVFG',
               },
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            return _u(
+              (j != null && j['code'] == 200)
+                  ? toHttps(j['url']?.toString() ?? '')
+                  : '',
+            );
           },
         ),
         _Resolver(
@@ -807,7 +884,7 @@ class MusicResolvers {
           platforms: const [MusicPlatform.wy, MusicPlatform.kw],
           enabled: true,
           order: 120,
-          fn: (id, pf, q, title) async {
+          fn: (id, pf, q, title, artist) async {
             final j = await _fetchJson(
               'https://c.wwwweb.top/music/url',
               method: 'POST',
@@ -822,9 +899,11 @@ class MusicResolvers {
                 'quality': wwwwebQuality(q, pf.code),
               }),
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            return _u(
+              (j != null && j['code'] == 200)
+                  ? toHttps(j['url']?.toString() ?? '')
+                  : '',
+            );
           },
         ),
         _Resolver(
@@ -833,21 +912,23 @@ class MusicResolvers {
           platforms: const [MusicPlatform.kw],
           enabled: true,
           order: 130,
-          fn: (id, pf, q, title) async {
-            if (title.isEmpty) return '';
+          fn: (id, pf, q, title, artist) async {
+            if (title.isEmpty) return _u('');
             // Refuses master/hires/lossless outright (returns empty → downgrade).
             if (q == AudioQuality.master ||
                 q == AudioQuality.hires ||
                 q == AudioQuality.lossless) {
-              return '';
+              return _u('');
             }
             final j = await _fetchJson(
               'https://yy.zddyr.top/lx/api/?source=kw&name=${Uri.encodeComponent(title)}&singer=&songmid=${Uri.encodeComponent(id)}&interval=&albumName=&quality=${q.code}',
               headers: {'User-Agent': _musicUa},
             );
-            return (j != null && j['code'] == 200)
-                ? toHttps(j['url']?.toString() ?? '')
-                : '';
+            return _u(
+              (j != null && j['code'] == 200)
+                  ? toHttps(j['url']?.toString() ?? '')
+                  : '',
+            );
           },
         ),
       ];
@@ -910,12 +991,13 @@ class MusicResolvers {
     Duration budget,
     Set<String> skipTimedOut, [
     Set<String> excludeNames = const <String>{},
+    String artist = '',
   ]) async {
     // LX script jobs (M-P0-6): kick off engine load on first use; jobs
     // appear once the engine has loaded, so the first resolve after
     // launch may predate them — later resolves include them.
     unawaited(_scriptEngine.ensureInitialized().catchError((_) {}));
-    final jobs = _rankedJobs(pf, q, songId, title);
+    final jobs = _rankedJobs(pf, q, songId, title, artist: artist);
     if (jobs.isEmpty) return (result: null, incomplete: false);
     final deadline = DateTime.now().add(budget);
     for (var i = 0; i < jobs.length; i++) {
@@ -939,18 +1021,20 @@ class MusicResolvers {
       final timeout =
           remaining < _perJobTimeout ? remaining : _perJobTimeout;
       final sw = Stopwatch()..start();
-      String url;
+      _ResolvedUrl resolved;
       try {
-        url = await job.fn(songId, pf, q, title).timeout(timeout);
+        resolved =
+            await job.fn(songId, pf, q, title, artist).timeout(timeout);
       } on TimeoutException {
         _recordAttempt(job.key, false, timeout.inMilliseconds,
             timedOut: true);
         skipTimedOut.add(job.key);
         continue;
       } catch (_) {
-        url = '';
+        resolved = _u('');
       }
       sw.stop();
+      final url = resolved.url;
       if (url.isEmpty) {
         _recordAttempt(job.key, false, sw.elapsedMilliseconds);
         continue;
@@ -971,7 +1055,10 @@ class MusicResolvers {
         result: PlayUrlResult(
           url: https,
           candidates: [https],
-          quality: extraQuality(job.key, q, pf.code),
+          // P1-L1: a resolver that reports the tier it actually
+          // served is held to it; otherwise the declared label.
+          quality:
+              resolved.actualQuality ?? extraQuality(job.key, q, pf.code),
           via: job.name,
         ),
         incomplete: false,
@@ -994,6 +1081,8 @@ class MusicResolvers {
     AudioQuality quality,
     String title, {
     Set<String> excludeJobs = const <String>{},
+    // Expected artist for title-only resolvers (oiapi_kw, P1-L5).
+    String artist = '',
   }) async {
     if (songId.isEmpty) {
       lastResolveTruncated = false;
@@ -1032,6 +1121,7 @@ class MusicResolvers {
         budget,
         skipTimedOut,
         excludeJobs,
+        artist,
       );
       truncated = truncated || pass.incomplete;
       first = false;

@@ -9,6 +9,7 @@
 // one list for both modes (see AppearanceStore) — the grid is the
 // same, the per-mode split is the documented deviation.
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -99,7 +100,7 @@ class WallpaperPage extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(HaoRadius.large),
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
@@ -109,7 +110,7 @@ class WallpaperPage extends StatelessWidget {
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(HaoRadius.large),
                                 border: inUse
                                     ? Border.all(
                                         color: theme.accent,
@@ -119,7 +120,9 @@ class WallpaperPage extends StatelessWidget {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(
-                                  inUse ? 10 : 12,
+                                  inUse
+                                      ? HaoRadius.standard
+                                      : HaoRadius.large,
                                 ),
                                 child: Image.file(
                                   File(path),

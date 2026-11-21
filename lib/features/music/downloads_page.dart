@@ -8,6 +8,7 @@
 // removes the file and its index entry. Filter chips: 全部 / 已下载 /
 // 下载中. Empty state is honest: "还没有下载的歌曲".
 
+import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -213,7 +214,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(HaoRadius.standard),
               child: song.cover.isEmpty
                   ? Container(
                       width: 48,
@@ -270,7 +271,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(HaoRadius.badge),
                         child: LinearProgressIndicator(
                           value: row.progress,
                           backgroundColor: theme.accentSoft,
@@ -301,7 +302,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     title: '删除下载',
                     content: '将删除「${song.title}」的下载文件，之后需要重新下载才能离线播放。',
                     confirmLabel: '删除',
-                    confirmColor: theme.liveRed,
                   );
                   if (ok != true || !mounted) return;
                   await _service.delete(song);
