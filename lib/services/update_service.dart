@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 import '../../app/consts.dart';
 import '../core/network/http_client.dart';
 import '../core/storage/hive_store.dart';
+import 'android_abi.dart';
 
 enum UpdateCheckResult {
   /// A newer version is available and was not skipped.
@@ -65,6 +66,12 @@ class UpdateInfo {
     this.apkSize,
     this.apkVersion,
     this.apkBuild,
+    this.apkUrlArm64V8a,
+    this.apkSizeArm64V8a,
+    this.apkUrlArmeabiV7a,
+    this.apkSizeArmeabiV7a,
+    this.apkUrlX86_64,
+    this.apkSizeX86_64,
   });
 
   final String version;
@@ -82,6 +89,47 @@ class UpdateInfo {
   final String? apkVersion;
   final int? apkBuild;
 
+  /// Per-ABI APKs (P1-A1: `flutter build apk --split-per-abi` ships
+  /// one APK per ABI, ~66MB each instead of the 179MB fat APK).
+  /// All null on a manifest that only carries the fat APK — the
+  /// updater then falls back to [apkUrl]/[apkSize], so old manifests
+  /// keep working.
+  final String? apkUrlArm64V8a;
+  final int? apkSizeArm64V8a;
+  final String? apkUrlArmeabiV7a;
+  final int? apkSizeArmeabiV7a;
+  final String? apkUrlX86_64;
+  final int? apkSizeX86_64;
+
+  /// The APK download URL for this device: the per-ABI URL matching
+  /// the primary ABI when the manifest carries it, otherwise the fat
+  /// APK URL. Null on Android when the manifest carries no APK at all.
+  /// Off Android this is just [apkUrl] (unused there).
+  String? get effectiveApkUrl {
+    if (defaultTargetPlatform != TargetPlatform.android) return apkUrl;
+    final perAbi = switch (AndroidAbi.current) {
+      'arm64-v8a' => apkUrlArm64V8a,
+      'armeabi-v7a' => apkUrlArmeabiV7a,
+      'x86_64' => apkUrlX86_64,
+      _ => null,
+    };
+    if (perAbi != null && perAbi.isNotEmpty) return perAbi;
+    return apkUrl;
+  }
+
+  /// The byte size matching [effectiveApkUrl], for the installer's
+  /// size check. Falls back to [apkSize] with the fat URL.
+  int? get effectiveApkSize {
+    if (defaultTargetPlatform != TargetPlatform.android) return apkSize;
+    final perAbi = switch (AndroidAbi.current) {
+      'arm64-v8a' => apkSizeArm64V8a,
+      'armeabi-v7a' => apkSizeArmeabiV7a,
+      'x86_64' => apkSizeX86_64,
+      _ => null,
+    };
+    return perAbi ?? apkSize;
+  }
+
   /// The version string this platform compares against [kAppVersion]:
   /// the APK version on Android, the shared version elsewhere.
   String get effectiveVersion =>
@@ -96,11 +144,13 @@ class UpdateInfo {
           ? (apkBuild ?? build)
           : build;
 
-  /// The download URL this platform installs from: the APK on
+  /// The download URL this platform installs from: the per-ABI APK on
   /// Android, the IPA URL elsewhere. Null on Android when the
   /// manifest carries no APK.
   String? get installUrl =>
-      defaultTargetPlatform == TargetPlatform.android ? apkUrl : ipaUrl;
+      defaultTargetPlatform == TargetPlatform.android
+          ? effectiveApkUrl
+          : ipaUrl;
 
   /// Identity of this release for the skip check: effective version
   /// + build ("1.1.5+24"). Skipping one build must not skip the next
@@ -225,6 +275,12 @@ class UpdateService {
           apkSize: (data['apkSize'] as num?)?.toInt(),
           apkVersion: data['apkVersion']?.toString(),
           apkBuild: (data['apkBuild'] as num?)?.toInt(),
+          apkUrlArm64V8a: data['apkUrlArm64V8a']?.toString(),
+          apkSizeArm64V8a: (data['apkSizeArm64V8a'] as num?)?.toInt(),
+          apkUrlArmeabiV7a: data['apkUrlArmeabiV7a']?.toString(),
+          apkSizeArmeabiV7a: (data['apkSizeArmeabiV7a'] as num?)?.toInt(),
+          apkUrlX86_64: data['apkUrlX86_64']?.toString(),
+          apkSizeX86_64: (data['apkSizeX86_64'] as num?)?.toInt(),
         ),
         null,
         status,
@@ -291,11 +347,12 @@ class UpdateService {
   }
 
   UpdateCheckResult _classify(UpdateInfo info) {
-    // Android only offers the update when the manifest carries an APK:
-    // an iOS-only manifest (no apkUrl) is not an update, it is "up to
-    // date" — never offer the IPA link on Android.
+    // Android only offers the update when the manifest carries an APK
+    // for this device (fat or per-ABI): an iOS-only manifest (no
+    // apkUrl at all) is not an update, it is "up to date" — never
+    // offer the IPA link on Android.
     if (defaultTargetPlatform == TargetPlatform.android &&
-        (info.apkUrl == null || info.apkUrl!.isEmpty)) {
+        (info.effectiveApkUrl == null || info.effectiveApkUrl!.isEmpty)) {
       return UpdateCheckResult.upToDate;
     }
     if (!_isNewer(info)) {

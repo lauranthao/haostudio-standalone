@@ -77,7 +77,9 @@ class ApkUpdateInstaller {
     UpdateInfo info, {
     void Function(double progress)? onProgress,
   }) async {
-    final url = info.apkUrl;
+    // Per-ABI APK when the manifest carries one for this device,
+    // otherwise the fat APK (effectiveApkUrl falls back by itself).
+    final url = info.effectiveApkUrl;
     if (url == null || url.isEmpty) return false;
     try {
       final dir = await _tempDir();
@@ -102,9 +104,9 @@ class ApkUpdateInstaller {
           onProgress?.call((received / total).clamp(0.0, 1.0));
         }
       });
-      if (info.apkSize != null && info.apkSize! > 0) {
+      if (info.effectiveApkSize != null && info.effectiveApkSize! > 0) {
         final actual = await file.length();
-        if (actual != info.apkSize) {
+        if (actual != info.effectiveApkSize) {
           await file.delete().catchError((_) => file);
           debugPrint(
             '[HAo] apk download size mismatch: got $actual, want ${info.apkSize}',

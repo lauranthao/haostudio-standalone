@@ -207,7 +207,22 @@ void main() {
     // Removed by chen: VIP notice (不提醒). The equalizer removal was
     // only because no engine existed; the engine is stage 3.
     expect(find.textContaining('会员歌提醒'), findsNothing);
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  // P0-A1: the equalizer has no native engine on Android, so the row
+  // is hidden there — the rest of the playback panel is unchanged.
+  testWidgets('EQ row is absent on Android (P0-A1)', (tester) async {
+    await expandPlayback(tester);
+
+    expect(find.text('与其他音频同时播放'), findsOneWidget);
+    expect(find.text('120Hz 高刷新'), findsOneWidget);
+    expect(find.text('启动时自动播放上次歌曲'), findsOneWidget);
+    expect(find.text('播放音质'), findsOneWidget);
+    expect(find.text('触感反馈'), findsOneWidget);
+    expect(find.text('第三方音源'), findsOneWidget);
+    expect(find.text('音源管理'), findsOneWidget);
+    expect(find.text('均衡器'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets('EQ row opens the 10-band page', (tester) async {
     await expandPlayback(tester);
@@ -225,7 +240,7 @@ void main() {
     // test's Get.find<ThemeController>).
     await tester.pageBack();
     await tester.pumpAndSettle();
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('haptics switch persists and flips the Hive flag',
       (tester) async {

@@ -29,6 +29,13 @@ Map<String, dynamic> _manifest(String version, [int build = 6]) => {
       'version': version,
       'build': build,
       'ipaUrl': 'https://example.com/hao-$version.ipa',
+      // Widget tests run as Android by default (flutter_test), and
+      // the Android gate reports upToDate for any manifest without an
+      // APK — so the classification tests need an apkUrl, or every
+      // "newer" case reads as upToDate. The dialog tests below build
+      // their UpdateInfo directly (no apkUrl), so they still exercise
+      // the iOS download path.
+      'apkUrl': 'https://example.com/hao-$version.apk',
       'changelog': '新功能：测试更新日志',
     };
 

@@ -53,6 +53,7 @@ import '../../core/theme/hao_radius.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
@@ -367,6 +368,8 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               },
               sourceCount: _sourceCount,
               equalizerEnabled: EqualizerStore.ensure().enabled,
+              showEqualizer:
+                  defaultTargetPlatform != TargetPlatform.android,
               onOpenEqualizer: () async {
                 HaoHaptics.tap();
                 await Get.to(() => const EqualizerPage());
@@ -1079,6 +1082,7 @@ class _PlaybackPanel extends StatelessWidget {
     required this.sourceCount,
     required this.equalizerEnabled,
     required this.onOpenEqualizer,
+    this.showEqualizer = true,
   });
 
   final bool mixWithOthers;
@@ -1092,6 +1096,10 @@ class _PlaybackPanel extends StatelessWidget {
   final int? sourceCount;
   final bool equalizerEnabled;
   final VoidCallback onOpenEqualizer;
+
+  /// False on Android: no native EQ engine exists there, so the row
+  /// is hidden instead of opening a page whose sliders do nothing.
+  final bool showEqualizer;
 
   @override
   Widget build(BuildContext context) {
@@ -1147,53 +1155,59 @@ class _PlaybackPanel extends StatelessWidget {
             value: hapticsOn,
             onChanged: onHapticsChanged,
           ),
-          const _PanelDivider(),
-          // Equalizer (stage 3): Beans `equalizerSection` row — icon
-          // slider.horizontal.3, title + subtitle, trailing real
-          // state (已开启/已关闭) + chevron; tap opens the 10-band
-          // page. The state comes from EqualizerStore (AnimatedBuilder
-          // above), so it follows the page's toggle live.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onOpenEqualizer,
-              borderRadius: BorderRadius.circular(HaoRadius.large),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 28,
-                    child: Icon(Icons.tune, size: 14, color: theme.accent),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('均衡器', style: TextStyle(fontSize: 15)),
-                      ],
+          // Equalizer is iOS/Windows-only: there is no native EQ engine
+          // on Android (EqualizerStore.syncToNative always returns false
+          // there), so the row is hidden instead of opening a page whose
+          // sliders do nothing (same treatment as the AirPlay button, B5).
+          if (showEqualizer) ...[
+            const _PanelDivider(),
+            // Equalizer (stage 3): Beans `equalizerSection` row — icon
+            // slider.horizontal.3, title + subtitle, trailing real
+            // state (已开启/已关闭) + chevron; tap opens the 10-band
+            // page. The state comes from EqualizerStore (AnimatedBuilder
+            // above), so it follows the page's toggle live.
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onOpenEqualizer,
+                borderRadius: BorderRadius.circular(HaoRadius.large),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Icon(Icons.tune, size: 14, color: theme.accent),
                     ),
-                  ),
-                  Text(
-                    equalizerEnabled ? '已开启' : '已关闭',
-                    style: TextStyle(
-                      color: equalizerEnabled
-                          ? theme.accent
-                          : theme.textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('均衡器', style: TextStyle(fontSize: 15)),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: theme.textMuted.withValues(alpha: 0.6),
-                  ),
-                ],
+                    Text(
+                      equalizerEnabled ? '已开启' : '已关闭',
+                      style: TextStyle(
+                        color: equalizerEnabled
+                            ? theme.accent
+                            : theme.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: theme.textMuted.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
           const _PanelDivider(),
           Row(
             children: [

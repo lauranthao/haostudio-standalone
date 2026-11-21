@@ -248,18 +248,23 @@ void main() {
 
     testWidgets('groups entries by day, newest first', (tester) async {
       final now = DateTime.now();
+      // Anchor at noon: `now - 1h` crosses midnight when the suite runs
+      // 00:00-01:00, and the "today" entry would land yesterday (the
+      // regression hit this at 00:25 on 2026-11-21). Noon-based anchors
+      // always stay on their own day.
+      final noon = DateTime(now.year, now.month, now.day, 12);
       await resetHistory(tester);
       await recordHistory(
         tester,
-        _entry('old', at: now.subtract(const Duration(days: 10))),
+        _entry('old', at: noon.subtract(const Duration(days: 10))),
       );
       await recordHistory(
         tester,
-        _entry('today', at: now.subtract(const Duration(hours: 1))),
+        _entry('today', at: noon.subtract(const Duration(hours: 1))),
       );
       await recordHistory(
         tester,
-        _entry('yest', at: now.subtract(const Duration(days: 1))),
+        _entry('yest', at: noon.subtract(const Duration(days: 1))),
       );
       await pumpHistory(tester);
 

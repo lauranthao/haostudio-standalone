@@ -521,20 +521,25 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
             onTap: () => Navigator.of(context).pop(),
           ),
           const Spacer(),
-          _topCircleBtn(
-            icon: Icons.tune,
-            onTap: () {
-              HaoHaptics.tap();
-              unawaited(
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const EqualizerPage(),
+          // Equalizer is iOS/Windows-only (no native EQ engine on
+          // Android): hide the button instead of opening a page whose
+          // sliders do nothing.
+          if (defaultTargetPlatform != TargetPlatform.android) ...[
+            _topCircleBtn(
+              icon: Icons.tune,
+              onTap: () {
+                HaoHaptics.tap();
+                unawaited(
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const EqualizerPage(),
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
           _topCircleBtn(
             icon: Icons.format_quote,
             onTap: () {
@@ -1241,21 +1246,26 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                   }
                 },
               ),
-            _circleBtn(
-              icon: Icons.tune,
-              iconSize: 15,
-              size: side,
-              onTap: () {
-                HaoHaptics.tap();
-                unawaited(
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const EqualizerPage(),
+            // Equalizer is iOS/Windows-only (no native EQ engine on
+            // Android): hide the button instead of opening a page whose
+            // sliders do nothing. The row is spaceEvenly, so spacing
+            // stays even with one fewer child.
+            if (defaultTargetPlatform != TargetPlatform.android)
+              _circleBtn(
+                icon: Icons.tune,
+                iconSize: 15,
+                size: side,
+                onTap: () {
+                  HaoHaptics.tap();
+                  unawaited(
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const EqualizerPage(),
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
           ],
         );
       },

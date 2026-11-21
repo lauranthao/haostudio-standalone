@@ -33,6 +33,7 @@ import 'features/music/av_music_player.dart';
 import 'features/music/mini_player_overlay.dart';
 import 'features/settings/update_dialog.dart';
 import 'features/splash/splash_page.dart';
+import 'services/android_abi.dart';
 import 'services/custom_font_service.dart';
 import 'services/music/equalizer_store.dart';
 import 'services/update_service.dart';
@@ -111,6 +112,12 @@ Future<void> _warmUpAfterFirstFrame(
   // Player() construction (music tab blank, live/video stuck loading).
   // Idempotent: media_kit guards with an internal _initialized flag.
   MediaKit.ensureInitialized();
+
+  // Device ABI for per-ABI APK updates (P1-A1): detect now so the
+  // value is cached long before the automatic update check runs 2 s
+  // after start. Never blocks anything — a missing channel just
+  // leaves the ABI unknown and the updater falls back to the fat APK.
+  unawaited(AndroidAbi.detect());
 
   // Liquid glass shader pipeline: pre-warm fragment shaders so glass
   // frames have no white flash / jank (liquid_glass_widgets SKILL.md

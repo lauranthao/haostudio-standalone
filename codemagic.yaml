@@ -1,11 +1,9 @@
-# HAo Studio 独立版 Flutter 1.0.4 — Codemagic 工作流（草稿，未验证、未推送）
+# HAo Studio 独立版 — Codemagic 工作流。
 #
-# Flutter 版本就是 v1.0.4（version 1.0.4+5）。Swift+web v1.0.4 已取消，不再构建。
-# 本文件放在 Flutter 工程根目录 ~/workspace/deploy/standalone-app-flutter/codemagic.yaml。
-# 仓库：与 Swift 版共用 GitHub lauranthao/haostudio-standalone 仍待定（勿擅自推送），
-# 本工作流名 ios-flutter-unsigned，与现有的 ios-unsigned（Swift）工作流并存，互不干扰。
-# 注意：Codemagic 上需新建或复用应用并选择 ios-flutter-unsigned 工作流；本文件只是草稿，
-# 首次构建前须在 Codemagic 网页端核对 flutter/xcode 版本与产物路径。
+# android-apk 工作流是现役的（android-apk 分支，Flutter 3.47.0）：每次发版出
+# 3 个 per-ABI APK。下面的 ios-flutter-unsigned / ios-flutter-simulator
+# 是 1.0.4 时期的旧草稿，未验证、未推送；iOS 发版走 Codemagic 网页端的应用
+# 配置，不走这里的两个 iOS 工作流。
 workflows:
   ios-flutter-unsigned:
     name: iOS Flutter Unsigned IPA
@@ -59,12 +57,19 @@ workflows:
           ls -lh HAoStudio-simulator.zip
     artifacts:
       - build/ios/iphonesimulator/HAoStudio-simulator.zip
-  # Android APK (v1.1.2+13, android-apk branch) — first Android build.
-  # Fat release APK (all ABIs incl. x86_64 for the Appetize emulator;
-  # NEVER add --split-per-abi, see B8). Signing: the release keystore
-  # (PKCS12) is restored at build time from the Codemagic-encrypted
-  # environment variable ANDROID_KEYSTORE_BASE64; passwords/alias come
-  # from ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
+  # Android APK (android-apk branch) — per-ABI release APKs (P1-A1).
+  # --split-per-abi builds one APK per ABI (arm64-v8a ~66MB,
+  # armeabi-v7a ~52MB, x86_64 ~68MB) instead of the 179MB fat APK;
+  # the in-app updater downloads the one matching the device ABI
+  # (AndroidAbi via DeviceInfoPlugin) and falls back to the fat apkUrl
+  # when a per-ABI URL is missing from version.json. x86_64 stays:
+  # chen's Android emulator runs on it (the old B8 rule "NEVER add
+  # --split-per-abi" is superseded — the updater now selects by ABI
+  # instead of serving one file to every device).
+  # Signing: the release keystore (PKCS12) is restored at build time
+  # from the Codemagic-encrypted environment variable
+  # ANDROID_KEYSTORE_BASE64; passwords/alias come from
+  # ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
   # ANDROID_KEY_PASSWORD. Only variable NAMES appear here — never
   # values. Set all four in Codemagic (web UI) before the first build.
   android-apk:
@@ -104,9 +109,11 @@ workflows:
           storeFile=$CM_KEYSTORE_PATH
           EOF
           ls -l "$CM_KEYSTORE_PATH"
-      - name: Build release APK
+      - name: Build release APKs (per ABI)
         script: |
-          flutter build apk --release
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          flutter build apk --release --split-per-abi
+          ls -lh build/app/outputs/flutter-apk/
     artifacts:
-      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+      - build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+      - build/app/outputs/flutter-apk/app-x86_64-release.apk

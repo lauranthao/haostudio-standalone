@@ -154,7 +154,47 @@ void main() {
       // Cover uses the Dio-backed provider, not Image.network.
       final image = tester.widget<Image>(find.byType(Image).first);
       expect(image.image, isA<MusicImageProvider>());
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    // P0-A1: the equalizer has no native engine on Android, so both
+    // tune buttons are hidden there (same treatment as the AirPlay
+    // button, B5) — the layout must still fit on one screen.
+    testWidgets('equalizer buttons are absent on Android (P0-A1)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1260, 2736);
+      tester.view.devicePixelRatio = 3.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final c = Get.put(MusicPlayerController());
+      c.queue.assignAll([
+        Song(
+          songId: '1',
+          title: 'Test Song',
+          artist: 'Test Artist',
+          album: 'Test Album',
+          cover: 'https://p2.music.126.net/5KJI2mq0G0OQHQaAfAJfwg==/109951173289563385.jpg',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        ),
+      ]);
+      c.currentIndex.value = 0;
+
+      await tester.pumpWidget(
+        GetMaterialApp(
+          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+          home: const MusicPlayerPage(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Test Song'), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+      expect(find.byIcon(Icons.format_quote), findsOneWidget);
+      expect(find.byIcon(Icons.tune), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   });
 
   group('AirPlay button: opens the system route picker (chen 2026-11-17)', () {

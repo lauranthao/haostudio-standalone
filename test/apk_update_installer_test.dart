@@ -10,6 +10,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:standalone/services/android_abi.dart';
 import 'package:standalone/services/apk_update_installer.dart';
 import 'package:standalone/services/update_service.dart';
 
@@ -49,6 +50,7 @@ void main() {
     const channel = MethodChannel(apkInstallChannelName);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+    AndroidAbi.resetForTest();
     await testDir.delete(recursive: true);
   });
 
@@ -134,5 +136,46 @@ void main() {
     expect(ok, isFalse);
     // The APK was still downloaded; only the install step refused.
     expect(downloadedUrls, hasLength(1));
+  });
+
+  test('per-ABI manifest: downloads the x86_64 APK on x86_64', () async {
+    // P1-A1: the installer must use the per-ABI URL/size, not the fat one.
+    AndroidAbi.setTestAbi('x86_64');
+    const split = UpdateInfo(
+      version: '1.1.5',
+      build: 19,
+      ipaUrl: 'https://example.com/HAoStudio-standalone-v1.1.5.ipa',
+      apkUrl: 'https://example.com/HAoStudio-standalone-v1.1.5.apk',
+      apkSize: 999,
+      apkVersion: '1.1.5',
+      apkBuild: 19,
+      apkUrlX86_64: 'https://example.com/HAoStudio-standalone-v1.1.5-x86_64.apk',
+      apkSizeX86_64: 12, // fake downloader writes utf8('fake-apk-123')
+    );
+    final ok = await installer().downloadAndInstall(split);
+    expect(ok, isTrue);
+    expect(downloadedUrls,
+        ['https://example.com/HAoStudio-standalone-v1.1.5-x86_64.apk']);
+    expect(installedPaths, hasLength(1));
+  });
+
+  test('per-ABI manifest, unknown ABI: falls back to the fat APK',
+      () async {
+    AndroidAbi.setTestAbi(null);
+    const split = UpdateInfo(
+      version: '1.1.5',
+      build: 19,
+      ipaUrl: 'https://example.com/HAoStudio-standalone-v1.1.5.ipa',
+      apkUrl: 'https://example.com/HAoStudio-standalone-v1.1.5.apk',
+      apkSize: 12,
+      apkVersion: '1.1.5',
+      apkBuild: 19,
+      apkUrlX86_64: 'https://example.com/HAoStudio-standalone-v1.1.5-x86_64.apk',
+      apkSizeX86_64: 999,
+    );
+    final ok = await installer().downloadAndInstall(split);
+    expect(ok, isTrue);
+    expect(downloadedUrls,
+        ['https://example.com/HAoStudio-standalone-v1.1.5.apk']);
   });
 }

@@ -24,5 +24,9 @@ class MainActivity : FlutterActivity() {
         // downloading the APK. Registered here so it exists before the
         // update dialog runs.
         flutterEngine.plugins.add(ApkInstallPlugin())
+        // Device ABI shell (Build.SUPPORTED_ABIS): the channel the
+        // Dart AndroidAbi service reads so the in-app updater can
+        // download the per-ABI APK matching the device (P1-A1).
+        flutterEngine.plugins.add(DeviceInfoPlugin())
     }
 }

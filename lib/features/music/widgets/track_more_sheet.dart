@@ -18,6 +18,7 @@
 import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
@@ -491,18 +492,22 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             section('歌曲'),
             // Stage 3: equalizer entry with the real on/off state
             // (same destination as the settings playback-panel row).
-            AnimatedBuilder(
-              animation: EqualizerStore.ensure(),
-              builder: (context, _) => ListTile(
-                leading: Icon(Icons.tune, color: theme.textPrimary),
-                title: Text('均衡器', style: TextStyle(color: theme.textPrimary)),
-                trailing: Text(
-                  EqualizerStore.ensure().enabled ? '已开启' : '已关闭',
-                  style: TextStyle(color: theme.textSecondary, fontSize: 13),
+            // Hidden on Android: no native EQ engine exists there, so
+            // the entry would open a page whose sliders do nothing.
+            if (defaultTargetPlatform != TargetPlatform.android) ...[
+              AnimatedBuilder(
+                animation: EqualizerStore.ensure(),
+                builder: (context, _) => ListTile(
+                  leading: Icon(Icons.tune, color: theme.textPrimary),
+                  title: Text('均衡器', style: TextStyle(color: theme.textPrimary)),
+                  trailing: Text(
+                    EqualizerStore.ensure().enabled ? '已开启' : '已关闭',
+                    style: TextStyle(color: theme.textSecondary, fontSize: 13),
+                  ),
+                  onTap: () => Navigator.of(ctx).pop(TrackMoreAction.equalizer),
                 ),
-                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.equalizer),
               ),
-            ),
+            ],
             ListTile(
               leading: Icon(Icons.info_outline, color: theme.textPrimary),
               title: Text('歌曲信息', style: TextStyle(color: theme.textPrimary)),
