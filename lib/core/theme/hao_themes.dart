@@ -57,6 +57,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     required this.textMuted,
     required this.liveRed,
     required this.glassBlurSigma,
+    required this.glassIntensity,
     required this.scaffoldBackground,
     required this.tabPill,
   });
@@ -92,6 +93,12 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
   /// readable by raising blur, never by darkening the background.
   final double glassBlurSigma;
 
+  /// Liquid-glass intensity (chen 2026-11-21, Settings → 外观 slider):
+  /// 1.0 = today's full glass, 0.0 = no glass at all (clear surfaces,
+  /// no blur/frost). Scales blur sigma, surface alphas and the library
+  /// optics (see HaoLiquidGlass) — never the layout.
+  final double glassIntensity;
+
   final Color scaffoldBackground;
 
   /// Solid matte colour of the tab-bar resting pill (Muse app bar,
@@ -119,6 +126,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
     Color? textMuted,
     Color? liveRed,
     double? glassBlurSigma,
+    double? glassIntensity,
     Color? scaffoldBackground,
     Color? tabPill,
   }) {
@@ -134,6 +142,7 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       textMuted: textMuted ?? this.textMuted,
       liveRed: liveRed ?? this.liveRed,
       glassBlurSigma: glassBlurSigma ?? this.glassBlurSigma,
+      glassIntensity: glassIntensity ?? this.glassIntensity,
       scaffoldBackground: scaffoldBackground ?? this.scaffoldBackground,
       tabPill: tabPill ?? this.tabPill,
     );
@@ -155,6 +164,8 @@ class HaoTheme extends ThemeExtension<HaoTheme> {
       liveRed: Color.lerp(liveRed, other.liveRed, t)!,
       glassBlurSigma:
           glassBlurSigma + (other.glassBlurSigma - glassBlurSigma) * t,
+      glassIntensity:
+          glassIntensity + (other.glassIntensity - glassIntensity) * t,
       scaffoldBackground: Color.lerp(
         scaffoldBackground,
         other.scaffoldBackground,
@@ -187,7 +198,13 @@ ThemeData _buildThemeData({
   required Color textSecondary,
   required Color textMuted,
   required double glassBlurSigma,
+  required double glassIntensity,
   required Color tabPill,
+  // True while a custom background (wallpaper / background colour)
+  // is active (chen 2026-11-21: 壁纸要到全局）: the scaffold and the
+  // app bar go transparent so the app-root background layer shows
+  // through on EVERY page, not just the tab roots.
+  required bool backgroundActive,
   // Custom font family (stage 2, Beans `FontManager`): null = system
   // default. Passed to the ThemeData constructor so it lands in the
   // default text themes (ThemeData.copyWith has NO fontFamily
@@ -211,10 +228,11 @@ ThemeData _buildThemeData({
     brightness: brightness,
     fontFamily: fontFamily,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: scaffoldBackground,
+    scaffoldBackgroundColor:
+        backgroundActive ? Colors.transparent : scaffoldBackground,
     primaryColor: accent,
     appBarTheme: AppBarTheme(
-      backgroundColor: surface,
+      backgroundColor: backgroundActive ? Colors.transparent : surface,
       foregroundColor: textPrimary,
       elevation: 0,
       scrolledUnderElevation: 0,
@@ -414,6 +432,7 @@ ThemeData _buildThemeData({
         textMuted: textMuted,
         liveRed: liveRed,
         glassBlurSigma: glassBlurSigma,
+        glassIntensity: glassIntensity,
         scaffoldBackground: scaffoldBackground,
         tabPill: tabPill,
       ),
@@ -453,6 +472,11 @@ class HaoThemes {
     HaoThemeId id, {
     String? fontFamily,
     Color? accentOverride,
+    // Liquid-glass intensity (chen 2026-11-21): 1.0 = today's glass.
+    double glassIntensity = 1.0,
+    // Custom background active (wallpaper / background colour):
+    // scaffolds + app bars go transparent (see _buildThemeData).
+    bool backgroundActive = false,
   }) {
     final overrideOnAccent = accentOverride == null
         ? null
@@ -477,6 +501,8 @@ class HaoThemes {
             // mode is untouched (7.31:1 already).
             textMuted: const Color(0xFF6B6B70),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
@@ -493,6 +519,8 @@ class HaoThemes {
             textSecondary: const Color(0xFFD1D1D6),
             textMuted: const Color(0xFF98989D),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFF3A3A3C),
           ),
         );
@@ -515,6 +543,8 @@ class HaoThemes {
             // untouched (5.88:1 already).
             textMuted: const Color(0xFF7A6C4E),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
@@ -531,6 +561,8 @@ class HaoThemes {
             textSecondary: const Color(0xFFD8C9A3),
             textMuted: const Color(0xFF9A8B6B),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFF3A3A3C),
           ),
         );
@@ -553,6 +585,8 @@ class HaoThemes {
             // mode untouched (6.95:1 already).
             textMuted: const Color(0xFF58746D),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
@@ -569,6 +603,8 @@ class HaoThemes {
             textSecondary: const Color(0xFFB9D9D2),
             textMuted: const Color(0xFF7FA39B),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFF3A3A3C),
           ),
         );
@@ -591,6 +627,8 @@ class HaoThemes {
             // mode untouched (6.76:1 already).
             textMuted: const Color(0xFF4F6E84),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFFE4E4E4),
           ),
           dark: _buildThemeData(
@@ -607,6 +645,8 @@ class HaoThemes {
             textSecondary: const Color(0xFFB4D2E6),
             textMuted: const Color(0xFF7D9BB0),
             glassBlurSigma: 24,
+            glassIntensity: glassIntensity,
+            backgroundActive: backgroundActive,
             tabPill: const Color(0xFF3A3A3C),
           ),
         );

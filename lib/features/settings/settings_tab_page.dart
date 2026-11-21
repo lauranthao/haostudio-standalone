@@ -1,7 +1,9 @@
 // Settings tab — Beans-style restyle (stage 1, task 5).
 //
 // Structure follows Beans `SettingsView` (ProfileView.swift:1129+):
-// - centred title "设置" (AppBar, centerTitle from the theme)
+// - left-aligned title "设置" (chen 2026-11-21, screenshot): a big
+//   bold header at the top-left of the list (26 w800), like his
+//   我的片库 screenshot — not a small top-bar title, and no AppBar.
 // - big section titles (Beans `SectionHeader`: 21 bold)
 // - every row its own glass card (Beans `GlassCard` radius 18,
 //   row padding h14 v13; icon 14 in a 28-wide frame, title 15,
@@ -70,6 +72,7 @@ import '../../core/storage/local_paths.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../services/custom_font_service.dart';
@@ -182,16 +185,28 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
-      // Unified page (chen 2026-11-19): the top bar IS the page
-      // background, not a separate surface-coloured slab — see the
-      // live tab AppBar for the reasoning.
-      appBar: AppBar(
-        title: const Text('设置'),
-        backgroundColor: tabScaffoldBackground(context),
-      ),
+      // No AppBar (chen 2026-11-21, screenshot): the title is a big
+      // bold header at the top-left of the list (26 w800), like his
+      // 我的片库 screenshot — not a small top-bar title. The title
+      // carries the status-bar inset itself (MediaQuery), so the
+      // page needs no AppBar and no SafeArea.
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
+          Padding(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 8,
+              bottom: 12,
+            ),
+            child: Text(
+              '设置',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
           const _SectionTitle('主题'),
           HaoGlassCard(
             quality: GlassCardQuality.standard,
@@ -309,6 +324,50 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          // Liquid-glass intensity (chen 2026-11-21): whole-app
+          // frosted-glass strength, 0% = clear, 100% = today's
+          // glass. The slider previews live — the theme rebuilds
+          // on every tick (ThemeController.glassIntensity).
+          HaoGlassCard(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      child: Icon(
+                        Icons.blur_on,
+                        size: 14,
+                        color: theme.accent,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        '液态玻璃强度',
+                        style: TextStyle(fontSize: 15),
+                      ),
+                    ),
+                    Text(
+                      '${(themeController.glassIntensity.value * 100).round()}%',
+                      style: TextStyle(
+                        color: theme.textSecondary,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: themeController.glassIntensity.value,
+                  onChanged: (v) =>
+                      themeController.setGlassIntensity(v, box: HiveStore.box),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           _BeansRow(
             icon: Icons.font_download,
@@ -977,6 +1036,8 @@ class _BeansSwitchRow extends StatelessWidget {
         value: value,
         onChanged: onChanged,
         activeColor: HaoTheme.of(context).accent,
+        // Intensity-scaled optics (chen 2026-11-21).
+        settings: HaoLiquidGlass.ios27Settings(context),
         enableHaptics: HaoHaptics.enabled,
       ),
     );
@@ -1269,6 +1330,8 @@ class _PanelSwitch extends StatelessWidget {
           value: value,
           onChanged: onChanged,
           activeColor: theme.accent,
+          // Intensity-scaled optics (chen 2026-11-21).
+          settings: HaoLiquidGlass.ios27Settings(context),
           enableHaptics: HaoHaptics.enabled,
         ),
       ],

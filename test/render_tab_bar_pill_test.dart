@@ -1,24 +1,17 @@
-// Render test — GlassTabBar pill lens (chen 2026-11-20, bug 5:
-// Muse tab-bar animation, "一模一样"). NOT a regression test: it
+// Render test — GlassTabBar pill, Kumone restored 2026-11-21
+// (chen: Kumone那种，不要文字，不要影子）. NOT a regression test: it
 // writes golden PNGs (run with --update-goldens) of the real
-// GlassTabBar so the lens can be eyeballed against the Muse
-// reference frames (~/workspace/preview/tabbar_ref2/frame_007 =
-// mid-slide, frame_013 = rest on 目标， frame_019 = mid-slide
-// over 点子）.
+// GlassTabBar so the faint-tint pill can be eyeballed in all 4
+// themes x light/dark.
 //
-// - rest: pill settled on 音乐 (index 2) — the lens visibility is 0
-//   (optics off, body opaque) and the solid matte resting pill
-//   shows; the selected icon is a single direct copy at normal
-//   scale (bug 6 v2), icon-only, theme text colour.
+// - rest: pill settled on 音乐 (index 2) — faint tint, icon-only,
+//   selected icon = theme accent.
 // - mid-slide: tap 设置 (scoped to the bar — an unscoped tap hit the
 //   music page's own 设置 row), shot 300ms into the spring (6x50ms
 //   pumps — a single big pump does not tick the spring in this
-//   harness) — the 180ms thickness forward has completed (lens fully
-//   up) while the settle spring is still mid-flight, the pill is
-//   stretched, and the icon under the lens must read magnified /
-//   warped, a single copy.
-// - settled: pill at rest on 设置 (index 3) — lens out, resting pill
-//   in again.
+//   harness) — the settle spring is still mid-flight, the pill
+//   between cells, same width, no stretch, no magnification.
+// - settled: pill at rest on 设置 (index 3).
 // Light + dark. The list is scrolled to the bottom first, so song rows
 // sit behind the bar and the glass has something to refract (same
 // trick as render_music_home_test.dart).
@@ -29,8 +22,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassTabBar;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
@@ -216,51 +207,41 @@ void main() {
     );
   }
 
-  /// The tab-bar tab icon, scoped to the GlassTabBar's unselected
-  /// clip: an unscoped find.text('设置') matches the music page's own
-  /// 设置 row first, so the old mid-slide/settled tests tapped the
-  /// page instead of the tab and their goldens were meaningless
-  /// duplicates of rest-on-音乐 (both sha256 ad6c408f…). The bar is
-  /// icon-only now (Muse bar), so tabs are found by icon, not label.
-  /// Scoped to the unselected clip because the icon layer is split:
-  /// every icon exists twice in the tree (unselected inverse clip +
-  /// selected normal clip). The tap point is the cell centre either
-  /// way — what matters is the position, not which copy the finder
-  /// returns — and the unselected copy is the visible one for a
-  /// not-yet-selected tab.
+  /// The tab-bar tab icon, scoped to the GlassTabBar: an unscoped
+  /// find.text('设置') matches the music page's own 设置 row first, so
+  /// the old mid-slide/settled tests tapped the page instead of the
+  /// tab and their goldens were meaningless duplicates of rest-on-音乐
+  /// (both sha256 ad6c408f…). The bar is icon-only, so tabs are found
+  /// by icon, not label; each icon exists exactly once in the tree.
   Finder barTab(IconData icon) => find.descendant(
-        of: find.byKey(GlassTabBarState.unselectedClipKey),
+        of: find.byType(GlassTabBar),
         matching: find.byIcon(icon),
       );
 
-  /// Crossfade state (bug 6 v2, chen 2026-11-20): at rest the lens
-  /// visibility is 0 (optics off, body opaque — a single direct copy
-  /// on the solid resting pill) and the resting pill Opacity is 1;
-  /// in motion the lens visibility is 1 and the resting pill 0.
-  /// The lens is NEVER wrapped in Opacity (build 21 did that and it
-  /// doubled during every fade — the library fades via
-  /// settings.visibility instead).
-  double lensVisibility(WidgetTester tester) =>
-      tester
-          .widget<GlassContainer>(find.byKey(GlassTabBarState.pillKey))
-          .settings
-          ?.visibility ??
-      -1;
-  double restPillOpacity(WidgetTester tester) =>
-      tester.widget<Opacity>(
-        find.byKey(GlassTabBarState.restPillOpacityKey),
-      ).opacity;
-
-  void expectAtRest(WidgetTester tester) {
-    expect(find.byKey(GlassTabBarState.restPillKey), findsOneWidget);
-    expect(lensVisibility(tester), 0.0);
-    expect(restPillOpacity(tester), 1.0);
+  /// At rest the pill is a plain Container with the pill key
+  /// (faint tint) — no lens GlassContainer, no resting-pill Opacity.
+  void expectPillAtRest(WidgetTester tester) {
+    expect(find.byKey(GlassTabBarState.pillKey), findsOneWidget);
+    expect(
+      tester.widget(find.byKey(GlassTabBarState.pillKey)) is Container,
+      isTrue,
+    );
   }
 
-  void expectInMotion(WidgetTester tester) {
-    expect(find.byKey(GlassTabBarState.pillKey), findsOneWidget);
-    expect(lensVisibility(tester), 1.0);
-    expect(restPillOpacity(tester), 0.0);
+  /// Mid-flight the pill sits between the rest positions of 音乐
+  /// (index 2) and 设置 (index 3): the 780x1688 @2.0 harness is
+  /// 390pt logical wide -> content 358, cellW 89.5, pill 81.5 wide;
+  /// rest left global 199 (音乐） / 288.5 (设置）. Same width
+  /// throughout — no stretch. The upper bound allows the
+  /// underdamped spring's ~1% overshoot past the target.
+  void expectPillMidSlide(WidgetTester tester) {
+    final left =
+        tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx;
+    expect(left, inInclusiveRange(199.0, 292.0));
+    expect(
+      tester.getSize(find.byKey(GlassTabBarState.pillKey)).width,
+      closeTo(81.5, 1.0),
+    );
   }
 
   testWidgets('pill rest on 音乐 light', (tester) async {
@@ -268,9 +249,8 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    // Bug 6: at rest the lens is fully faded out and the solid
-    // resting pill shows — a single direct copy, normal scale.
-    expectAtRest(tester);
+    // At rest the faint-tint pill shows, icon-only.
+    expectPillAtRest(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_rest_light');
   });
@@ -351,22 +331,18 @@ void main() {
     // it needs a starter pump before the clock advance (same as
     // glass_tab_bar_test.dart: "a tap-triggered spring needs two
     // pumps to start"). Advance in 50ms steps, not one big pump: a
-    // single pump(300ms) does not tick the spring/thickness tickers
-    // in this harness (the pill stays put), while repeated small
-    // pumps advance them (the glass test's slide-stretch test uses
-    // the same 6x50ms pattern). After 300ms the 180ms thickness
-    // forward has completed (lens fully up) while the 350ms settle
-    // spring is still mid-flight, the pill stretched, the lens
-    // refracting the tab item.
+    // single pump(300ms) does not tick the spring in this harness
+    // (the pill stays put), while repeated small pumps advance it.
+    // After 300ms the 350ms settle spring is still mid-flight, the
+    // pill between cells at full width.
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expectInMotion(tester);
+    expectPillMidSlide(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_mid_light');
-    // Drain the pill spring's trailing-edge delay (scheduled in the
-    // post-frame callback after the tap) before the test ends.
+    // Drain the pill spring before the test ends.
     await tester.pump(const Duration(seconds: 1));
   });
 
@@ -380,7 +356,7 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expectInMotion(tester);
+    expectPillMidSlide(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
         'pill_mid_dark');
     await tester.pump(const Duration(seconds: 1));
@@ -395,19 +371,15 @@ void main() {
     // Same starter pump + small steps as mid-slide: a single big
     // pump does not tick the spring in this harness (the pill stays
     // on 音乐 and the golden would be a meaningless rest duplicate).
-    // Then pumpAndSettle to drain the spring + the 180ms thickness
-    // reverse (the spring's exact settle time in this harness is
-    // longer than the 350ms response, so a fixed 1s of pumps leaves
-    // the lens up).
+    // Then pumpAndSettle to drain the spring.
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.pumpAndSettle();
-    // Settled: the spring is done and the 180ms thickness reverse
-    // has completed — the lens is out again, the resting pill is in,
-    // and the tab has actually switched to 设置.
-    expectAtRest(tester);
+    // Settled: the spring is done and the tab has actually
+    // switched to 设置.
+    expectPillAtRest(tester);
     expect(
       tester
           .widget<Icon>(
@@ -419,7 +391,7 @@ void main() {
                 .at(3),
           )
           .color,
-      HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!.textPrimary,
+      HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!.accent,
     );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_settled_light');
@@ -437,7 +409,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.pumpAndSettle();
-    expectAtRest(tester);
+    expectPillAtRest(tester);
     expect(
       tester
           .widget<Icon>(
@@ -449,7 +421,7 @@ void main() {
                 .at(3),
           )
           .color,
-      HaoThemes.of(HaoThemeId.appleGlass).dark.extension<HaoTheme>()!.textPrimary,
+      HaoThemes.of(HaoThemeId.appleGlass).dark.extension<HaoTheme>()!.accent,
     );
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
         'pill_settled_dark');

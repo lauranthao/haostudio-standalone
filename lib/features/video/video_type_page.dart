@@ -178,10 +178,8 @@ class _VideoTypePageState extends State<VideoTypePage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: Text(widget.typeName),
-        backgroundColor: theme.surface,
       ),
       body: Column(
         children: [

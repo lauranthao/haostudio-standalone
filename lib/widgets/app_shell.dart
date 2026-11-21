@@ -1,31 +1,32 @@
 // App shell — 4 bottom tabs: 影视 / 直播 / 音乐 / 设置. No home page.
 //
-// Floating glass capsule tab bar — reference is now Kumone
-// (`~/workspace/research/kumone/`, LGPL-3.0, read-only):
-// `Sources/Kumone/Features/GlassTabBar.swift` (its iOS 16–25 fallback
-// bar; the iOS 26 native bar is the same capsule in real liquid
-// glass). Numbers are Kumone's (see below); only the tab set, icons
-// and accent colour are ours (our 4 tabs, Material icons, theme
-// accent — Kumone's red #EC4949 accent is NOT copied, our themes own
-// the accent, and blue accents are now black per chen 2026-11-18).
+// Floating glass capsule tab bar — Kumone, restored 2026-11-21
+// (chen: “Kumone那种，不要文字，不要有影子了”). The Muse-app bar
+// (build 23, icon-only matte pill + magnifying lens) is gone:
+// reference is Kumone again (`~/workspace/research/kumone/`,
+// LGPL-3.0, read-only): `Sources/Kumone/Features/GlassTabBar.swift`
+// (its iOS 16–25 fallback bar; the iOS 26 native bar is the same
+// capsule in real liquid glass). Numbers are Kumone's (see below);
+// only the tab set, icons and accent colour are ours (our 4 tabs,
+// Material icons, theme accent — Kumone's red #EC4949 accent is NOT
+// copied, our themes own the accent, and blue accents are now black
+// per chen 2026-11-18).
 //
 // Kumone values copied (GlassTabBar.swift + Theme.swift FloatingChrome):
 // - Capsule, 56pt content + 4pt inset = 64pt total; horizontal
 //   padding 12; bottom margin 6; content clearance 82
 //   (tabBarClearance = 64 + 6 + 12)
-// - white stroke 0.22 light / 0.08 dark, 0.5pt + shadow black 0.10
-//   light / 0.28 dark, radius 12, y 4
-// - selection pill: SOLID matte oval (theme.tabPill), width 1 cell,
-//   height = content height. The reference is the Muse app's own
-//   tab bar (chen 2026-11-20 "一模一样",
-//   ~/workspace/preview/tabbar_ref2/frame_013.png, measured: pill
-//   grey 228 on bar 249, ~1 cell wide, flat, clearly visible).
-//   The iOS-27 colorBurn painter (build 22) rendered nearly
-//   invisible in Skia — a matte fill is deterministic in both
-//   renderers. Never black, never faint.
-// - item: icon 23 only, NO label (the Muse bar is icon-only);
-//   unselected = selected = theme textPrimary (all icons the same
-//   colour — the pill alone marks the selection, no red, no accent).
+// - white stroke 0.22 light / 0.08 dark, 0.5pt. NO shadow —
+//   chen 2026-11-21: 不要有影子了 (the Kumone shadow values are
+//   NOT applied; glassTabBarShadow / glassMiniPlayerShadow are
+//   deleted from lib/core/theme/glass.dart).
+// - selection pill: faint tint, white 0.10 dark / black 0.075 light,
+//   width cellW - 8, height = content height (Telegram faint tint,
+//   not a bright chip — chen: grey glass pill, not coloured). The
+//   pill slides as ONE piece on the settle spring: no lens, no
+//   stretch, no magnification of icons or page content.
+// - item: icon 23 only, NO label (chen 2026-11-21: 不要文字）;
+//   unselected = primary 0.8; selected = accent (ours: theme accent)
 // - drag: DragGesture(minimumDistance: 0); <8pt horizontal movement
 //   does not start a drag; while dragging the pill follows the finger
 //   (clamped to the bar), crossing a cell switches the tab
@@ -68,29 +69,12 @@
 // Swiping INTO live from another tab still works, because the guard reads
 // the CURRENT page. The live room is a pushed route (no tab bar at all
 // while open — fix 17.3), separate from this guard.
-//
-// Pill crossfade (fix for the doubling, chen 2026-11-20, bug 6, v2):
-// the lens fades through `settings.visibility` (0 at rest, 1 in
-// motion) — NEVER an Opacity wrapper (build 21's Opacity fade made
-// the lens layer semi-transparent, so the direct icon row bled
-// through next to the refracted copy on every fade). At rest the
-// pill is a SOLID matte oval (theme.tabPill, see RestPillPainter)
-// with the selected icon at normal scale — a single copy, like the
-// Muse bar at rest (tabbar_ref2 frame_001/013). In motion the lens
-// refracts the icon AND the page content behind the bar, stretched
-// to ~1.7 cells (frames 007/019). The icon layer itself is split by
-// the pill rect (inverse clip outside, normal clip inside), like the
-// library's own GlassTabBar. See
-// GlassTabBarState._thicknessController for the mechanism and the
-// library citations.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
-import '../core/theme/appearance_store.dart';
-import '../core/theme/glass.dart';
 import '../core/theme/hao_themes.dart';
 import '../core/theme/haptics.dart';
 import '../core/theme/liquid_glass_theme.dart';
@@ -151,10 +135,6 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: Stack(
         children: [
-          // Custom background layer (stage 2 items 5-6): wallpaper or
-          // background colour, behind the tab pages. Tab-root
-          // Scaffolds are transparent exactly when this layer paints.
-          const AppearanceBackgroundLayer(),
           Padding(
             // Kumone FloatingChrome.tabBarClearance = 64 + 6 + 12 = 82,
             // plus the system safe area, so page content never slides
@@ -198,87 +178,6 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-/// Clipper for the tab-bar pill region (bug 6 v2, chen 2026-11-20).
-///
-/// The library's own GlassTabBar
-/// (`liquid_glass_widgets` 1.17.5,
-/// lib/src/widgets/surfaces/tab_bar_searchable_internal.dart, layer 2)
-/// splits the icon layer into two complementary clips by the pill
-/// shape: the unselected row is inverse-clipped (everything EXCEPT
-/// the pill region) and the selected row is normal-clipped (ONLY the
-/// pill region). The library's clipper (JellyClipper) is driven by
-/// its own alignment/thickness model for a 1-cell pill; ours is a
-/// 1.5-cell pill with spring-driven edges, so this clipper takes the
-/// pill rect directly ([left]/[right], full content height, capsule
-/// radius) — same split, our geometry.
-class PillClipper extends CustomClipper<Path> {
-  const PillClipper({
-    required this.left,
-    required this.right,
-    this.inverse = false,
-  });
-
-  final double left;
-  final double right;
-  final bool inverse;
-
-  @override
-  Path getClip(Size size) {
-    final pill = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTRB(left, 0, right, size.height),
-          const Radius.circular(999),
-        ),
-      );
-    if (!inverse) return pill;
-    return Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addPath(pill, Offset.zero);
-  }
-
-  @override
-  bool shouldReclip(PillClipper oldClipper) =>
-      left != oldClipper.left ||
-      right != oldClipper.right ||
-      inverse != oldClipper.inverse;
-}
-
-/// Paints the resting tab selection pill: a SOLID matte oval in the
-/// theme's tabPill colour (Muse app bar, chen 2026-11-20
-/// "一模一样" — tabbar_ref2 frame_013, measured pill grey 228 on
-/// bar 249, light mode; dark #3A3A3C, clearly lighter than every
-/// dark scaffold). Opaque on purpose: the build-22 iOS-27 colorBurn
-/// painter rendered nearly invisible in Skia (and the build-21 flat
-/// white-0.10/black-0.075 fill before it), while a matte fill is
-/// deterministic in both renderers. Never black, never faint.
-class RestPillPainter extends CustomPainter {
-  const RestPillPainter({
-    required this.color,
-    required this.opacity,
-  });
-
-  final Color color;
-  final double opacity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (opacity <= 0.0) return;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Offset.zero & size,
-        const Radius.circular(999),
-      ),
-      Paint()..color = color.withValues(alpha: opacity),
-    );
-  }
-
-  @override
-  bool shouldRepaint(RestPillPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.opacity != opacity;
-}
-
 /// Floating glass capsule tab bar (Beans `KumoneGlassTabBar`).
 class GlassTabBar extends StatefulWidget {
   const GlassTabBar({
@@ -295,223 +194,65 @@ class GlassTabBar extends StatefulWidget {
 }
 
 class GlassTabBarState extends State<GlassTabBar>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   // Beans constants (RootView.swift): innerInset 4, contentHeight 56.
   static const double _innerInset = 4;
   static const double _contentHeight = 56;
-
-  /// Rest width of the pill: 1 cell (Muse bar, tabbar_ref2
-  /// frame_013, measured: pill 138px on a 144px cell; frame_001
-  /// the same on the first tab). Centred on the selected cell.
-  /// Clamped to the bar's content bounds, so on the first/last tab
-  /// the pill sits against the bar's edge instead of sticking out.
-  static const double _restWidthCells = 1.0;
 
   /// Kumone settle spring (GlassTabBar.swift:36):
   /// `Animation.spring(response: 0.35, dampingFraction: 0.82)`.
   /// Flutter equivalent: ω = 2π / response, stiffness = ω²,
   /// damping = 2 · dampingFraction · ω, mass 1 — an underdamped
   /// spring (ζ = 0.82 < 1), so the pill overshoots slightly and
-  /// settles, instead of easing to a stop. Drives the pill's
-  /// LEADING edge (see _springTo).
+  /// settles, instead of easing to a stop.
   static const settleSpring = SpringDescription(
     mass: 1.0,
     stiffness: 322.273,
     damping: 29.441,
   );
 
-  /// Trailing-edge stagger: the trailing edge starts this much
-  /// later than the leading edge, on the same settle spring. The
-  /// leading edge moves alone first, so the pill stretches
-  /// mid-flight (Muse bar, tabbar_ref2 frames 007/019: ~1.7 cells
-  /// spanning from→to) and the trailing edge catches up — both
-  /// settle in ~0.35 + 0.11s, instead of the trailing edge lagging
-  /// on a slower spring (which would stretch less and settle
-  /// slower). The 110ms value is from the spring math, not feel:
-  /// a 1-cell slide on this spring (ω = 2π/0.35, ζ = 0.82) gains
-  /// a 39.5pt gap at 60ms (1.43 cells) but ~64pt at 110ms (1.70
-  /// cells) — the reference width. A 2-cell slide stretches
-  /// further on its own (~1.86 cells at 60ms).
-  static const _trailDelay = Duration(milliseconds: 110);
-
-  /// Generation counter for the staggered trailing-edge start:
-  /// incremented on every _springTo and on drag-start, so a delayed
-  /// start from a superseded move never fires.
-  int _springGeneration = 0;
-
   /// Key for the sliding pill (tests assert its settled position).
   static const pillKey = ValueKey('glassTabBarPill');
 
-  /// Key for the resting pill (the solid iOS-27 selection pill shown
-  /// at rest, see below) and for the Opacity wrapper that crossfades
-  /// it against the lens. Tests assert the crossfade state.
-  static const restPillKey = ValueKey('glassTabBarRestPill');
-  static const restPillOpacityKey = ValueKey('glassTabBarRestPillOpacity');
+  late final AnimationController _springController;
 
-  /// Keys for the two complementary icon-layer clips (bug 6 v2, chen
-  /// 2026-11-20): the unselected row (inverse-clipped: everything
-  /// EXCEPT the pill region) and the selected row (normal-clipped:
-  /// ONLY the pill region). Tests assert the split by construction.
-  static const unselectedClipKey = ValueKey('glassTabBarUnselectedClip');
-  static const selectedClipKey = ValueKey('glassTabBarSelectedClip');
-
-  /// Pill "thickness" — the motion value that crossfades the resting
-  /// pill against the lens, following the library's own
-  /// AnimatedGlassIndicator (liquid_glass_widgets 1.17.5,
-  /// lib/widgets/shared/animated_glass_indicator.dart):
-  /// `backgroundOpacity = 1 - thickness / 0.15` (solid pill at rest)
-  /// and the glass lens crossfades in with `visibility = fade`
-  /// (`fade = thickness`). The library fades the glass "by setting
-  /// `visibility` on the settings rather than wrapping the widget in
-  /// `Opacity`" — build 21 wrapped the lens in `Opacity(thickness)`
-  /// instead, which composites the whole lens layer semi-transparent
-  /// during every 180ms fade, so the directly-drawn icon row bled
-  /// through next to the refracted copy: transient doubling on every
-  /// tap and drag. `visibility` scales glassColor, thickness, rim,
-  /// frost and light — but NOT the body alpha (shader:
-  /// `alpha = geometryData.a`, 1 in the interior, stock mode) — so
-  /// the body stays opaque through the whole fade and the direct
-  /// copy stays hidden.
-  ///
-  /// 0 = at rest (solid matte pill, lens optics off — Muse bar,
-  /// tabbar_ref2 frame_001/013: the pill at rest is a solid matte
-  /// oval with the selected icon at NORMAL size, same colour as the
-  /// others, single copy); 1 = in motion (lens fully visible,
-  /// refracting the icon AND the page content behind the bar,
-  /// magnified/warped, tabbar_ref2 frames 007/019). Driven by
-  /// _thicknessController (180ms): it
-  /// forwards when a drag engages or a settle spring starts, and
-  /// reverses when both springs have settled and the finger is off.
-  late final AnimationController _thicknessController;
-
-  /// One controller per pill edge; each drives a fixed edge (left →
-  /// _pillLeft, right → _pillRight). Which spring each gets depends
-  /// on the direction of the move (see _springTo) — the leading
-  /// edge gets the settle spring, the trailing edge the slower
-  /// trail spring.
-  late final AnimationController _leftController;
-  late final AnimationController _rightController;
-
-  /// Current pill edges (content space). Null until the first
-  /// layout, when they are placed at the rest position with no
-  /// animation.
+  /// Current pill left edge (content space). Null until the first
+  /// layout, when it is placed at the rest position with no animation.
   double? _pillLeft;
-  double? _pillRight;
 
-  /// Rest position the springs are currently driving towards; null
+  /// Rest position the spring is currently driving towards; null
   /// while the finger owns the pill. Guards against restarting the
-  /// springs on every rebuild mid-flight.
-  double? _leftTarget;
-  double? _rightTarget;
+  /// spring on every rebuild mid-flight.
+  double? _springTarget;
 
   @override
   void initState() {
     super.initState();
-    _leftController = AnimationController.unbounded(vsync: this)
-      ..addListener(() => setState(() => _pillLeft = _leftController.value))
-      ..addStatusListener((_) => _maybeReverseThickness());
-    _rightController = AnimationController.unbounded(vsync: this)
-      ..addListener(
-        () => setState(() => _pillRight = _rightController.value),
-      )
-      ..addStatusListener((_) => _maybeReverseThickness());
-    // The crossfade driver (see _thicknessController): its own
-    // listener rebuilds the bar during the 180ms fade, when the
-    // springs are idle and would not otherwise trigger a rebuild.
-    _thicknessController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 180),
-    )..addListener(() => setState(() {}));
+    _springController = AnimationController.unbounded(vsync: this)
+      ..addListener(() {
+        setState(() => _pillLeft = _springController.value);
+      });
   }
 
   @override
   void dispose() {
-    _leftController.dispose();
-    _rightController.dispose();
-    _thicknessController.dispose();
+    _springController.dispose();
     super.dispose();
   }
 
-  /// Reverse the thickness crossfade (lens out, resting pill in)
-  /// once the pill has settled. Called from both springs' status
-  /// listeners, so the staggered trailing edge (which starts 60ms
-  /// late) keeps the lens up until it too has settled.
-  ///
-  /// The settle test is the springs' STATUS (completed/dismissed),
-  /// not isAnimating: a status listener fires synchronously inside
-  /// animateWith, and at that instant the other edge (not yet
-  /// started — the trailing edge lags 60ms) still reads idle, so an
-  /// isAnimating check would reverse the thickness at the very start
-  /// of every move and the lens would never come up.
-  void _maybeReverseThickness() {
-    if (_isDragging) return;
-    const settled = [
-      AnimationStatus.completed,
-      AnimationStatus.dismissed,
-    ];
-    if (!settled.contains(_leftController.status)) return;
-    if (!settled.contains(_rightController.status)) return;
-    if (_thicknessController.value > 0) {
-      _thicknessController.reverse();
-    }
-  }
-
-  /// Drive both pill edges to [targetLeft]/[targetRight]. The edge
-  /// moving towards the target (leading) starts now on the Kumone
-  /// settle spring; the other (trailing) starts [_trailDelay] later
-  /// on the same spring — staggered, so the pill stretches
-  /// mid-flight and the trailing edge catches up, shrinking it back
-  /// to 1.5 cells at rest. Both start from their current position
-  /// and velocity, so a tap mid-settle or a release after a drag
-  /// never jumps. The delayed start is generation-guarded: a newer
-  /// move, a drag, or disposal cancels it.
-  void _springTo(
-    double targetLeft,
-    double targetRight, {
-    required bool leadingRight,
-  }) {
-    _leftTarget = targetLeft;
-    _rightTarget = targetRight;
-    // The pill is about to move (tap settle or drag release): bring
-    // the lens up (resting pill fades out with it). It reverses via
-    // _maybeReverseThickness once both springs have settled.
-    _thicknessController.forward();
-    final generation = ++_springGeneration;
-    void startEdge(bool isLeft) {
-      final controller = isLeft ? _leftController : _rightController;
-      final target = isLeft ? targetLeft : targetRight;
-      final current = isLeft ? _pillLeft : _pillRight;
-      controller.animateWith(
-        SpringSimulation(
-          settleSpring,
-          current ?? controller.value,
-          target,
-          controller.velocity,
-        ),
-      );
-    }
-
-    if (leadingRight) {
-      startEdge(false);
-      Future.delayed(_trailDelay, () {
-        if (!mounted || _isDragging) return;
-        if (generation != _springGeneration) return;
-        if (_leftTarget != targetLeft || _rightTarget != targetRight) {
-          return;
-        }
-        startEdge(true);
-      });
-    } else {
-      startEdge(true);
-      Future.delayed(_trailDelay, () {
-        if (!mounted || _isDragging) return;
-        if (generation != _springGeneration) return;
-        if (_leftTarget != targetLeft || _rightTarget != targetRight) {
-          return;
-        }
-        startEdge(false);
-      });
-    }
+  /// Drive the pill to [target] with the Kumone settle spring,
+  /// starting from its current position and velocity — so a tap
+  /// mid-settle or a release after a drag never jumps.
+  void _springTo(double target) {
+    _springTarget = target;
+    _springController.animateWith(
+      SpringSimulation(
+        settleSpring,
+        _pillLeft ?? _springController.value,
+        target,
+        _springController.velocity,
+      ),
+    );
   }
 
   static const List<(IconData, String)> _items = [
@@ -540,409 +281,203 @@ class GlassTabBarState extends State<GlassTabBar>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Container(
-        // Kumone shadow (glassTabBarShadow: black 0.10 light / 0.28
-        // dark, radius 12, y 4). The library glass draws no outer
-        // shadow of its own (allowElevation is false), so the shadow
-        // stays ours, on a fill-less container.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: glassTabBarShadow(context),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Full bar width minus the shell's 4pt inset on each side:
-            // the pill math below runs in this content space, and
-            // gesture x is shifted by the inset (see _contentX).
-            final width = constraints.maxWidth - _innerInset * 2;
-            final count = _items.length;
-            final cellW = width / count;
-            final restWidth = cellW * _restWidthCells;
-            // Rest rect: 1.5 cells centred on the selected cell,
-            // clamped to the bar's content bounds (first/last tab).
-            final restCenter = cellW * (widget.currentIndex + 0.5);
-            final restLeft =
-                (restCenter - restWidth / 2).clamp(0.0, width - restWidth);
-            final restRight = restLeft + restWidth;
-            // Pill edges: while dragging the pill follows the finger
-            // (clamped so it never leaves the bar) — both edges are
-            // written directly by the drag callbacks, with no
-            // animation. At rest the edges are driven to the selected
-            // cell by the springs (tap and release both go through
-            // here). The springs are started in a post-frame
-            // callback, never during build (starting one would
-            // notify its listener, i.e. setState during build).
-            final double pillLeft;
-            final double pillRight;
-            if (_isDragging && _dragX != null) {
-              pillLeft = _pillLeft ?? restLeft;
-              pillRight = _pillRight ?? restRight;
-            } else {
-              if (_pillLeft == null || _pillRight == null) {
-                _pillLeft = restLeft;
-                _pillRight = restRight;
-                _leftTarget = restLeft;
-                _rightTarget = restRight;
-              } else if (_leftTarget != restLeft ||
-                  _rightTarget != restRight) {
-                final targetLeft = restLeft;
-                final targetRight = restRight;
-                _leftTarget = targetLeft;
-                _rightTarget = targetRight;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted || _isDragging) return;
-                  if (_leftTarget != targetLeft ||
-                      _rightTarget != targetRight) {
-                    return;
+      // NO shadow (chen 2026-11-21: 不要有影子了) — the bar is glass
+      // only; the stroke + blur carry the floating read.
+      child: Stack(
+        children: [
+          GlassContainer(
+            // Capsule: radius far above half the height.
+            shape: const LiquidRoundedSuperellipse(borderRadius: 999),
+            padding: const EdgeInsets.all(_innerInset),
+            // Unified page (chen 2026-11-19): the chrome shares the
+            // page's own background colour instead of the demo's
+            // 53%-white ios27 tint, so the bar reads as part of the
+            // page, not a separate slab (see
+            // HaoLiquidGlass.chromeSettings). Optics are still the
+            // ios27 preset underneath.
+            // (useOwnLayer: true — per-widget settings are ignored
+            // in grouped mode without it). Premium: floating chrome.
+            settings: HaoLiquidGlass.chromeSettings(context),
+            useOwnLayer: true,
+            quality: GlassQuality.premium,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final count = _items.length;
+                final cellW = width / count;
+                // Rest position: centre of the selected cell. While
+                // dragging the pill follows the finger (clamped so it
+                // never leaves the bar) — _pillLeft is written
+                // directly by the drag callbacks, with no animation.
+                // At rest the pill is driven to the selected cell by
+                // the settle spring (tap and release both go through
+                // here). The spring is started in a post-frame
+                // callback, never during build (starting it would
+                // notify the listener, i.e. setState during build).
+                final restX = cellW * (widget.currentIndex + 0.5);
+                final double pillLeft;
+                if (_isDragging && _dragX != null) {
+                  pillLeft = _pillLeft ?? restX - (cellW - 8) / 2;
+                } else {
+                  final target = restX - (cellW - 8) / 2;
+                  if (_pillLeft == null) {
+                    _pillLeft = target;
+                    _springTarget = target;
+                  } else if (_springTarget != target) {
+                    _springTarget = target;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted || _isDragging) return;
+                      if (_springTarget != target) return;
+                      _springTo(target);
+                    });
                   }
-                  final center = (_pillLeft! + _pillRight!) / 2;
-                  _springTo(
-                    targetLeft,
-                    targetRight,
-                    leadingRight: (targetLeft + targetRight) / 2 > center,
-                  );
-                });
-              }
-              pillLeft = _pillLeft!;
-              pillRight = _pillRight!;
-            }
-            // The icon row, built once and painted twice: the
-            // library's GlassTabBar splits it into two complementary
-            // clips by the pill rect (see PillClipper), so the same
-            // row widget is the child of both ClipPaths below. Two
-            // Element subtrees, one config — the direct rendering is
-            // pixel-identical to a single unclipped row.
-            final iconRow = SizedBox(
-              height: _contentHeight,
-              child: Row(
-                children: [
-                  for (var i = 0; i < _items.length; i++)
-                    Expanded(
-                      child: _TabItem(
-                        icon: _items[i].$1,
-                        label: _items[i].$2,
-                        theme: theme,
-                      ),
-                    ),
-                ],
-              ),
-            );
-            // Gesture x arrives in full-bar space (the detector wraps
-            // the whole 64pt bar); shift it into content space.
-            double contentX(double dx) => dx - _innerInset;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (details) {
-                _select(_indexForX(contentX(details.localPosition.dx), cellW));
-              },
-              onHorizontalDragStart: (details) {
-                // Drag starts on finger down (Beans minimumDistance 0);
-                // _isDragging only engages after 8pt of total movement
-                // from the start point, like Beans' translation check.
-                _dragStartX = contentX(details.localPosition.dx);
-              },
-              onHorizontalDragUpdate: (details) {
-                final startX = _dragStartX;
-                if (startX == null) return;
-                final dx = contentX(details.localPosition.dx);
-                if (!_isDragging && (dx - startX).abs() < 8) {
-                  return;
+                  pillLeft = _pillLeft!;
                 }
-                setState(() {
-                  _isDragging = true;
-                  _dragX = dx;
-                  // The lens comes up (resting pill fades out). It
-                  // reverses once the release spring has settled.
-                  _thicknessController.forward();
-                  // Finger owns the pill now: stop both springs and
-                  // track the finger directly (Kumone: pillX =
-                  // dragX while dragging), at rest width — no stretch
-                  // while dragging. Clearing the targets forces a
-                  // fresh spring on release; bumping the generation
-                  // cancels any pending staggered trailing start.
-                  _leftController.stop();
-                  _rightController.stop();
-                  _springGeneration++;
-                  _pillLeft = _dragX!
-                          .clamp(restWidth / 2, width - restWidth / 2) -
-                      restWidth / 2;
-                  _pillRight = _pillLeft! + restWidth;
-                  _leftTarget = null;
-                  _rightTarget = null;
-                });
-                _select(_indexForX(dx, cellW));
-              },
-              onHorizontalDragEnd: (_) {
-                if (_dragX != null) {
-                  _select(_indexForX(_dragX!, cellW));
-                }
-                setState(() {
-                  _isDragging = false;
-                  _dragX = null;
-                  _dragStartX = null;
-                });
-              },
-              onHorizontalDragCancel: () {
-                setState(() {
-                  _isDragging = false;
-                  _dragX = null;
-                  _dragStartX = null;
-                });
-              },
-              child: SizedBox(
-                height: _contentHeight + _innerInset * 2,
-                child: Stack(
-                  children: [
-                    // Bar shell: glass only (no child content). Its
-                    // backdrop is the page behind the bar; the icons
-                    // paint above it, the pill above them.
-                    Positioned.fill(
-                      child: GlassContainer(
-                        shape: const LiquidRoundedSuperellipse(
-                          borderRadius: 999,
-                        ),
-                        // Unified page (chen 2026-11-19): the chrome
-                        // shares the page's own background colour
-                        // instead of the demo's 53%-white ios27 tint,
-                        // so the bar reads as part of the page, not a
-                        // separate slab (see
-                        // HaoLiquidGlass.chromeSettings). Optics are
-                        // still the ios27 preset underneath.
-                        // (useOwnLayer: true — per-widget settings
-                        // are ignored in grouped mode without it).
-                        // Premium: floating chrome (SKILL.md Rule 5).
-                        settings: HaoLiquidGlass.chromeSettings(context),
-                        useOwnLayer: true,
-                        quality: GlassQuality.premium,
-                        child: const SizedBox.expand(),
-                      ),
-                    ),
-                    // Icons + pill, inset like the old shell padding.
-                    // Clip the pill to the bar's capsule: the settle
-                    // spring overshoots ~1-2%, so at an edge tab the
-                    // leading edge can briefly pass the bar's end.
-                    Positioned(
-                      left: _innerInset,
-                      top: _innerInset,
-                      right: _innerInset,
-                      height: _contentHeight,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: Stack(
-                          children: [
-                            // Resting pill (Muse bar, chen
-                            // 2026-11-20 "一模一样"): a solid matte
-                            // oval (RestPillPainter, theme.tabPill)
-                            // at the pill's current edges, crossfaded
-                            // against the lens by _thicknessController
-                            // (opacity 1 - thickness). It paints BELOW
-                            // the icons (like the library's background
-                            // indicator, layer 1.5), so the selected
-                            // icon draws crisply on top of it at
-                            // normal scale — a single copy, exactly
-                            // like the Muse bar at rest
-                            // (tabbar_ref2 frame_001/013: solid matte
-                            // oval, normal-size icon, same colour as
-                            // the others). During motion it fades out
-                            // as the lens fades in, at the same edges,
-                            // so the swap is a clean morph. Never
-                            // black, never faint (chen).
-                            Positioned(
-                              left: pillLeft,
-                              top: 0,
-                              child: Opacity(
-                                key: GlassTabBarState.restPillOpacityKey,
-                                opacity: 1 - _thicknessController.value,
-                                child: CustomPaint(
-                                  key: GlassTabBarState.restPillKey,
-                                  painter: RestPillPainter(
-                                    color: theme.tabPill,
-                                    opacity: 1.0,
-                                  ),
-                                  size: Size(
-                                    pillRight - pillLeft,
-                                    _contentHeight,
-                                  ),
-                                ),
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    _select(_indexForX(details.localPosition.dx, cellW));
+                  },
+                  onHorizontalDragStart: (details) {
+                    // Drag starts on finger down (Beans minimumDistance 0);
+                    // _isDragging only engages after 8pt of total movement
+                    // from the start point, like Beans' translation check.
+                    _dragStartX = details.localPosition.dx;
+                    _dragX = null;
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    final startX = _dragStartX;
+                    if (startX == null) return;
+                    if (!_isDragging &&
+                        (details.localPosition.dx - startX).abs() < 8) {
+                      return;
+                    }
+                    setState(() {
+                      _isDragging = true;
+                      _dragX = details.localPosition.dx;
+                      // Finger owns the pill now: stop any settle spring
+                      // and track the finger directly (Kumone: pillX =
+                      // dragX while dragging). Clearing _springTarget
+                      // forces a fresh spring on release.
+                      _springController.stop();
+                      _pillLeft = _dragX!
+                              .clamp(cellW / 2, width - cellW / 2) -
+                          (cellW - 8) / 2;
+                      _springTarget = null;
+                    });
+                    _select(_indexForX(details.localPosition.dx, cellW));
+                  },
+                  onHorizontalDragEnd: (_) {
+                    if (_dragX != null) {
+                      _select(_indexForX(_dragX!, cellW));
+                    }
+                    setState(() {
+                      _isDragging = false;
+                      _dragX = null;
+                      _dragStartX = null;
+                    });
+                  },
+                  onHorizontalDragCancel: () {
+                    setState(() {
+                      _isDragging = false;
+                      _dragX = null;
+                      _dragStartX = null;
+                    });
+                  },
+                  child: SizedBox(
+                    height: _contentHeight,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            // Pill position is owned by the settle spring
+                            // (see _springTo) or, while dragging, by
+                            // the finger directly — never an ease curve.
+                            left: pillLeft,
+                            top: 0,
+                            child: Container(
+                              key: GlassTabBarState.pillKey,
+                              width: cellW - 8,
+                              height: _contentHeight,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.10)
+                                    : Colors.black.withValues(alpha: 0.075),
                               ),
-                            ),
-                            // Icon layer, split by the pill rect (bug
-                            // 6 v2): the library's own GlassTabBar
-                            // (tab_bar_searchable_internal.dart) does
-                            // exactly this — the unselected row is
-                            // inverse-clipped (everything EXCEPT the
-                            // pill region) and the selected row is
-                            // normal-clipped (ONLY the pill region),
-                            // so the two clips are complementary: every
-                            // pixel of the row belongs to exactly one
-                            // copy. The lens above refracts this
-                            // merged layer. Both clips paint the same
-                            // iconRow, so the direct rendering is
-                            // pixel-identical to the old unclipped row;
-                            // the split only makes "one copy under the
-                            // lens" structural instead of assumed.
-                            ClipPath(
-                              key: GlassTabBarState.unselectedClipKey,
-                              clipper: PillClipper(
-                                left: pillLeft,
-                                right: pillRight,
-                                inverse: true,
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: iconRow,
-                            ),
-                            ClipPath(
-                              key: GlassTabBarState.selectedClipKey,
-                              clipper: PillClipper(
-                                left: pillLeft,
-                                right: pillRight,
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: iconRow,
-                            ),
-                            Positioned(
-                              // Pill edges are owned by the two springs
-                              // (see _springTo) or, while dragging, by
-                              // the finger directly — never an ease
-                              // curve. The lens is its OWN layer
-                              // (useOwnLayer: true, indicator preset —
-                              // see HaoLiquidGlass.pillLensSettings)
-                              // sitting ABOVE the icon row, so its
-                              // shader samples the icon AND the page
-                              // content behind the bar and magnifies /
-                              // distorts them like the Muse bar's lens
-                              // (chen 2026-11-20: "要这种底栏";
-                              // reference frames tabbar_ref2 007/019:
-                              // text and the cartoon behind the bar
-                              // warp inside the lens). A grouped pill
-                              // inside the shell's child can only
-                              // refract the page behind the bar — the
-                              // icons paint above the glass there —
-                              // which is why the old lens never
-                              // magnified them. The pill is a
-                              // transparent lens — no fill, no colour
-                              // (chen: 不要胶囊黑色); the selection
-                              // reads through the solid resting pill
-                              // below, not through a colour change.
-                              // The pill is a sibling of the shell, not
-                              // nested inside another glass container,
-                              // so the two layers are not nested
-                              // refractive glass.
-                              //
-                              // Doubling fix v2 (chen 2026-11-20, bug
-                              // 6): build 21 wrapped this lens in
-                              // `Opacity(thickness)` — and the library
-                              // explicitly does NOT do that
-                              // (AnimatedGlassIndicator: "We fade the
-                              // glass in/out by setting `visibility`
-                              // on the settings rather than wrapping
-                              // the widget in `Opacity`"). Opacity
-                              // composites the whole lens layer
-                              // semi-transparent, so during every
-                              // 180ms fade the directly-drawn icon row
-                              // bled through next to the refracted
-                              // copy — transient doubling on every tap
-                              // and drag. The fade now goes through
-                              // `settings.visibility` (0 at rest, 1 in
-                              // motion): visibility scales glassColor,
-                              // thickness, rim, frost and light — but
-                              // NOT the body alpha (shader:
-                              // `alpha = geometryData.a`, 1 in the
-                              // interior, stock mode), so the body
-                              // stays opaque through the whole fade
-                              // and the direct copy stays hidden — one
-                              // copy at every fade value. In motion the
-                              // lens refracts the icon (a single
-                              // magnified/warped copy, tabbar_ref2
-                              // frames 007/019). The lens settings are
-                              // unchanged (RI 1.35, thickness 36): the
-                              // magnification is NOT weakened to hide
-                              // the doubling.
-                              left: pillLeft,
-                              top: 0,
-                              child: GlassContainer(
-                                key: GlassTabBarState.pillKey,
-                                shape: const LiquidRoundedSuperellipse(
-                                  borderRadius: 999,
-                                ),
-                                settings: HaoLiquidGlass.pillLensSettings(
-                                  context,
-                                ).copyWith(
-                                  visibility: _thicknessController.value,
-                                ),
-                                useOwnLayer: true,
-                                quality: GlassQuality.premium,
-                                child: SizedBox(
-                                  width: pillRight - pillLeft,
-                                  height: _contentHeight,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Kumone stroke overlay (GlassTabBar.swift:
-                    // .overlay strokeBorder white 0.22 light / 0.08
-                    // dark, 0.5pt) — drawn above the shader glass,
-                    // below nothing interactive (IgnorePointer).
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: Colors.white.withValues(
-                                alpha: isDark ? 0.08 : 0.22,
-                              ),
-                              width: 0.5,
                             ),
                           ),
-                        ),
+                          Row(
+                            children: [
+                              for (var i = 0; i < _items.length; i++)
+                                Expanded(
+                                  child: _TabItem(
+                                    icon: _items[i].$1,
+                                    label: _items[i].$2,
+                                    selected: i == widget.currentIndex,
+                                    theme: theme,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
+                );
+              },
+            ),
+          ),
+          // Kumone stroke overlay (GlassTabBar.swift: .overlay
+          // strokeBorder white 0.22 light / 0.08 dark, 0.5pt) —
+          // drawn above the shader glass, below nothing
+          // interactive (IgnorePointer).
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(
+                      alpha: isDark ? 0.08 : 0.22,
+                    ),
+                    width: 0.5,
+                  ),
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// One tab item: icon ONLY, no label (Muse bar, chen 2026-11-20
-/// "一模一样" — tabbar_ref2 frame_013: five icon-only tabs, no
-/// text under any icon). The icon colour is theme.textPrimary for
-/// EVERY tab, selected and unselected alike — the pill alone marks
-/// the selection; there is no colour change on select, no red, no
-/// accent (the custom accent stays app-wide elsewhere: switches,
-/// buttons, selected states — only the tab bar stops using it).
-/// [label] is kept as the semantic label (screen readers) and is
-/// never drawn. The direct icon never moves (drawn at normal
-/// scale); the magnification happens in the LENS, which refracts
-/// the icon (tabbar_ref2 frames 007/019).
+/// One tab item: icon ONLY, no label (chen 2026-11-21: Kumone那种，
+/// 不要文字）. Kumone: selected = accent (ours: theme accent),
+/// unselected = primary at 0.8. [label] is kept as the semantic
+/// label (screen readers) and is never drawn.
 class _TabItem extends StatelessWidget {
   const _TabItem({
     required this.icon,
     required this.label,
+    required this.selected,
     required this.theme,
   });
 
   final IconData icon;
   final String label;
+  final bool selected;
   final HaoTheme theme;
 
   @override
   Widget build(BuildContext context) {
+    final color = selected
+        ? theme.accent
+        : theme.textPrimary.withValues(alpha: 0.8);
     return Center(
-      child: Icon(
-        icon,
-        size: 23,
-        color: theme.textPrimary,
-        semanticLabel: label,
-      ),
+      child: Icon(icon, size: 23, color: color, semanticLabel: label),
     );
   }
 }

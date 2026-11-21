@@ -49,7 +49,6 @@ class WallpaperPage extends StatelessWidget {
     final theme = HaoTheme.of(context);
     final controller = AppearanceController.ensure();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('壁纸'),
         actions: [

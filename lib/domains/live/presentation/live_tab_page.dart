@@ -86,42 +86,56 @@ class _LiveTabPageState extends State<LiveTabPage> {
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
       backgroundColor: tabScaffoldBackground(context),
-      appBar: AppBar(
-        title: const Text('直播'),
-        // Unified page (chen 2026-11-19): the top bar IS the page
-        // background, not a separate surface-coloured slab — the
-        // title sits directly on the page like NetEase's. The
-        // Scaffold is Obx-wrapped, so a wallpaper toggle re-resolves
-        // this immediately (transparent over wallpaper, scaffold
-        // colour otherwise). The body never slides under the bar
-        // (no extendBodyBehindAppBar), so transparency has no
-        // scroll-bleed.
-        backgroundColor: tabScaffoldBackground(context),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: '搜索直播间',
-            onPressed: () => Get.to(
-              () => LiveSearchPage(initialPlatform: _controller.platform),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: '直播历史',
-            onPressed: () => Get.to(() => const LiveHistoryPage()),
-          ),
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            tooltip: '我的关注',
-            onPressed: () => Get.to(() => const LiveFollowsPage()),
-          ),
-        ],
-      ),
+      // No AppBar (chen 2026-11-21, screenshot): the title is a big
+      // bold header at the top-left of the page body (26 w800), with
+      // the actions on the same row — like his 我的片库 screenshot.
+      // The header carries the status-bar inset itself (MediaQuery),
+      // so the page needs no AppBar and no SafeArea.
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
           return Column(
             children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  MediaQuery.of(context).padding.top + 8,
+                  4,
+                  4,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      '直播',
+                      style: TextStyle(
+                        color: theme.textPrimary,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      tooltip: '搜索直播间',
+                      onPressed: () => Get.to(
+                        () => LiveSearchPage(
+                          initialPlatform: _controller.platform,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.history),
+                      tooltip: '直播历史',
+                      onPressed: () => Get.to(() => const LiveHistoryPage()),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.favorite_border),
+                      tooltip: '我的关注',
+                      onPressed: () => Get.to(() => const LiveFollowsPage()),
+                    ),
+                  ],
+                ),
+              ),
               _PlatformRow(
                 platform: _controller.platform,
                 onSelect: _controller.selectPlatform,

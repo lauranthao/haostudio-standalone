@@ -86,7 +86,6 @@ class _ListenReportPageState extends State<ListenReportPage> {
     // getFavIds() parses the whole favourites JSON on every call.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('听歌报告')),
       body: ListView(
         padding: EdgeInsets.fromLTRB(

@@ -141,7 +141,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     final list = _list;
     if (list == null) {
       return Scaffold(
-        backgroundColor: theme.scaffoldBackground,
         appBar: AppBar(title: const Text('我的歌单')),
         body: Center(
           child: Text('这个歌单找不到了', style: TextStyle(color: theme.textMuted)),
@@ -153,7 +152,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: Text(list.name, maxLines: 1),
         actions: [

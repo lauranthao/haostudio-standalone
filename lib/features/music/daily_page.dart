@@ -93,7 +93,6 @@ class _DailyPageState extends State<DailyPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('每日推荐')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

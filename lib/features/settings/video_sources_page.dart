@@ -201,7 +201,6 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('影视源管理'),
         actions: [

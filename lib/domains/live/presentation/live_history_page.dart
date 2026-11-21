@@ -259,10 +259,8 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
         ? '不限'
         : '${LiveHistoryStore.limit} 条';
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('直播历史'),
-        backgroundColor: theme.surface,
         actions: [
           IconButton(
             icon: _refreshing

@@ -596,7 +596,6 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('搜歌')),
       body: Column(
         children: [

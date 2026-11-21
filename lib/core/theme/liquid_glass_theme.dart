@@ -44,6 +44,8 @@
 // dialog content is fine, because the caller's buttons carry the
 // theme colours, not the library's actions.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
@@ -55,6 +57,29 @@ class HaoLiquidGlass {
   /// Wrap-level theme: library ios27 defaults.
   static const GlassThemeData themeData = GlassThemeData();
 
+  /// Scale the library optics by the user's glass intensity
+  /// (chen 2026-11-21, Settings → 外观）: 1.0 is identity (today's
+  /// glass, byte for byte), 0.0 fades thickness / blur / frost /
+  /// tint / rim to nothing. Only the optics move — never the layout.
+  /// Thickness floors at 1.0 so the refraction pass never sees a
+  /// zero depth.
+  static LiquidGlassSettings _scale(
+    LiquidGlassSettings base,
+    double intensity,
+  ) {
+    final i = intensity.clamp(0.0, 1.0);
+    if (i >= 1.0) return base;
+    return base.copyWith(
+      thickness: math.max(1.0, base.thickness * i),
+      blur: base.blur * i,
+      frost: base.frost * i,
+      frostOpacity: base.frostOpacity * i,
+      glassColor: base.glassColor.withValues(alpha: base.glassColor.a * i),
+      rimLight: base.rimLight * i,
+      rimShade: base.rimShade * i,
+    );
+  }
+
   /// iOS 27 preset for the tab bar shell — the demo's glass, copied
   /// verbatim: the demo's `GlassTabBar.bottom` passes no `settings`,
   /// so it renders the ambient ios27 defaults (`GlassThemeData()`).
@@ -65,8 +90,14 @@ class HaoLiquidGlass {
   /// and dimmer-rimmed in dark — rimLight 0.22 — which is why the
   /// bar read as frosted glass instead of clear Apple glass.)
   /// Resolves light/dark from the ambient glass brightness.
-  static LiquidGlassSettings ios27Settings(BuildContext context) =>
-      LiquidGlassSettings.ios27(context);
+  /// Scaled by the user's glass intensity (see [_scale]).
+  /// No [HaoTheme] extension in the ambient theme (plain
+  /// ThemeData, e.g. a test harness) reads as intensity 1.0 —
+  /// today's glass — instead of crashing on the null extension.
+  static LiquidGlassSettings ios27Settings(BuildContext context) => _scale(
+    LiquidGlassSettings.ios27(context),
+    Theme.of(context).extension<HaoTheme>()?.glassIntensity ?? 1.0,
+  );
 
   /// Pill lens (chen 2026-11-20: NetEase tab-bar animation — the lens
   /// magnifies / distorts the icons + labels passing under it).
@@ -126,12 +157,26 @@ class HaoLiquidGlass {
   static LiquidGlassSettings chromeSettings(BuildContext context) {
     final base = LiquidGlassSettings.ios27(context);
     final page = HaoTheme.of(context).scaffoldBackground;
+    // Glass intensity (chen 2026-11-21): 1.0 is identity — the values
+    // below are today's chrome; lower values fade the frost / tint /
+    // rim / thickness toward clear glass.
+    final intensity = HaoTheme.of(context).glassIntensity.clamp(0.0, 1.0);
     return base.copyWith(
-      glassColor: page.withValues(alpha: 0.12),
-      frostOpacity: 0.55,
+      glassColor: page.withValues(alpha: 0.12 * intensity),
+      frostOpacity: 0.55 * intensity,
       saturation: 1.0,
-      rimLight: 1.5,
+      rimLight: 1.5 * intensity,
+      thickness: math.max(1.0, base.thickness * intensity),
       bodyShade: 0.0,
+      // chen 2026-11-21: 不要有影子了 — the ios27 preset carries an
+      // explicit light-mode drop shadow (0x0F000000, r12, y6) in its
+      // `shadow` list, which IGNORES shadowElevation (the library's
+      // effectiveShadow returns the list verbatim when non-null).
+      // An empty list is the only way to turn it off; the 0
+      // elevation covers the built-in fallback as well. Flat glass,
+      // no shadow (tab bar + mini player are the only callers).
+      shadow: const [],
+      shadowElevation: 0,
     );
   }
 }

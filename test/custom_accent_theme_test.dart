@@ -269,24 +269,32 @@ void main() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
+      // The test puts ThemeController before pumping (its handle
+      // must stay the one the sheet writes to — never delete/re-put
+      // here). Rebuild GetMaterialApp from it so a pick flows to
+      // the tab bar through the theme accent (Kumone restore,
+      // chen 2026-11-21: selected icon = theme accent).
+      final themeController = Get.find<ThemeController>();
       await tester.pumpWidget(
-        GetMaterialApp(
-          theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-          home: Scaffold(
-            body: Column(
-              children: [
-                Expanded(
-                  child: Center(
-                    child: Builder(
-                      builder: (context) => TextButton(
-                        onPressed: () => showAccentColorSheet(context),
-                        child: const Text('open sheet'),
+        Obx(
+          () => GetMaterialApp(
+            theme: themeController.lightTheme,
+            home: Scaffold(
+              body: Column(
+                children: [
+                  Expanded(
+                    child: Center(
+                      child: Builder(
+                        builder: (context) => TextButton(
+                          onPressed: () => showAccentColorSheet(context),
+                          child: const Text('open sheet'),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                GlassTabBar(currentIndex: 0, onTap: (_) {}),
-              ],
+                  GlassTabBar(currentIndex: 0, onTap: (_) {}),
+                ],
+              ),
             ),
           ),
         ),
@@ -315,13 +323,9 @@ void main() {
       final expected = HSVColor.fromAHSV(1.0, 0, 0.55, 0.6).toColor();
       expect(TabBarAccentController.ensure().color.value, expected);
       expect(themeController.customAccent.value, expected);
-      // The pick recolours the theme override — but the tab bar no
-      // longer reads the accent (Muse bar: all icons theme text).
-      final textPrimary = HaoThemes.of(HaoThemeId.appleGlass)
-          .light
-          .extension<HaoTheme>()!
-          .textPrimary;
-      expect(tabIconColor(tester, 0), textPrimary);
+      // Kumone restore (chen 2026-11-21): the pick recolours the
+      // theme override, and the SELECTED tab icon follows it.
+      expect(tabIconColor(tester, 0), expected);
 
       await tester.tap(find.byKey(const ValueKey('accent-reset-default')));
       await tester.pumpAndSettle();
@@ -330,7 +334,13 @@ void main() {
         isNull,
       );
       expect(themeController.customAccent.value, isNull);
-      expect(tabIconColor(tester, 0), textPrimary);
+      // Reset restores the theme's own accent (appleGlass light:
+      // black) as the selected icon.
+      final themeAccent = HaoThemes.of(HaoThemeId.appleGlass)
+          .light
+          .extension<HaoTheme>()!
+          .accent;
+      expect(tabIconColor(tester, 0), themeAccent);
       expect(HiveStore.box.containsKey(HiveKeys.tabBarAccentColor),
           isFalse);
     });

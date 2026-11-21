@@ -302,7 +302,6 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('音源管理')),
       body: ListView(
         padding: const EdgeInsets.all(16),

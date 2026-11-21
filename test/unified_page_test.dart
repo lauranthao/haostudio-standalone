@@ -273,7 +273,8 @@ void main() {
   });
 
   group('tab-root top bars', () {
-    testWidgets('settings AppBar is the page background', (tester) async {
+    testWidgets('settings has no AppBar; big title sits on the page background',
+        (tester) async {
       await appearance(tester);
       final themeController = Get.put(ThemeController());
       themeController.loadFromBox(HiveStore.box);
@@ -283,17 +284,24 @@ void main() {
         HaoThemes.of(HaoThemeId.appleGlass).light,
       );
       await tester.pumpAndSettle();
-      final bar = tester.widget<AppBar>(find.byType(AppBar).first);
+      // No AppBar (chen 2026-11-21, screenshot): the title is a big
+      // bold header in the list itself, so the top area IS the page
+      // background — there is no bar widget to be opaque.
+      expect(find.byType(AppBar), findsNothing);
+      final title = tester.widget<Text>(find.text('设置'));
+      expect(title.style?.fontSize, 26);
+      expect(title.style?.fontWeight, FontWeight.w800);
       expect(
-        bar.backgroundColor,
+        title.style?.color,
         HaoThemes.of(HaoThemeId.appleGlass)
             .light
             .extension<HaoTheme>()!
-            .scaffoldBackground,
+            .textPrimary,
       );
     });
 
-    testWidgets('live AppBar is the page background', (tester) async {
+    testWidgets('live has no AppBar; big title sits on the page background',
+        (tester) async {
       await appearance(tester);
       await pumpThemed(
         tester,
@@ -303,17 +311,23 @@ void main() {
         HaoThemes.of(HaoThemeId.appleGlass).light,
       );
       await tester.pumpAndSettle();
-      final bar = tester.widget<AppBar>(find.byType(AppBar).first);
+      // No AppBar (chen 2026-11-21, screenshot): the title is a big
+      // bold header in the page body, actions on the same row.
+      expect(find.byType(AppBar), findsNothing);
+      final title = tester.widget<Text>(find.text('直播'));
+      expect(title.style?.fontSize, 26);
+      expect(title.style?.fontWeight, FontWeight.w800);
       expect(
-        bar.backgroundColor,
+        title.style?.color,
         HaoThemes.of(HaoThemeId.appleGlass)
             .light
             .extension<HaoTheme>()!
-            .scaffoldBackground,
+            .textPrimary,
       );
     });
 
-    testWidgets('wallpaper on: top bars go transparent', (tester) async {
+    testWidgets('wallpaper on: no opaque top bar on the settings page',
+        (tester) async {
       await appearance(tester, wallpaperOn: true);
       final themeController = Get.put(ThemeController());
       themeController.loadFromBox(HiveStore.box);
@@ -324,13 +338,13 @@ void main() {
       );
       // Fixed pumps, not pumpAndSettle: the background layer decodes
       // the wallpaper image asynchronously, and settling would wait
-      // on that decode. The AppBar color is set synchronously.
+      // on that decode.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      final settingsBar = tester.widget<AppBar>(
-        find.byType(AppBar).first,
-      );
-      expect(settingsBar.backgroundColor, Colors.transparent);
+      // No AppBar (chen 2026-11-21): with the wallpaper on, the
+      // top area is the wallpaper itself — no bar widget to cover it.
+      expect(find.byType(AppBar), findsNothing);
+      expect(find.text('设置'), findsOneWidget);
     });
   });
 }

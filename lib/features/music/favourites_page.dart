@@ -55,7 +55,6 @@ class _FavouritesPageState extends State<FavouritesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('我的收藏')),
       body: _songs.isEmpty
           ? Center(

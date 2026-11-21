@@ -43,7 +43,6 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('直播源管理')),
       body: ListView(
         padding: const EdgeInsets.all(16),

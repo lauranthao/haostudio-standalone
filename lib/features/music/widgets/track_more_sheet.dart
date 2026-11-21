@@ -23,6 +23,7 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../widgets/glass_dialog.dart';
 import '../../../services/music/music_downloads.dart';
 import '../../../services/music/music_models.dart';
@@ -335,6 +336,9 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
         topRadius: 20,
         bottomRadius: 0,
       ),
+      // Intensity-scaled optics (chen 2026-11-21): explicit settings
+      // so the sheet follows the slider instead of the ambient theme.
+      settings: HaoLiquidGlass.ios27Settings(ctx),
       quality: GlassQuality.standard,
       useOwnLayer: true,
       child: Material(

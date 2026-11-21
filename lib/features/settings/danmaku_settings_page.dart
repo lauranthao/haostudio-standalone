@@ -93,7 +93,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('弹幕设置')),
       body: ListView(
         padding: const EdgeInsets.all(16),

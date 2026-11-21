@@ -78,7 +78,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(title: const Text('已下载')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

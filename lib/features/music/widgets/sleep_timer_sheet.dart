@@ -19,6 +19,7 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_themes.dart';
+import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../services/music/music_store.dart';
 import '../../../services/music/sleep_timer.dart';
@@ -47,6 +48,10 @@ Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
         // never premium shader) instead of the self-made GlassCard.
         child: GlassContainer(
           shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+          // Intensity-scaled optics (chen 2026-11-21): explicit
+          // settings so the sheet follows the slider instead of
+          // the ambient theme.
+          settings: HaoLiquidGlass.ios27Settings(ctx),
           quality: GlassQuality.standard,
           useOwnLayer: true,
           padding: const EdgeInsets.symmetric(vertical: 8),
