@@ -79,11 +79,13 @@ class _RecordingObserver extends NavigatorObserver {
 /// `Container` does not expose width/height, so the match is on the
 /// tight constraints the 32x4 size folds into, plus the rounded
 /// decoration.
+// The iOS sheet grabber: HaoSheet's 36x5 pill (was the framework
+// Material handle, 32x4, before the b30 sheet unification).
 final Finder dragHandleFinder = find.byWidgetPredicate(
   (w) =>
       w is Container &&
-      w.constraints?.maxWidth == 32 &&
-      w.constraints?.maxHeight == 4 &&
+      w.constraints?.maxWidth == 36 &&
+      w.constraints?.maxHeight == 5 &&
       w.decoration is BoxDecoration,
 );
 

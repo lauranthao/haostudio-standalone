@@ -111,12 +111,10 @@ class VideoTabPage extends StatefulWidget {
 /// only on this tab root page — never on pushed detail/search pages.
 class _VideoTabPageState extends State<VideoTabPage> {
   VideoTabMode _mode = VideoTabMode.cms;
-  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    HaoScrollToTop.register(HaoScrollToTop.videoTab, _scrollController);
     // Dirty / missing value reads back as 'cms'
     // (VideoTabMode.fromString); an uninitialised Hive box throws
     // and is caught too.
@@ -202,6 +200,11 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   final _homeService = VideoHomeService();
   final _detailService = VideoDetailService();
 
+  /// The list that actually scrolls lives in this class (the
+  /// CustomScrollView below), so the scroll-to-top controller lives
+  /// here too — not in the tab shell above, which builds no list.
+  final _scrollController = ScrollController();
+
   VideoHomeData? _home;
   List<VideoItem> _daily = [];
   List<WatchHistoryEntry> _history = [];
@@ -264,6 +267,7 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   @override
   void initState() {
     super.initState();
+    HaoScrollToTop.register(HaoScrollToTop.videoTab, _scrollController);
     // (1) Immediate render from cache + local history — never a bare
     // spinner while data exists. CMS rows only: Emby rows are shown
     // on the Emby page (shared store, per-source filter).

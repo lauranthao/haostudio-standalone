@@ -26,6 +26,7 @@ import '../../../core/theme/haptics.dart';
 import '../../../features/video/widgets/referer_image.dart';
 import '../../../widgets/glass_dialog.dart';
 import '../../../widgets/hao_search_field.dart';
+import '../../../widgets/hao_swipe_actions.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
 import '../live_history_retention.dart';
@@ -582,7 +583,18 @@ class _HistoryCardState extends State<_HistoryCard> {
       entry.platform,
       entry.roomId,
     );
-    return GlassCard(
+    // iOS swipe-to-delete (b30, same as video history): the card
+    // already had a delete button; swipe exposes the same action.
+    return HaoSwipeActions(
+      actions: [
+        HaoSwipeAction(
+          label: '删除',
+          color: const Color(0xFFFF3B30),
+          icon: CupertinoIcons.delete,
+          onTap: widget.onDelete,
+        ),
+      ],
+      child: GlassCard(
       radius: 16,
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 12),
@@ -712,6 +724,7 @@ class _HistoryCardState extends State<_HistoryCard> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

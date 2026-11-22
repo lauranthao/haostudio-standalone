@@ -135,9 +135,14 @@ class _HaoSheetScaffoldState extends State<_HaoSheetScaffold>
                 // Transparent: the grabber floats above the sheet,
                 // the look the old Material handle already had.
                 color: Colors.transparent,
+                // iOS grabber (36x5), sized via tight constraints
+                // so it can be found by size (see dragHandleFinder
+                // in n1_n2_n7_n10_n14_n20_test.dart).
                 child: Container(
-                  width: 36,
-                  height: 5,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 5,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
                     color: isDark
@@ -147,11 +152,27 @@ class _HaoSheetScaffoldState extends State<_HaoSheetScaffold>
                 ),
               ),
             ),
-            // No Flexible here: in a min-sized Column a flex child
-            // would stretch short sheets to the 90% cap. The
-            // ConstrainedBox caps tall content instead, and the
-            // sheet's own scroll view handles the rest.
-            widget.child,
+            // Flexible (loose fit): the child gets the space left
+            // under the handle, capped by the ConstrainedBox above.
+            // A scroll view then sizes to its content up to that
+            // cap (short sheets stay short); without it a scroll
+            // view sizes to its full content height and the Column
+            // overflows (accent sheet +136, track-more +246).
+            //
+            // Material ancestor: showModalBottomSheet always
+            // provided one (ChoiceChip / InkWell need it); the
+            // Cupertino popup route does not, so the scaffold
+            // provides it. Transparent: the sheet's own background
+            // (GlassSheetBackground / solid Container) still shows.
+            // Without it the version sheet's filter chips throw
+            // "No Material widget found" and render as 100000px
+            // error boxes, pushing the list off-screen.
+            Flexible(
+              child: Material(
+                type: MaterialType.transparency,
+                child: widget.child,
+              ),
+            ),
           ],
         ),
       ),

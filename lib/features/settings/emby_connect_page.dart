@@ -41,7 +41,6 @@ import '../../widgets/glass_dialog.dart';
 import '../../widgets/hao_toast.dart';
 import '../../widgets/native_switch.dart';
 import '../../widgets/settings_ui.dart';
-import '../../widgets/hao_nav_bar.dart';
 
 /// The Emby brand mark, drawn (no official asset in the repo):
 /// Emby green rounded square + white play triangle. The green is
@@ -499,19 +498,29 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
     final theme = HaoTheme.ofOrDefault(context);
     final isEdit = (widget.initialConfig?.isConfigured ?? false);
     return Scaffold(
-      appBar: HaoNavBar(
-        title: isEdit ? '编辑 Emby' : '添加 Emby',
-        leading: HaoNavBarButton( onPressed: () => Navigator.of(context).pop(),child: Icon(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(
             Icons.close,
             shadows: HaoTheme.legibilityShadows(context),
-          )),
-        actions: [HaoNavBarButton( onPressed: _pasteAddress,child: Icon(
+          ),
+          tooltip: '关闭',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(isEdit ? '编辑 Emby' : '添加 Emby'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(
               Icons.content_paste,
               shadows: HaoTheme.legibilityShadows(context),
-            ))],
+            ),
+            tooltip: '从剪贴板粘贴地址',
+            onPressed: _pasteAddress,
+          ),
+        ],
       ),
       body: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           _buildHeader(theme),
@@ -900,12 +909,17 @@ class _EmbyFallbackLinesPageState extends State<_EmbyFallbackLinesPage> {
         Navigator.of(context).pop(_lines);
       },
       child: Scaffold(
-        appBar: HaoNavBar(
-          title: '备用线路',
-          actions: [HaoNavBarTextButton(label: '完成', onPressed: () => Navigator.of(context).pop(_lines))],
+        appBar: AppBar(
+          title: const Text('备用线路'),
+          centerTitle: true,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(_lines),
+              child: const Text('完成'),
+            ),
+          ],
         ),
         body: ListView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             const HaoHint('主线路连不上时，连接会按顺序尝试这里的地址。Emby 没有提供从服务器获取备用线路的接口，只能手动添加。'),

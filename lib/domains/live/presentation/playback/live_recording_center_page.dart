@@ -9,6 +9,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -92,7 +93,7 @@ class _LiveRecordingCenterPageState extends State<LiveRecordingCenterPage> {
         title: '录制中心',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _recordings.isEmpty
               ? Center(
                   child: Column(
