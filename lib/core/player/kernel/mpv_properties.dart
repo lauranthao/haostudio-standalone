@@ -39,9 +39,11 @@ import '../../storage/hive_store.dart';
 /// The low-end set itself is unchanged (40 MB forward / 5 MB back,
 /// audio-buffer 0.4, reconnect triple, vd-lavc-threads 2, lowres=1,
 /// skiploopfilter nonref); the mode only decides WHEN it applies.
-/// Applied at open() (mpv_backend reads the mode then), so a change
-/// takes effect on the NEXT open — live and VOD share the base table,
-/// so the mode covers both.
+/// Applied at open() (mpv_backend reads the mode then); a LATER
+/// change re-opens the current episode at its position instead
+/// (b30: the player page's _reopenAtCurrentPosition), so the new
+/// mode applies to the current episode, not the next open — live
+/// and VOD share the base table, so the mode covers both.
 enum LowMemoryMode {
   auto('auto', '自动'),
   always('always', '始终开启'),

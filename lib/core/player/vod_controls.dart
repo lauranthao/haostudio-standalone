@@ -356,8 +356,10 @@ bool shouldApplySdrToHdr({
 /// mpv properties for frame interpolation. `interpolation` requires
 /// a `display-*` video-sync or mpv silently disables it, so the
 /// three go together; `tscale=oversample` is the interpolation
-/// filter. Set at open() only, never mid-playback (runtime enabling
-/// may also need `hwdec-extra-frames`).
+/// filter. Set at open() from the Hive switch; a LATER toggle goes
+/// through MpvBackend.setFrameInterpolation() on the running player
+/// instead (b30: 马上生效). Runtime enabling may also need
+/// `hwdec-extra-frames` — untested, see the backend comment.
 const Map<String, String> kVodInterpolationProperties = {
   'video-sync': 'display-resample',
   'interpolation': 'yes',
@@ -377,3 +379,54 @@ const Map<String, String> kVodSdrToHdrProperties = {
   'target-trc': 'pq',
   'target-peak': '1000',
 };
+
+// -- Runtime apply / reset (b30: 马上生效) --------------------------------
+//
+// Before b30 the trio was set only in MpvBackend.open() — a toggle
+// did nothing until the next open. mpv accepts every property above
+// at runtime via setProperty, so the backend now applies a toggle to
+// the RUNNING player; the maps below restore the mpv defaults when
+// a switch is turned off again (a property left at its "on" value
+// would keep the effect after the switch says off).
+//
+// The reset values are mpv's documented defaults: `video-sync`
+// defaults to `audio`, `interpolation` to `no`,
+// `inverse-tone-mapping` to `no`, `tone-mapping` to `bt.2390`,
+// `target-trc` / `target-peak` to `auto`. `tscale` is deliberately
+// NOT reset — it is inert while interpolation is off, and its
+// default is left to mpv instead of guessed here.
+
+/// Runtime reset for frame interpolation: back to audio sync, no
+/// interpolation.
+const Map<String, String> kVodInterpolationOffProperties = {
+  'video-sync': 'audio',
+  'interpolation': 'no',
+};
+
+/// Runtime reset for SDR→HDR: inverse tone mapping off, tone
+/// mapping + target back to mpv defaults.
+const Map<String, String> kVodSdrToHdrOffProperties = {
+  'inverse-tone-mapping': 'no',
+  'tone-mapping': 'bt.2390',
+  'target-trc': 'auto',
+  'target-peak': 'auto',
+};
+
+/// Which trio branch is effective, in the same first-branch-wins
+/// order as MpvBackend.open() (super-res → interpolation →
+/// SDR→HDR): at most one branch is ever on, and a switch turned on
+/// while another is on cannot take effect until the other is off
+/// (the UI locks those rows). Pure, so tests can pin the exclusion
+/// without a player.
+enum VodEnhancementBranch { superResolution, interpolation, sdrToHdr }
+
+VodEnhancementBranch? resolveVodEnhancement({
+  required bool superResolution,
+  required bool interpolation,
+  required bool sdrToHdr,
+}) {
+  if (superResolution) return VodEnhancementBranch.superResolution;
+  if (interpolation) return VodEnhancementBranch.interpolation;
+  if (sdrToHdr) return VodEnhancementBranch.sdrToHdr;
+  return null;
+}

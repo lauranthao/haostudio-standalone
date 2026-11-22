@@ -153,6 +153,37 @@ abstract class DialogueBoostCapableBackend extends PlayerBackend {
   Future<void> setDialogueBoost(bool enabled);
 }
 
+/// Optional capability: backends that can apply the VOD picture
+/// enhancements to the RUNNING player (1.1.6 b30). Same pattern as
+/// [DialogueBoostCapableBackend]: a separate interface EXTENDING
+/// PlayerBackend so `is` narrows, and a method on [PlayerBackend]
+/// itself would break every `implements PlayerBackend` fake.
+///
+/// Before b30 the trio (Anime4K super-resolution, frame
+/// interpolation, SDR→HDR) was applied only in `open()` — a switch
+/// change did nothing until the next episode / line switch /
+/// kernel reopen (chen: "影视的功能不要下次生效，马上就生效").
+/// mpv accepts all three at runtime (`glsl-shaders` via the
+/// `change-list` command, the rest via `setProperty`), so the
+/// session now forwards a toggle to the live backend at once, and
+/// `open()` keeps reading the same Hive keys as the fallback for
+/// backends without this capability (IJK / AVPlayer simply never
+/// implement it — the switches stay next-open there, and the rows
+/// say "仅 MPV").
+abstract class VodEnhancementCapableBackend extends PlayerBackend {
+  /// Mount (`true`) or unmount (`false`) the Anime4K efficiency
+  /// chain on the running player. VOD only, MPV only.
+  Future<void> setSuperResolution(bool enabled);
+
+  /// Enable/disable frame interpolation on the running player
+  /// (`video-sync` + `interpolation` + `tscale`). VOD only, MPV only.
+  Future<void> setFrameInterpolation(bool enabled);
+
+  /// Enable/disable SDR→HDR inverse tone mapping on the running
+  /// player. VOD only, MPV only.
+  Future<void> setSdrToHdr(bool enabled);
+}
+
 /// Optional capability: backends that can enter iOS system
 /// Picture-in-Picture (K 组, build 29). Same pattern as
 /// [TrackCapableBackend]/[DialogueBoostCapableBackend]: a separate

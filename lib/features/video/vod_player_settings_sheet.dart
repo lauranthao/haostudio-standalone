@@ -15,10 +15,14 @@
 // Immediate vs next-open (same split as Settings → 影视播放):
 // - Immediate: speed, double-tap step, auto-next, fit, skip mode,
 //   dialogue boost, audio-only, subtitle delay / appearance,
-//   dual-subtitle picker, danmaku master + display, occlusion.
-// - Next open: Anime4K super-resolution, interpolation, SDR→HDR,
-//   DV P8 downgrade, low-memory mode — mpv properties are set at
-//   open() only. Their subtitles say so, exactly like Settings.
+//   dual-subtitle picker, danmaku master + display, occlusion,
+//   Anime4K super-resolution, interpolation, SDR→HDR (b30: the
+//   trio is set on the running mpv player at once — no reopen),
+//   DV P8 downgrade on AVPlayer (re-opens at the current position),
+//   low-memory mode (re-opens at the current position).
+// - Still next open: nothing in this panel. The engine picker
+//   (Settings only) stays next-open by design — a kernel choice
+//   for the next session, not a live effect.
 // The trio (super-res / interpolation / SDR→HDR) is mutually
 // exclusive in display too: a row locked by another trio switch
 // renders greyed out and cannot be tapped (its stored value is
@@ -234,7 +238,7 @@ class VodPlayerSettingsSheet extends StatelessWidget {
               PlayerSettingsSwitchRow(
                 key: const ValueKey('vod_setting_dialogue'),
                 title: '对白增强',
-                subtitle: '音量最高 300%、中置声道 · 仅 MPV',
+                subtitle: '对白更清楚，大声不炸 · 仅 MPV',
                 value: s.dialogueBoost,
                 onChanged: s.onDialogueBoostChanged,
               ),
@@ -250,8 +254,8 @@ class VodPlayerSettingsSheet extends StatelessWidget {
                 key: const ValueKey('vod_setting_super_res'),
                 title: 'Anime4K 超分',
                 subtitle: s.superResolutionLocked
-                    ? '与插帧 / SDR 转 HDR 互斥，已锁定 · 仅 MPV，下次播放生效'
-                    : '仅 MPV，下次播放生效',
+                    ? '与插帧 / SDR 转 HDR 互斥，已锁定 · 仅 MPV，立即生效'
+                    : '仅 MPV，立即生效',
                 value: s.superResolution,
                 onChanged: s.onSuperResolutionChanged,
               ),
@@ -259,8 +263,8 @@ class VodPlayerSettingsSheet extends StatelessWidget {
                 key: const ValueKey('vod_setting_interpolation'),
                 title: '插帧',
                 subtitle: s.interpolationLocked
-                    ? '与超分 / SDR 转 HDR 互斥，已锁定 · 仅 MPV，下次播放生效'
-                    : '仅 MPV，下次播放生效',
+                    ? '与超分 / SDR 转 HDR 互斥，已锁定 · 仅 MPV，立即生效'
+                    : '仅 MPV，立即生效',
                 value: s.interpolation,
                 onChanged: s.onInterpolationChanged,
               ),
@@ -268,22 +272,22 @@ class VodPlayerSettingsSheet extends StatelessWidget {
                 key: const ValueKey('vod_setting_sdr_hdr'),
                 title: 'SDR 转 HDR',
                 subtitle: s.sdrToHdrLocked
-                    ? '与超分 / 插帧互斥，已锁定 · 仅 MPV，下次播放生效'
-                    : '仅 MPV，下次播放生效',
+                    ? '与超分 / 插帧互斥，已锁定 · 仅 MPV，立即生效'
+                    : '仅 MPV，立即生效',
                 value: s.sdrToHdr,
                 onChanged: s.onSdrToHdrChanged,
               ),
               PlayerSettingsSwitchRow(
                 key: const ValueKey('vod_setting_dv_p8'),
                 title: '杜比视界 Profile 8 降级 HDR',
-                subtitle: '下次播放生效',
+                subtitle: 'AVPlayer 在播时立即换内核',
                 value: s.dvP8Downgrade,
                 onChanged: s.onDvP8Changed,
               ),
               PlayerSettingsCycleRow(
                 key: const ValueKey('vod_setting_low_memory'),
                 title: '低内存模式',
-                subtitle: '下次播放生效',
+                subtitle: '立即生效（当前这集重开，进度保留）',
                 valueLabel: s.lowMemoryLabel,
                 onTap: s.onLowMemoryCycle,
               ),

@@ -1028,6 +1028,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _qualitySwitchEpoch = epoch;
     final ok = await _session.open(
       url: resolution.urls.first,
+      // b30: hand the ladder the whole resolution (L-P1-3, same as
+      // the entry path): a switch that only tries urls.first fails
+      // the whole quality when just the first line is dead, even
+      // though the other lines play — the user sees "切换失败，已保持
+      // 原清晰度" for a quality that was actually available.
+      urls: resolution.urls,
       isLive: true,
       headers: _playbackHeaders,
       declaredFormat: resolution.factsFor(0).format,
@@ -1313,6 +1319,37 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (mounted) setState(() {});
   }
 
+  /// Cellular-downgrade switch flipped mid-room (b30): applies to
+  /// THIS room, not the next entry. On cellular, ON drops to the
+  /// ceiling quality and OFF restores the saved preferred quality
+  /// (same resolution as entry, see _loadRoom); on Wi-Fi / unknown
+  /// the downgrade never applies, so nothing changes. Both go
+  /// through _switchQuality with persist: false — the switch must
+  /// not overwrite the user's preferred quality — and a failed
+  /// switch keeps the old picture (_switchQuality restores it).
+  Future<void> _applyCellularDowngradeNow(bool enabled) async {
+    if (_qualities.isEmpty || !mounted) return;
+    final network = await detectNetworkType();
+    if (network != LiveNetworkType.cellular) return;
+    final preferred = HiveStore.getString(HiveKeys.preferResolution, '原画');
+    final preferredIndex = _qualities.indexWhere(
+      (q) => q.quality == preferred,
+    );
+    final resolvedPreferred = preferredIndex >= 0
+        ? preferredIndex
+        : _fallbackQualityIndex(_qualities, preferred);
+    final target = cellularDowngradeTargetIndex(
+      qualities: _qualities,
+      currentIndex: _currentQuality,
+      preferredIndex: resolvedPreferred,
+      network: network,
+      enabled: enabled,
+    );
+    if (target != null) {
+      await _switchQuality(target, persist: false);
+    }
+  }
+
   /// Start / stop recording the current stream to local storage
   /// (FLV raw copy / HLS segments, see LiveRecorder). The URL is
   /// the currently playing line.
@@ -1574,10 +1611,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       },
       cellularDowngrade: _cellularDowngrade,
       onCellularDowngradeChanged: (value) {
-        // Applies at the NEXT room entry (the downgrade runs at
-        // entry only) — the row subtitle says so.
+        // b30: applies to this room at once (see
+        // _applyCellularDowngradeNow) — not the next entry.
         setState(() => _cellularDowngrade = value);
         unawaited(saveLiveCellularDowngrade(value));
+        unawaited(_applyCellularDowngradeNow(value));
         refreshSheet();
       },
     );
