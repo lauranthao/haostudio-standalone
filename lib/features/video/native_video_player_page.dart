@@ -411,10 +411,19 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
 
   String get _title => _detail.meta.name;
 
+  // Empty detail (no lines, or the selected line has no episodes):
+  // _episode would throw RangeError here, and build() calls this
+  // on the very first frame — before _openCurrent can fail the page.
+  // Return the line name (or nothing) so the failure card can show.
   String get _epLabel {
-    final line = _detail.lines[_lineIdx];
-    final prefix = _detail.lines.length > 1 ? '${line.name} · ' : '';
-    return '$prefix${_episode.name}';
+    final lines = _detail.lines;
+    if (lines.isEmpty || _lineIdx >= lines.length) return '';
+    final line = lines[_lineIdx];
+    if (line.episodes.isEmpty || _epIdx >= line.episodes.length) {
+      return lines.length > 1 ? line.name : '';
+    }
+    final prefix = lines.length > 1 ? '${line.name} · ' : '';
+    return '$prefix${line.episodes[_epIdx].name}';
   }
 
   @override
@@ -423,9 +432,20 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     WidgetsBinding.instance.addObserver(this);
     _detail = widget.detail;
     _detailService = widget.detailService ?? VideoDetailService();
-    _lineIdx = widget.initialLineIndex.clamp(0, _detail.lines.length - 1);
-    final eps = _detail.lines[_lineIdx].episodes;
-    _epIdx = widget.initialEpisodeIndex.clamp(0, eps.length - 1);
+    // Empty detail (a source returned no playable lines): clamp(0, -1)
+    // throws ArgumentError in initState and the route never opens.
+    // Clamp safely here; _openCurrent fails the page instead (the
+    // failure card offers retry + a way out).
+    final lines = _detail.lines;
+    _lineIdx = lines.isEmpty
+        ? 0
+        : widget.initialLineIndex.clamp(0, lines.length - 1);
+    final eps = lines.isEmpty
+        ? const <PlayEpisode>[]
+        : lines[_lineIdx].episodes;
+    _epIdx = eps.isEmpty
+        ? 0
+        : widget.initialEpisodeIndex.clamp(0, eps.length - 1);
     _autoNext = VideoPlaybackSettings.autoNext;
     _videoFit = VideoPlaybackSettings.videoFit;
     _session = widget.session ?? PlaybackSession();
@@ -765,6 +785,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       unawaited(MusicPlayerController.ensure().pause());
     }
     final epoch = ++_openEpoch;
+    // No playable episode (empty detail, or the selected line has no
+    // episodes): fail instead of throwing RangeError on _episode —
+    // every access below (URL, name, skip points) indexes it.
+    if (_detail.lines.isEmpty ||
+        _lineIdx >= _detail.lines.length ||
+        _detail.lines[_lineIdx].episodes.isEmpty ||
+        _epIdx >= _detail.lines[_lineIdx].episodes.length) {
+      _loading = false;
+      _failed = true;
+      if (mounted) setState(() {});
+      return false;
+    }
     if (seamless) {
       // Keep position/duration/loading exactly as they are — the
       // old picture stays up until the swap. Only the end/failed
@@ -2593,6 +2625,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   }
 
   void _openEpisodeSheet() {
+    // Empty detail: the 选集 button lives in the top bar, which is
+    // shown even on the failure card — guard before indexing.
+    if (_detail.lines.isEmpty ||
+        _lineIdx >= _detail.lines.length ||
+        _detail.lines[_lineIdx].episodes.isEmpty) {
+      return;
+    }
     final theme = HaoTheme.of(context);
     final eps = _detail.lines[_lineIdx].episodes;
     showModalBottomSheet<void>(

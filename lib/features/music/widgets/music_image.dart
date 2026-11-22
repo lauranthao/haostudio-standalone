@@ -255,30 +255,53 @@ class MusicImageProvider extends ImageProvider<MusicImageProvider> {
     // preserving aspect, never upscale.
     return decode(
       buffer,
-      getTargetSize: (intrinsicWidth, intrinsicHeight) {
-        final cw = key.cacheWidth;
-        final ch = key.cacheHeight;
-        if (cw == null && ch == null) {
-          return const ui.TargetImageSize();
-        }
-        final aspectRatio = intrinsicWidth / intrinsicHeight;
-        final maxWidth = cw ?? intrinsicWidth;
-        final maxHeight = ch ?? intrinsicHeight;
-        var targetWidth = intrinsicWidth;
-        var targetHeight = intrinsicHeight;
-        if (targetWidth > maxWidth) {
-          targetWidth = maxWidth;
-          targetHeight = targetWidth ~/ aspectRatio;
-        }
-        if (targetHeight > maxHeight) {
-          targetHeight = maxHeight;
-          targetWidth = (targetHeight * aspectRatio).floor();
-        }
-        return ui.TargetImageSize(
-          width: targetWidth,
-          height: targetHeight,
-        );
-      },
+      getTargetSize: (intrinsicWidth, intrinsicHeight) =>
+          targetSizeFor(intrinsicWidth, intrinsicHeight, key.cacheWidth,
+              key.cacheHeight),
+    );
+  }
+
+  /// Downsample target for [intrinsicWidth]×[intrinsicHeight], fit
+  /// inside the layout box ([cacheWidth]/[cacheHeight]), preserving
+  /// aspect, never upscale. Pure (unit-tested in
+  /// test/b30_crash_hunt_test.dart).
+  ///
+  /// A degenerate image (0-width or 0-height) makes aspectRatio 0 or
+  /// infinite: `targetWidth ~/ 0.0` throws IntegerDivisionByZeroException
+  /// inside the decode callback. Return the unconstrained size instead
+  /// — the engine then decodes at intrinsic size.
+  @visibleForTesting
+  static ui.TargetImageSize targetSizeFor(
+    int intrinsicWidth,
+    int intrinsicHeight,
+    int? cacheWidth,
+    int? cacheHeight,
+  ) {
+    if (cacheWidth == null && cacheHeight == null) {
+      return const ui.TargetImageSize();
+    }
+    if (intrinsicWidth <= 0 || intrinsicHeight <= 0) {
+      return const ui.TargetImageSize();
+    }
+    final aspectRatio = intrinsicWidth / intrinsicHeight;
+    if (!aspectRatio.isFinite || aspectRatio <= 0) {
+      return const ui.TargetImageSize();
+    }
+    final maxWidth = cacheWidth ?? intrinsicWidth;
+    final maxHeight = cacheHeight ?? intrinsicHeight;
+    var targetWidth = intrinsicWidth;
+    var targetHeight = intrinsicHeight;
+    if (targetWidth > maxWidth) {
+      targetWidth = maxWidth;
+      targetHeight = targetWidth ~/ aspectRatio;
+    }
+    if (targetHeight > maxHeight) {
+      targetHeight = maxHeight;
+      targetWidth = (targetHeight * aspectRatio).floor();
+    }
+    return ui.TargetImageSize(
+      width: targetWidth,
+      height: targetHeight,
     );
   }
 

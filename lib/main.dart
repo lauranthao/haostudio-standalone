@@ -13,6 +13,7 @@
 // for him to ask for the IPA. codemagic.yaml stays a draft.
 
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,6 +40,21 @@ import 'services/update_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Crash net (build 30): an uncaught error must be logged, not kill
+  // the isolate (blank screen / quit). FlutterError.onError keeps the
+  // default dump so framework errors still surface in logs;
+  // PlatformDispatcher.onError returning true marks an async error
+  // handled — without it, an uncaught async error can take the whole
+  // isolate down.
+  FlutterError.onError = (details) {
+    debugPrint('FlutterError: ${details.exception}');
+    FlutterError.dumpErrorToConsole(details, forceReport: true);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught async error: $error\n$stack');
+    return true;
+  };
 
   // P0-2: runApp 前只留 HiveStore.init() — the serial awaits that
   // used to sit here (LiquidGlassWidgets.initialize, LocalPaths,
