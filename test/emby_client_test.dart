@@ -28,6 +28,8 @@ Map<String, dynamic> embyItem({
   List<String>? genres,
   String? primaryTag,
   int? childCount,
+  int? recursiveItemCount,
+  List<Map<String, String>>? people,
   int? indexNumber,
   String? overview,
   int? runTimeTicks,
@@ -41,6 +43,8 @@ Map<String, dynamic> embyItem({
     'Genres': ?genres,
     'ImageTags': ?(primaryTag == null ? null : {'Primary': primaryTag}),
     'ChildCount': ?childCount,
+    'RecursiveItemCount': ?recursiveItemCount,
+    'People': ?people,
     'IndexNumber': ?indexNumber,
     'Overview': ?overview,
     'RunTimeTicks': ?runTimeTicks,
@@ -343,8 +347,9 @@ void main() {
         }),
       });
       final client = EmbyClient(config: _config, fetcher: fetcher.call);
-      final results = await client.search('流浪地球');
-      expect(results.map((i) => i.vodId), ['m1']);
+      final page = await client.search('流浪地球');
+      expect(page.items.map((i) => i.vodId), ['m1']);
+      expect(page.totalCount, 1);
       expect(fetcher.seenUrls.single, contains('searchTerm='));
       expect(
         fetcher.seenUrls.single,
@@ -354,6 +359,45 @@ void main() {
         fetcher.seenUrls.single,
         contains('IncludeItemTypes=Movie%2CSeries%2CEpisode'),
       );
+    });
+
+    test('paginated: second page via startIndex', () async {
+      final fetcher = CannedEmbyFetcher({
+        'StartIndex=0': okJson({
+          'Items': List.generate(
+            50,
+            (i) => embyItem(id: 'm$i', type: 'Movie', name: '片 $i'),
+          ),
+          'TotalRecordCount': 120,
+        }),
+        'StartIndex=50': okJson({
+          'Items': List.generate(
+            50,
+            (i) =>
+                embyItem(id: 'm${50 + i}', type: 'Movie', name: '片 ${50 + i}'),
+          ),
+          'TotalRecordCount': 120,
+        }),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final first = await client.search('片');
+      expect(first.items.length, 50);
+      expect(first.totalCount, 120);
+      final second = await client.search('片', startIndex: 50);
+      expect(second.items.first.vodId, 'm50');
+      expect(second.items.length, 50);
+      expect(second.totalCount, 120);
+      expect(fetcher.seenUrls.last, contains('StartIndex=50'));
+    });
+
+    test('empty result is an empty page, not an error', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items': okJson({'Items': [], 'TotalRecordCount': 0}),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final page = await client.search('不存在的片');
+      expect(page.items, isEmpty);
+      expect(page.totalCount, 0);
     });
   });
 
@@ -461,6 +505,107 @@ void main() {
               ),
         ),
       );
+    });
+  });
+
+  group('T15 build-30 data completeness', () {
+    test('series total is episode count, not season count', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items': okJson({
+          'Items': [
+            embyItem(
+              id: 's1',
+              type: 'Series',
+              name: '长剧',
+              childCount: 3,
+              recursiveItemCount: 48,
+            ),
+            embyItem(
+              id: 's2',
+              type: 'Series',
+              name: '旧剧',
+              childCount: 2,
+            ),
+          ],
+          'TotalRecordCount': 2,
+        }),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final page = await client.series();
+      // 3 seasons / 48 episodes reads "48 集", not "3 集"; a server
+      // without RecursiveItemCount falls back to ChildCount.
+      expect(page.items.map((i) => i.total), ['48', '2']);
+      expect(fetcher.seenUrls.single, contains('RecursiveItemCount'));
+    });
+
+    test('detail maps People to director + actor', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items/movie-1': okJson(
+          embyItem(
+            id: 'movie-1',
+            type: 'Movie',
+            name: '片',
+            overview: '简介',
+            people: [
+              {'Name': '张三', 'Type': 'Director'},
+              {'Name': '李四', 'Type': 'Actor'},
+              {'Name': '王五', 'Type': 'Actor'},
+            ],
+          ),
+        ),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final detail = await client.detail('movie-1');
+      expect(detail.meta.director, '张三');
+      expect(detail.meta.actor, '李四，王五');
+      expect(detail.meta.content, '简介');
+      // The server only sends People when asked for it.
+      expect(fetcher.seenUrls.single, contains('People'));
+    });
+
+    test('missing People/RecursiveItemCount/Overview maps to empty',
+        () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items/movie-2': okJson(embyItem(id: 'movie-2', type: 'Movie')),
+        '/Items': okJson({
+          'Items': [embyItem(id: 's9', type: 'Series')],
+          'TotalRecordCount': 1,
+        }),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final detail = await client.detail('movie-2');
+      expect(detail.meta.director, '');
+      expect(detail.meta.actor, '');
+      expect(detail.meta.content, '');
+      final page = await client.series();
+      expect(page.items.single.total, '');
+    });
+
+    test('episodes/seasons carry explicit Limits', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Seasons': okJson({'Items': [], 'TotalRecordCount': 0}),
+        '/Episodes': okJson({'Items': [], 'TotalRecordCount': 0}),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      await client.seasons('series-1');
+      await client.episodes('series-1', 'season-1');
+      expect(
+        fetcher.seenUrls.firstWhere((u) => u.contains('/Seasons')),
+        contains('Limit=100'),
+      );
+      expect(
+        fetcher.seenUrls.firstWhere((u) => u.contains('/Episodes')),
+        contains('Limit=1000'),
+      );
+    });
+
+    test('movies() with no pinned library sends no parentId', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items': okJson({'Items': [], 'TotalRecordCount': 0}),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      await client.movies();
+      expect(fetcher.seenUrls.single, isNot(contains('parentId')));
     });
   });
 

@@ -290,7 +290,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
   Widget _stat(HaoTheme theme, String value, String label) {
     return Expanded(
       child: GlassCard(
-        radius: 24,
+        radius: HaoRadius.panel,
         quality: GlassCardQuality.standard,
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(

@@ -153,9 +153,15 @@ Future<EmbyResponse> defaultEmbyFetcher(
 /// Fields requested on item queries. MediaSources is deliberately
 /// absent: the v1 stream URL is built directly (static=true), and
 /// list payloads stay small without it.
+/// Fields the client asks for on every item query. People +
+/// RecursiveItemCount ride here too: the detail page shows 导演/主演
+/// from People, and the series poster badge shows the episode total
+/// from RecursiveItemCount — without asking, the server omits both
+/// fields and the UI silently shows nothing (build 30 data fix).
 const String _kItemFields =
     'Overview,Genres,ProductionYear,CommunityRating,RunTimeTicks,'
-    'ChildCount,ImageTags,PrimaryImageAspectRatio,UserData';
+    'ChildCount,RecursiveItemCount,People,ImageTags,'
+    'PrimaryImageAspectRatio,UserData';
 
 /// Detail fields: item fields + MediaSources (container / codecs /
 /// Dolby Vision — the facts the kernel's engine gate reads) +
@@ -827,8 +833,12 @@ class EmbyClient {
 
   /// Emby title search (title only — the server does not match cast
   /// or synopsis). Emby-only; v1 never merges CMS results in.
-  Future<List<VideoItem>> search(
+  /// Paginated: the old 50-item cap silently cut large result sets
+  /// with no way to see the rest. Callers page with [startIndex]
+  /// until `items.length >= totalCount`.
+  Future<EmbyItemsPage> search(
     String query, {
+    int startIndex = 0,
     int limit = 50,
     CancelToken? cancelToken,
   }) async {
@@ -836,11 +846,12 @@ class EmbyClient {
       'searchTerm': query,
       'IncludeItemTypes': 'Movie,Series,Episode',
       'Recursive': 'true',
+      'StartIndex': '$startIndex',
       'Limit': '$limit',
       'Fields': _kItemFields,
     });
     final json = await _getJson(url, cancelToken: cancelToken);
-    return _pageFromJson(json).items;
+    return _pageFromJson(json);
   }
 
   // -- Resume / NextUp (1.1.6, server-driven rails) --------------------
@@ -1070,12 +1081,16 @@ class EmbyClient {
   // -- Seasons / episodes ----------------------------------------------
 
   /// Seasons of a series, sorted by IndexNumber (missing → last).
+  /// Explicit Limit: the endpoint has no documented default page
+  /// size, and a series with more seasons than the server default
+  /// would silently lose the tail.
   Future<List<Map<String, dynamic>>> seasons(
     String seriesId, {
     CancelToken? cancelToken,
   }) async {
     final url = _apiQuery('/Shows/$seriesId/Seasons', <String, String>{
       'userId': config.userId,
+      'Limit': '100',
       'Fields': 'Overview,ImageTags',
     });
     final json = await _getJson(url, cancelToken: cancelToken);
@@ -1090,6 +1105,9 @@ class EmbyClient {
   /// Episodes of one season, sorted by IndexNumber (missing → last).
   /// Each episode carries its stream facts (MediaSources are
   /// requested here so detail() can tag the stream URLs).
+  /// Explicit Limit 1000: the endpoint has no documented default
+  /// page size, and a long season (daily shows, 柯南-style runs)
+  /// past the server default would silently lose its tail.
   Future<List<EmbyEpisode>> episodes(
     String seriesId,
     String seasonId, {
@@ -1099,6 +1117,7 @@ class EmbyClient {
       'userId': config.userId,
       'seasonId': seasonId,
       'MediaTypes': 'Video',
+      'Limit': '1000',
       'Fields': _kDetailFields,
     });
     final json = await _getJson(url, cancelToken: cancelToken);
@@ -1290,6 +1309,14 @@ class EmbyClient {
       fraction = (userData.playbackPositionSeconds * ticksPerSecond / runTicks)
           .clamp(0.0, 1.0);
     }
+    // Series episode count: ChildCount is the number of SEASONS,
+    // not episodes — the poster badge shows "$total 集", so a
+    // 3-season show read "3 集" and a 1-season show showed no count
+    // at all. RecursiveItemCount is the episode total; fall back to
+    // ChildCount when the server omits it.
+    final totalCount = (json['Type'] as String?) == 'Series'
+        ? (json['RecursiveItemCount'] ?? json['ChildCount'])
+        : json['ChildCount'];
     return VideoItem(
       source: sourceId,
       sourceName: 'Emby',
@@ -1301,7 +1328,7 @@ class EmbyClient {
       year: (json['ProductionYear'] ?? '').toString(),
       type: genres.join(' / '),
       score: rating is num ? _formatRating(rating) : '',
-      total: (json['ChildCount'] ?? '').toString(),
+      total: totalCount?.toString() ?? '',
       progressSeconds: userData.playbackPositionSeconds,
       progressFraction: fraction,
       played: userData.played,
@@ -1327,6 +1354,18 @@ class EmbyClient {
         .toList();
     final rating = json['CommunityRating'];
     final ticks = (json['RunTimeTicks'] as num?)?.toInt();
+    // People (cast + crew) ride on the item DTO by default — the
+    // old mapping dropped them, so the detail page never showed
+    // 演员/导演 even though the server sends them. Actors join with
+    // '，' so VideoMeta.castNames splits them back into names.
+    final people = (json['People'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    String namesOf(String type) => people
+        .where((p) => (p['Type'] as String?) == type)
+        .map((p) => (p['Name'] as String?) ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(type == 'Actor' ? '，' : ' / ');
     return VideoMeta(
       name: (json['Name'] as String?) ?? '',
       pic: tag != null && tag.isNotEmpty
@@ -1335,6 +1374,8 @@ class EmbyClient {
       year: (json['ProductionYear'] ?? '').toString(),
       type: genres.join(' / '),
       score: rating is num ? _formatRating(rating) : '',
+      actor: namesOf('Actor'),
+      director: namesOf('Director'),
       content: (json['Overview'] as String?) ?? '',
       runtime: ticks != null && ticks > 0 ? (ticks ~/ 600000000) : null,
     );

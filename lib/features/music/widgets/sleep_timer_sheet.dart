@@ -271,7 +271,7 @@ class _TrackCountStepper extends StatelessWidget {
         height: 28,
         decoration: BoxDecoration(
           border: Border.all(color: theme.hairline),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(HaoRadius.standard),
         ),
         child: Icon(
           icon, shadows: HaoTheme.legibilityShadows(context), 

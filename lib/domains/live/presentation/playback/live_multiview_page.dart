@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/storage/hive_store.dart';
+import '../../../../core/theme/hao_radius.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../features/player/playback_session.dart';
 import '../../../../shared/platforms/sites.dart';
@@ -308,7 +309,7 @@ class _MultiViewCellState extends State<_MultiViewCell> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(HaoRadius.large),
           border: Border.all(
             color: widget.focused ? theme.accent : theme.hairline,
             width: widget.focused ? 2 : 1,

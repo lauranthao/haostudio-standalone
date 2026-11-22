@@ -1255,14 +1255,6 @@ class _HomeError extends StatelessWidget {
               onPressed: onRetry,
               icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                // onPrimary (theme-defined per mode), NOT hardcoded
-                // white: white on the light-gold / light-teal /
-                // light-blue dark-mode accents is unreadable.
-                foregroundColor:
-                    Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),

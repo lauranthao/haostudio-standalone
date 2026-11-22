@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../core/theme/glass.dart';
+import '../core/theme/hao_radius.dart';
 import '../core/theme/hao_themes.dart';
 
 /// Icon shown at the leading edge of the banner.
@@ -215,7 +216,7 @@ class _HaoToastBannerState extends State<_HaoToastBanner>
               child: GestureDetector(
                 onTap: widget.onDismiss,
                 child: GlassCard(
-                  radius: 14,
+                  radius: HaoRadius.sheet,
                   shadow: GlassShadow.panel,
                   quality: GlassCardQuality.premium,
                   padding: const EdgeInsets.symmetric(
@@ -274,7 +275,7 @@ class _HaoToastBannerState extends State<_HaoToastBanner>
                                           decoration: BoxDecoration(
                                             color: theme.accentSoft,
                                             borderRadius:
-                                                BorderRadius.circular(8),
+                                                BorderRadius.circular(HaoRadius.standard),
                                           ),
                                           child: Text(
                                             action.label,

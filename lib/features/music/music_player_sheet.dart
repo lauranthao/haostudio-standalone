@@ -894,7 +894,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           boxShadow: const [
             BoxShadow(
               color: Color.fromRGBO(0, 0, 0, 0.45),
@@ -904,7 +904,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(HaoRadius.panel),
           child: song.cover.isEmpty
               ? placeholder
               : Image(

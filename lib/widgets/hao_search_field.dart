@@ -15,6 +15,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../core/theme/hao_radius.dart';
 import '../core/theme/hao_themes.dart';
 
 class HaoSearchField extends StatefulWidget {
@@ -110,7 +111,7 @@ class _HaoSearchFieldState extends State<HaoSearchField> {
             height: 44,
             decoration: BoxDecoration(
               color: theme.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(HaoRadius.large),
             ),
             child: Stack(
               alignment: Alignment.center,

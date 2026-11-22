@@ -42,7 +42,6 @@ Future<void> showSkipIntroDialog(
             return OutlinedButton(
               onPressed: () => step(delta),
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: theme.hairline),
                 foregroundColor: theme.textPrimary,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,

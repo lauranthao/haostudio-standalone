@@ -277,7 +277,7 @@ class SongRow extends StatelessWidget {
     return GlassPressScale(
       pressedScale: 0.97,
       child: GlassCard(
-        radius: 16,
+        radius: HaoRadius.large,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: row,

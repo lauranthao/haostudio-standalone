@@ -6,7 +6,8 @@
 //  - response preview (EqualizerResponseView): height 108, radius 12,
 //    5 grid dividers, curve stroke 2.2 round caps/joins, fill gradient
 //    (accent 0.22 -> 0.02), bottom labels 31 Hz / 1 kHz / 16 kHz (10pt)
-//  - every card: glass, radius 18, padding 14
+//  - every card: glass, radius 20 (HaoRadius.panel; Beans uses 18,
+//    mapped to the app token so all cards share one radius), padding 14
 //  - enable toggle: title 15 semibold + subtitle 11, note 11
 //  - preamp slider: -12..+12 step 0.5, value label 12 semibold,
 //    scale labels 10pt (-12 / 不增益 / +12)
@@ -34,6 +35,7 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 import '../../widgets/native_switch.dart';
@@ -95,7 +97,7 @@ class _ResponseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 18,
+      radius: HaoRadius.panel,
       quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -243,7 +245,7 @@ class _ControlCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 18,
+      radius: HaoRadius.panel,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,7 +365,7 @@ class _PresetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 18,
+      radius: HaoRadius.panel,
       quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -418,7 +420,7 @@ class _PresetCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Icon(shadows: HaoTheme.legibilityShadows(context),
-                        Icons.unfold_more,
+                        CupertinoIcons.chevron_up_chevron_down,
                         size: 10,
                         color: theme.accent,
                       ),
@@ -706,7 +708,7 @@ class _AutoEqCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 18,
+      radius: HaoRadius.panel,
       quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -811,7 +813,7 @@ class _BandsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 18,
+      radius: HaoRadius.panel,
       quality: GlassCardQuality.standard,
       padding: const EdgeInsets.all(14),
       child: Column(

@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/hao_radius.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
@@ -100,11 +101,11 @@ class _RuleRow extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(HaoRadius.large),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(HaoRadius.large),
             color: theme.textPrimary.withValues(alpha: 0.04),
             border: Border.all(
               color: theme.hairline,

@@ -960,7 +960,7 @@ class _MusicTabPageState extends State<MusicTabPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           GlassCard(
-            radius: 20,
+            radius: HaoRadius.panel,
             quality: GlassCardQuality.standard,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             // Transparent Material is the text-style ancestor for the
@@ -1002,10 +1002,6 @@ class _MusicTabPageState extends State<MusicTabPage>
             onPressed: _createList,
             icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add, size: 18),
             label: Text('新建歌单', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: theme.accent,
-              side: BorderSide(color: theme.hairline),
-            ),
           ),
         ],
       ),
@@ -1176,7 +1172,7 @@ class _MusicTabPageState extends State<MusicTabPage>
           children: [
             Expanded(
               child: GlassCard(
-                radius: 12,
+                radius: HaoRadius.large,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                 child: TextField(
@@ -1417,7 +1413,7 @@ class _FeatureCard extends StatelessWidget {
       width: width,
       height: height,
       child: GlassCard(
-        radius: 12,
+        radius: HaoRadius.large,
         padding: EdgeInsets.zero,
         quality: GlassCardQuality.standard,
         tint: wash,

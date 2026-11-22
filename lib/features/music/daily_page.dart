@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/theme/hao_radius.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/daily_service.dart';
 import '../../services/music/multi_queue_store.dart';
@@ -135,7 +136,7 @@ class _DailyPageState extends State<DailyPage> {
                         style: TextStyle(color: theme.textPrimary),
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: () {
                           setState(() {
                             _loading = true;
@@ -143,10 +144,6 @@ class _DailyPageState extends State<DailyPage> {
                           });
                           _load();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.accent,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                        ),
                         child: const Text('重试'),
                       ),
                     ],
@@ -162,15 +159,11 @@ class _DailyPageState extends State<DailyPage> {
                         style: TextStyle(color: theme.textMuted),
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: () {
                           setState(() => _loading = true);
                           _load();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.accent,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                        ),
                         child: const Text('重试'),
                       ),
                     ],
@@ -212,18 +205,10 @@ class _DailyPageState extends State<DailyPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: ElevatedButton.icon(
+                      child: FilledButton.icon(
                         onPressed: _playAll,
                         icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                         label: const Text('播放全部'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.accent,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                        ),
                       ),
                     ),
                     // 今日一 Pick (build 29): one deterministic song
@@ -240,11 +225,11 @@ class _DailyPageState extends State<DailyPage> {
                             color: Colors.transparent,
                             child: InkWell(
                               onTap: () => _playPick(pick),
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(HaoRadius.large),
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(HaoRadius.large),
                                   color: theme.accent.withValues(alpha: 0.1),
                                   border: Border.all(
                                     color: theme.accent.withValues(alpha: 0.3),
@@ -254,7 +239,7 @@ class _DailyPageState extends State<DailyPage> {
                                 child: Row(
                                   children: [
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
+                                      borderRadius: BorderRadius.circular(HaoRadius.standard),
                                       child: pick.cover.isEmpty
                                           ? Container(
                                               width: 48,

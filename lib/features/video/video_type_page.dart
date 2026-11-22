@@ -326,13 +326,6 @@ class _VideoTypePageState extends State<VideoTypePage> {
                               ),
                               fallback: FilledButton(
                                 onPressed: _load,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: theme.accent,
-                                  // Theme-defined onPrimary per mode.
-                                  foregroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .onPrimary,
-                                ),
                                 child: const Text('重试'),
                               ),
                             ),
@@ -380,11 +373,6 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                         onPressed: _page <= 1
                                             ? null
                                             : () => _setPage(-1),
-                                        style: OutlinedButton.styleFrom(
-                                          side: BorderSide(
-                                            color: theme.hairline,
-                                          ),
-                                        ),
                                         child: Text('上一页', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                                       ),
                                       Padding(
@@ -404,11 +392,6 @@ class _VideoTypePageState extends State<VideoTypePage> {
                                         onPressed: _page >= _pagecount
                                             ? null
                                             : () => _setPage(1),
-                                        style: OutlinedButton.styleFrom(
-                                          side: BorderSide(
-                                            color: theme.hairline,
-                                          ),
-                                        ),
                                         child: Text('下一页', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                                       ),
                                     ],

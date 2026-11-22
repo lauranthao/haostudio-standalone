@@ -205,7 +205,6 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: '自定义条数（0 = 不限）',
-                    border: OutlineInputBorder(),
                   ),
                   onChanged: (value) {
                     final parsed = int.tryParse(value.trim());

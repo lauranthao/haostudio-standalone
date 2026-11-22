@@ -280,15 +280,11 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
           children: [
             Text('歌手详情加载失败', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            ElevatedButton(
+            FilledButton(
               onPressed: () {
                 setState(() => _loading = true);
                 _load();
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
               child: const Text('重试'),
             ),
           ],
@@ -331,7 +327,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
 
   Widget _albumRow(HaoTheme theme, AlbumSummary album) {
     return GlassCard(
-      radius: 16,
+      radius: HaoRadius.large,
       padding: const EdgeInsets.symmetric(vertical: 4),
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: Material(

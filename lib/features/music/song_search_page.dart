@@ -173,7 +173,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: GlassCard(
-                    radius: 14,
+                    radius: HaoRadius.sheet,
                     padding: EdgeInsets.zero,
                     shadow: GlassShadow.none,
                     child: Material(
@@ -939,7 +939,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   if (i >= _playlists.length) return _pendingFooter(theme);
                   final p = _playlists[i];
                   return GlassCard(
-                    radius: 16,
+                    radius: HaoRadius.large,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                     child: Material(
@@ -1033,7 +1033,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                   if (i >= _artists.length) return _pendingFooter(theme);
                   final a = _artists[i];
                   return GlassCard(
-                    radius: 16,
+                    radius: HaoRadius.large,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                     child: Material(
@@ -1121,7 +1121,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                       ? '${a.artist} · ${a.year}年'
                       : a.artist;
                   return GlassCard(
-                    radius: 16,
+                    radius: HaoRadius.large,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                     child: Material(

@@ -253,15 +253,11 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                         style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                       ),
                       const SizedBox(height: 12),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: () {
                           setState(() => _loading = true);
                           _load();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.accent,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                        ),
                         child: const Text('重试'),
                       ),
                     ],

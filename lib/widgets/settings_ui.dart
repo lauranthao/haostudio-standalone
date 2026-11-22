@@ -6,12 +6,166 @@
 // black alpha (a shadow, not a surface colour) and is lighter in light
 // mode so it never muddies a light glass card.
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/theme/glass.dart';
 
+import '../core/theme/hao_radius.dart';
 import '../core/theme/hao_themes.dart';
 import 'hao_inset_grouped.dart';
+import 'hao_pressable.dart';
+
+/// Borderless input decoration for grouped-list form rows (iOS
+/// Settings style: the row IS the field — label left, value right,
+/// no pill, no outline).
+///
+/// Why this exists instead of [InputDecoration.collapsed]: collapsed
+/// only sets `border = InputBorder.none` and leaves `enabledBorder`
+/// / `focusedBorder` null — [InputDecoration.applyDefaults] then
+/// fills them from the theme's `inputDecorationTheme`, whose
+/// enabled/focused borders are pill [OutlineInputBorder]s
+/// (hao_themes.dart). Every collapsed field in the app therefore
+/// rendered a pill outline (the Emby page in build 29). This
+/// decoration pins every border state to none, so the theme can
+/// never re-add a pill.
+InputDecoration haoFormFieldDecoration({
+  required String? hint,
+  TextStyle? hintStyle,
+}) =>
+    InputDecoration(
+      hintText: hint,
+      hintStyle: hintStyle,
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      focusedErrorBorder: InputBorder.none,
+      contentPadding: EdgeInsets.zero,
+      isDense: true,
+      filled: false,
+    );
+
+/// Big group title (settings page `_SectionTitle`, 2026-11-23
+/// extracted to shared): Apple Title 2, 22 semibold, primary text,
+/// padding fromLTRB(4, 0, 4, 10). One title style for every top-level
+/// group on settings-style pages — the small 13pt [HaoSectionTitle]
+/// is only for sub-headers inside a page, never for a group.
+class HaoGroupTitle extends StatelessWidget {
+  const HaoGroupTitle(this.title, {super.key});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: HaoTheme.of(context).textPrimary,
+          fontSize: 22,
+          fontWeight: FontWeight.w600,
+          shadows: HaoTheme.legibilityShadows(context),
+        ),
+      ),
+    );
+  }
+}
+
+/// One collapsible settings group (settings page
+/// `_CollapsibleSection`, 2026-11-23 extracted to shared): big
+/// [HaoGroupTitle] + animated chevron (16pt, rotates 90° when
+/// collapsed, 300ms) + [AnimatedSize] expand/collapse (300ms
+/// easeInOut). Groups are separated by 14px, rows inside a group by
+/// 12px — the caller keeps those gaps. The chevron rotation uses a
+/// plain easeOut curve (unslop motion: no bouncy overshoot on
+/// simple UI — the old easeOutBack is gone).
+class HaoCollapsibleSection extends StatelessWidget {
+  const HaoCollapsibleSection({
+    super.key,
+    required this.title,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final String title;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: HaoPressable(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
+            child: Row(
+              children: [
+                Expanded(child: HaoGroupTitle(title)),
+                AnimatedRotation(
+                  turns: expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    CupertinoIcons.chevron_down,
+                    size: 16,
+                    color: theme.textMuted.withValues(alpha: 0.8),
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ..._withGaps(children),
+                      // 6px breathing room inside the clip: the last
+                      // card's drop shadow / backdrop blur reaches
+                      // ~3px below the card; without this the ClipRect
+                      // (and AnimatedSize's own clip) cuts the shadow
+                      // exactly at the card edge and the bottom 3px
+                      // render 1-4 units off in light mode (golden
+                      // diff, invisible to the eye but real). The
+                      // inter-section gap below is 14 instead of 20,
+                      // so last-row-to-next-header stays 20 in total.
+                      const SizedBox(height: 6),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 组内行之间 12px, 和原来平铺时的行间距一致.
+  static List<Widget> _withGaps(List<Widget> rows) {
+    final out = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) out.add(const SizedBox(height: 12));
+      out.add(rows[i]);
+    }
+    return out;
+  }
+}
 
 /// Section heading: 13 / w700 / muted, with a little tracking.
 /// Same on every settings page (settings tab, danmaku, sources...).
@@ -81,9 +235,12 @@ class HaoChevron extends StatelessWidget {
 }
 
 /// One frosted-glass card: theme surface + blur + hairline border +
-/// 24pt radius (Beans `GlassCard` default cornerRadius, Components.swift)
-/// + a soft neutral shadow (stronger in dark mode, where
-/// a glass card over a near-black scaffold needs the lift to separate).
+/// [HaoRadius.panel] radius (the token scale's card step — the old
+/// literal 24 was a second card radius next to GlassCard's own
+/// default panel 20, so settings cards and every other card in the
+/// app disagreed by 4pt) + a soft neutral shadow (stronger in dark
+/// mode, where a glass card over a near-black scaffold needs the
+/// lift to separate).
 class HaoGlassCard extends StatelessWidget {
   const HaoGlassCard({
     super.key,
@@ -105,7 +262,7 @@ class HaoGlassCard extends StatelessWidget {
     return Padding(
       padding: margin ?? EdgeInsets.zero,
       child: GlassCard(
-        radius: 24,
+        radius: HaoRadius.panel,
         shadow: GlassShadow.card,
         padding: padding,
         quality: quality,

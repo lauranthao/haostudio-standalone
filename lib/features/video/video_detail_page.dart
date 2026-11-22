@@ -626,7 +626,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   decoration: BoxDecoration(
                     color: theme.surface,
                     border: Border.all(color: theme.hairline),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(HaoRadius.standard),
                   ),
                 ),
               ],
@@ -1069,10 +1069,6 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                     child: OutlinedButton(
                       onPressed: () =>
                           setState(() => _epsExpanded = true),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: theme.hairline),
-                        foregroundColor: theme.accent,
-                      ),
                       child: Text('加载更多 (${chips.length - epCap})', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     ),
                   ),
@@ -1684,12 +1680,6 @@ class _ErrorCard extends StatelessWidget {
               onPressed: onRetry,
               icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                // Theme-defined onPrimary per mode (see play button).
-                foregroundColor:
-                    Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),
