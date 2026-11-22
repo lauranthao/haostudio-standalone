@@ -108,7 +108,6 @@ import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import '../../services/music/search_platform_store.dart';
-import '../../services/music/zap.dart';
 import '../../services/music/local_music_store.dart';
 import 'artist_detail_page.dart';
 import 'charts_page.dart';
@@ -123,7 +122,6 @@ import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'plaza_page.dart';
 import 'playlist_detail_page.dart';
-import 'smart_rules_page.dart';
 import 'song_search_page.dart';
 import 'widgets/collapsible_section.dart';
 import 'widgets/empty_state.dart';
@@ -517,28 +515,6 @@ class _MusicTabPageState extends State<MusicTabPage>
     _openPlayer();
   }
 
-  /// Start Zap 快速发现 (build 29): a shuffled pool from favourites
-  /// + recent, each song playing 5 s. With nothing to discover the
-  /// same real prompt as FM is shown instead of failing silently.
-  Future<void> _startZap() async {
-    final pool = ZapPool.build(
-      favourites: MusicStore.getFavSongs(),
-      recent: MusicStore.getRecent(),
-      daily: const [],
-    );
-    if (pool.isEmpty) {
-      await _showFmEmptyPrompt(
-        title: 'Zap 快速发现',
-        body: '还没有收藏和最近播放的歌曲。先收藏几首喜欢的歌，或者听几首歌，Zap 会从这些歌出发，每首播 5 秒让你快速扫歌。',
-      );
-      return;
-    }
-    final started = await MusicPlayerController.ensure().startZap(pool);
-    if (!mounted) return;
-    if (!started) return;
-    _openPlayer();
-  }
-
   Future<void> _showFmEmptyPrompt({
     required String title,
     required String body,
@@ -821,20 +797,6 @@ class _MusicTabPageState extends State<MusicTabPage>
         gradient: const [Color(0xFFD96114), Color(0xFFFA9433)],
         cover: _reportFirstCover(),
         onTap: () => _push(const ListenReportPage()),
-      ),
-      // Build 29: Zap 快速发现 (each song 5 s) + 智能歌单 (local
-      // rules). Blue / teal gradients — no purple anywhere.
-      _FeatureTile(
-        icon: Icons.bolt,
-        title: 'Zap 发现',
-        gradient: const [Color(0xFF0E7490), Color(0xFF22D3EE)],
-        onTap: () => unawaited(_startZap()),
-      ),
-      _FeatureTile(
-        icon: Icons.auto_awesome,
-        title: '智能歌单',
-        gradient: const [Color(0xFFB45309), Color(0xFFFBBF24)],
-        onTap: () => _push(const SmartRulesPage()),
       ),
     ];
     return SingleChildScrollView(

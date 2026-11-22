@@ -2,8 +2,8 @@
 //
 // The `···` more sheet ran past one screen on chen's phone (sleep
 // timer at y=1195, cancel at y=1324 on a 912pt viewport) and the
-// speed-preset Row overflowed by 60px. The six adjustment controls
-// (speed / A-B loop / lyric offset / translation / fade / Zap) moved
+// speed-preset Row overflowed by 60px. The five adjustment controls
+// (speed / A-B loop / lyric offset / translation / fade) moved
 // one tap deeper into the 播放设置 sub-sheet; the `···` sheet keeps
 // only actions and fits first screen. These tests nail that down:
 // rows reachable without scrolling, presets never overflow, preset
@@ -116,7 +116,6 @@ void main() {
       '歌词偏移',
       '歌词翻译',
       '淡入淡出',
-      'Zap 快速发现',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
     }

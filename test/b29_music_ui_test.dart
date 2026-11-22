@@ -2,9 +2,6 @@
 //
 // - Equalizer page: the AutoEq section renders and tapping a
 //   headphone preset applies its gains through the real store.
-// - Smart Rules page: the five rules render with live counts from
-//   local data (2 seeded favourites -> 4 rules with 2 songs, the
-//   listen-log-only rule with 0 and disabled).
 //
 // Hive uses the shared test setup (temp dir + path_provider mock);
 // the equalizer method channel is mocked (no native engine on
@@ -20,11 +17,8 @@ import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/music/equalizer_page.dart';
-import 'package:standalone/features/music/smart_rules_page.dart';
 import 'package:standalone/services/music/autoeq_presets.dart';
 import 'package:standalone/services/music/equalizer_store.dart';
-import 'package:standalone/services/music/music_models.dart';
-import 'package:standalone/services/music/music_store.dart';
 
 import 'helpers/hive_test_setup.dart';
 
@@ -120,40 +114,4 @@ void main() {
     await drainHiveWrites(tester);
   });
 
-  testWidgets('Smart Rules page shows live counts', (tester) async {
-    // Hive does real disk I/O: a box.put awaited directly in the
-    // fake-async zone never resolves (see helpers/hive_test_setup.dart
-    // — the same reason settle/drainHiveWrites use runAsync). The
-    // probe run pinned the hang to the first toggleFav below (the
-    // runAsync probe put just before it completed fine). So the
-    // writes go through the real zone; the page itself only reads
-    // (sync box.get), so it pumps normally.
-    await tester.runAsync(
-      () => MusicStore.toggleFav(
-        Song(songId: '1', title: '歌一', artist: '周杰伦', platform: MusicPlatform.wy),
-      ),
-    );
-    await tester.runAsync(
-      () => MusicStore.toggleFav(
-        Song(songId: '2', title: '歌二', artist: '周杰伦', platform: MusicPlatform.wy),
-      ),
-    );
-
-    await pumpPage(tester, const SmartRulesPage());
-
-    expect(find.text('智能歌单'), findsOneWidget);
-    for (final title in [
-      '最近常听的收藏',
-      '收藏里好久没听',
-      '同艺人深挖',
-      '今日混搭',
-    ]) {
-      expect(find.text(title), findsOneWidget);
-    }
-    expect(find.text('好久没听的老歌'), findsOneWidget);
-    // 2 favourites, no listen log: 4 rules build 2-song queues,
-    // the listen-log-only rule builds 0 and is disabled.
-    expect(find.text('2 首'), findsNWidgets(4));
-    expect(find.text('0 首'), findsOneWidget);
-  });
 }

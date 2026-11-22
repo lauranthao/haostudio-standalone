@@ -53,7 +53,6 @@ import '../../services/music/music_store.dart';
 import '../../services/music/play_mode.dart';
 import '../../services/music/sleep_timer.dart';
 import '../../services/music/volume_fader.dart';
-import '../../services/music/zap.dart';
 import '../../widgets/hao_toast.dart';
 
 const Duration _crossfadeDuration = Duration(milliseconds: 2500);
@@ -141,14 +140,6 @@ class MusicPlayerController extends GetxController
   final MultiQueueStore queueMemory = MultiQueueStore();
   var _currentSourceKey = '';
 
-  /// Zap 快速发现 (build 29): each song plays [ZapPool.previewSeconds]
-  /// then the controller cuts to the next song in the pool.
-  final RxBool zapActive = false.obs;
-  Timer? _zapTimer;
-
-  /// True while Zap itself is driving a playQueue/playIndex call:
-  /// those calls must not stop the Zap session they belong to.
-  var _zapInternal = false;
   /// Lyrics live BEHIND the cover (chen 2026-11-17): the cover box is
   /// two-sided — front = cover, back = lyrics. `true` = lyrics side
   /// showing, `false` = cover side. Default cover (lyrics are behind).
@@ -628,7 +619,6 @@ class MusicPlayerController extends GetxController
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
     _sleepFadeTimer?.cancel();
-    _zapTimer?.cancel();
     // Persist the per-source queue memory (build 29): the in-memory
     // map is updated on every track change, the Hive write happens
     // here and on source switches only — not per track.
@@ -943,9 +933,6 @@ class MusicPlayerController extends GetxController
       );
       unawaited(queueMemory.save());
     }
-    // A manual queue switch ends a Zap session (unless Zap itself
-    // is driving this call — see [_zapInternal]).
-    if (zapActive.value && !_zapInternal) stopZap();
     var playIdx = index;
     if (sourceKey.isNotEmpty) {
       if (resumeFromMemory) {
@@ -1386,10 +1373,6 @@ class MusicPlayerController extends GetxController
       );
     }
     _prefetchNext();
-    // Zap (build 29): every landed track gets a fresh 5 s preview
-    // window — the timer restarts here, not at session start, so a
-    // slow resolve does not eat the preview.
-    _scheduleZapTimer();
   }
 
   /// Process a real-duration event stashed during the open's own
@@ -2271,7 +2254,7 @@ class MusicPlayerController extends GetxController
   /// Back-compat alias: the old two-mode toggle is now the five-mode cycle.
   Future<void> togglePlayMode() => cyclePlayMode();
 
-  // -- fade / A-B loop / lyric display / Zap (build 29) ---------------------
+  // -- fade / A-B loop / lyric display (build 29) ---------------------
 
   /// Turn fade in/out on/off (persisted; default on). Takes effect
   /// from the next pause / open — the sounding track never jumps.
@@ -2317,73 +2300,6 @@ class MusicPlayerController extends GetxController
     try {
       await HiveStore.put('hao_music_lyric_show_translation', value);
     } catch (_) {}
-  }
-
-  /// Start a Zap session over [pool] (already shuffled): play the
-  /// first song, then cut to the next one every 5 s until the pool
-  /// ends. Returns false when the pool is empty. A manual queue
-  /// switch (playQueue from another source) ends the session.
-  Future<bool> startZap(List<Song> pool) async {
-    if (pool.isEmpty) return false;
-    if (zapActive.value) stopZap();
-    _zapInternal = true;
-    try {
-      await playQueue(pool, 0, label: 'Zap 快速发现', sourceKey: QueueSource.zap);
-    } finally {
-      _zapInternal = false;
-    }
-    zapActive.value = true;
-    _scheduleZapTimer();
-    return true;
-  }
-
-  /// Start Zap from the local library (favourites + recent). Used
-  /// by the `···` sheet toggle. Returns false when there is nothing
-  /// to discover yet (no favourites, no recent plays).
-  Future<bool> startZapFromLibrary() async {
-    final pool = ZapPool.build(
-      favourites: MusicStore.getFavSongs(),
-      recent: MusicStore.getRecent(),
-      daily: const [],
-    );
-    return startZap(pool);
-  }
-
-  /// Stop the Zap session (the queue keeps playing as a normal
-  /// queue — stopping Zap never stops the music).
-  void stopZap() {
-    _zapTimer?.cancel();
-    _zapTimer = null;
-    zapActive.value = false;
-  }
-
-  /// (Re)start the 5 s preview timer after a track lands. A no-op
-  /// when Zap is not active.
-  void _scheduleZapTimer() {
-    _zapTimer?.cancel();
-    _zapTimer = null;
-    if (!zapActive.value || _disposed) return;
-    _zapTimer = Timer(
-      Duration(seconds: ZapPool.previewSeconds),
-      _zapAdvance,
-    );
-  }
-
-  /// Cut to the next song in the Zap pool, or end the session at
-  /// the pool's end (with a notice — the music keeps playing).
-  void _zapAdvance() {
-    if (!zapActive.value || _disposed) return;
-    if (queue.isEmpty || currentIndex.value + 1 >= queue.length) {
-      stopZap();
-      _notice('Zap 播完了，继续听当前队列');
-      return;
-    }
-    _zapInternal = true;
-    unawaited(
-      playIndex(currentIndex.value + 1).whenComplete(() {
-        _zapInternal = false;
-      }),
-    );
   }
 
   // -- sleep timer (M-P0-3) -----------------------------------------------------
