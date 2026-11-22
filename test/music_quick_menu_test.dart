@@ -178,8 +178,8 @@ void main() {
       expect(y('歌曲信息'), lessThan(y('列表')));
       expect(y('列表'), lessThan(y('播放列表')));
       // Every item still present (regrouping moved, never removed).
-      // The six adjustment blocks (speed / A-B / lyric offset /
-      // translation / fade / Zap) moved one tap deeper into the
+      // The five adjustment blocks (speed / A-B / lyric offset /
+      // translation / fade) moved one tap deeper into the
       // 播放设置 sub-sheet (build-29 regression fix: the `···` sheet
       // overflowed past one screen); the 播放 section keeps one
       // 播放设置 row that opens them. The play-mode row shows the
@@ -201,14 +201,7 @@ void main() {
       await tester.tap(find.text('播放设置'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
-      for (final item in [
-        '倍速',
-        'A-B 循环',
-        '歌词偏移',
-        '歌词翻译',
-        '淡入淡出',
-        'Zap 快速发现',
-      ]) {
+      for (final item in ['倍速', 'A-B 循环', '歌词偏移', '歌词翻译', '淡入淡出']) {
         expect(find.text(item), findsOneWidget, reason: item);
       }
       // Back to the more sheet (the sub-sheet's 取消 is the topmost).

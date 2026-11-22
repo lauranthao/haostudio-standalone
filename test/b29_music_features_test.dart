@@ -1,25 +1,22 @@
 // Build-29 music features — pure-logic tests (no native audio, no
 // network, no Hive init: every test here runs on plain Dart data).
 //
-// Coverage map (12 items):
+// Coverage map (10 items):
 // 1. 变速不变调 — clampSpeed 0.5..2.0 + speedPresets (the pitch half
 //    is native: UriAudioSource.m:95 pins AVAudioTimePitchAlgorithmTimeDomain).
 // 2. 淡入淡出 — VolumeFader gain math + ramp + cancel; the resume
 //    fade-in seam (no players -> no-op, never throws).
-// 3+12. 多队列 / 按专辑分组队列 — MultiQueueStore remember/resume.
+// 3+10. 多队列 / 按专辑分组队列 — MultiQueueStore remember/resume.
 // 4. A-B 循环 — AbLoop.
 // 5. 歌词偏移/翻译 — LyricDisplay (逐字: no word timing in any
 //    source — live probe 2026-11-22, see lyric_tools.dart).
-// 6. Smart Rules — SmartRules.build, all five rules.
-// 7. 每日一 Pick — DailyService.pickOfDay determinism.
-// 8. Zap — ZapPool build + nextIndex.
-// 9. 年度回顾 — YearReview.compute.
-// 10. 播放缓存 — PlaybackCache file naming + prune + clear.
-// 11. AutoEq — preset tables (Crossfeed: needs native tap DSP, not
+// 6. 每日一 Pick — DailyService.pickOfDay determinism.
+// 7. 年度回顾 — YearReview.compute.
+// 8. 播放缓存 — PlaybackCache file naming + prune + clear.
+// 9. AutoEq — preset tables (Crossfeed: needs native tap DSP, not
 //    built — see autoeq_presets.dart).
 
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
@@ -30,10 +27,8 @@ import 'package:standalone/services/music/lyric_tools.dart';
 import 'package:standalone/services/music/multi_queue_store.dart';
 import 'package:standalone/services/music/music_models.dart';
 import 'package:standalone/services/music/playback_cache.dart';
-import 'package:standalone/services/music/smart_rules.dart';
 import 'package:standalone/services/music/volume_fader.dart';
 import 'package:standalone/services/music/year_review.dart';
-import 'package:standalone/services/music/zap.dart';
 
 Song song(
   String id,
@@ -135,7 +130,7 @@ void main() {
     });
   });
 
-  group('3+12. 多队列 / 按专辑分组队列', () {
+  group('3+10. 多队列 / 按专辑分组队列', () {
     test('remember + resumeIndexFor returns the saved index', () {
       final store = MultiQueueStore();
       final songs = [song('1', 'A'), song('2', 'B'), song('3', 'C')];
@@ -302,134 +297,7 @@ void main() {
     });
   });
 
-  group('6. Smart Rules', () {
-    final now = DateTime(2026, 11, 22, 12);
-    final nowMs = now.millisecondsSinceEpoch;
-    final dayMs = 86400000;
-    final favs = [
-      song('1', '常听一', artist: '周杰伦'),
-      song('2', '常听二', artist: '周杰伦'),
-      song('3', '冷门', artist: '陈奕迅'),
-    ];
-    final recent = [song('4', '最近', artist: '林俊杰')];
-    List<ListenEvent> logFor(Map<String, int> plays, {int? lastAt}) {
-      final out = <ListenEvent>[];
-      plays.forEach((id, n) {
-        for (var i = 0; i < n; i++) {
-          out.add(
-            ev(
-              id,
-              't$id',
-              artist: id == '1' || id == '2' ? '周杰伦' : '陈奕迅',
-              at: lastAt ?? nowMs,
-            ),
-          );
-        }
-      });
-      return out;
-    }
-
-    test('recentFavourites sorts by play count', () {
-      final out = SmartRules.build(
-        SmartRule.recentFavourites,
-        favourites: favs,
-        recent: recent,
-        listenLog: logFor({'1': 5, '2': 2}),
-        now: now,
-      );
-      expect(out.map((s) => s.songId), ['1', '2']);
-    });
-
-    test('recentFavourites falls back to all favourites', () {
-      final out = SmartRules.build(
-        SmartRule.recentFavourites,
-        favourites: favs,
-        recent: recent,
-        listenLog: const [],
-        now: now,
-      );
-      expect(out.length, 3);
-    });
-
-    test('unplayedFavourites keeps only unplayed / stale songs', () {
-      final out = SmartRules.build(
-        SmartRule.unplayedFavourites,
-        favourites: favs,
-        recent: recent,
-        listenLog: logFor({'1': 3}),
-        now: now,
-      );
-      expect(out.map((s) => s.songId), containsAll(['2', '3']));
-      expect(out.map((s) => s.songId), isNot(contains('1')));
-    });
-
-    test('sameArtistDeepDive picks the top artist pool', () {
-      final diveFavs = [
-        song('1', '常听一', artist: '周杰伦'),
-        song('2', '常听二', artist: '周杰伦'),
-        song('5', '常听三', artist: '周杰伦'),
-        song('3', '冷门', artist: '陈奕迅'),
-      ];
-      final out = SmartRules.build(
-        SmartRule.sameArtistDeepDive,
-        favourites: diveFavs,
-        recent: recent,
-        listenLog: logFor({'1': 9, '3': 1}),
-        now: now,
-      );
-      expect(out.map((s) => s.songId), ['1', '2', '5']);
-    });
-
-    test('sameArtistDeepDive falls back when the pool is too thin', () {
-      final out = SmartRules.build(
-        SmartRule.sameArtistDeepDive,
-        favourites: favs,
-        recent: recent,
-        listenLog: logFor({'1': 9, '3': 1}),
-        now: now,
-      );
-      // Only 2 songs by the top artist: falls back to the
-      // most-played favourites instead of a 2-song "dive".
-      expect(out.map((s) => s.songId), ['1', '3']);
-    });
-
-    test('longUnplayed returns oldest-heard first, 30d+ only', () {
-      final log = [
-        ev('old', '老', at: nowMs - 60 * dayMs),
-        ev('mid', '中', at: nowMs - 40 * dayMs),
-        ev('new', '新', at: nowMs - 5 * dayMs),
-      ];
-      final out = SmartRules.build(
-        SmartRule.longUnplayed,
-        favourites: const [],
-        recent: const [],
-        listenLog: log,
-        now: now,
-      );
-      expect(out.map((s) => s.songId), ['old', 'mid']);
-    });
-
-    test('dailyMix is deterministic per day, deduped', () {
-      final a = SmartRules.build(
-        SmartRule.dailyMix,
-        favourites: favs,
-        recent: recent,
-        listenLog: const [],
-        now: now,
-      );
-      final b = SmartRules.build(
-        SmartRule.dailyMix,
-        favourites: favs,
-        recent: recent,
-        listenLog: const [],
-        now: now,
-      );
-      expect(a.map((s) => s.songId), b.map((s) => s.songId));
-      expect(a.map((s) => s.songId).toSet().length, a.length);
-    });
-  });
-
-  group('7. 每日一 Pick', () {
+  group('6. 每日一 Pick', () {
     test('null on an empty list', () {
       expect(DailyService.pickOfDay(const []), isNull);
     });
@@ -457,40 +325,7 @@ void main() {
     });
   });
 
-  group('8. Zap 快速发现', () {
-    test('pool dedupes and caps at 30', () {
-      final pool = ZapPool.build(
-        favourites: [song('1', 'A'), song('2', 'B')],
-        recent: [song('2', 'B'), song('3', 'C')],
-        daily: List.generate(40, (i) => song('d$i', 'D$i')),
-      );
-      expect(pool.length, ZapPool.maxPool);
-      expect(pool.map((s) => s.identityKey).toSet().length, pool.length);
-    });
-
-    test('preview is 5 seconds', () {
-      expect(ZapPool.previewSeconds, 5);
-    });
-
-    test('nextIndex never repeats the current song when possible', () {
-      final rng = Random(42);
-      for (var i = 0; i < 50; i++) {
-        final next = ZapPool.nextIndex(
-          current: 3,
-          length: 10,
-          random: rng,
-        );
-        expect(next, isNot(3));
-        expect(next, inInclusiveRange(0, 9));
-      }
-    });
-
-    test('nextIndex on a one-song pool returns 0', () {
-      expect(ZapPool.nextIndex(current: 0, length: 1), 0);
-    });
-  });
-
-  group('9. 年度回顾', () {
+  group('7. 年度回顾', () {
     test('totals, monthly split, top month, days listened', () {
       final y2026 = DateTime(2026, 3, 5).millisecondsSinceEpoch;
       final y2026b = DateTime(2026, 3, 6).millisecondsSinceEpoch;
@@ -523,7 +358,7 @@ void main() {
     });
   });
 
-  group('10. 播放缓存', () {
+  group('8. 播放缓存', () {
     late Directory tmp;
 
     setUp(() async {
@@ -578,7 +413,7 @@ void main() {
     });
   });
 
-  group('11. AutoEq 预设库', () {
+  group('9. AutoEq 预设库', () {
     test('8 presets, 10 gains each, within ±12 dB, unique ids', () {
       expect(kAutoEqPresets.length, 8);
       final ids = <String>{};
@@ -595,12 +430,6 @@ void main() {
   });
 
   group('controller seams', () {
-    test('startZap with an empty pool returns false', () async {
-      final c = MusicPlayerController();
-      expect(await c.startZap(const []), isFalse);
-      expect(c.zapActive.value, isFalse);
-    });
-
     test('A-B loop methods drive the loop state', () {
       final c = MusicPlayerController();
       c.position.value = const Duration(seconds: 30);

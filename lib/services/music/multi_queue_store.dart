@@ -28,8 +28,6 @@ class QueueSource {
   static String artist(String name) => 'artist:${name.trim()}';
   static String daily(String dayKey) => 'daily:$dayKey';
   static const String favourites = 'favs';
-  static const String smartRule = 'smart';
-  static const String zap = 'zap';
 }
 
 /// One remembered queue: the songs (full Song JSON) + the index that

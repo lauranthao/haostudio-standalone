@@ -161,10 +161,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   late bool _vodSpoilerHideSynopsis;
   late bool _vodSpoilerBlurUnwatched;
   late bool _vodAudioOnly;
-  // 1.1.6 music row: loudness normalisation (default off).
-  // Strength (0..2, default 1) is handled inside the player by
-  // the music group — no row here.
+  // 1.1.6 music rows: loudness normalisation (default off) +
+  // strength picker below it (0 = 轻度, 1 = 标准, 2 = 强力,
+  // default 1). The value persists in Hive and is pushed to
+  // the live controller, same as the switch.
   late bool _musicNormalizationEnabled;
+  late int _musicNormalizationStrength;
   late bool _hapticsOn;
   late AudioQuality _quality;
   int? _sourceCount;
@@ -234,6 +236,10 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     _vodAudioOnly = vodAudioOnlyDefault();
     _musicNormalizationEnabled =
         HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false);
+    _musicNormalizationStrength = HiveStore.getInt(
+      HiveKeys.musicNormalizationStrength,
+      1,
+    ).clamp(0, 2);
     _hapticsOn = HaoHaptics.enabled;
     _quality = MusicStore.quality;
     _loadSourceCount();
@@ -753,6 +759,52 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             await _player.setNormalizationEnabled(value);
           } catch (_) {}
         },
+      ),
+      // 1.1.6: normalisation strength — 轻度 / 标准 / 强力
+      // (max cut 3 / 6 / 12 dB). Same Hive key + live-controller
+      // push as the switch above; the value persists even while
+      // the switch is off, so it can be picked first and applies
+      // from the next track load once normalisation is on.
+      _BeansRow(
+        icon: Icons.tune,
+        title: '归一化强度',
+        trailing: CupertinoSlidingSegmentedControl<int>(
+          groupValue: _musicNormalizationStrength,
+          backgroundColor:
+              HaoTheme.of(context).textMuted.withValues(alpha: 0.18),
+          thumbColor: HaoTheme.of(context).accentSoft,
+          onValueChanged: (value) async {
+            if (value == null || value == _musicNormalizationStrength) {
+              return;
+            }
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.musicNormalizationStrength, value);
+            setState(() => _musicNormalizationStrength = value);
+            try {
+              await _player.setNormalizationStrength(value);
+            } catch (_) {}
+          },
+          children: {
+            for (final entry in const {0: '轻度', 1: '标准', 2: '强力'}.entries)
+              entry.key: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 6,
+                ),
+                child: Text(
+                  entry.value,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _musicNormalizationStrength == entry.key
+                        ? HaoTheme.of(context).accent
+                        : HaoTheme.of(context).textSecondary,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+              ),
+          },
+        ),
       ),
     ];
   }

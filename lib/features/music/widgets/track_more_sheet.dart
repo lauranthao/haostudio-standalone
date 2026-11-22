@@ -9,7 +9,7 @@
 // offline playback, M-P0-5), 播放设置 (one tap deeper: 倍速 slider
 // 0.5–2.0× + presets (M-P0-2, build 29: was 0.6–2.0; pitch stays
 // correct — native TimeDomain algorithm), A-B 循环 / 歌词偏移 /
-// 翻译显隐 / 淡入淡出 / Zap 开关 — the adjustments moved out because
+// 翻译显隐 / 淡入淡出 — the adjustments moved out because
 // the sheet ran past one screen), 取消.
 // There is NO 分享 (share) button in this sheet. Tapping 播放列表 closes
 // the sheet and opens the floating queue panel above the player (Apple
@@ -610,7 +610,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
 
 /// Playback settings sub-sheet (build 29): the adjustment controls
 /// that used to live inline in the `···` sheet — speed slider +
-/// presets, A-B loop, lyric offset, translation, fade, Zap. With
+/// presets, A-B loop, lyric offset, translation, fade. With
 /// them inline the `···` sheet ran past one screen on chen's phone
 /// (sleep timer + cancel below the fold), so adjustments live one
 /// tap deeper here; the `···` sheet keeps only actions and fits
@@ -908,30 +908,6 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                       unawaited(controller.setFadeEnabled(v)),
                   activeColor: theme.accent,
                   semanticsLabel: '淡入淡出',
-                ),
-              ),
-            ),
-            // Zap 快速发现 (build 29): every song plays 5 s, then
-            // cuts to the next one. Off = normal queue playback.
-            Obx(
-              () => ListTile(
-                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bolt, color: theme.textPrimary),
-                title: Text('Zap 快速发现', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-                subtitle: Text(
-                  '每首播 5 秒试听，快速扫歌',
-                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 12),
-                ),
-                trailing: HaoNativeSwitch(
-                  value: controller.zapActive.value,
-                  onChanged: (v) async {
-                    if (v) {
-                      await controller.startZapFromLibrary();
-                    } else {
-                      controller.stopZap();
-                    }
-                  },
-                  activeColor: theme.accent,
-                  semanticsLabel: 'Zap 快速发现',
                 ),
               ),
             ),

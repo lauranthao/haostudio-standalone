@@ -21,6 +21,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
+import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/settings/app_log_page.dart';
 import 'package:standalone/features/settings/settings_tab_page.dart';
 import 'package:standalone/widgets/native_switch.dart';
@@ -761,6 +762,34 @@ void main() {
     await tapRowSwitch(tester, '音量归一化');
     expect(HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false),
         isTrue);
+  });
+
+  testWidgets('normalisation strength picker defaults to 标准 and persists', (
+    tester,
+  ) async {
+    await HiveStore.box.delete(HiveKeys.musicNormalizationStrength);
+    await pumpPage(tester);
+
+    expect(find.text('归一化强度'), findsOneWidget);
+    final segmented = find.byType(CupertinoSlidingSegmentedControl<int>);
+    expect(segmented, findsOneWidget);
+    expect(
+      tester
+          .widget<CupertinoSlidingSegmentedControl<int>>(segmented)
+          .groupValue,
+      1,
+    );
+
+    await tester.tap(find.text('强力'));
+    await tester.pumpAndSettle();
+    expect(HiveStore.getInt(HiveKeys.musicNormalizationStrength, 1), 2);
+    expect(MusicPlayerController.ensure().normalizationStrength.value, 2);
+    expect(
+      tester
+          .widget<CupertinoSlidingSegmentedControl<int>>(segmented)
+          .groupValue,
+      2,
+    );
   });
 
   testWidgets('日志 row opens the app log page', (tester) async {
