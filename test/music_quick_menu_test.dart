@@ -98,11 +98,32 @@ void main() {
   }
 
   group('song quick menu (Beans context menu)', () {
+    // b30 iOS: long-press now opens the native CupertinoContextMenu
+    // （播放 / 收藏 / 更多…); 更多… opens the Beans quick menu
+    // sheet with the four frequent actions, one tap away.
+    // NOTE: CupertinoContextMenu needs an 800ms press (its decoy
+    // animation) — tester.longPress only holds 500ms, so hold the
+    // pointer manually, framework-test style (pump, 400ms, 800ms).
+    Future<void> openBeansMenu(WidgetTester tester) async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(SongRow)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.text('播放'), findsOneWidget);
+      expect(find.text('更多…'), findsOneWidget);
+      await tester.tap(find.text('更多…'));
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('long-press shows the four frequent actions', (tester) async {
       // Song C is not in the queue and not current: 立即播放 shows.
       await pumpRow(tester, rowSong: _song('c', 'Song C'));
-      await tester.longPress(find.byType(SongRow));
-      await tester.pump();
+      await openBeansMenu(tester);
       expect(find.text('下一首播放'), findsOneWidget);
       expect(find.text('下载'), findsOneWidget);
       expect(find.text('立即播放'), findsOneWidget);
@@ -111,15 +132,14 @@ void main() {
 
     testWidgets('current song hides 立即播放', (tester) async {
       await pumpRow(tester, rowSong: _song('a', 'Song A'));
-      await tester.longPress(find.byType(SongRow));
-      await tester.pump();
+      await openBeansMenu(tester);
       expect(find.text('下一首播放'), findsOneWidget);
       expect(find.text('立即播放'), findsNothing);
     });
 
     testWidgets('tap 下一首播放 inserts after current + snackbar', (tester) async {
       final c = await pumpRow(tester, rowSong: _song('c', 'Song C'));
-      await tester.longPress(find.byType(SongRow));
+      await openBeansMenu(tester);
       // The popup entrance animation (~250 ms) starts the menu
       // off-screen; wait for it before tapping.
       await tester.pump(const Duration(milliseconds: 300));

@@ -292,33 +292,56 @@ class SongRow extends StatelessWidget {
   /// the existing quick menu sheet — the full controls (speed,
   /// lyric offset, download) stay there, one tap away. Rows with
   /// no [onLongPress] have no menu, exactly as before.
+  ///
+  /// The preview must be width-pinned: CupertinoContextMenu lays
+  /// the preview out under unbounded width (FittedBox), and the
+  /// row's Expanded title/artist would throw during layout
+  /// ("RenderFlex children have non-zero flex but incoming width
+  /// constraints are unbounded") — on a real phone the menu would
+  /// open broken. LayoutBuilder gives the row its list width.
   Widget _withContextMenu(BuildContext context, Widget content) {
     if (onLongPress == null) return content;
-    return CupertinoContextMenu(
-      actions: [
-        CupertinoContextMenuAction(
-          child: const Text('播放'),
-          onPressed: () {
-            Navigator.of(context).pop();
-            onPlay();
-          },
-        ),
-        CupertinoContextMenuAction(
-          child: Text(isFav ? '取消收藏' : '收藏'),
-          onPressed: () {
-            Navigator.of(context).pop();
-            onToggleFav();
-          },
-        ),
-        CupertinoContextMenuAction(
-          child: const Text('更多…'),
-          onPressed: () {
-            Navigator.of(context).pop();
-            onLongPress!(context);
-          },
-        ),
-      ],
-      child: content,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width - 32;
+        return CupertinoContextMenu(
+          actions: [
+            CupertinoContextMenuAction(
+              child: const Text('播放'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                onPlay();
+              },
+            ),
+            CupertinoContextMenuAction(
+              child: Text(isFav ? '取消收藏' : '收藏'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                onToggleFav();
+              },
+            ),
+            CupertinoContextMenuAction(
+              child: const Text('更多…'),
+              // Pop first, open the sheet AFTER the menu route is
+              // fully gone: popping and pushing in the same frame
+              // leaves the menu's duplicate row in the semantics
+              // tree while the sheet builds, and the framework
+              // throws in flushSemantics. The 350ms covers the
+              // menu's close animation; the sheet then rises as
+              // the menu finishes shrinking away (Apple Music
+              // behaves the same way).
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await Future.delayed(const Duration(milliseconds: 350));
+                onLongPress!(context);
+              },
+            ),
+          ],
+          child: SizedBox(width: width, child: content),
+        );
+      },
     );
   }
 }
