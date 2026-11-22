@@ -1,5 +1,7 @@
-// Settings page: six collapsible groups + About at the bottom
-// (build 29 B组, chen 2026-11-22 “设置里面要可以收放啊”).
+// Settings page: seven collapsible groups + About at the bottom
+// (build 29 B组, chen 2026-11-22 “设置里面要可以收放啊”; build 30
+// adds the 直播 group: 弹幕设置 moved out of 影视播放, plus the
+// 移动网自动降档 row that previously had no settings entry).
 //
 // - Every group header taps to collapse/expand (Cupertino chevron_down,
 //   AnimatedSize body); state persists per group in Hive
@@ -19,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/storage/hive_store.dart';
+import 'package:standalone/domains/live/live_network_quality.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/settings/app_log_page.dart';
@@ -64,6 +67,7 @@ void main() {
   const sectionKeys = [
     'settingsSectionExpanded_appearance',
     'settingsSectionExpanded_music',
+    'settingsSectionExpanded_live',
     'settingsSectionExpanded_video',
     'settingsSectionExpanded_sources',
     'settingsSectionExpanded_data',
@@ -146,7 +150,7 @@ void main() {
     expect(find.text('播放器引擎'), findsNothing);
     expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
     expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
-    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(6));
+    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(7));
     // G-设置 (Wave 2): iOS settings-style rows with a trailing
     // checkmark — no Material RadioListTile left on the page.
     expect(find.byType(RadioListTile<String>), findsNothing);
@@ -178,13 +182,13 @@ void main() {
     );
   });
 
-  testWidgets('six groups in order, old group names gone',
+  testWidgets('seven groups in order, old group names gone',
       (tester) async {
     await clearSectionStates();
     await pumpPage(tester);
 
     final tops = [
-      for (final title in ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'])
+      for (final title in ['外观', '音乐播放', '直播', '影视播放', '源管理', '数据', '关于'])
         tester.getTopLeft(find.text(title)).dy,
     ];
     for (var i = 1; i < tops.length; i++) {
@@ -197,7 +201,7 @@ void main() {
     expect(find.text('播放与缓存'), findsNothing);
   });
 
-  testWidgets('all six groups are expanded by default',
+  testWidgets('all seven groups are expanded by default',
       (tester) async {
     await clearSectionStates();
     await pumpPage(tester);
@@ -205,12 +209,13 @@ void main() {
     // One representative row per group, all visible with no tap.
     expect(find.text('壁纸'), findsOneWidget);
     expect(find.text('音量归一化'), findsOneWidget);
+    expect(find.text('移动网自动降档'), findsOneWidget);
     expect(find.text('Anime4K 超分'), findsOneWidget);
     expect(find.text('音源管理'), findsOneWidget);
     expect(find.text('导出备份'), findsOneWidget);
     expect(find.text('版本'), findsOneWidget);
-    // Six headers, six chevrons.
-    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(6));
+    // Seven headers, seven chevrons.
+    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(7));
   });
 
   testWidgets('tapping a group header collapses it and persists',
@@ -269,7 +274,7 @@ void main() {
     await clearSectionStates();
     await pumpPage(tester);
 
-    const groups = ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'];
+    const groups = ['外观', '音乐播放', '直播', '影视播放', '源管理', '数据', '关于'];
     for (final group in groups) {
       await tapSectionHeader(tester, group);
     }
@@ -297,31 +302,31 @@ void main() {
     await pumpPage(tester);
 
     // One AnimatedRotation per group header, in page order
-    // (appearance, music, video, sources, data, about); expanded
+    // (appearance, music, live, video, sources, data, about); expanded
     // = 0 turns, so chevron_down points down.
     final rotations = find.byType(AnimatedRotation);
-    expect(rotations, findsNWidgets(6));
-    for (var i = 0; i < 6; i++) {
+    expect(rotations, findsNWidgets(7));
+    for (var i = 0; i < 7; i++) {
       expect(tester.widget<AnimatedRotation>(rotations.at(i)).turns, 0);
     }
 
-    // Collapse 数据 (index 4): only its chevron rotates -0.25 turns
-    // (chevron_down turns to point right); the other five stay down.
+    // Collapse 数据 (index 5): only its chevron rotates -0.25 turns
+    // (chevron_down turns to point right); the other six stay down.
     await tapSectionHeader(tester, '数据');
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 7; i++) {
       expect(
         tester.widget<AnimatedRotation>(rotations.at(i)).turns,
-        i == 4 ? -0.25 : 0,
+        i == 5 ? -0.25 : 0,
       );
     }
   });
 
-  testWidgets('toggling every group persists all six Hive keys',
+  testWidgets('toggling every group persists all seven Hive keys',
       (tester) async {
     await clearSectionStates();
     await pumpPage(tester);
 
-    const groups = ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'];
+    const groups = ['外观', '音乐播放', '直播', '影视播放', '源管理', '数据', '关于'];
     for (final group in groups) {
       await tapSectionHeader(tester, group);
     }
@@ -369,7 +374,13 @@ void main() {
       '第三方音源',
       '音量归一化',
     ];
-    // 影视播放: 3 engine radios + 12 rows.
+    // 直播：弹幕设置从影视播放组挪来；移动网自动降档此前只有
+    // 播放器内面板入口，现在有了设置页行（同一 Hive 键）。
+    const live = [
+      '弹幕设置',
+      '移动网自动降档',
+    ];
+    // 影视播放: 3 engine radios + 11 rows（弹幕设置已挪到直播组）。
     const video = [
       'MPV',
       'IJK',
@@ -385,7 +396,6 @@ void main() {
       '字幕颜色',
       '字幕位置',
       '低内存模式',
-      '弹幕设置',
     ];
     const sources = ['音源管理', '影视源管理', '直播源管理'];
     const data = ['导出备份', '导入备份', '缓存管理', '日志'];
@@ -393,6 +403,7 @@ void main() {
     for (final title in [
       ...appearance,
       ...music,
+      ...live,
       ...video,
       ...sources,
       ...data,
@@ -400,6 +411,27 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget, reason: title);
     }
+  });
+
+  testWidgets('live group: cellular downgrade row writes the shared key',
+      (tester) async {
+    await clearSectionStates();
+    // Default ON — the same default the live room reads.
+    await HiveStore.box.delete(liveCellularDowngradeKey);
+    await pumpPage(tester);
+
+    // The row lives in the 直播 group, between 音乐播放 and 影视播放.
+    final liveTop = tester.getTopLeft(find.text('直播')).dy;
+    final rowTop = tester.getTopLeft(find.text('移动网自动降档')).dy;
+    final videoTop = tester.getTopLeft(find.text('影视播放')).dy;
+    expect(rowTop, greaterThan(liveTop));
+    expect(rowTop, lessThan(videoTop));
+    expect(liveCellularDowngradeEnabled(), isTrue);
+
+    await tapRowSwitch(tester, '移动网自动降档');
+    expect(liveCellularDowngradeEnabled(), isFalse);
+    await tapRowSwitch(tester, '移动网自动降档');
+    expect(liveCellularDowngradeEnabled(), isTrue);
   });
 
   testWidgets('about section is the last section on the page',
