@@ -27,8 +27,6 @@
 //    waiting state shows a spinner instead of the pause glyph.
 
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +38,6 @@ import 'package:just_audio/just_audio.dart'
     show AudioPlayer, ProcessingState;
 import 'package:standalone/core/native/now_playing.dart';
 import 'package:standalone/core/storage/hive_store.dart';
-import 'package:standalone/core/storage/local_paths.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/music/av_music_player.dart';
 import 'package:standalone/features/music/music_player_controller.dart';

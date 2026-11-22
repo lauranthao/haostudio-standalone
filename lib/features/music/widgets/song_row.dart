@@ -335,6 +335,7 @@ class SongRow extends StatelessWidget {
               onPressed: () async {
                 Navigator.of(context).pop();
                 await Future.delayed(const Duration(milliseconds: 350));
+                if (!context.mounted) return;
                 onLongPress!(context);
               },
             ),

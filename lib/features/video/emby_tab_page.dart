@@ -1301,7 +1301,6 @@ class _LoadMoreRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Center(
