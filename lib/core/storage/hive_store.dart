@@ -16,9 +16,29 @@ class HiveStore {
   static late Box<dynamic> _box;
 
   /// Must be called before runApp (see main.dart).
-  static Future<void> init() async {
-    await Hive.initFlutter();
-    _box = await Hive.openBox<dynamic>(boxName);
+  ///
+  /// [path] is test-only: point Hive at a temp directory instead of
+  /// the app documents dir. Production always calls init() with no
+  /// args.
+  static Future<void> init({String? path}) async {
+    if (path != null) {
+      Hive.init(path);
+    } else {
+      await Hive.initFlutter();
+    }
+    try {
+      _box = await Hive.openBox<dynamic>(boxName);
+    } catch (e) {
+      // Corrupted box (a previous crash killed the app mid-write):
+      // without this, main() throws before runApp and the app crashes
+      // on EVERY launch until the data is wiped. Drop the box files
+      // and reopen fresh — settings are lost, the app starts.
+      debugPrint('HiveStore: box corrupt ($e), rebuilding $boxName');
+      try {
+        await Hive.deleteBoxFromDisk(boxName);
+      } catch (_) {}
+      _box = await Hive.openBox<dynamic>(boxName);
+    }
   }
 
   /// Test-only: point the store at an opened test box instead of the

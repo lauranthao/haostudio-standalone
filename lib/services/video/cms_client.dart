@@ -91,11 +91,25 @@ Future<Map<String, dynamic>> defaultCmsFetcher(
   if (status < 200 || status >= 300) {
     throw CmsException('http $status fetching $url');
   }
-  final data = res.data;
+  return parseCmsResponseBody(res.data, url);
+}
+
+/// Pure decode of one CMS HTTP body (no I/O — covered by
+/// test/b30_crash_hunt_test.dart).
+///
+/// A dead source often answers a 200 with an HTML error / WAF page
+/// instead of JSON: [jsonDecode] on that throws FormatException, and
+/// the old code let it escape the fetcher as an uncaught error.
+/// Callers only handle [CmsException], so malformed bodies become one.
+Map<String, dynamic> parseCmsResponseBody(dynamic data, String url) {
   if (data is Map<String, dynamic>) return data;
   if (data is String) {
-    final decoded = jsonDecode(data);
-    if (decoded is Map<String, dynamic>) return decoded;
+    try {
+      final decoded = jsonDecode(data);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } on FormatException {
+      throw CmsException('non-JSON response from $url');
+    }
   }
   throw CmsException('non-JSON response from $url');
 }
@@ -215,7 +229,11 @@ VideoDetail? parseCmsDetail(
 ) {
   final list = (json['list'] as List<dynamic>? ?? const []);
   if (list.isEmpty) return null;
-  final d = list.first as Map<String, dynamic>;
+  // A malformed row (null / string instead of an object): the old
+  // `list.first as Map` threw TypeError and the detail load died.
+  final first = list.first;
+  if (first is! Map<String, dynamic>) return null;
+  final d = first;
   final lines = parsePlayLinesWithContentFallback(
     (d['vod_play_url'] as String?) ?? '',
     (d['vod_play_from'] as String?) ?? '',
