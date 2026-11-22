@@ -85,6 +85,7 @@ import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../domains/live/live_network_quality.dart';
 import '../../services/custom_font_service.dart';
 import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
@@ -122,6 +123,10 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _engineKey;
 
   late bool _autoNext;
+  // Build 30: 直播组 — 移动网自动降档 (liveCellularDowngradeKey,
+  // 默认开）。Previously panel-only (live sheet): the key had no
+  // settings row because there was no live group.
+  late bool _cellularDowngrade;
   // Good-projects P1 (PiliPlus/Kazumi): VOD picture fit + low-memory
   // mode. Cached like _autoNext; refreshed after every cycle tap.
   late VideoFitMode _videoFit;
@@ -183,6 +188,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   static const _sectionIds = [
     'appearance',
     'music',
+    'live',
     'video',
     'sources',
     'data',
@@ -199,6 +205,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     super.initState();
     _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
     _autoNext = VideoPlaybackSettings.autoNext;
+    _cellularDowngrade = liveCellularDowngradeEnabled();
     _videoFit = VideoPlaybackSettings.videoFit;
     _lowMemoryMode = LowMemoryMode.current;
     _mixWithOthers = HiveStore.getBool(HiveKeys.audioMixWithOthers, false);
@@ -385,6 +392,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             expanded: _sectionExpanded['music'] ?? true,
             onToggle: () => _toggleSection('music'),
             children: _musicRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '直播',
+            expanded: _sectionExpanded['live'] ?? true,
+            onToggle: () => _toggleSection('live'),
+            children: _liveRows(context),
           ),
           const SizedBox(height: 14),
           _CollapsibleSection(
@@ -759,6 +773,33 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   /// Build 29 B组: “影视播放”组的行(原 build() 平铺内容, 一字未改;
   /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// Build 30: “直播”组的行。直播在设置页此前没有自己的组：
+  /// 弹幕设置一直错放在影视播放组末尾（它管的是 5 个直播平台的
+  /// 弹幕开关 + 直播间弹幕显示，影视弹幕只是其中一行）；移动网
+  /// 自动降档此前只有播放器内面板入口（live sheet 注释写明“Settings
+  /// 里没有直播分组，所以这个键没有设置页行”）。两行与播放器内
+  /// 面板读写同一个 Hive 键，不留第二份状态。
+  List<Widget> _liveRows(BuildContext context) {
+    return [
+      _BeansRow(
+        icon: Icons.chat_bubble_outline,
+        title: '弹幕设置',
+        onTap: () => Get.to(() => const DanmakuSettingsPage()),
+      ),
+      _BeansSwitchRow(
+        icon: Icons.signal_cellular_alt,
+        title: '移动网自动降档',
+        subtitle: '移动数据下进房间自动降至超清及以下；关后保持首选画质 · 下次进房间生效',
+        value: _cellularDowngrade,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await saveLiveCellularDowngrade(value);
+          if (mounted) setState(() => _cellularDowngrade = value);
+        },
+      ),
+    ];
+  }
+
   List<Widget> _videoRows(BuildContext context) {
     final theme = HaoTheme.of(context);
     return [
@@ -1165,11 +1206,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           HaoToast.show('提示', message:  '下次打开生效');
         },
       ),
-      _BeansRow(
-        icon: Icons.chat_bubble_outline,
-        title: '弹幕设置',
-        onTap: () => Get.to(() => const DanmakuSettingsPage()),
-      ),
     ];
   }
 
@@ -1424,6 +1460,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             };
             _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
             _autoNext = VideoPlaybackSettings.autoNext;
+            _cellularDowngrade = liveCellularDowngradeEnabled();
             _mixWithOthers =
                 HiveStore.getBool(HiveKeys.audioMixWithOthers, false);
             _autoResume =
