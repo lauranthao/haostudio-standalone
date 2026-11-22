@@ -20,10 +20,10 @@
 //     VideoPlaybackSettings.playbackRate) + 双击快进秒数可配.
 //  2. 手势细节: 双击 ±N 秒 / 双指点按播放暂停 / 双指缩放去黑边 /
 //     拖进度震动反馈.
-//  3. 对白增强: 音量最高 300% + 中置声道 — UI/逻辑/偏好 only.
-//     后端 cap (mpv volume-max=300) 待 K 组接 mpv_backend.dart;
-//     this module only gates + forwards via
-//     DialogueBoostCapableBackend (no backend implements it yet).
+//  3. 对白增强: 中置声道折叠 + loudnorm 动态均衡 — UI/逻辑/偏好
+//     + 后端 cap 已接 (K 组 build 29: mpv volume-max=300 + 中置
+//     折叠; b30: 链里加 loudnorm, 立体声上才真正听得见 — 折叠
+//     本身在立体声上是 bit-identical, 开关原来是摆设).
 //  4. 元数据手动纠错 (本地覆盖, 豆瓣是唯一元数据源).
 //  5. 防剧透: 隐藏简介 / 模糊未看海报.
 //  6. 截图 (MPV only, via FrameCapableBackend) / GIF — see
@@ -280,13 +280,12 @@ bool shouldTickSeekHaptic({
 //
 // UI/logic/prefs only. The backend work — mpv `volume-max=300`
 // (raises the media_kit volume ceiling so setVolume can exceed
-// 100%) + a centre-channel enhancement — lives in
-// mpv_backend.dart and is K 组's. This module only owns the switch
-// and the session forward; until K 组 implements
-// DialogueBoostCapableBackend on MpvBackend, the switch is stored
-// and forwarded and the audible effect is nil — the settings row
-// says so ("后端待接"), it never claims an effect it has no
-// backend for.
+// 100%) + a centre-channel fold + loudnorm dynamic normalization
+// — lives in mpv_backend.dart and is K 组's (fold, build 29) plus
+// the b30 loudnorm chain. This module only owns the switch and the
+// session forward. The loudnorm stage matters: the fold alone is
+// bit-identical on stereo, so before b30 the switch did nothing
+// audible on the stereo streams nearly every CMS source serves.
 
 /// The persisted dialogue-boost switch (default off).
 bool vodDialogueBoostEnabled() {

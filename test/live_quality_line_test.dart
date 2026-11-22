@@ -6,6 +6,9 @@
 // - Quality switch re-parses; a server receipt != request corrects the UI
 //   to the receipt quality + toast (Bilibili guest 10000 -> 250; Douyu
 //   rate is an opaque id, never sorted).
+// - Quality switch hands the ladder every line of the new quality
+//   (b30): a dead first line no longer fails the whole switch when a
+//   later line plays — same as the entry path (L-P1-3).
 // - Identical URLs after a quality switch -> silent abort, no toast.
 // - Huya recovery order: next line -> fresh re-parse -> 60 s throttle ->
 //   10 s fallback; prefetch at the lease refreshAt (~100 s) fetches and
@@ -1031,6 +1034,35 @@ void main() {
         'https://al.huya.com/src/660000.m3u8?wsSecret=A1',
       );
       expect(chip(tester, '线路 2').selected, isTrue);
+      await disposeRoom(tester, log);
+    });
+
+    testWidgets(
+        'quality switch tries every line of the new quality, not just the first (b30)',
+        (tester) async {
+      final site = _FakeSite();
+      final log = _BackendLog();
+      final configs = freshConfigs();
+      // Only the FIRST line of 高清 is dead: the second line plays.
+      // Before b30 the switch opened urls.first only, so the whole
+      // quality failed with "切换失败，已保持原清晰度" even though a
+      // working line existed — the entry path already handed the
+      // ladder all lines (L-P1-3); the switch path must do the same.
+      final deadFirst = site.recoveryUrlsByQuality['400']!.first;
+      for (final config in configs.values) {
+        config.failUrls.add(deadFirst);
+      }
+      await pumpRoom(tester, site, log, configs);
+      await tester.tap(find.text('高清'));
+      await settle(tester);
+      expect(site.recoveryCalls, 1);
+      expect(find.textContaining('切换失败'), findsNothing);
+      expect(chip(tester, '高清').selected, isTrue);
+      // The winning open is the SECOND line of the new quality.
+      expect(
+        log.opens.last.url,
+        site.recoveryUrlsByQuality['400']!.last,
+      );
       await disposeRoom(tester, log);
     });
 

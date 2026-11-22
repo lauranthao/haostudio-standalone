@@ -24,6 +24,7 @@ import '../../core/player/kernel/player_backend.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/player_kernel.dart';
 import '../../core/player/kernel/recovery_ladder.dart';
+import '../../core/player/super_resolution.dart';
 import '../../core/player/vod_controls.dart';
 import '../../core/storage/hive_store.dart';
 import '../live/live_breadcrumb.dart';
@@ -96,6 +97,15 @@ class PlaybackSession {
   Map<String, String>? _headers;
   double _rate = 1.0;
 
+  /// Last volume sent to the player (b30): the live volume boost
+  /// (and multiview focus mute) is a software gain via [setVolume],
+  /// and a quality / line / engine switch installs a fresh backend
+  /// at its default volume 1.0. Remembered here so [_swapBackend]
+  /// re-applies it — same rule as [_rate]. Null = never set (VOD
+  /// never calls setVolume: its volume is the system volume, so
+  /// nothing is re-applied there).
+  double? _volume;
+
   /// IJK exclusion (L-P0-1): IJK's fijk data-source call drops every
   /// request header, so Huya/Douyu live streams (which need UA +
   /// Origin + Referer + cookie) die ~7 s after opening on IJK. The
@@ -128,6 +138,20 @@ class PlaybackSession {
   bool _dialogueBoost = false;
 
   bool get dialogueBoost => _dialogueBoost;
+
+  /// VOD picture-enhancement trio (b30): remembered so a ladder
+  /// backend swap re-applies it to the new backend, like [_rate]
+  /// and [_dialogueBoost]. At most one is ever true — the page owns
+  /// the mutual exclusion in display, and [setVodEnhancement]
+  /// normalises through resolveVodEnhancement (first-branch-wins,
+  /// same order as MpvBackend.open()) before remembering.
+  bool _superResolution = false;
+  bool _interpolation = false;
+  bool _sdrToHdr = false;
+
+  bool get superResolution => _superResolution;
+  bool get interpolation => _interpolation;
+  bool get sdrToHdr => _sdrToHdr;
 
   /// Audio-only mode (live background playback): the video track is
   /// off while the app is backgrounded. Remembered so a ladder
@@ -726,11 +750,22 @@ class PlaybackSession {
     if (_dialogueBoost && next is DialogueBoostCapableBackend) {
       unawaited(next.setDialogueBoost(true).catchError((_) {}));
     }
+    // Same for the VOD picture-enhancement trio (b30): a swap must
+    // not silently reset it. The gates mirror MpvBackend.open()
+    // (VOD + MPV + first-branch-wins); a backend without the
+    // capability keeps the values remembered for the next swap.
+    unawaited(_applyVodEnhancementToBackend(next).catchError((_) {}));
     _attachBackend(next);
     // A ladder swap must not reset a user-chosen speed (episode
     // auto-advance opens a fresh backend per episode).
     if (_rate != 1.0) {
       unawaited(next.setRate(_rate).catchError((_) {}));
+    }
+    // Same for the volume (b30): a swap must not silently reset the
+    // live volume boost / multiview focus mute — the fresh backend
+    // defaults to 1.0. Null = never set (VOD never calls setVolume).
+    if (_volume != null) {
+      unawaited(next.setVolume(_volume!).catchError((_) {}));
     }
     // Same for the track choice: a swap must not silently reset the
     // audio/subtitle track the user picked. Best-effort — a backend
@@ -862,9 +897,16 @@ class PlaybackSession {
 
   /// Select the second subtitle track for dual subtitles (MPV
   /// `secondary-sid`; 'no' = off). Same remembering rule as
-  /// [setSubtitleTrack].
+  /// [setSubtitleTrack] — with one normalization (b30): 'no' is
+  /// remembered as null, not as the literal string 'no'. The page
+  /// reads `currentSecondarySubtitleTrackId != null` for the 双字幕
+  /// on/off label, and a remembered 'no' showed 开 after the user
+  /// picked 无 — the switch looked like a摆设 that never turns off.
+  /// The backend still receives 'no' (mpv's off switch); a swap
+  /// re-applies only a real track id, and off needs no re-apply —
+  /// a fresh backend defaults to off.
   Future<void> setSecondarySubtitleTrack(String id) async {
-    _secondarySubtitleTrackId = id;
+    _secondarySubtitleTrackId = id == 'no' ? null : id;
     final backend = _backend;
     if (backend is! TrackCapableBackend) return;
     try {
@@ -978,7 +1020,17 @@ class PlaybackSession {
     }
   }
 
-  Future<void> setVolume(double volume) => _backend?.setVolume(volume) ?? Future.value();
+  /// Set the player volume. Remembered (see [_volume]): a later
+  /// backend swap re-applies it, so a live quality switch never
+  /// silently drops the volume boost (b30 — the room's playing-event
+  /// re-apply was defeated by its own same-engine dedup guard, and
+  /// the session is the layer that owns the swap).
+  Future<void> setVolume(double volume) async {
+    _volume = volume;
+    try {
+      await _backend?.setVolume(volume);
+    } catch (_) {}
+  }
 
   double get rate => _rate;
 
@@ -995,6 +1047,118 @@ class PlaybackSession {
     try {
       await backend.setDialogueBoost(enabled);
     } catch (_) {}
+  }
+
+  /// VOD picture-enhancement trio (b30): apply the FULL trio state
+  /// to the running backend at once — the current episode changes
+  /// immediately, no reopen, no rebuffer. The caller (VOD page)
+  /// passes the whole state (it owns the mutual exclusion in
+  /// display); the state is normalised here through
+  /// [resolveVodEnhancement] (first-branch-wins, same order as
+  /// MpvBackend.open()) and only what CHANGED is sent to the
+  /// backend. Remembered and re-applied after a ladder backend
+  /// swap (see [_applyVodEnhancementToBackend]); on a backend
+  /// without the capability the values are remembered but do
+  /// nothing until a capable backend is swapped in (open() already
+  /// applied them from Hive for the current backend).
+  Future<void> setVodEnhancement({
+    required bool superResolution,
+    required bool interpolation,
+    required bool sdrToHdr,
+  }) async {
+    final branch = resolveVodEnhancement(
+      superResolution: superResolution,
+      interpolation: interpolation,
+      sdrToHdr: sdrToHdr,
+    );
+    final effSuper = branch == VodEnhancementBranch.superResolution;
+    final effInterp = branch == VodEnhancementBranch.interpolation;
+    final effSdr = branch == VodEnhancementBranch.sdrToHdr;
+    final prevSuper = _superResolution;
+    final prevInterp = _interpolation;
+    final prevSdr = _sdrToHdr;
+    _superResolution = effSuper;
+    _interpolation = effInterp;
+    _sdrToHdr = effSdr;
+    final backend = _backend;
+    if (backend is! VodEnhancementCapableBackend) return;
+    try {
+      if (effSuper != prevSuper) {
+        await backend.setSuperResolution(effSuper);
+      }
+      if (effInterp != prevInterp) {
+        await backend.setFrameInterpolation(effInterp);
+      }
+      if (effSdr != prevSdr) {
+        await backend.setSdrToHdr(effSdr);
+      }
+    } catch (_) {}
+  }
+
+  /// Re-apply the remembered trio to a freshly swapped-in backend
+  /// (ladder swap / engine switch). The gates mirror
+  /// MpvBackend.open() exactly (VOD + MPV + first-branch-wins) so a
+  /// swap never applies a branch open() would not have, and live
+  /// never gets any of it. Best-effort — a rejected write never
+  /// breaks playback.
+  Future<void> _applyVodEnhancementToBackend(
+    PlayerBackend backend,
+  ) async {
+    if (backend is! VodEnhancementCapableBackend) return;
+    try {
+      if (shouldApplySuperResolution(
+        isLive: _isLive,
+        engine: backend.engine,
+        switchOn: _superResolution,
+      )) {
+        await backend.setSuperResolution(true);
+        return;
+      }
+      if (shouldApplyFrameInterpolation(
+        isLive: _isLive,
+        engine: backend.engine,
+        switchOn: _interpolation,
+        superResolutionOn: _superResolution,
+        sdrToHdrOn: _sdrToHdr,
+      )) {
+        await backend.setFrameInterpolation(true);
+        return;
+      }
+      if (shouldApplySdrToHdr(
+        isLive: _isLive,
+        engine: backend.engine,
+        switchOn: _sdrToHdr,
+        superResolutionOn: _superResolution,
+        interpolationOn: _interpolation,
+      )) {
+        await backend.setSdrToHdr(true);
+      }
+    } catch (_) {}
+  }
+
+  /// Re-open the current stream in place (b30): the mechanism for
+  /// settings that only take effect at open() — DV P8 routing and
+  /// low-memory mode. Re-opens the CURRENT url with the stored
+  /// params, so candidatesFor (DV gate) and mpvBaseProperties
+  /// (low-memory mode) re-read the fresh Hive values, then seeks
+  /// back to the last known position — the current episode keeps
+  /// playing from where it was, with the new setting applied.
+  /// VOD only (live has no position to keep and no caller needs
+  /// it). Returns false when nothing is playing.
+  Future<bool> reopenCurrent() async {
+    if (_disposed || _isLive || _currentUrl == null) return false;
+    final resume = _lastPosition;
+    final ok = await open(
+      url: _currentUrl!,
+      isLive: false,
+      declaredFormat: _declaredFormat,
+      headers: _headers,
+      excludeIjk: _excludeIjk,
+    );
+    if (ok && resume > Duration.zero) {
+      await seekTo(resume);
+    }
+    return ok;
   }
 
   /// Whether the ACTIVE backend can enter system Picture-in-Picture

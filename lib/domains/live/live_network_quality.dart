@@ -103,6 +103,48 @@ int entryQualityIndex(
   return qualities.length - 1;
 }
 
+/// Target quality index when the cellular-downgrade switch flips
+/// mid-room (b30), or null when no switch is needed. [currentIndex]
+/// is the quality now playing; [preferredIndex] is the user's saved
+/// preference (what turning the switch OFF restores). Wi-Fi /
+/// unknown: null — the downgrade never applies there. Turning it ON
+/// caps at the cellular ceiling via [entryQualityIndex] — but never
+/// switches UP: a room already below the ceiling (the user manually
+/// dropped to 高清) stays put, so the ceiling is a cap, not a
+/// target. Turning it OFF restores the preferred quality. Both
+/// paths are no-ops when the target already equals the current
+/// quality, so a flip that changes nothing never re-opens the stream.
+int? cellularDowngradeTargetIndex({
+  required List<LivePlayQuality> qualities,
+  required int currentIndex,
+  required int preferredIndex,
+  required LiveNetworkType network,
+  required bool enabled,
+}) {
+  if (qualities.isEmpty) return null;
+  if (network != LiveNetworkType.cellular) return null;
+  final current = currentIndex.clamp(0, qualities.length - 1);
+  final target = enabled
+      ? _cellularCeilingIndex(qualities, current)
+      : preferredIndex.clamp(0, qualities.length - 1);
+  return target == current ? null : target;
+}
+
+/// The cellular ceiling as an index, capped at the current index:
+/// the ceiling is the highest quality mobile data may use, so a
+/// room already at or below it keeps its quality.
+int _cellularCeilingIndex(
+  List<LivePlayQuality> qualities,
+  int currentIndex,
+) {
+  final ceiling = entryQualityIndex(
+    qualities,
+    0,
+    network: LiveNetworkType.cellular,
+  );
+  return ceiling > currentIndex ? ceiling : currentIndex;
+}
+
 // -- Cellular-downgrade opt-out (build 29, D 组) -------------------------
 //
 // The downgrade above is automatic at room entry and had no switch:

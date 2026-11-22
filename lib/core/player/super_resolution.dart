@@ -14,9 +14,9 @@
 // - One bool switch, one tier: the efficiency chain only (7 files).
 //   The quality chain (VL models, heaviest) is NOT bundled and no
 //   dead quality files ship.
-// - Default off. Applies at the NEXT open (next episode, line switch,
-//   kernel reopen) — never mid-playback, same as LowMemoryMode's
-//   "Applied at open()" precedent.
+// - Default off. Applies at open() from the Hive switch; a LATER
+//   toggle goes through MpvBackend.setSuperResolution() on the
+//   running player instead (b30: 马上生效, no reopen).
 // - A partial chain is NEVER mounted: mpv would run the shaders it
 //   got and the picture would go soft in a way no setting explains,
 //   while each missing file's open failure reaches the kernel as a
@@ -148,3 +148,10 @@ Future<List<String>?> unpackAnime4kShaders({
 /// colon join is unambiguous.
 List<String> glslShadersChangeListCommand(List<String> shaderFiles) =>
     ['change-list', kMpvGlslShadersOption, 'set', shaderFiles.join(':')];
+
+/// The mpv command that unmounts the chain again (b30: turning
+/// super-resolution off mid-playback). `clr` clears the whole
+/// `glsl-shaders` list — the app mounts nothing else into it, so
+/// clearing is exactly "no super-resolution", never a partial chain.
+List<String> glslShadersClearCommand() =>
+    ['change-list', kMpvGlslShadersOption, 'clr'];

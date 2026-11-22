@@ -854,15 +854,17 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           setState(() => _vodDoubleTapSeekSeconds = next);
         },
       ),
-      // I-影视 item 3: dialogue boost — volume up to 300% +
-      // centre-channel enhancement. Backend landed (K 组, build 29):
-      // MpvBackend sets volume-max=300 + the centre fold-in
-      // (stereo passes through unchanged — verified with ffmpeg;
-      // coefficients 待真机验证).
+      // I-影视 item 3: dialogue boost — centre fold + loudnorm
+      // dynamic normalization. Backend landed (K 组, build 29):
+      // MpvBackend sets volume-max=300 + the centre fold-in; b30
+      // adds loudnorm to the chain, which is what makes the switch
+      // audible on stereo (the fold alone is bit-identical on
+      // stereo — verified with ffmpeg; chain verified too, quiet
+      // +16.6 dB / loud -9.5 dB; coefficients 待真机验证).
       _BeansSwitchRow(
         icon: Icons.record_voice_over,
         title: '对白增强',
-        subtitle: '音量最高 300%、中置声道 · 仅 MPV',
+        subtitle: '对白更清楚，大声不炸 · 仅 MPV',
         value: _vodDialogueBoost,
         onChanged: (value) async {
           HaoHaptics.select();
@@ -931,9 +933,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       ),
       // Anime4K super-resolution (build 28 J): VOD only — the
       // switch gates the VOD path; live playback never reads it.
-      // Effective only on the MPV engine, from the next open
-      // (next episode / line or engine switch re-opens the
-      // player); toggling mid-playback does nothing until then.
+      // Effective only on the MPV engine; b30 applies a toggle to
+      // the running player at once (session.setVodEnhancement) and
+      // to the next open via the Hive key — no more "next time".
       // 1.1.6 trio: mutually exclusive with interpolation and
       // SDR→HDR in display only (see _mpvFxRow) — the stored
       // value of a greyed-out row is never cleared.
@@ -942,7 +944,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         child: _BeansSwitchRow(
           icon: Icons.auto_awesome,
           title: 'Anime4K 超分',
-          subtitle: '仅 MPV，下次播放生效',
+          subtitle: '仅 MPV，立即生效',
           value: _vodSuperResolution,
           onChanged: (value) async {
             HaoHaptics.select();
@@ -951,13 +953,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           },
         ),
       ),
-      // 1.1.6: VOD frame interpolation (MPV only, next open).
+      // 1.1.6: VOD frame interpolation (MPV only, immediate since b30).
       _mpvFxRow(
         locked: _vodSuperResolution || _vodSdrToHdr,
         child: _BeansSwitchRow(
           icon: Icons.animation,
           title: '插帧',
-          subtitle: '仅 MPV，下次播放生效',
+          subtitle: '仅 MPV，立即生效',
           value: _vodInterpolation,
           onChanged: (value) async {
             HaoHaptics.select();
@@ -966,13 +968,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           },
         ),
       ),
-      // 1.1.6: VOD SDR→HDR (MPV only, next open).
+      // 1.1.6: VOD SDR→HDR (MPV only, immediate since b30).
       _mpvFxRow(
         locked: _vodSuperResolution || _vodInterpolation,
         child: _BeansSwitchRow(
           icon: Icons.hdr_on,
           title: 'SDR 转 HDR',
-          subtitle: '仅 MPV，下次播放生效',
+          subtitle: '仅 MPV，立即生效',
           value: _vodSdrToHdr,
           onChanged: (value) async {
             HaoHaptics.select();
@@ -1101,9 +1103,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         ),
       ),
       // 1.1.6: VOD subtitle appearance (MPV only, three tiers
-      // each). Tap cycles to the next tier; applies at the next
-      // open, same as the subtitle delay row above (the player
-      // reads the persisted tiers once at open).
+      // each). Tap cycles to the next tier; b30 applies it to a
+      // running player at once (the player page watches these keys)
+      // and to the next open via the Hive key.
       _BeansRow(
         icon: Icons.format_size,
         title: '字幕字号',
@@ -1116,7 +1118,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               (i < 0 ? 0 : i + 1) % _subFontSizeOrder.length];
           await HiveStore.put(HiveKeys.vodSubtitleFontSize, next);
           if (mounted) setState(() => _vodSubtitleFontSize = next);
-          HaoToast.show('提示', message: '下次打开生效');
         },
       ),
       _BeansRow(
@@ -1130,7 +1131,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               _subColorOrder[(i < 0 ? 0 : i + 1) % _subColorOrder.length];
           await HiveStore.put(HiveKeys.vodSubtitleColor, next);
           if (mounted) setState(() => _vodSubtitleColor = next);
-          HaoToast.show('提示', message: '下次打开生效');
         },
       ),
       _BeansRow(
@@ -1145,14 +1145,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               (i < 0 ? 0 : i + 1) % _subPositionOrder.length];
           await HiveStore.put(HiveKeys.vodSubtitlePosition, next);
           if (mounted) setState(() => _vodSubtitlePosition = next);
-          HaoToast.show('提示', message: '下次打开生效');
         },
       ),
       // Low-memory mode (Kazumi): tap cycles 自动 -> 始终开启 ->
-      // 始终关闭. Applies at the next open (mpv properties are set
-      // in open()); the subtitle states the effective state now,
-      // and the toast below says so once, at the moment the user
-      // changes it (build 28 D9 — no permanent hint row).
+      // 始终关闭. b30 applies it to a running player at once (the
+      // player page re-opens the current episode at its position);
+      // the subtitle states the effective state now.
       _BeansRow(
         icon: Icons.data_saver_on,
         title: '低内存模式',
@@ -1162,7 +1160,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           final next = _lowMemoryMode.next;
           await LowMemoryMode.save(next);
           setState(() => _lowMemoryMode = next);
-          HaoToast.show('提示', message:  '下次打开生效');
         },
       ),
       _BeansRow(

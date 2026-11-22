@@ -245,7 +245,7 @@ class LivePlayerSettingsSheet extends StatelessWidget {
             PlayerSettingsSwitchRow(
               key: const ValueKey('live_setting_cellular_downgrade'),
               title: '移动网自动降画质',
-              subtitle: '移动数据下进房间自动降至超清及以下；关后保持首选画质 · 下次进房间生效',
+              subtitle: '移动数据下自动降至超清及以下；关后立即恢复首选画质',
               value: s.cellularDowngrade,
               onChanged: s.onCellularDowngradeChanged,
             ),

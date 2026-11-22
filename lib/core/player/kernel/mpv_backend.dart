@@ -26,18 +26,40 @@ import 'video_fit.dart';
 /// boost 131–300%) is clamped to 130% inside mpv.
 const String kMpvVolumeMax = '300';
 
-/// Dialogue-boost centre fold (K, build 29, I-影视 item 3): mpv `af`
-/// lavfi pan, front-centre (c2, 5.1 order FL FR FC LFE BL BR) at 0.7
-/// + surrounds (c4/c5) at 0.3 folded into L/R. `=` form on purpose:
-/// the `<` renormalized form would attenuate stereo by ~0.59x (a
-/// missing c2 still counts in the renormalization sum), while `=`
-/// leaves stereo bit-identical (verified with ffmpeg 8.1.2, see
-/// [MpvBackend.setDialogueBoost]). Coefficients 待真机验证.
+/// Dialogue-boost centre fold + loudness normalization (K, build
+/// 29; stereo path b30): mpv `af` lavfi graph, front-centre (c2,
+/// 5.1 order FL FR FC LFE BL BR) at 0.7 + surrounds (c4/c5) at 0.3
+/// folded into L/R, then EBU R128 dynamic normalization. `=` form
+/// on purpose for the pan: the `<` renormalized form would
+/// attenuate stereo by ~0.59x (a missing c2 still counts in the
+/// renormalization sum), while `=` leaves stereo bit-identical
+/// through the PAN stage (verified with ffmpeg 8.1.2, see
+/// [MpvBackend.setDialogueBoost]).
+///
+/// Why loudnorm (b30): the pan fold alone does nothing audible on
+/// stereo — and almost every CMS stream is stereo AAC — so the
+/// switch was a摆设 for the films chen actually watches: wired,
+/// set, zero audible effect. loudnorm (dynamic, linear=false)
+/// lifts quiet passages and tames loud ones on ANY channel layout:
+/// verified with ffmpeg 8.1.2 on a two-level stereo test signal
+/// (quiet -36.5 dB mean / loud -9.1 dB mean) through the whole
+/// chain — quiet -36.5 → -19.9 dB (+16.6 dB), loud -9.1 → -18.6 dB
+/// (-9.5 dB), whole-file peak -12.6 dB (true-peak limiter, no
+/// clipping). That is the dialogue effect: quiet dialogue comes up,
+/// loud effects stop blowing out. Coefficients / target 待真机验证
+/// (loudnorm's CPU cost and lookahead delay on an iPhone are
+/// unmeasured here; the switch stays off by default and a rejected
+/// filter never breaks playback).
 const String kDialogueBoostCentreFilter =
-    'lavfi[pan=stereo|c0=1.0*c0+0.7*c2+0.3*c4|c1=1.0*c1+0.7*c2+0.3*c5]';
+    'lavfi[pan=stereo|c0=1.0*c0+0.7*c2+0.3*c4|c1=1.0*c1+0.7*c2+0.3*c5,'
+    'loudnorm=I=-16:TP=-1.5:LRA=11:linear=false]';
 
 class MpvBackend
-    implements TrackCapableBackend, FrameCapableBackend, DialogueBoostCapableBackend {
+    implements
+        TrackCapableBackend,
+        FrameCapableBackend,
+        DialogueBoostCapableBackend,
+        VodEnhancementCapableBackend {
   MpvBackend() {
     // Defensive: the native media_kit library must be initialised
     // before Player() is created. main() does this, but backends can
@@ -165,8 +187,8 @@ class MpvBackend
     }
     // Anime4K super-resolution (build 28): VOD only — live never
     // reaches this branch, so the live room is untouched. Applied at
-    // open(): a switch change takes effect on the next episode, line
-    // switch or kernel reopen, never mid-playback.
+    // open() from the Hive switch; a LATER toggle goes through
+    // setSuperResolution() on the running player instead (b30).
     if (!isLive) {
       await _applySuperResolution();
       await _applyVodEnhancement();
@@ -196,24 +218,33 @@ class MpvBackend
   /// playback — same defensive pattern as the track setters):
   /// 1. `volume-max=300` (re-asserted here: the ceiling must hold
   ///    even if this backend was created before the open() set).
-  /// 2. The centre-channel fold (only when enabling): the front
-  ///    centre (c2) + surrounds (c4/c5) are folded into L/R, so
-  ///    dialogue sits louder against music/effects. Coefficients
-  ///    are 待真机验证 (a full-scale all-channels passage can clip
-  ///    with `=` gains summing past 1.0 — if chen hears
-  ///    distortion, retune to the `<` renormalized form).
+  /// 2. The centre-channel fold + loudnorm dynamic normalization
+  ///    (only when enabling): the front centre (c2) + surrounds
+  ///    (c4/c5) are folded into L/R, so dialogue sits louder
+  ///    against music/effects, and loudnorm lifts quiet passages
+  ///    and tames loud ones. Coefficients / target 待真机验证 (a
+  ///    full-scale all-channels passage can clip with `=` gains
+  ///    summing past 1.0 — if chen hears distortion, retune to the
+  ///    `<` renormalized form; loudnorm's CPU cost and lookahead
+  ///    delay on an iPhone are unmeasured here).
   ///
   /// Layout safety — VERIFIED on this VM with ffmpeg 8.1.2 (same
   /// filter engine family as mpv's bundled ffmpeg), not assumed:
-  /// a stereo source through this filter is bit-identical
-  /// (volumedetect -21.1 dB with and without the filter — a
-  /// missing c2 reads as silence), mono passes through too, and
-  /// a 5.1 source folds correctly. So the filter is applied
-  /// UNCONDITIONALLY when the switch is on: no channel-count gate
-  /// (no layout string is exposed by the backend anyway, and a
-  /// gate would need one). If mpv's older bundled ffmpeg ever
-  /// rejects the set, the throw is swallowed here and audio keeps
-  /// playing unfiltered.
+  /// the PAN stage alone is bit-identical on stereo (volumedetect
+  /// -21.1 dB with and without it — a missing c2 reads as silence)
+  /// and folds correctly on 5.1. That is exactly why the pan-only
+  /// chain was a摆设 on stereo (nearly every CMS stream): the
+  /// switch was wired and set, and did nothing audible at all.
+  /// The LOUDNORM stage (b30) is what makes it audible on stereo:
+  /// on a two-level stereo test signal (quiet -36.5 dB mean / loud
+  /// -9.1 dB mean) the whole chain lifts the quiet part to -19.9
+  /// dB (+16.6 dB) and tames the loud part to -18.6 dB (-9.5 dB),
+  /// whole-file peak -12.6 dB, no clipping. So the filter is
+  /// applied UNCONDITIONALLY when the switch is on: no
+  /// channel-count gate (no layout string is exposed by the backend
+  /// anyway, and a gate would need one). If mpv's older bundled
+  /// ffmpeg ever rejects the set, the throw is swallowed here and
+  /// audio keeps playing unfiltered.
   @override
   Future<void> setDialogueBoost(bool enabled) async {
     try {
@@ -272,8 +303,9 @@ class MpvBackend
 
   /// Frame interpolation / SDR→HDR (1.1.6): the other two branches
   /// of the mutually-exclusive trio, applied at open() like
-  /// super-resolution (a switch change takes effect on the next
-  /// episode / line switch / kernel reopen, never mid-playback).
+  /// super-resolution (the open-time fallback — a LATER toggle goes
+  /// through setFrameInterpolation() / setSdrToHdr() on the running
+  /// player instead, b30).
   /// Order is super-res → interpolation → SDR→HDR and only the
   /// FIRST passing branch runs, so a phone GPU never runs two of
   /// them at once. Decoration only, like [_applySuperResolution]:
@@ -321,6 +353,54 @@ class MpvBackend
         await _setProperty(entry.key, entry.value);
       } catch (_) {}
     }
+  }
+
+  /// VodEnhancementCapableBackend (b30): apply a trio toggle to the
+  /// RUNNING player — no reopen, no rebuffer, the current episode
+  /// changes at once. Every write is best-effort (a rejected
+  /// property / command never breaks playback, same pattern as the
+  /// track setters); a backend that is not opened yet simply has
+  /// nothing to apply to and the open() path covers it from Hive.
+  ///
+  /// mpv facts behind the three: `glsl-shaders` is a runtime
+  /// change-list (mount / `clr` to unmount); `interpolation`,
+  /// `video-sync`, `tscale`, `inverse-tone-mapping`,
+  /// `tone-mapping`, `target-trc`, `target-peak` are all runtime
+  /// setProperty options. Turning a branch off restores the mpv
+  /// defaults (kVodInterpolationOffProperties /
+  /// kVodSdrToHdrOffProperties) instead of leaving the "on" values
+  /// behind. Whether the picture visibly changes on a real iPhone
+  /// (vo=libmpv may silently disable interpolation; inverse
+  /// tone mapping is marked vo=gpu-next only) is still 待真机验证 —
+  /// these methods only guarantee the properties are SENT to the
+  /// running player.
+  @override
+  Future<void> setSuperResolution(bool enabled) async {
+    try {
+      if (!enabled) {
+        await _command(glslShadersClearCommand());
+        return;
+      }
+      final files = await unpackAnime4kShaders();
+      if (files == null) return;
+      await _command(glslShadersChangeListCommand(files));
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setFrameInterpolation(bool enabled) async {
+    await _setPropertiesDefensively(
+      enabled
+          ? kVodInterpolationProperties
+          : kVodInterpolationOffProperties,
+    );
+  }
+
+  @override
+  Future<void> setSdrToHdr(bool enabled) async {
+    await _setPropertiesDefensively(
+      enabled ? kVodSdrToHdrProperties : kVodSdrToHdrOffProperties,
+    );
   }
 
   @override

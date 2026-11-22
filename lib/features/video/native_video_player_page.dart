@@ -39,6 +39,7 @@ import '../../core/danmaku/danmaku_occlusion_mask.dart';
 import '../../core/native/person_segmentation.dart';
 import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_backend.dart';
+import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/video_fit.dart';
 import '../../core/player/super_resolution.dart';
 import '../../core/player/vod_controls.dart';
@@ -378,6 +379,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   double _danmakuOpacity = DanmakuSettings.defaultOpacity;
   double _danmakuArea = DanmakuSettings.defaultAreaFraction;
   ValueListenable<Box<dynamic>>? _danmakuSettingsListenable;
+  // b30: the playback-effect keys (trio / DV / low-memory /
+  // subtitle delay + appearance / skip mode / dialogue boost /
+  // double-tap step / fit / auto-next) — a change in the settings
+  // page while the player is open applies to the current episode
+  // through _onPlaybackSettingsChanged, same pattern as danmaku.
+  ValueListenable<Box<dynamic>>? _playbackSettingsListenable;
   List<VodDanmakuCandidate>? _danmakuCandidates;
   int _danmakuCandidateIndex = 0;
   List<VodDanmakuComment>? _danmakuComments;
@@ -475,6 +482,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _superResolution = superResolutionSwitchOn();
     _interpolation = vodInterpolationSwitchOn();
     _sdrToHdr = vodSdrToHdrSwitchOn();
+    // Seed the session's remembered trio (b30): no backend exists
+    // yet, so this is memory only — the backend's open() applies
+    // the same values from Hive, and a later ladder swap re-applies
+    // them from here. Without the seed a swap would silently drop
+    // a trio switch the user turned on before the swap.
+    unawaited(
+      _session.setVodEnhancement(
+        superResolution: _superResolution,
+        interpolation: _interpolation,
+        sdrToHdr: _sdrToHdr,
+      ),
+    );
     try {
       _dvP8Downgrade = HiveStore.getBool(HiveKeys.vodDvP8Downgrade, true);
     } catch (_) {}
@@ -515,6 +534,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _readDanmakuSettings();
     _danmakuVisible = _danmakuEnabled;
     _subscribeDanmakuSettings();
+    _subscribePlaybackSettings();
     // Vertical drag brightness/volume: the shared controller owns the
     // volume stream + per-side caches (P1-U2).
     _drag.init();
@@ -1544,6 +1564,201 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     }
   }
 
+  /// Watch the playback-effect keys while the player is open (b30,
+  /// same pattern as [_subscribeDanmakuSettings]): a change in the
+  /// settings page applies to the current episode instead of
+  /// waiting for the next open. Guarded like the danmaku one: when
+  /// Hive is not initialised there is simply no live update.
+  ///
+  /// Deliberately NOT watched: the engine picker (videoPlayerKey —
+  /// a kernel choice for the next session, not a live effect) and
+  /// the audio-only default (vodAudioOnly — a default for the next
+  /// open; the panel toggle is the live one). Watching either would
+  /// yank the picture / swap the kernel from a settings page the
+  /// user opened after leaving the player.
+  void _subscribePlaybackSettings() {
+    try {
+      final listenable = HiveStore.box.listenable(
+        keys: [
+          HiveKeys.vodSuperResolution,
+          HiveKeys.vodInterpolation,
+          HiveKeys.vodSdrToHdr,
+          HiveKeys.vodDvP8Downgrade,
+          HiveKeys.lowMemoryMode,
+          HiveKeys.vodSubtitleDelay,
+          HiveKeys.vodSubtitleFontSize,
+          HiveKeys.vodSubtitleColor,
+          HiveKeys.vodSubtitlePosition,
+          HiveKeys.vodSkipIntroMode,
+          HiveKeys.vodDialogueBoost,
+          HiveKeys.vodDoubleTapSeekSeconds,
+          HiveKeys.vodVideoFit,
+          HiveKeys.videoAutoNext,
+        ],
+      );
+      _playbackSettingsListenable = listenable;
+      listenable.addListener(_onPlaybackSettingsChanged);
+    } catch (_) {
+      // Hive unavailable — defaults apply, no live updates.
+    }
+  }
+
+  /// A playback-effect key changed under the player (settings page
+  /// or the panel itself — the panel sets the page state BEFORE
+  /// writing Hive, so its own writes diff to nothing here and never
+  /// double-apply). Every branch diffs against the page state
+  /// first: a key the page already matches is skipped, so a
+  /// settings change the user made while the player was open is
+  /// the only thing that applies.
+  void _onPlaybackSettingsChanged() {
+    if (!mounted) return;
+    // Trio: re-read all three and apply as a set (first-branch-wins
+    // is enforced in the session).
+    final sr = superResolutionSwitchOn();
+    final interp = vodInterpolationSwitchOn();
+    final sdr = vodSdrToHdrSwitchOn();
+    if (sr != _superResolution ||
+        interp != _interpolation ||
+        sdr != _sdrToHdr) {
+      setState(() {
+        _superResolution = sr;
+        _interpolation = interp;
+        _sdrToHdr = sdr;
+      });
+      unawaited(
+        _session.setVodEnhancement(
+          superResolution: sr,
+          interpolation: interp,
+          sdrToHdr: sdr,
+        ),
+      );
+    }
+    // DV P8 routing: only an AVPlayer-backed stream can change
+    // engines mid-playback; on MPV/IJK the switch changes no
+    // decode parameter, so no re-open (see _onDvP8Changed).
+    final dv = _readDvP8Downgrade();
+    if (dv != _dvP8Downgrade) {
+      final wasExo = _session.activeEngine == PlayerEngine.exo;
+      setState(() => _dvP8Downgrade = dv);
+      if (!dv && wasExo) unawaited(_reopenAtCurrentPosition());
+    }
+    // Low-memory mode: cache + decoder properties are set at open()
+    // only — re-open the current episode at its position.
+    final lm = LowMemoryMode.current;
+    if (lm != _lowMemoryMode) {
+      setState(() => _lowMemoryMode = lm);
+      unawaited(_reopenAtCurrentPosition());
+    }
+    // Subtitle offset + appearance tiers: the session applies them
+    // to the running backend at once.
+    final delay = vodSubtitleDelaySeconds();
+    if (delay != _session.currentSubtitleDelay) {
+      unawaited(_session.setSubtitleDelay(delay));
+    }
+    _applySubtitleAppearanceFromHive();
+    // Skip mode: the per-position check reads _skipMode live, so
+    // updating the field is the whole apply.
+    final mode = vodSkipIntroMode();
+    if (mode != _skipMode) setState(() => _skipMode = mode);
+    // Dialogue boost: session call, immediate.
+    final db = vodDialogueBoostEnabled();
+    if (db != _dialogueBoost) {
+      setState(() => _dialogueBoost = db);
+      unawaited(
+        _session.setDialogueBoost(
+          shouldApplyDialogueBoost(isLive: false, switchOn: db),
+        ),
+      );
+    }
+    // Double-tap step / fit / auto-next: page state read live at
+    // the gesture / the Video rebuild / episode end.
+    final step = vodDoubleTapSeekSeconds();
+    if (step != _doubleTapSeekSeconds) {
+      setState(() => _doubleTapSeekSeconds = step);
+    }
+    final fit = VideoPlaybackSettings.videoFit;
+    if (fit != _videoFit) setState(() => _videoFit = fit);
+    final autoNext = VideoPlaybackSettings.autoNext;
+    if (autoNext != _autoNext) setState(() => _autoNext = autoNext);
+  }
+
+  /// Read the DV P8 switch defensively (default ON, same as the
+  /// kernel gate's fallback).
+  bool _readDvP8Downgrade() {
+    try {
+      return HiveStore.getBool(HiveKeys.vodDvP8Downgrade, true);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Apply the persisted subtitle appearance tiers to the running
+  /// session, but only when a tier actually changed (the listenable
+  /// fires for every watched key, so an unconditional call would
+  /// re-send the same appearance on every trio toggle).
+  void _applySubtitleAppearanceFromHive() {
+    final fontTier = _readSubtitleTier(
+      HiveKeys.vodSubtitleFontSize,
+      'medium',
+      _subFontOrder,
+    );
+    final colorTier = _readSubtitleTier(
+      HiveKeys.vodSubtitleColor,
+      'white',
+      _subColorOrder,
+    );
+    final positionTier = _readSubtitleTier(
+      HiveKeys.vodSubtitlePosition,
+      'bottom',
+      _subPositionOrder,
+    );
+    if (fontTier == _subFontTier &&
+        colorTier == _subColorTier &&
+        positionTier == _subPositionTier) {
+      return;
+    }
+    setState(() {
+      _subFontTier = fontTier;
+      _subColorTier = colorTier;
+      _subPositionTier = positionTier;
+    });
+    _applySubtitleAppearance();
+  }
+
+  String _readSubtitleTier(
+    String key,
+    String fallback,
+    List<String> order,
+  ) {
+    try {
+      final v = HiveStore.getString(key, fallback);
+      return order.contains(v) ? v : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  /// Re-open the current episode at the current position (b30):
+  /// the mechanism for settings that only take effect at open() —
+  /// DV P8 routing and low-memory mode. The session re-opens the
+  /// same URL (fresh Hive values apply) and seeks back, so the
+  /// current episode keeps playing from where it was instead of
+  /// restarting or waiting for the next episode. The danmaku clock
+  /// is re-synced to the resume point afterwards; a failed reopen
+  /// leaves the old stream playing (the session only swaps on
+  /// first frame).
+  Future<void> _reopenAtCurrentPosition() async {
+    if (!mounted || _failed || _ended) return;
+    final resume = _position;
+    final ok = await _session.reopenCurrent();
+    if (!ok || !mounted) return;
+    if (_danmakuLoaded && _barrageController.engine != null) {
+      _barrageController.seekTo(
+        Duration(milliseconds: (resume * 1000).round()),
+      );
+    }
+  }
+
   /// Rebuild the engine timeline from the cached comments (filter
   /// re-read from the current settings). No network.
   void _rebuildDanmakuTimeline() {
@@ -2482,6 +2697,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
               unawaited(
                 HiveStore.put(HiveKeys.vodSuperResolution, value),
               );
+              // b30: applies to the running player at once — no
+              // reopen, no next-episode wait. The session takes the
+              // full trio state (exclusion enforced there too).
+              unawaited(
+                _session.setVodEnhancement(
+                  superResolution: value,
+                  interpolation: _interpolation,
+                  sdrToHdr: _sdrToHdr,
+                ),
+              );
               refreshSheet();
             },
       interpolation: _interpolation,
@@ -2491,6 +2716,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           : (value) {
               setState(() => _interpolation = value);
               unawaited(HiveStore.put(HiveKeys.vodInterpolation, value));
+              unawaited(
+                _session.setVodEnhancement(
+                  superResolution: _superResolution,
+                  interpolation: value,
+                  sdrToHdr: _sdrToHdr,
+                ),
+              );
               refreshSheet();
             },
       sdrToHdr: _sdrToHdr,
@@ -2500,12 +2732,27 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           : (value) {
               setState(() => _sdrToHdr = value);
               unawaited(HiveStore.put(HiveKeys.vodSdrToHdr, value));
+              unawaited(
+                _session.setVodEnhancement(
+                  superResolution: _superResolution,
+                  interpolation: _interpolation,
+                  sdrToHdr: value,
+                ),
+              );
               refreshSheet();
             },
       dvP8Downgrade: _dvP8Downgrade,
       onDvP8Changed: (value) {
         setState(() => _dvP8Downgrade = value);
         unawaited(HiveStore.put(HiveKeys.vodDvP8Downgrade, value));
+        // b30: routing, not a picture knob — on MPV/IJK the switch
+        // changes no decode parameter, so nothing visibly changes
+        // there (correct, not a bug). On AVPlayer, turning it OFF
+        // makes the stream unplayable for AVPlayer: re-open at the
+        // current position so the ladder moves it to MPV now.
+        if (!value && _session.activeEngine == PlayerEngine.exo) {
+          unawaited(_reopenAtCurrentPosition());
+        }
         refreshSheet();
       },
       lowMemoryLabel: _lowMemoryMode.label,
@@ -2513,6 +2760,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         final next = _lowMemoryMode.next;
         setState(() => _lowMemoryMode = next);
         unawaited(LowMemoryMode.save(next));
+        // b30: cache + decoder properties are set at open() only —
+        // re-open the current episode at its position so the new
+        // mode applies to this episode, not the next one.
+        unawaited(_reopenAtCurrentPosition());
         refreshSheet();
       },
       subtitleDelay: _session.currentSubtitleDelay,
@@ -3061,6 +3312,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _cancelSkipCountdown();
     _drag.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
+    _playbackSettingsListenable?.removeListener(_onPlaybackSettingsChanged);
     _barrageController.dispose();
     _occlusion.dispose();
     _positionSub?.cancel();
