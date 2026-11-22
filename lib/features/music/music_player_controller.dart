@@ -66,6 +66,13 @@ class MusicPlayerController extends GetxController
     MusicDownloadService? downloads,
     AvMusicPlayer? playerA,
     AvMusicPlayer? playerB,
+    // Stall watchdog budgets (build 30 — see [_stallTick]): a load
+    // that produces no progress at all for [loadStallTimeout] is a
+    // dead URL; a track that played and then freezes for
+    // [midPlayStallTimeout] is an expired URL. Injectable so tests
+    // can use short budgets instead of waiting 10/15 s.
+    this.loadStallTimeout = const Duration(seconds: 10),
+    this.midPlayStallTimeout = const Duration(seconds: 15),
   })  : _api = api ?? MusicApi(),
         _resolvers = resolvers ?? MusicResolvers(),
         _nowPlayingOverride = nowPlaying,
@@ -85,6 +92,10 @@ class MusicPlayerController extends GetxController
   final MusicResolvers _resolvers;
   final NowPlayingService? _nowPlayingOverride;
 
+  /// Stall watchdog budgets — see the constructor.
+  final Duration loadStallTimeout;
+  final Duration midPlayStallTimeout;
+
   /// Offline downloads (M-P0-5): the player checks this before
   /// resolving a remote URL, so a downloaded song plays from disk.
   final MusicDownloadService downloads;
@@ -102,6 +113,28 @@ class MusicPlayerController extends GetxController
   final RxBool isPlaying = false.obs;
   final Rx<Duration> position = Duration.zero.obs;
   final Rx<Duration> duration = Duration.zero.obs;
+
+  /// Total duration to show: the player's real duration when known,
+  /// else the search metadata duration (song.dur) when known, else
+  /// zero (unknown — the sheet shows an indeterminate state, never a
+  /// fake 0:00 total). The real duration takes over the moment the
+  /// player reports it.
+  Duration get displayDuration {
+    if (duration.value > Duration.zero) return duration.value;
+    final meta = currentSong?.dur ?? 0;
+    if (meta > 0) return Duration(seconds: meta);
+    return Duration.zero;
+  }
+
+  /// True while the player claims to be playing but has produced no
+  /// progress yet (no position, no duration): the track is still
+  /// loading/buffering, or it is stalled. The sheet shows a spinner
+  /// instead of the pause glyph in this state — never a dead 0:00.
+  bool get waitingForFirstProgress =>
+      isPlaying.value &&
+      position.value <= Duration.zero &&
+      duration.value <= Duration.zero &&
+      loadError.value == null;
   final Rx<AudioQuality> userQuality = AudioQuality.hires.obs;
   final Rx<AudioQuality> actualQuality = AudioQuality.hires.obs;
   final RxDouble speed = 1.0.obs; // M-P0-2: 0.5..2.0, persisted
@@ -616,6 +649,7 @@ class MusicPlayerController extends GetxController
       EqualizerStore.ensure().onLoudnessMeasured = null;
     } catch (_) {}
     _sleepTimer.cancel();
+    _stallTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
     _sleepFadeTimer?.cancel();
@@ -791,6 +825,93 @@ class MusicPlayerController extends GetxController
     _completedSub = player.stream.completed.listen((done) {
       if (done && identical(player, _active)) _onTrackCompleted();
     });
+  }
+
+  // -- stall watchdog (build 30) -------------------------------------------
+  //
+  // A track whose AVPlayerItem never reaches ready sits in `buffering`
+  // forever: just_audio reports `playing == true` (optimistic, set by
+  // play()) while `position` stays 0 (it only advances when the state
+  // is ready) and `duration` stays null → 0. The controller never
+  // observed the processing state, there was no timeout after open,
+  // and the sheet showed 0:00 / -0:00 with a pause glyph and no
+  // spinner — indistinguishable from "about to play" (chen 2026-11-23:
+  // 进度条全是 0). The watchdog watches the user-visible progress
+  // itself (the position/duration Rx values), so it fires no matter
+  // which layer stalled, and treats the stall as a play failure: the
+  // next candidate is tried, then the alt platform, then give-up with
+  // a notice — exactly like a load error. A track frozen at its own
+  // end (missed completion event) is recovered as a completion
+  // instead, so it advances instead of replaying.
+  Timer? _stallTimer;
+  DateTime? _lastProgressAt;
+  Duration _lastSeenPosition = Duration.zero;
+  Duration _lastSeenDuration = Duration.zero;
+  var _progressSeenForTrack = false;
+
+  void _startStallTimerIfNeeded() {
+    _stallTimer ??= Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _stallTick(),
+    );
+  }
+
+  @visibleForTesting
+  void stopStallWatchdogForTest() {
+    _stallTimer?.cancel();
+    _stallTimer = null;
+  }
+
+  /// Baseline for a newly landed track: the watch starts now and any
+  /// progress seen so far is forgotten — a new track starts unwatched.
+  void _resetStallForNewTrack() {
+    _lastProgressAt = DateTime.now();
+    _lastSeenPosition = Duration.zero;
+    _lastSeenDuration = Duration.zero;
+    _progressSeenForTrack = false;
+    _startStallTimerIfNeeded();
+  }
+
+  /// Re-arm the watch from now without forgetting whether this track
+  /// has ever progressed (resume / seek: the track already proved it
+  /// can play, so the mid-play budget applies).
+  void _noteStallBaseline() {
+    _lastProgressAt = DateTime.now();
+    _startStallTimerIfNeeded();
+  }
+
+  void _stallTick() {
+    if (_disposed || !_playersReady) return;
+    final now = DateTime.now();
+    final pos = position.value;
+    final dur = duration.value;
+    // Any movement restarts the clock: the track is alive.
+    if (pos != _lastSeenPosition || dur != _lastSeenDuration) {
+      _lastSeenPosition = pos;
+      _lastSeenDuration = dur;
+      _lastProgressAt = now;
+      if (pos > Duration.zero || dur > Duration.zero) {
+        _progressSeenForTrack = true;
+      }
+      return;
+    }
+    if (!isPlaying.value || isResolving.value) return;
+    final since = _lastProgressAt;
+    if (since == null) return;
+    final budget =
+        _progressSeenForTrack ? midPlayStallTimeout : loadStallTimeout;
+    if (now.difference(since) < budget) return;
+    // Frozen — disarm first so the recovery below cannot re-trigger.
+    _lastProgressAt = null;
+    if (dur > Duration.zero && pos >= dur) {
+      // At the end but the completion event never arrived: advance
+      // instead of replaying the track as a "failure".
+      // (_onTrackCompleted is synchronous void — it kicks off the
+      // advance itself, so no unawaited wrapper.)
+      _onTrackCompleted();
+      return;
+    }
+    unawaited(_onPlayError(auto: _lastLoadAuto, gen: _playGen));
   }
 
   // Player volume is full (1.0) unless normalisation (1.1.6,
@@ -1324,6 +1445,8 @@ class MusicPlayerController extends GetxController
       _setResolving(false, gen);
     }
     if (gen != _playGen || _disposed) return;
+    // The open landed: the stall watch starts now for this track.
+    _resetStallForNewTrack();
     // A real-duration event that arrived during the open's own await
     // was stashed (see [onRealDuration]): process it now that the
     // load has landed.
@@ -1752,6 +1875,7 @@ class MusicPlayerController extends GetxController
             // Same post-open steps as the main path: stashed trial
             // duration + pause/seek the user asked for mid-resolve.
             if (g == _playGen) {
+              _resetStallForNewTrack();
               _drainPendingRealDuration();
               await _applyPendingIntents(g);
             }
@@ -2070,6 +2194,10 @@ class MusicPlayerController extends GetxController
         unawaited(_finalizeListenSession());
         _listenTracker.begin(song, DateTime.now());
       }
+      // Optimistic like seek(): the bar shows 0 at once instead of
+      // holding the old position until the next position event —
+      // while paused no event arrives at all, so the bar would lie.
+      position.value = Duration.zero;
       await _active.seek(Duration.zero);
       return;
     }
@@ -2143,12 +2271,14 @@ class MusicPlayerController extends GetxController
     if (!_playersReady) return;
     if (!fadeEnabled.value || _currentNormGain <= 0) {
       await _active.play();
+      _noteStallBaseline();
       return;
     }
     final gen = _playGen;
     final fadeGen = _fadeGen;
     await _active.setVolume(0);
     await _active.play();
+    _noteStallBaseline();
     unawaited(
       VolumeFader.ramp(
         setVolume: _active.setVolume,
@@ -2216,6 +2346,7 @@ class MusicPlayerController extends GetxController
       return;
     }
     await _active.seek(pos);
+    _noteStallBaseline();
   }
 
   // -- playback speed (M-P0-2) ------------------------------------------------

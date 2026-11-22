@@ -1071,7 +1071,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         children: [
           Obx(() {
             final pos = _c.position.value;
-            final total = _c.duration.value;
+            final total = _c.displayDuration;
             // While scrubbing, the bar follows the finger.
             final frac =
                 _scrubFrac ??
@@ -1174,7 +1174,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               Obx(() {
                 // While scrubbing, the elapsed label shows the
                 // scrub target, not the still-moving playhead.
-                final total = _c.duration.value;
+                final total = _c.displayDuration;
                 final pos = _scrubFrac != null && total.inMilliseconds > 0
                     ? Duration(
                         milliseconds: (total.inMilliseconds * _scrubFrac!)
@@ -1192,10 +1192,11 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 );
               }),
               Obx(() {
-                // Remaining time, '-m:ss' (v1.0.4 format: total<=0
-                // shows '-0:00', never a bare total). While scrubbing
-                // it follows the finger, like the elapsed label.
-                final total = _c.duration.value;
+                // Remaining time, '-m:ss' (v1.0.4 format). While
+                // scrubbing it follows the finger, like the elapsed
+                // label. Unknown total (no real duration, no metadata)
+                // shows '--:--' — never a fake '-0:00'.
+                final total = _c.displayDuration;
                 final pos = _scrubFrac != null && total.inMilliseconds > 0
                     ? Duration(
                         milliseconds: (total.inMilliseconds * _scrubFrac!)
@@ -1204,7 +1205,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                     : _c.position.value;
                 final remain = total - pos;
                 final text = total.inSeconds <= 0
-                    ? '-0:00'
+                    ? '--:--'
                     : '-${formatDuration(remain.inSeconds < 0 ? 0 : remain.inSeconds)}';
                 return Text(
                   text,
@@ -1218,6 +1219,39 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               }),
             ],
           ),
+          // Load failure for the song on screen: the toast that
+          // carries 重试 / 下一首 disappears after 4 s, and without
+          // this the player would sit at 0:00 with no sign anything
+          // failed. Tapping retries the load (see retryCurrent).
+          Obx(() {
+            final err = _c.loadError.value;
+            final song = _c.currentSong;
+            if (err == null ||
+                song == null ||
+                err.song.identityKey != song.identityKey) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: GestureDetector(
+                onTap: () {
+                  HaoHaptics.tap();
+                  unawaited(_c.retryCurrent());
+                },
+                child: Text(
+                  '无法播放：${err.reason} · 点按重试',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    fontSize: 10.5,
+                    shadows: [_lyricShadow],
+                  ),
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -1297,8 +1331,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 // spinner in place of the play button so a tap never
                 // looks dead for the seconds a resolve can take. While a
                 // song is playing (auto-advance / crossfade) the old
-                // track keeps sounding, so no spinner.
-                if (_c.isResolving.value && !_c.isPlaying.value) {
+                // track keeps sounding, so no spinner. The same spinner
+                // shows while the player claims to be playing but has
+                // produced no progress yet (waitingForFirstProgress):
+                // the track is buffering or stalled, and the bar must
+                // not sit at 0:00 with a pause glyph as if all is well.
+                if ((_c.isResolving.value && !_c.isPlaying.value) ||
+                    _c.waitingForFirstProgress) {
                   return const SizedBox(
                     width: 28,
                     height: 28,
