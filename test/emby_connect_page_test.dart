@@ -19,6 +19,7 @@ import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/settings/emby_connect_page.dart';
 import 'package:standalone/services/video/emby_client.dart';
 import 'package:standalone/services/video/emby_models.dart';
+import 'package:standalone/widgets/settings_ui.dart';
 
 EmbyResponse okJson(dynamic json) =>
     EmbyResponse(statusCode: 200, json: json);
@@ -189,9 +190,14 @@ void main() {
     TextField field() =>
         tester.widget<TextField>(find.byKey(const Key('emby_password')));
     expect(field().obscureText, isTrue);
-    await tester.tap(find.byIcon(Icons.visibility_off));
+    // iOS eye glyph (CupertinoIcons.eye when hidden), not the
+    // Material visibility icon.
+    expect(find.byIcon(CupertinoIcons.eye), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off), findsNothing);
+    await tester.tap(find.byIcon(CupertinoIcons.eye));
     await tester.pump();
     expect(field().obscureText, isFalse);
+    expect(find.byIcon(CupertinoIcons.eye_slash), findsOneWidget);
   });
 
   testWidgets('advanced expands: report + strm + api key, native switches',
@@ -386,6 +392,83 @@ void main() {
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
     expect(find.text('1 条备用地址'), findsOneWidget);
+  });
+
+  // -- Build 30 redo (chen: "这里丑到爆") -------------------------------
+
+  testWidgets('form rows are borderless iOS settings rows', (tester) async {
+    await pumpPage(tester);
+    for (final key in [
+      'emby_host',
+      'emby_port',
+      'emby_path',
+      'emby_username',
+      'emby_password',
+    ]) {
+      final field =
+          tester.widget<TextField>(find.byKey(Key(key)));
+      final decoration = field.decoration!;
+      // No pill, in any state: the theme's pill border used to leak
+      // in through InputDecoration.collapsed + applyDefaults.
+      expect(decoration.border, InputBorder.none, reason: key);
+      expect(decoration.enabledBorder, InputBorder.none, reason: key);
+      expect(decoration.focusedBorder, InputBorder.none, reason: key);
+      expect(decoration.errorBorder, InputBorder.none, reason: key);
+      expect(field.textAlign, TextAlign.right, reason: key);
+    }
+  });
+
+  testWidgets('page background is the opaque grouped background',
+      (tester) async {
+    await pumpPage(tester);
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+    final expected = HaoThemes.of(HaoThemeId.appleGlass).light
+        .extension<HaoTheme>()!
+        .scaffoldBackground;
+    expect(scaffold.backgroundColor, expected);
+    expect(scaffold.backgroundColor, isNot(Colors.transparent));
+  });
+
+  testWidgets('group titles match the settings page (22 w600)',
+      (tester) async {
+    await pumpPage(tester);
+    for (final title in ['播放', '通知提醒']) {
+      final text = tester.widget<Text>(find.text(title));
+      expect(text.style?.fontSize, 22, reason: title);
+      expect(text.style?.fontWeight, FontWeight.w600, reason: title);
+    }
+    // 高级设置 is the same shared collapsible section as the
+    // settings page's 6 groups.
+    expect(find.byType(HaoCollapsibleSection), findsOneWidget);
+  });
+
+  testWidgets('reminder row ends in a chevron, not unfold_more',
+      (tester) async {
+    await pumpPage(tester);
+    expect(find.byIcon(Icons.unfold_more), findsNothing);
+    // Both nav rows (备用线路 + 未播放提醒) end in the shared
+    // HaoChevron; the old unfold_more glyph is gone.
+    expect(find.byType(HaoChevron), findsNWidgets(2));
+    expect(find.text('关闭'), findsOneWidget);
+  });
+
+  testWidgets('connect button uses the theme default, no size override',
+      (tester) async {
+    await pumpPage(tester);
+    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    // The old 52pt minimumSize + 17pt override made this the only
+    // FilledButton in the app that ignored the theme.
+    expect(button.style, isNull);
+  });
+
+  testWidgets('form rows are at least 44pt tall', (tester) async {
+    await pumpPage(tester);
+    // The row is the Padding around the field (14 + ~20 text + 14).
+    final row = find.ancestor(
+      of: find.byKey(const Key('emby_host')),
+      matching: find.byType(Padding),
+    ).first;
+    expect(tester.getSize(row).height, greaterThanOrEqualTo(44));
   });
 
   testWidgets('paste fills host/port/path/https from the clipboard',

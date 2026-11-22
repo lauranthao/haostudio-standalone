@@ -476,13 +476,6 @@ class _SearchError extends StatelessWidget {
               onPressed: onRetry,
               icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
               label: Text('重试', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                // Theme-defined onPrimary per mode, not hardcoded
-                // white (unreadable on the dark-mode light accents).
-                foregroundColor:
-                    Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),

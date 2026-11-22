@@ -90,11 +90,15 @@ class CollapsibleSection extends StatelessWidget {
                           style:
                               (titleStyle ??
                                       TextStyle(
-                                        // Title 3 20 semibold (was 18
-                                        // w800 — 18 is not an Apple
-                                        // text style; Title 3 is 20).
+                                        // Title 2 22 semibold — the same
+                                        // group-title size as the settings
+                                        // page (HaoGroupTitle) and the
+                                        // music tab's collapsible
+                                        // sections; the old 20 default
+                                        // made artist detail's sections
+                                        // smaller than music tab's.
                                         color: theme.textPrimary,
-                                        fontSize: 20,
+                                        fontSize: 22,
                                         fontWeight: FontWeight.w600,
                                       ))
                                   .copyWith(

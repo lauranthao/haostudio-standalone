@@ -231,7 +231,7 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                       vertical: 10,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(HaoRadius.large),
                     ),
                   ),
                   child: Text(
@@ -358,15 +358,6 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     label: Text('分享', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
-                      side: BorderSide(color: theme.hairline),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(HaoRadius.large),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
                     ),
                   ),
                 ),
@@ -378,15 +369,6 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                     label: Text('在${platformName(room.platform)} App 中打开', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.textPrimary,
-                      side: BorderSide(color: theme.hairline),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(HaoRadius.large),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
                     ),
                   ),
                 ),

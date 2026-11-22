@@ -128,9 +128,6 @@ class _LiveLinkSheetState extends State<_LiveLinkSheet> {
                   controller: _controller,
                   decoration: InputDecoration(
                     hintText: '粘贴链接，如 https://live.bilibili.com/…',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -161,14 +158,6 @@ class _LiveLinkSheetState extends State<_LiveLinkSheet> {
             width: double.infinity,
             child: FilledButton(
               onPressed: _resolving ? null : _go,
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
               child: _resolving
                   ? const SizedBox(
                       width: 18,

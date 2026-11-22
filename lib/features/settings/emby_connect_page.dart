@@ -2,6 +2,19 @@
 // setup form after chen's reference screenshots ("添加 Emby" from
 // another app, two screenshots = top + bottom of one page).
 //
+// Build 30 redo (chen: "这里丑到爆"): the form rows are iOS
+// Settings rows now — borderless, label left / value right, ~48pt
+// (the old pill outlines came from the theme's inputDecorationTheme
+// leaking into InputDecoration.collapsed via applyDefaults); the
+// page has an opaque system grouped background (the scaffold goes
+// transparent under an active wallpaper); group titles use the
+// shared HaoGroupTitle (22 w600, same as the settings page's 6
+// groups); 高级设置 is the shared HaoCollapsibleSection; the
+// reminder row ends in a value + chevron, not the unfold_more
+// glyph; the submit button uses the theme default (no 52pt
+// override). The top AppBar is untouched — the nav-bar unification
+// lives in the b30-ios branch.
+//
 // Layout follows the reference, top to bottom:
 // - App bar: ✕ close left, title 添加/编辑 Emby, paste action right.
 // - Emby logo tile + live name + "媒体库、元数据与播放进度".
@@ -498,6 +511,13 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
     final theme = HaoTheme.ofOrDefault(context);
     final isEdit = (widget.initialConfig?.isConfigured ?? false);
     return Scaffold(
+      // Opaque system grouped background (theme.scaffoldBackground):
+      // the scaffold is transparent whenever a wallpaper is active
+      // (hao_themes.dart), so this form page showed the user's photo
+      // behind the white cards. A form page needs a solid grouped
+      // background for legibility — the wallpaper stays on the other
+      // pages, untouched.
+      backgroundColor: theme.scaffoldBackground,
       appBar: AppBar(
         leading: IconButton(
           icon: Icon(
@@ -567,8 +587,8 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
           ),
           const SizedBox(height: 8),
           const HaoHint('密码仅用于本次登录换取令牌，不会保存在设备上。没有账号时，可在高级设置里用 API 密钥连接。'),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('播放'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('播放'),
           SettingsGroup(
             children: [
               ListTile(
@@ -587,8 +607,8 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('通知提醒'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('通知提醒'),
           SettingsGroup(
             children: [
               ListTile(
@@ -611,20 +631,46 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
                       ),
                     ),
                     const SizedBox(width: 2),
-                    Icon(
-                      Icons.unfold_more,
-                      color: theme.textMuted,
-                      size: 20,
-                      shadows: HaoTheme.legibilityShadows(context),
-                    ),
+                    const HaoChevron(),
                   ],
                 ),
                 onTap: _pickReminder,
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _buildAdvanced(theme),
+          const SizedBox(height: 14),
+          HaoCollapsibleSection(
+            title: '高级设置',
+            expanded: _advancedExpanded,
+            onToggle: () =>
+                setState(() => _advancedExpanded = !_advancedExpanded),
+            children: [
+              SettingsGroup(
+                children: [
+                  HaoSwitchRow(
+                    title: '数据上报',
+                    subtitle: '向服务器同步播放进度，用于继续观看和已看标记',
+                    value: _reportProgress,
+                    onChanged: (v) => setState(() => _reportProgress = v),
+                  ),
+                  HaoSwitchRow(
+                    title: 'STRM 直连',
+                    subtitle: '开启时直接播放 STRM 目标地址；关闭时由服务器提供播放地址，适用于绝大多数服务器',
+                    value: _strmDirect,
+                    onChanged: (v) => setState(() => _strmDirect = v),
+                  ),
+                  _textRow(
+                    theme,
+                    label: 'API 密钥',
+                    controller: _apiKeyController,
+                    hint: '无账号时用密钥连接',
+                    obscure: true,
+                    fieldKey: const Key('emby_api_key'),
+                  ),
+                ],
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
           if (_status.isNotEmpty) ...[
             Text(
@@ -648,13 +694,6 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
           ],
           FilledButton(
             onPressed: (_canConnect && !_busy) ? _connect : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-              textStyle: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
             child: Text(_busy ? '连接中…' : '连接并保存'),
           ),
         ],
@@ -678,7 +717,7 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
                   style: TextStyle(
                     color: theme.textPrimary,
                     fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -694,54 +733,6 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
     );
   }
 
-  Widget _buildAdvanced(HaoTheme theme) {
-    return SettingsGroup(
-      children: [
-        ListTile(
-          title: Text(
-            '高级设置',
-            style: TextStyle(
-              color: theme.textPrimary,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          trailing: Icon(
-            _advancedExpanded
-                ? Icons.keyboard_arrow_up
-                : Icons.keyboard_arrow_down,
-            color: theme.textMuted,
-            shadows: HaoTheme.legibilityShadows(context),
-          ),
-          onTap: () =>
-              setState(() => _advancedExpanded = !_advancedExpanded),
-        ),
-        if (_advancedExpanded) ...[
-          HaoSwitchRow(
-            title: '数据上报',
-            subtitle: '向服务器同步播放进度，用于继续观看和已看标记',
-            value: _reportProgress,
-            onChanged: (v) => setState(() => _reportProgress = v),
-          ),
-          HaoSwitchRow(
-            title: 'STRM 直连',
-            subtitle: '开启时直接播放 STRM 目标地址；关闭时由服务器提供播放地址，适用于绝大多数服务器',
-            value: _strmDirect,
-            onChanged: (v) => setState(() => _strmDirect = v),
-          ),
-          _textRow(
-            theme,
-            label: 'API 密钥',
-            controller: _apiKeyController,
-            hint: '无账号时用密钥连接',
-            obscure: true,
-            fieldKey: const Key('emby_api_key'),
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _textRow(
     HaoTheme theme, {
     required String label,
@@ -751,8 +742,12 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
     bool obscure = false,
     Key? fieldKey,
   }) {
+    // iOS Settings form row: label left, borderless value right.
+    // Row height ~48pt (14 + ~20 text + 14): the old 4px vertical
+    // padding made 28pt rows — below the 44pt touch minimum and
+    // visibly cramped next to the ~56pt ListTile rows.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           SizedBox(
@@ -770,8 +765,8 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
               obscureText: obscure,
               keyboardType: keyboardType,
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration.collapsed(
-                hintText: hint,
+              decoration: haoFormFieldDecoration(
+                hint: hint,
                 hintStyle: TextStyle(color: theme.textMuted, fontSize: 16),
               ),
               style: TextStyle(color: theme.textPrimary, fontSize: 16),
@@ -784,7 +779,7 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
 
   Widget _passwordRow(HaoTheme theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           SizedBox(
@@ -801,8 +796,8 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
               textAlign: TextAlign.right,
               obscureText: !_showPassword,
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration.collapsed(
-                hintText: _hasSavedToken ? '已登录，留空保持不变' : '密码',
+              decoration: haoFormFieldDecoration(
+                hint: _hasSavedToken ? '已登录，留空保持不变' : '密码',
                 hintStyle: TextStyle(color: theme.textMuted, fontSize: 16),
               ),
               style: TextStyle(color: theme.textPrimary, fontSize: 16),
@@ -810,7 +805,7 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
           ),
           IconButton(
             icon: Icon(
-              _showPassword ? Icons.visibility : Icons.visibility_off,
+              _showPassword ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
               color: theme.textMuted,
               shadows: HaoTheme.legibilityShadows(context),
             ),
@@ -909,6 +904,9 @@ class _EmbyFallbackLinesPageState extends State<_EmbyFallbackLinesPage> {
         Navigator.of(context).pop(_lines);
       },
       child: Scaffold(
+        // Same opaque grouped background as the connect page: the
+        // scaffold is transparent while a wallpaper is active.
+        backgroundColor: theme.scaffoldBackground,
         appBar: AppBar(
           title: const Text('备用线路'),
           centerTitle: true,
@@ -928,7 +926,7 @@ class _EmbyFallbackLinesPageState extends State<_EmbyFallbackLinesPage> {
               children: [
                 Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
                       Expanded(
@@ -937,8 +935,8 @@ class _EmbyFallbackLinesPageState extends State<_EmbyFallbackLinesPage> {
                           controller: _newLineController,
                           keyboardType: TextInputType.url,
                           onSubmitted: (_) => _addLine(),
-                          decoration: InputDecoration.collapsed(
-                            hintText: '如 http://192.168.1.11:8096',
+                          decoration: haoFormFieldDecoration(
+                            hint: '如 http://192.168.1.11:8096',
                             hintStyle: TextStyle(
                               color: theme.textMuted,
                               fontSize: 16,

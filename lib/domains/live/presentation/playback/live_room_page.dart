@@ -2281,7 +2281,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   // (BackdropFilter over the video), black stays
                   // legible over any frame in every theme/mode.
                   child: DarkGlass(
-                    radius: 16,
+                    radius: HaoRadius.large,
                     // Only this card listens to the drag value: ticks
                     // rebuild the card, never the room page.
                     child: ValueListenableBuilder<double>(
@@ -2978,7 +2978,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                               final Widget row;
                               if (_listStyle == DanmakuSettings.listStyleCard) {
                                 row = GlassCard(
-                                  radius: 14,
+                                  radius: HaoRadius.sheet,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 10,
@@ -3071,18 +3071,6 @@ class _FailureCard extends StatelessWidget {
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: onRetry,
-                style: FilledButton.styleFrom(
-                  backgroundColor: HaoTheme.of(context).accent,
-                  foregroundColor:
-                      Theme.of(context).colorScheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
                 child: const Text(
                   '▶ 重试',
                   style: TextStyle(fontWeight: FontWeight.w600),

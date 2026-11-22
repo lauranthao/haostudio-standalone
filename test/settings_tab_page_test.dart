@@ -492,18 +492,23 @@ void main() {
     expect(find.text('恢复默认'), findsOneWidget);
   });
 
-  testWidgets('low-memory tap toasts once instead of a subtitle',
+  testWidgets('low-memory tap cycles the mode and the subtitle follows',
       (tester) async {
+    await HiveStore.put(HiveKeys.lowMemoryMode, 'auto');
     await pumpPage(tester);
 
+    // b30: no toast, no "下次打开生效" — the mode applies at once
+    // (a running player re-opens the episode at its position);
+    // the subtitle states the effective state now.
     expect(find.textContaining('下次打开生效'), findsNothing);
     await tester.tap(find.text('低内存模式'));
     await tester.pump();
-    expect(find.text('下次打开生效'), findsOneWidget);
-    // Let the snackbar auto-dismiss before the test ends — its
-    // overlay ticker would otherwise leak into the next test.
-    await tester.pump(const Duration(seconds: 4));
-    await tester.pumpAndSettle();
+    expect(find.text('始终开启 · 减少缓存'), findsOneWidget);
+    expect(HiveStore.getString(HiveKeys.lowMemoryMode, ''), 'always');
+    await tester.tap(find.text('低内存模式'));
+    await tester.pump();
+    expect(find.text('始终关闭 · 完整缓存'), findsOneWidget);
+    expect(HiveStore.getString(HiveKeys.lowMemoryMode, ''), 'never');
   });
 
   testWidgets('auto update check switch defaults on and persists',
@@ -534,7 +539,7 @@ void main() {
     await pumpPage(tester);
 
     // In the 影视播放 group, below 视频画面比例. The subtitle states
-    // the scope (MPV-only, next playback) — it is load-bearing, not
+    // the scope (MPV-only, applies at once) — it is load-bearing, not
     // a hint: on IJK/AVPlayer the switch does nothing visible.
     final fitTop = tester.getTopLeft(find.text('视频画面比例')).dy;
     final srTop = tester.getTopLeft(find.text('Anime4K 超分')).dy;
@@ -542,8 +547,9 @@ void main() {
     expect(srTop, greaterThan(fitTop));
     expect(lowMemTop, greaterThan(srTop));
     // 1.1.6: the same scope subtitle now also sits on 插帧 and
-    // SDR 转 HDR (the MPV trio shares it).
-    expect(find.text('仅 MPV，下次播放生效'), findsNWidgets(3));
+    // SDR 转 HDR (the MPV trio shares it). b30: the trio applies
+    // at once, so the copy reads 立即生效, not 下次播放生效.
+    expect(find.text('仅 MPV，立即生效'), findsNWidgets(3));
 
     final row = find
         .ancestor(

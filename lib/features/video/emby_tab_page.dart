@@ -140,6 +140,11 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
   List<VideoItem> _searchResults = [];
   String _searchError = '';
 
+  /// Search pagination: server total + in-flight flag for the
+  /// load-more footer under the search grid.
+  int _searchTotal = 0;
+  bool _searchLoadingMore = false;
+
   @override
   void initState() {
     super.initState();
@@ -275,16 +280,26 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       return;
     }
     if (!mounted) return;
-    final movieLib = _pickLibrary(
-      libraries,
-      config.movieLibraryId,
-      (l) => l.isMovieLibrary,
-    );
-    final tvLib = _pickLibrary(
-      libraries,
-      config.tvLibraryId,
-      (l) => l.isTvLibrary,
-    );
+    // Pinned library only (config.movieLibraryId / tvLibraryId):
+    // when unpinned the query carries NO parentId, so every library
+    // of that type is read. The old code passed the FIRST library's
+    // id and silently hid the other libraries' content — the
+    // model comment ("null = all libraries of that type") already
+    // promised this behaviour.
+    final movieLibId = config.movieLibraryId?.isNotEmpty == true
+        ? _pickLibrary(
+            libraries,
+            config.movieLibraryId,
+            (l) => l.isMovieLibrary,
+          )?.id
+        : null;
+    final tvLibId = config.tvLibraryId?.isNotEmpty == true
+        ? _pickLibrary(
+            libraries,
+            config.tvLibraryId,
+            (l) => l.isTvLibrary,
+          )?.id
+        : null;
 
     // Movie and series loads are independent: one failing must not
     // kill the other row.
@@ -294,7 +309,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     var seriesTotal = _seriesTotal;
     try {
       final page = await client.movies(
-        libraryId: movieLib?.id,
+        libraryId: movieLibId,
         limit: 60,
         cancelToken: token,
       );
@@ -307,7 +322,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     }
     try {
       final page = await client.series(
-        libraryId: tvLib?.id,
+        libraryId: tvLibId,
         limit: 60,
         cancelToken: token,
       );
@@ -324,8 +339,8 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       _series = series;
       _moviesTotal = moviesTotal;
       _seriesTotal = seriesTotal;
-      _movieLibId = movieLib?.id;
-      _tvLibId = tvLib?.id;
+      _movieLibId = movieLibId;
+      _tvLibId = tvLibId;
       _history = VideoHistoryStore.getAll()
           .where((e) => e.sourceKey == EmbyClient.sourceId)
           .toList();
@@ -495,6 +510,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       _searchMode = true;
       _searchQuery = '';
       _searchResults = [];
+      _searchTotal = 0;
       _searchError = '';
     });
   }
@@ -504,6 +520,8 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     setState(() {
       _searchMode = false;
       _searching = false;
+      _searchResults = [];
+      _searchTotal = 0;
       _searchController.clear();
     });
   }
@@ -518,12 +536,14 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       _searching = true;
       _searchQuery = q;
       _searchError = '';
+      _searchTotal = 0;
     });
     try {
-      final results = await client.search(q, cancelToken: token);
+      final page = await client.search(q, cancelToken: token);
       if (!mounted) return;
       setState(() {
-        _searchResults = results;
+        _searchResults = page.items;
+        _searchTotal = page.totalCount;
         _searching = false;
       });
     } on DioException catch (e) {
@@ -539,6 +559,30 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
         _searching = false;
         _searchError = e.message;
       });
+    }
+  }
+
+  /// Search load-more — same pattern as _loadMoreMovies: append the
+  /// next page under the grid. The old search capped at 50 with no
+  /// way to see the rest.
+  Future<void> _loadMoreSearch() async {
+    final client = _client;
+    if (client == null || _searchLoadingMore) return;
+    if (_searchTotal > 0 && _searchResults.length >= _searchTotal) return;
+    setState(() => _searchLoadingMore = true);
+    try {
+      final page = await client.search(
+        _searchQuery,
+        startIndex: _searchResults.length,
+      );
+      if (!mounted) return;
+      setState(() {
+        _searchResults = [..._searchResults, ...page.items];
+        _searchTotal = page.totalCount;
+        _searchLoadingMore = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _searchLoadingMore = false);
     }
   }
 
@@ -631,10 +675,6 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
               onPressed: _openSettings,
               icon: Icon(Icons.settings, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('去设置连接'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),
@@ -673,10 +713,6 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
               },
               icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),
@@ -919,12 +955,14 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                   onClear: () {
                     setState(() {
                       _searchResults = [];
+                      _searchTotal = 0;
                       _searchError = '';
                     });
                   },
                   onCancel: () {
                     setState(() {
                       _searchResults = [];
+                      _searchTotal = 0;
                       _searchError = '';
                     });
                   },
@@ -962,7 +1000,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                               ),
                             )
                           : GridView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
@@ -983,6 +1021,21 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                               },
                             ),
         ),
+        if (_searchMode &&
+            !_searching &&
+            _searchError.isEmpty &&
+            _searchQuery.isNotEmpty &&
+            _searchResults.isNotEmpty &&
+            _searchTotal > _searchResults.length)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: _LoadMoreRow(
+              shown: _searchResults.length,
+              total: _searchTotal,
+              loading: _searchLoadingMore,
+              onTap: _loadMoreSearch,
+            ),
+          ),
       ],
     );
   }
@@ -1260,10 +1313,6 @@ class _LoadMoreRow extends StatelessWidget {
               )
             : OutlinedButton(
                 onPressed: onTap,
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: theme.hairline),
-                  foregroundColor: theme.accent,
-                ),
                 child: Text('加载更多（已显示 $shown / 共 $total 部）'),
               ),
       ),

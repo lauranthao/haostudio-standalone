@@ -487,6 +487,33 @@ ThemeData _buildThemeData({
         ),
       ),
     ),
+    // Build 30: the app had no outlinedButtonTheme, so every
+    // OutlinedButton fell back to the M3 default (stadium pill) and
+    // each call site restated its own side/radius/padding — the
+    // load-more buttons were pills while FilledButtons were radius
+    // 12. One outlined system now: hairline side, accent label,
+    // radius 12, 14 w600. Sites that only restated these values drop
+    // their styleFrom; the two that need a primary-colour label keep
+    // a one-prop foregroundColor override.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: ButtonStyle(
+        side: WidgetStateProperty.all(BorderSide(color: hairline)),
+        foregroundColor: WidgetStateProperty.all(accent),
+        padding: WidgetStateProperty.all(
+          const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+        ),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
+        ),
+        textStyle: WidgetStateProperty.all(
+          TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            shadows: legibility,
+          ),
+        ),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
         foregroundColor: WidgetStateProperty.all(accent),

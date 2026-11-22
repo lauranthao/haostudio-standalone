@@ -31,6 +31,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/hao_radius.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../widgets/player_settings_sheet.dart';
 import '../../live_audio_sleep.dart';
@@ -131,7 +132,7 @@ class LivePlayerSettingsSheet extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: theme.surfaceSolid,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(HaoRadius.sheet)),
       ),
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
       // Transparent Material between the fill and the content: the

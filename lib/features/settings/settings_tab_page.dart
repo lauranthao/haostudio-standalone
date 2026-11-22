@@ -69,6 +69,7 @@ import 'package:get/get.dart';
 import '../../widgets/hao_toast.dart';
 import '../../widgets/hao_inset_grouped.dart';
 import '../../widgets/hao_segmented_control.dart';
+import '../../widgets/settings_ui.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -367,7 +368,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       body: ListView(
         // Bottom padding 34, not 40 (build 29 B组): the last section
         // carries 6px breathing room inside its clip (see
-        // _CollapsibleSection), so 34 + 6 keeps the total page height
+        // HaoCollapsibleSection), so 34 + 6 keeps the total page height
         // — and every scroll offset — exactly as before.
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 34),
         children: [
@@ -386,49 +387,49 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               ),
             ),
           ),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '外观',
             expanded: _sectionExpanded['appearance'] ?? true,
             onToggle: () => _toggleSection('appearance'),
             children: _appearanceRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '音乐播放',
             expanded: _sectionExpanded['music'] ?? true,
             onToggle: () => _toggleSection('music'),
             children: _musicRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '直播',
             expanded: _sectionExpanded['live'] ?? true,
             onToggle: () => _toggleSection('live'),
             children: _liveRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '影视播放',
             expanded: _sectionExpanded['video'] ?? true,
             onToggle: () => _toggleSection('video'),
             children: _videoRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '源管理',
             expanded: _sectionExpanded['sources'] ?? true,
             onToggle: () => _toggleSection('sources'),
             children: _sourcesRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '数据',
             expanded: _sectionExpanded['data'] ?? true,
             onToggle: () => _toggleSection('data'),
             children: _dataRows(context),
           ),
           const SizedBox(height: 14),
-          _CollapsibleSection(
+          HaoCollapsibleSection(
             title: '关于',
             expanded: _sectionExpanded['about'] ?? true,
             onToggle: () => _toggleSection('about'),
@@ -440,7 +441,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “外观”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   List<Widget> _appearanceRows(BuildContext context) {
     final theme = HaoTheme.of(context);
     final themeController = Get.find<ThemeController>();
@@ -714,7 +715,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “音乐播放”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   List<Widget> _musicRows(BuildContext context) {
     return [
       AnimatedBuilder(
@@ -824,7 +825,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “影视播放”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   /// Build 30: “直播”组的行。直播在设置页此前没有自己的组：
   /// 弹幕设置一直错放在影视播放组末尾（它管的是 5 个直播平台的
   /// 弹幕开关 + 直播间弹幕显示，影视弹幕只是其中一行）；移动网
@@ -1259,7 +1260,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “源管理”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   List<Widget> _sourcesRows(BuildContext context) {
     return [
       _BeansRow(
@@ -1281,7 +1282,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “数据”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   List<Widget> _dataRows(BuildContext context) {
     return [
       _BeansRow(
@@ -1308,7 +1309,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   /// Build 29 B组: “关于”组的行(原 build() 平铺内容, 一字未改;
-  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  /// 组内 12px 间隔由 HaoCollapsibleSection 统一加).
   List<Widget> _aboutRows(BuildContext context) {
     return [
       _BeansRow(
@@ -1628,122 +1629,9 @@ class _BackgroundSwatches extends StatelessWidget {
   }
 }
 
-/// Build 29 B组: 一个可收放的设置组. 组头复用 [_SectionTitle](Beans
-/// `SectionHeader` 21 w600), 右边是 Cupertino chevron_down: 展开时朝下,
-/// 收起时转 90° 朝右(AnimatedRotation + easeOutBack 弹簧); 点组头任何
-/// 位置都切换(HaoPressable, 和行一样的按压变暗). 收起后组头仍在、点按即
-/// 开, 不留死路; 内容由 AnimatedSize + ClipRect 做 300ms 收放,
-/// 收起时行全部卸载(Offstage 不留, 开关等原生视图随之释放, 再展开重建).
-class _CollapsibleSection extends StatelessWidget {
-  const _CollapsibleSection({
-    required this.title,
-    required this.expanded,
-    required this.onToggle,
-    required this.children,
-  });
-
-  final String title;
-  final bool expanded;
-  final VoidCallback onToggle;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: HaoPressable(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(HaoRadius.panel),
-            child: Row(
-              children: [
-                Expanded(child: _SectionTitle(title)),
-                AnimatedRotation(
-                  turns: expanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutBack,
-                  child: Icon(
-                    CupertinoIcons.chevron_down,
-                    size: 16,
-                    color: theme.textMuted.withValues(alpha: 0.8),
-                    shadows: HaoTheme.legibilityShadows(context),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        ClipRect(
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            alignment: Alignment.topCenter,
-            child: expanded
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ..._withGaps(children),
-                      // 6px breathing room inside the clip: the last
-                      // card's drop shadow / backdrop blur reaches
-                      // ~3px below the card; without this the ClipRect
-                      // (and AnimatedSize's own clip) cuts the shadow
-                      // exactly at the card edge and the bottom 3px
-                      // render 1-4 units off in light mode (golden
-                      // diff, invisible to the eye but real). The
-                      // inter-section gap below is 14 instead of 20,
-                      // so last-row-to-next-header stays 20 in total.
-                      const SizedBox(height: 6),
-                    ],
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 组内行之间 12px, 和原来平铺时的行间距一致.
-  static List<Widget> _withGaps(List<Widget> rows) {
-    final out = <Widget>[];
-    for (var i = 0; i < rows.length; i++) {
-      if (i > 0) out.add(const SizedBox(height: 12));
-      out.add(rows[i]);
-    }
-    return out;
-  }
-}
-
-/// Big section title (Beans `SectionHeader`, Components.swift:649:
-/// title 21 bold). "大标题分段" — one per settings group.
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-      child: Text(
-        title,
-        style: TextStyle(
-          // Title 2 22 semibold (was 21 w600 — 21 is not an Apple
-          // text style; Title 2 is 22, Title 3 is 20).
-          color: HaoTheme.of(context).textPrimary,
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
-          shadows: HaoTheme.legibilityShadows(context),
-        ),
-      ),
-    );
-  }
-}
-
+/// Collapsible groups + big group titles live in
+/// widgets/settings_ui.dart ([HaoCollapsibleSection] /
+/// [HaoGroupTitle]) — shared with the Emby connect page.
 /// One Beans settings row: its own glass card, radius 18, padding
 /// h14 v13; icon 14 in a 28-wide frame (accent), title 15, subtitle
 /// 11, trailing chevron (or a custom trailing widget). Tap opens a

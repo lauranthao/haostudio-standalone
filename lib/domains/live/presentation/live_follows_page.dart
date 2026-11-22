@@ -201,7 +201,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
           decoration: BoxDecoration(
             color: theme.surfaceSolid,
             borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(20),
+              top: Radius.circular(HaoRadius.sheet),
             ),
           ),
           padding: EdgeInsets.only(
@@ -251,7 +251,6 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                 controller: controller,
                 decoration: const InputDecoration(
                   hintText: '新建分组…',
-                  border: OutlineInputBorder(),
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 10,
@@ -266,12 +265,6 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                 child: FilledButton(
                   onPressed: () =>
                       Navigator.of(sheetContext).pop(controller.text),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.accent,
-                    foregroundColor: Theme.of(
-                      sheetContext,
-                    ).colorScheme.onPrimary,
-                  ),
                   child: const Text('确定'),
                 ),
               ),
@@ -305,7 +298,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
             decoration: BoxDecoration(
               color: theme.surfaceSolid,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
+                top: Radius.circular(HaoRadius.sheet),
               ),
             ),
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
@@ -710,18 +703,6 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton(
               onPressed: onBrowse,
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor:
-                    Theme.of(context).colorScheme.onPrimary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
               child: const Text('去逛逛'),
             ),
           ],

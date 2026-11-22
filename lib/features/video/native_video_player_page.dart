@@ -3473,7 +3473,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.66),
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(HaoRadius.small),
                           ),
                           child: Text(
                             lines.join('\n'),
@@ -3999,12 +3999,12 @@ class _SkipButton extends StatelessWidget {
       color: Colors.transparent,
       child: HaoPressable(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(HaoRadius.panel),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
           ),
           child: Text(
             label,
@@ -4034,7 +4034,7 @@ class _HintPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DarkGlass(
-      radius: 12,
+      radius: HaoRadius.large,
       child: SizedBox(width: width, child: child),
     );
   }

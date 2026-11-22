@@ -428,13 +428,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         child: OutlinedButton(
           onPressed: _loadMore,
-          style: OutlinedButton.styleFrom(
-            side: BorderSide(color: theme.accent),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(HaoRadius.panel),
-            ),
-          ),
-          child: Text('加载更多', style: TextStyle(color: theme.accent, fontWeight: FontWeight.w600)),
+          child: const Text('加载更多'),
         ),
       );
     }

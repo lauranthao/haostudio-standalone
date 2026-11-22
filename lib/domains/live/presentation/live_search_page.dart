@@ -510,7 +510,7 @@ class _RoomRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return GlassCard(
-      radius: 16,
+      radius: HaoRadius.large,
       padding: const EdgeInsets.all(10),
       child: Material(
         color: Colors.transparent,
@@ -688,10 +688,6 @@ class _SearchError extends StatelessWidget {
               onPressed: onRetry,
               icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
               label: Text('重试', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),

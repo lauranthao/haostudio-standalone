@@ -158,7 +158,7 @@ class _PlazaPageState extends State<PlazaPage> {
               children: [
                 Expanded(
                   child: GlassCard(
-                    radius: 14,
+                    radius: HaoRadius.sheet,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: DropdownButton<MusicPlatform>(
                       value: _platform,
@@ -361,15 +361,11 @@ class _PlazaPageState extends State<PlazaPage> {
             style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
           ),
           const SizedBox(height: 12),
-          ElevatedButton(
+          FilledButton(
             onPressed: () {
               _cache.remove(_platform);
               _load(_platform);
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.accent,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            ),
             child: const Text('重试'),
           ),
         ],
@@ -509,15 +505,11 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                     children: [
                       Text('歌单加载失败', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 12),
-                      ElevatedButton(
+                      FilledButton(
                         onPressed: () {
                           setState(() => _loading = true);
                           _load();
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: theme.accent,
-                          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                        ),
                         child: const Text('重试'),
                       ),
                     ],
@@ -605,14 +597,10 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: ElevatedButton.icon(
+                            child: FilledButton.icon(
                               onPressed: _playAll,
                               icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                               label: const Text('播放全部'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: theme.accent,
-                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -621,10 +609,6 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                               onPressed: _importAll,
                               icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.download),
                               label: Text('一键导入', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: theme.accent,
-                                side: BorderSide(color: theme.hairline),
-                              ),
                             ),
                           ),
                         ],

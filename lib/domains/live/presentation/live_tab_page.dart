@@ -762,18 +762,6 @@ class _StateView extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton(
               onPressed: onAction,
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor:
-                    Theme.of(context).colorScheme.onPrimary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
               child: Text(actionLabel, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
             ),
           ],

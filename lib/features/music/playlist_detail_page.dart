@@ -187,14 +187,10 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                   ),
                 ),
                 const Spacer(),
-                ElevatedButton.icon(
+                FilledButton.icon(
                   onPressed: list.tracks.isEmpty ? null : _playAll,
                   icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                   label: const Text('播放全部'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.accent,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  ),
                 ),
               ],
             ),

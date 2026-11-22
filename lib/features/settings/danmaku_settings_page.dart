@@ -128,7 +128,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const HaoSectionTitle('弹幕开关'),
+          const HaoGroupTitle('弹幕开关'),
           SettingsGroup(
             children: [
               ...Sites.supportedSiteIds.map((id) {
@@ -178,8 +178,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('弹幕字号'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('弹幕字号'),
           Row(
             children: [
               Expanded(
@@ -216,7 +216,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
             ],
           ),
           const SizedBox(height: 8),
-          const HaoSectionTitle('弹幕不透明度'),
+          const HaoGroupTitle('弹幕不透明度'),
           Row(
             children: [
               Expanded(
@@ -252,8 +252,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('弹幕区域'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('弹幕区域'),
           SettingsGroup(
             children: [
               ListTile(
@@ -285,8 +285,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('全屏飞弹幕'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('全屏飞弹幕'),
           SettingsGroup(
             children: [
               HaoSwitchRow(
@@ -473,8 +473,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('弹幕列表'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('弹幕列表'),
           SettingsGroup(
             children: [
               ListTile(
@@ -530,8 +530,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('内容过滤'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('内容过滤'),
           SettingsGroup(
             children: [
               HaoSwitchRow(
@@ -661,8 +661,8 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          const HaoSectionTitle('屏蔽管理'),
+          const SizedBox(height: 14),
+          const HaoGroupTitle('屏蔽管理'),
           Row(
             children: [
               Expanded(
@@ -703,7 +703,6 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                 ),
                 fallback: FilledButton(
                   onPressed: _addBlock,
-                  style: FilledButton.styleFrom(backgroundColor: theme.accent),
                   child: const Text('添加'),
                 ),
               ),

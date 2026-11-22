@@ -608,7 +608,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                       _playButtonLabel,
                       style: const TextStyle(
                         fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     style: FilledButton.styleFrom(
@@ -674,11 +674,40 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                             .toList(),
                       ),
                     ],
-                    if (m.remarks.isNotEmpty) ...[
+                    // Synopsis + cast: the server sends Overview and
+                    // People on every item, but the old page showed
+                    // m.remarks here — which Emby never sets — so the
+                    // synopsis, director and cast were fetched and
+                    // then never displayed. Same 14 secondary rows as
+                    // the CMS detail page (remarks → director).
+                    if (m.content.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
-                        m.remarks,
+                        m.content,
                         style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
+                          color: theme.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                    if (m.director.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '导演：${m.director}',
+                        style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
+                          color: theme.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                    if (m.actor.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '主演：${m.actor}',
+                        style: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textSecondary,
                           fontSize: 14,
                         ),
@@ -833,10 +862,6 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                     child: OutlinedButton(
                       onPressed: () =>
                           setState(() => _epsExpanded = true),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: theme.hairline),
-                        foregroundColor: theme.accent,
-                      ),
                       child: Text('加载更多 (${episodes.length - epCap})'),
                     ),
                   ),
@@ -1257,10 +1282,6 @@ class _ErrorCard extends StatelessWidget {
               onPressed: onRetry,
               icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
           ],
         ),

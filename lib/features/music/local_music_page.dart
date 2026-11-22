@@ -161,7 +161,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                     itemBuilder: (ctx, i) {
                       final song = _songs[i];
                       return GlassCard(
-                        radius: 16,
+                        radius: HaoRadius.large,
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
                         child: Material(

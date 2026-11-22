@@ -151,7 +151,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(HaoRadius.large),
                 color: theme.textPrimary.withValues(alpha: 0.04),
                 border: Border.all(color: theme.hairline, width: 0.8),
               ),
