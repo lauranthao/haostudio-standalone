@@ -26,6 +26,7 @@ import '../../../core/theme/haptics.dart';
 import '../../../features/video/widgets/referer_image.dart';
 import '../../../widgets/glass_dialog.dart';
 import '../../../widgets/hao_search_field.dart';
+import '../../../widgets/hao_swipe_actions.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
 import '../live_history_retention.dart';
@@ -33,6 +34,7 @@ import '../live_history_store.dart';
 import '../live_status.dart';
 import 'live_status_badge.dart';
 import 'playback/live_room_page.dart';
+import '../../../widgets/hao_nav_bar.dart';
 
 class LiveHistoryPage extends StatefulWidget {
   const LiveHistoryPage({super.key, this.siteOf, this.onOpenRoom});
@@ -48,6 +50,14 @@ class LiveHistoryPage extends StatefulWidget {
 }
 
 class _LiveHistoryPageState extends State<LiveHistoryPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   String _query = '';
   Map<String, LiveStatus> _statuses = const {};
   bool _refreshing = false;
@@ -267,26 +277,16 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
         : '${LiveHistoryStore.limit} 条';
     final retention = liveHistoryRetention();
     return Scaffold(
-      appBar: AppBar(
-        title: Text('直播历史', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        actions: [
-          IconButton(
-            icon: _refreshing
+      appBar: HaoNavBar(
+        title: '直播历史',
+        scrollController: _scrollController,
+        actions: [HaoNavBarButton( onPressed: _refreshing ? null : _refreshStatuses,child: _refreshing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CupertinoActivityIndicator(),
                   )
-                : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh),
-            tooltip: '刷新在线状态',
-            onPressed: _refreshing ? null : _refreshStatuses,
-          ),
-          IconButton(
-            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete_outline),
-            tooltip: '清空历史记录',
-            onPressed: all.isEmpty ? null : _confirmClear,
-          ),
-        ],
+                : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh)), HaoNavBarButton( onPressed: all.isEmpty ? null : _confirmClear,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete_outline))],
       ),
       body: Column(
         children: [
@@ -478,6 +478,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                         ),
                       )
                     : ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
                         itemCount: groups.fold<int>(
                           0,
@@ -581,7 +582,18 @@ class _HistoryCardState extends State<_HistoryCard> {
       entry.platform,
       entry.roomId,
     );
-    return GlassCard(
+    // iOS swipe-to-delete (b30, same as video history): the card
+    // already had a delete button; swipe exposes the same action.
+    return HaoSwipeActions(
+      actions: [
+        HaoSwipeAction(
+          label: '删除',
+          color: const Color(0xFFFF3B30),
+          icon: CupertinoIcons.delete,
+          onTap: widget.onDelete,
+        ),
+      ],
+      child: GlassCard(
       radius: 16,
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 12),
@@ -711,6 +723,7 @@ class _HistoryCardState extends State<_HistoryCard> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

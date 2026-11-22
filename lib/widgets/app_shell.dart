@@ -3,13 +3,17 @@
 // Apple-native tab bar (build 29 adoption, chen 2026-11-22: “都要原生
 // 效果”). The Kumone floating capsule is GONE — its rules are void:
 // no icon-only bar, no solid tab-pill, no settle spring (322.273 /
-// 29.441), no pill drag. The bar is now glassy_ui_ios `GlassTabBar`:
-// the real iOS tab bar (UITabBar) on iOS — labels under every icon,
-// transparent tint pill on the selected tab, .bouncy animation, no
-// drag — and the `_AppleTabBarFallback` below on other platforms /
-// in tests, which renders the same layout in Flutter (labels, tint
-// pill, bouncy slide, tap only). The fallback is also what the
-// Linux test host sees: glassy returns `fallback` off-iOS.
+// 29.441). The pill itself is gone, but the bar drag is NOT void:
+// chen 2026-11-23 (“底栏菜单都不可以拖动了”) — dragging across the
+// bar switches tabs, restored by [TabBarDragLayer] below (the native
+// UITabBar is tap-only, so the drag lives in a transparent overlay).
+// The bar is now glassy_ui_ios `GlassTabBar`: the real iOS tab bar
+// (UITabBar) on iOS — labels under every icon, transparent tint pill
+// on the selected tab, .bouncy animation — and the
+// `_AppleTabBarFallback` below on other platforms / in tests, which
+// renders the same layout in Flutter (labels, tint pill, bouncy
+// slide, tap only). The fallback is also what the Linux test host
+// sees: glassy returns `fallback` off-iOS.
 //
 // Geometry: the native bar is 64pt + the home-indicator safe area
 // and sits on the bottom edge (not floating), so page content gets
@@ -32,6 +36,7 @@ import 'package:glassy_ui_ios/glassy_ui_ios.dart' as glassy;
 
 import '../core/theme/hao_themes.dart';
 import '../core/theme/haptics.dart';
+import 'hao_scroll_to_top.dart';
 
 import '../domains/live/presentation/live_tab_page.dart';
 import '../features/music/music_tab_page.dart';
@@ -90,7 +95,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onTabTapped(int index) {
-    if (index == _currentIndex) return;
+    // Same-tab tap scrolls the tab's list to the top (iOS); a drag
+    // never lands on the same tab (_selectForDrag only fires on a
+    // change), so this cannot fire from a drag.
+    if (index == _currentIndex) {
+      HaoScrollToTop.scrollToTop(HaoScrollToTop.tabKeys[index]);
+      return;
+    }
     HaoHaptics.select();
     _dismissOverlays();
     setState(() => _currentIndex = index);
@@ -136,12 +147,121 @@ class _AppShellState extends State<AppShell> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: GlassTabBar(
+            child: TabBarDragLayer(
               currentIndex: _currentIndex,
-              onTap: _onTabTapped,
+              onSelect: _onTabTapped,
+              child: GlassTabBar(
+                currentIndex: _currentIndex,
+                onTap: _onTabTapped,
+              ),
+            ),
+          ),
+          // Status-bar tap = scroll to top (iOS). The strip covers
+          // only the system status-bar band, so no page content
+          // sits under it (tab pages draw below the safe area);
+          // a drag starting here still reaches the list below —
+          // the zone has a tap recogniser only, which loses the
+          // arena to a drag. Pushed routes cover this whole Stack,
+          // so the zone never fires while a detail page is open.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: MediaQuery.of(context).padding.top,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => HaoScrollToTop.scrollToTop(
+                HaoScrollToTop.tabKeys[_currentIndex],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Drag-to-switch layer over the native tab bar (b30, chen
+/// 2026-11-23: “底栏菜单都不可以拖动了”).
+///
+/// Root cause: build 26's Kumone bar was one big `GestureDetector` —
+/// dragging across it moved the pill with the finger and switched
+/// tabs live (`_select(_indexForX(x, cellW))`, 8pt dead zone). Build
+/// 29 replaced the bar with the real `UITabBar` and deleted that
+/// drag layer with it; `UITabBar` is tap-only, so dragging the bar
+/// did nothing at all. The content-area PageView swipe was never
+/// removed (it is still there, `tabPagePhysics`), but the bar
+/// itself lost its drag.
+///
+/// This restores the drag as a transparent overlay on top of the
+/// native bar: a horizontal drag switches tabs as the finger crosses
+/// each cell (`HaoHaptics.select()` on each change), taps fall
+/// through to the native bar untouched. The Kumone pill and settle
+/// spring stay void — the native bar draws its own selection.
+///
+/// `HitTestBehavior.translucent` is load-bearing: an opaque detector
+/// would swallow the tap and the native bar below would never see
+/// it. With translucent + drag-only handlers, taps reach the
+/// platform view underneath and only horizontal drags are claimed
+/// here.
+class TabBarDragLayer extends StatefulWidget {
+  const TabBarDragLayer({
+    super.key,
+    required this.currentIndex,
+    required this.onSelect,
+    required this.child,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onSelect;
+  final Widget child;
+
+  @override
+  State<TabBarDragLayer> createState() => _TabBarDragLayerState();
+}
+
+class _TabBarDragLayerState extends State<TabBarDragLayer> {
+  double? _dragStartX;
+
+  /// Bar width, cached from the last layout (drives cell width).
+  double _barWidth = 0;
+
+  int _indexForX(double x) {
+    final cellW = _barWidth / GlassTabBar._items.length;
+    if (cellW <= 0) return widget.currentIndex;
+    return (x / cellW).floor().clamp(0, GlassTabBar._items.length - 1);
+  }
+
+  void _selectForDrag(double x) {
+    final index = _indexForX(x);
+    if (index != widget.currentIndex) {
+      HaoHaptics.select();
+      widget.onSelect(index);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (details) {
+        _dragStartX = details.localPosition.dx;
+      },
+      onHorizontalDragUpdate: (details) {
+        final startX = _dragStartX;
+        if (startX == null) return;
+        // 8pt dead zone (old Kumone rule): a tap's wobble must never
+        // start a drag.
+        if ((details.localPosition.dx - startX).abs() < 8) return;
+        _selectForDrag(details.localPosition.dx);
+      },
+      onHorizontalDragEnd: (_) => _dragStartX = null,
+      onHorizontalDragCancel: () => _dragStartX = null,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _barWidth = constraints.maxWidth;
+          return widget.child;
+        },
       ),
     );
   }
@@ -151,10 +271,13 @@ class _AppShellState extends State<AppShell> {
 ///
 /// iOS: glassy_ui_ios `GlassTabBar` — the real `UITabBar` with liquid
 /// glass on iOS 26+ / classic styling on iOS 17–18. Labels on every
-/// tab, transparent tint pill, .bouncy selection animation, no drag.
+/// tab, transparent tint pill, .bouncy selection animation. The bar
+/// itself is tap-only (UITabBar has no drag); the drag-to-switch
+/// gesture lives in [TabBarDragLayer], which AppShell wraps around
+/// this bar — dragging across the bar switches tabs, like the old
+/// Kumone pill drag (chen 2026-11-23: the bar must stay draggable).
 /// Other platforms / tests: [_AppleTabBarFallback] renders the same
-/// layout in Flutter. Tap only — there is no drag gesture anywhere
-/// on this bar (chen 2026-11-22: Kumone drag is void).
+/// layout in Flutter.
 class GlassTabBar extends StatelessWidget {
   const GlassTabBar({
     super.key,

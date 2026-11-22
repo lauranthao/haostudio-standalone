@@ -28,6 +28,7 @@ import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/hao_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
@@ -47,7 +48,6 @@ import '../../core/player/vod_features.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/storage/local_paths.dart';
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/haptics.dart';
 import '../../services/music/sleep_timer.dart';
@@ -70,6 +70,7 @@ import 'video_models.dart';
 import 'video_title_helpers.dart';
 import 'vod_player_settings_sheet.dart';
 import 'vod_sleep_timer_sheet.dart';
+import '../../widgets/hao_sheet.dart';
 
 /// Next episode index when the current episode ends, or null when
 /// playback must stop at the end state (V-P0-2, pure — unit-tested):
@@ -2624,16 +2625,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
 
   void _openVodSettingsSheet() {
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        sheetAnimationStyle: const AnimationStyle(
-          curve: HaoSettleSpringCurve(),
-          reverseCurve: HaoSettleSpringCurve(),
-        ),
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => StatefulBuilder(
           builder: (context, setSheetState) {
             void refreshSheet() => setSheetState(() {});
@@ -2885,24 +2878,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     }
     final theme = HaoTheme.of(context);
     final eps = _detail.lines[_lineIdx].episodes;
-    showModalBottomSheet<void>(
+    showHaoSheet<void>(
       context: context,
-      // isScrollControlled: without it the sheet is capped at ~half the
-      // screen height, but this sheet asks for 0.6 — the bottom rows
-      // were clipped. Same bug class as the music track sheet (v1.0.6).
-      // Content already scrolls via the ListView below, so no extra
-      // SingleChildScrollView wrapper is needed here.
-      isScrollControlled: true,
-      // N-10: framework grabber + settle-spring rise (same spring as
-      // the player close). The hand-drawn handle below is removed —
-      // showDragHandle renders the one grabber, two bars would stack.
-      showDragHandle: true,
-      sheetAnimationStyle: const AnimationStyle(
-        curve: HaoSettleSpringCurve(),
-        reverseCurve: HaoSettleSpringCurve(),
-      ),
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (context) {
         return GlassSheetBackground(
           child: SafeArea(
@@ -2960,8 +2937,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           Navigator.of(context).pop();
                           if (i == _epIdx) return;
                           await _saveProgress();
-                          // A different episode starts at 0, not at the
-                          // previous resume point (same rule as auto-next).
                           _resumePosition = 0;
                           setState(() => _epIdx = i);
                           await _openCurrent();
@@ -3013,19 +2988,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     }
     if (!mounted) return;
     final theme = HaoTheme.of(context);
-    showModalBottomSheet<void>(
+    showHaoSheet<void>(
       context: context,
-      // Same sizing rationale as the episode sheet (see above).
-      isScrollControlled: true,
-      // N-10: framework grabber + settle-spring rise (same spring as
-      // the player close); hand-drawn handle removed, see above.
-      showDragHandle: true,
-      sheetAnimationStyle: const AnimationStyle(
-        curve: HaoSettleSpringCurve(),
-        reverseCurve: HaoSettleSpringCurve(),
-      ),
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.35),
       builder: (context) {
         return GlassSheetBackground(
           child: SafeArea(
@@ -3087,10 +3051,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           onTap: selected
                               ? null
                               : () {
-                                  // The session records the choice
-                                  // synchronously before applying it
-                                  // to the backend, so the checkmark
-                                  // moves at once.
                                   unawaited(apply(id));
                                   setSheetState(() {});
                                 },
@@ -3103,11 +3063,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           _session.currentSubtitleTrackId ?? 'auto';
                       final secondaryId =
                           _session.currentSecondarySubtitleTrackId ?? 'no';
-                      // A Column, not a ListView: the list is short
-                      // (auto + a handful of tracks) and every row
-                      // must stay built — a ListView disposes
-                      // off-screen rows, which also makes the
-                      // checkmark state unreadable while scrolled.
                       return SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3176,10 +3131,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                               ),
                           ],
                           sectionHeader('第二字幕'),
-                          // mpv renders the secondary track as
-                          // toptitle above the main track; a bitmap
-                          // (PGS) secondary overlaps the main track
-                          // (mpv behaviour) — said here, not hidden.
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                             child: Text(
@@ -3208,12 +3159,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                               selected: secondaryId == 'no',
                               apply: _session.setSecondarySubtitleTrack,
                             ),
-                            // The main track is never a useful second
-                            // subtitle (the same text twice, top +
-                            // bottom), so it is not offered here.
-                            // When the main track is 'auto' nothing
-                            // is excluded — the concrete track is
-                            // unknown.
                             for (final t in subtitles)
                               if (t.id != subtitleId)
                                 trackRow(
@@ -3718,11 +3663,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                                     inactiveTrackColor: Colors.white30,
                                     thumbColor: Colors.white,
                                   ),
-                                  child: Slider(
+                                  child: HaoSlider(
                                     value:
                                         (_scrubbing ? _scrubValue : _position)
                                             .clamp(0.0, _duration),
                                     max: _duration,
+                                    // White thumb/track (the player
+                                    // chrome is white-on-video); the
+                                    // native UISlider tint follows it.
+                                    activeColor: Colors.white,
                                     onChangeStart: (_) {
                                       // The hide timer must not fire
                                       // mid-drag: it would unmount the

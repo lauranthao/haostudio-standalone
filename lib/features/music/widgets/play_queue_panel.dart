@@ -9,6 +9,7 @@ import 'dart:async';
 // scrolls if the queue is long; Cancel/close dismisses it; tapping
 // outside dismisses it.
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
@@ -26,6 +27,33 @@ class PlayQueuePanel extends StatelessWidget {
   const PlayQueuePanel({super.key, required this.onClose});
 
   final VoidCallback onClose;
+
+  /// Clear-queue as an iOS action sheet (was a Material
+  /// PopupMenuButton). The destructive action keeps only the
+  /// current song, same as before.
+  void _showClearSheet(BuildContext context) {
+    final controller = MusicPlayerController.ensure();
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.of(sheetContext).pop();
+              HaoHaptics.tap();
+              controller.clearQueue();
+            },
+            child: const Text('清空队列'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(sheetContext).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,54 +130,30 @@ class PlayQueuePanel extends StatelessWidget {
                         // "清空队列" item — `PlayerManager.clearQueue`
                         // keeps only the current song). Disabled when
                         // there is nothing to clear beyond the song
-                        // playing (0 or 1 items), so the menu can
-                        // never offer a no-op.
-                        // NOTE: no Obx here — the PopupMenuButton's
-                        // builder reads no observable at build time
-                        // (queue.length is read inside itemBuilder,
-                        // which runs when the menu OPENS, outside the
-                        // build). Wrapping it in Obx threw GetX's
-                        // "improper use of a GetX" every time the panel
-                        // opened (RxInterface.notifyChildren throws
-                        // when the builder tracks nothing). The menu
-                        // item's enabled state is evaluated fresh at
-                        // open time, so no rebuild is needed at all.
-                        // Same rule as the player star button (no Obx
-                        // around non-Rx reads).
-                        PopupMenuButton<String>(
-                          icon: Icon(shadows: HaoTheme.legibilityShadows(context),
-                            Icons.more_horiz,
-                            color: theme.textSecondary,
-                          ),
-                          tooltip: '更多',
-                          onSelected: (value) {
-                            if (value == 'clear') {
-                              HaoHaptics.tap();
-                              controller.clearQueue();
-                            }
-                          },
-                          itemBuilder: (ctx) => [
-                            PopupMenuItem<String>(
-                              value: 'clear',
-                              enabled: controller.queue.length > 1,
-                              child: Row(
-                                children: [
-                                  Icon(shadows: HaoTheme.legibilityShadows(context),
-                                    Icons.delete_outline,
-                                    size: 18,
-                                    color: theme.textSecondary,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '清空队列',
-                                    style: TextStyle(
-                                      shadows: HaoTheme.legibilityShadows(context),
-                                    ),
-                                  ),
-                                ],
+                        // playing (0 or 1 items), so the sheet can
+                        // never offer a no-op. The Obx reads
+                        // queue.length at build time (unlike the old
+                        // PopupMenuButton, whose itemBuilder ran at
+                        // open time) — that is what makes the disabled
+                        // state live without the "improper use of a
+                        // GetX" throw: the builder tracks an Rx.
+                        Obx(
+                          () {
+                            final canClear = controller.queue.length > 1;
+                            return IconButton(
+                              icon: Icon(
+                                shadows: HaoTheme.legibilityShadows(context),
+                                Icons.more_horiz,
+                                color: canClear
+                                    ? theme.textSecondary
+                                    : theme.textMuted,
                               ),
-                            ),
-                          ],
+                              tooltip: '更多',
+                              onPressed: canClear
+                                  ? () => _showClearSheet(context)
+                                  : null,
+                            );
+                          },
                         ),
                         IconButton(
                           icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textSecondary),

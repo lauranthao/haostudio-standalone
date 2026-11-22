@@ -37,6 +37,8 @@ import '../live_metrics.dart';
 import '../live_status.dart';
 import 'live_status_badge.dart';
 import 'playback/live_room_page.dart';
+import '../../../widgets/hao_nav_bar.dart';
+import '../../../widgets/hao_sheet.dart';
 
 enum _FollowTab { live, notLive }
 
@@ -57,6 +59,14 @@ class LiveFollowsPage extends StatefulWidget {
 }
 
 class _LiveFollowsPageState extends State<LiveFollowsPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   _FollowTab _tab = _FollowTab.live;
 
   /// Null = 全部 platforms; otherwise a platform id.
@@ -190,11 +200,8 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
   Future<void> _showGroupSheet(LiveFollow follow) async {
     final groups = LiveFollowStore.groups();
     final controller = TextEditingController();
-    final picked = await showModalBottomSheet<String>(
+    final picked = await showHaoSheet<String>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final theme = HaoTheme.of(sheetContext);
         return Container(
@@ -285,11 +292,8 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
   /// live-source enablement in Settings.
   Future<void> _showVisibilitySheet() async {
     final platforms = LiveFollowStore.followedPlatforms();
-    await showModalBottomSheet<void>(
+    await showHaoSheet<void>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
           final theme = HaoTheme.of(context);
@@ -358,15 +362,10 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     final groups = LiveFollowStore.groups();
     final hiddenCount = LiveFollowVisibility.hiddenPlatforms().length;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('我的关注', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        actions: [
-          IconButton(
-            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.visibility_off_outlined),
-            tooltip: '按平台显示',
-            onPressed: _showVisibilitySheet,
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '我的关注',
+        scrollController: _scrollController,
+        actions: [HaoNavBarButton( onPressed: _showVisibilitySheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.visibility_off_outlined))],
       ),
       body: Column(
         children: [
@@ -519,6 +518,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                             onBrowse: _goBrowse,
                           )
                         : CustomScrollView(
+                            controller: _scrollController,
                             slivers: [
                               CupertinoSliverRefreshControl(
                                 // Manual pull bypasses the failure

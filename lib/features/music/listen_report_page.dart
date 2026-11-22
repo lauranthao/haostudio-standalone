@@ -25,6 +25,7 @@ import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 /// Empty-state text for the selected range. The empty state is
 /// about the SELECTED range: "本周还没有听歌记录" when this week is
@@ -103,7 +104,9 @@ class _ListenReportPageState extends State<ListenReportPage> {
     // getFavIds() parses the whole favourites JSON on every call.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(title: const Text('听歌报告')),
+      appBar: HaoNavBar(
+        title: '听歌报告',
+      ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           16,

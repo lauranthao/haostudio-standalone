@@ -40,6 +40,7 @@ import 'widgets/track_more_sheet.dart';
 import 'widgets/music_image.dart';
 import '../../widgets/platform_logo.dart';
 import '../../widgets/play_count_badge.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 enum _PlazaSort { rec, hot, fresh }
 
@@ -141,7 +142,9 @@ class _PlazaPageState extends State<PlazaPage> {
     final theme = HaoTheme.of(context);
     final items = _sorted;
     return Scaffold(
-      appBar: AppBar(title: Text('歌单广场', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: '歌单广场',
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -495,7 +498,9 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(title: Text(p.name, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: p.name,
+      ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
           : _failed

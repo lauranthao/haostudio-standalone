@@ -14,6 +14,7 @@ import '../../widgets/hao_glass_button.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/music_downloads.dart';
 import 'cache_service.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class CacheSettingsPage extends StatefulWidget {
   const CacheSettingsPage({super.key});
@@ -93,7 +94,9 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('缓存管理')),
+      appBar: HaoNavBar(
+        title: '缓存管理',
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

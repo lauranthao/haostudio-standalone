@@ -27,8 +27,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 
-import '../../core/theme/hao_radius.dart';
-import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/hao_themes.dart';
 import 'emby_spec.dart';
 import 'video_detail_router.dart';
@@ -36,6 +34,7 @@ import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_smart_groups.dart';
+import '../../widgets/hao_sheet.dart';
 
 /// Open a grouped poster: one version → straight to its detail page;
 /// several → the version sheet. [detailService] is a test seam.
@@ -66,23 +65,8 @@ Future<void> showVideoVersionsSheet(
   required GroupedVideoItem group,
   VideoDetailService? detailService,
 }) {
-  final theme = HaoTheme.of(context);
-  return showModalBottomSheet<void>(
+  return showHaoSheet<void>(
     context: context,
-    isScrollControlled: true,
-    // N-10: iOS grabber + settle-spring rise (same spring as the
-    // player close).
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    backgroundColor: theme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(HaoRadius.sheet),
-      ),
-    ),
     builder: (sheetContext) => _VersionSheet(
       group: group,
       detailService: detailService,

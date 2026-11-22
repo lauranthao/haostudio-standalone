@@ -23,6 +23,7 @@ import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class DailyPage extends StatefulWidget {
   const DailyPage({super.key});
@@ -123,7 +124,9 @@ class _DailyPageState extends State<DailyPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(title: const Text('每日推荐'), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: '每日推荐',
+      ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
           : _failed

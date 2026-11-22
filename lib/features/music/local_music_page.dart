@@ -25,6 +25,7 @@ import '../../widgets/glass_dialog.dart';
 import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class LocalMusicPage extends StatefulWidget {
   const LocalMusicPage({super.key});
@@ -106,15 +107,9 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text('本地文件', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        actions: [
-          IconButton(
-            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add),
-            tooltip: '导入音频',
-            onPressed: _import,
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '本地文件',
+        actions: [HaoNavBarButton( onPressed: _import,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add))],
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())

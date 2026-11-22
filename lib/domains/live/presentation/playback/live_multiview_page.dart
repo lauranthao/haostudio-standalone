@@ -28,6 +28,8 @@ import '../../../../features/player/playback_session.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../data/playback_header_resolver.dart';
 import '../../live_multiview.dart';
+import '../../../../widgets/hao_nav_bar.dart';
+import '../../../../widgets/hao_segmented_control.dart';
 
 class LiveMultiViewPage extends StatefulWidget {
   const LiveMultiViewPage({
@@ -74,22 +76,19 @@ class _LiveMultiViewPageState extends State<LiveMultiViewPage> {
     final theme = HaoTheme.of(context);
     final rooms = _visible;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '多画面同看',
-          style: TextStyle(shadows: HaoTheme.legibilityShadows(context)),
-        ),
+      appBar: HaoNavBar(
+        title: '多画面同看',
         actions: [
           if (widget.rooms.length >= 4)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SegmentedButton<int>(
+            SizedBox(
+              width: 140,
+              child: HaoSegmentedControl<int>(
                 segments: const [
-                  ButtonSegment(value: 2, label: Text('2 路')),
-                  ButtonSegment(value: 4, label: Text('4 路')),
+                  HaoSegment<int>(value: 2, label: '2 路'),
+                  HaoSegment<int>(value: 4, label: '4 路'),
                 ],
-                selected: {_count},
-                onSelectionChanged: (s) => _setCount(s.first),
+                value: _count,
+                onChanged: _setCount,
               ),
             ),
         ],

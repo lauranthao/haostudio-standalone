@@ -38,6 +38,7 @@ import '../../live_follow_store.dart';
 import '../../live_history_store.dart';
 import '../../live_metrics.dart';
 import '../../live_status.dart';
+import '../../../../widgets/hao_sheet.dart';
 
 /// Open the switch-room sheet. [onSelect] runs AFTER the sheet is
 /// popped; the caller navigates (replacing the room page).
@@ -50,12 +51,8 @@ Future<void> showRoomSwitchPanel({
   required ValueChanged<LiveRoom> onSelect,
   Future<LiveRoom> Function(LiveRoom room)? detailOf,
 }) {
-  return showModalBottomSheet<void>(
+  return showHaoSheet<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (context) => GlassSheetBackground(
       child: _RoomSwitchPanel(
       currentRoom: currentRoom,

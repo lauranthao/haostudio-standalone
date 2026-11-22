@@ -46,26 +46,21 @@ import '../../core/theme/haptics.dart';
 import '../../services/music/autoeq_presets.dart';
 import '../../services/music/equalizer_store.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_slider.dart';
 
 class EqualizerPage extends StatelessWidget {
   const EqualizerPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
     final store = EqualizerStore.ensure();
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: Text('均衡器', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-          centerTitle: true,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('完成', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
-            ),
-          ],
+        appBar: HaoNavBar(
+          title: '均衡器',
+          actions: [HaoNavBarTextButton(label: '完成', onPressed: () => Navigator.of(context).pop())],
         ),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -361,6 +356,36 @@ class _PresetCard extends StatelessWidget {
 
   final EqualizerStore store;
 
+  /// Preset picker as an iOS action sheet (was a Material
+  /// PopupMenuButton). Actions are built at open time, so the
+  /// current-preset ✓ is read when the sheet opens, not at build.
+  void _showPresetSheet(BuildContext context) {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        actions: [
+          for (final preset in EqualizerPreset.values)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(sheetContext).pop();
+                HaoHaptics.select();
+                unawaited(store.applyPreset(preset));
+              },
+              child: Text(
+                !store.isCustom && store.selectedPreset == preset
+                    ? '✓ ${preset.displayName}'
+                    : preset.displayName,
+              ),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(sheetContext).pop(),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
@@ -382,24 +407,12 @@ class _PresetCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              PopupMenuButton<EqualizerPreset>(
-                onSelected: (preset) {
-                  HaoHaptics.select();
-                  unawaited(store.applyPreset(preset));
+              HaoPressable(
+                onTap: () {
+                  HaoHaptics.tap();
+                  _showPresetSheet(context);
                 },
-                itemBuilder: (context) => EqualizerPreset.values
-                    .map(
-                      (preset) => PopupMenuItem(
-                        value: preset,
-                        child: Text(
-                          preset.displayName,
-                          style: TextStyle(
-                            shadows: HaoTheme.legibilityShadows(context),
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
+                borderRadius: BorderRadius.circular(999),
                 child: Container(
                   height: 31,
                   padding: const EdgeInsets.symmetric(horizontal: 11),
@@ -928,11 +941,12 @@ class _EqSlider extends StatelessWidget {
         thumbColor: theme.accent,
         overlayColor: theme.accentSoft,
       ),
-      child: Slider(
+      child: HaoSlider(
         value: value.clamp(-12, 12),
         min: -EqualizerStore.maximumGain,
         max: EqualizerStore.maximumGain,
         divisions: 48,
+        activeColor: theme.accent,
         onChanged: onChanged,
         // N-13: light tap on release, click at either end.
         onChangeEnd: (v) => HaoHaptics.sliderEnd(

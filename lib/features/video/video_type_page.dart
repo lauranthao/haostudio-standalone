@@ -21,6 +21,7 @@ import 'video_models.dart';
 import 'video_poster_card.dart';
 import 'video_smart_groups.dart';
 import 'video_version_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class VideoTypePage extends StatefulWidget {
   const VideoTypePage({super.key, required this.typeName});
@@ -204,8 +205,8 @@ class _VideoTypePageState extends State<VideoTypePage> {
     final representatives =
         groups.map((g) => g.representative).toList();
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.typeName, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+      appBar: HaoNavBar(
+        title: widget.typeName,
       ),
       body: Column(
         children: [

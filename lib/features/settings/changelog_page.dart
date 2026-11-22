@@ -16,23 +16,17 @@ import 'package:flutter/material.dart';
 import '../../app/changelog.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class ChangelogPage extends StatelessWidget {
   const ChangelogPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('更新日志'),
-        centerTitle: true,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('完成', style: TextStyle(color: theme.accent)),
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '更新日志',
+        actions: [HaoNavBarTextButton(label: '完成', onPressed: () => Navigator.of(context).pop())],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),

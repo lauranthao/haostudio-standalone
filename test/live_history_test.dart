@@ -310,6 +310,32 @@ void main() {
       await drainImageTimers(tester);
     });
 
+    testWidgets('swipe left reveals 删除 and deletes only that card',
+        (tester) async {
+      final opened = <String>[];
+      await resetHistory(tester);
+      await recordHistory(tester, _entry('1'));
+      await recordHistory(tester, _entry('2'));
+      await pumpHistory(tester, opened: opened);
+
+      // A short left drag settles the row open (a full fling would
+      // delete outright); tapping 删除 must delete, not open the
+      // room. Every card builds its own 删除 button, so scope the
+      // tap to the first one — the swiped (newest) card.
+      // Drag -100: ~20px of the swipe is consumed by the drag
+      // recogniser (slop) before the row starts moving, so the row
+      // only travels ~-80 — a -50 drag lands at -30, a hair above
+      // the -30.4 settle-open threshold, and snaps shut instead.
+      await tester.drag(find.text('标题 2'), const Offset(-100, 0));
+      await tester.tap(find.text('删除').first);
+      await drainHiveWrites(tester);
+      expect(opened, isEmpty);
+      expect(LiveHistoryStore.getAll().length, 1);
+      expect(find.text('标题 2'), findsNothing);
+      expect(find.text('标题 1'), findsOneWidget);
+      await drainImageTimers(tester);
+    });
+
     testWidgets('clear-all confirms then empties', (tester) async {
       await resetHistory(tester);
       await recordHistory(tester, _entry('1'));

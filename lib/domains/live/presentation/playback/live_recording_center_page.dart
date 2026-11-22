@@ -9,6 +9,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,6 +17,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../../../../widgets/glass_dialog.dart';
 import '../../live_recorder.dart';
+import '../../../../widgets/hao_nav_bar.dart';
 
 /// The recordings directory (app documents `live_recordings/`).
 Future<Directory> liveRecordingsDir() async {
@@ -87,14 +89,11 @@ class _LiveRecordingCenterPageState extends State<LiveRecordingCenterPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '录制中心',
-          style: TextStyle(shadows: HaoTheme.legibilityShadows(context)),
-        ),
+      appBar: HaoNavBar(
+        title: '录制中心',
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CupertinoActivityIndicator())
           : _recordings.isEmpty
               ? Center(
                   child: Column(

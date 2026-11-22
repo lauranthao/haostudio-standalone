@@ -38,6 +38,7 @@ import '../../services/video/poster_patch_service.dart';
 import 'emby_tab_page.dart';
 import 'video_detail_router.dart';
 import '../../widgets/hao_segmented_control.dart';
+import '../../widgets/hao_scroll_to_top.dart';
 import 'video_detail_service.dart';
 import 'video_favs_page.dart';
 import 'video_history_page.dart';
@@ -199,6 +200,11 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   final _homeService = VideoHomeService();
   final _detailService = VideoDetailService();
 
+  /// The list that actually scrolls lives in this class (the
+  /// CustomScrollView below), so the scroll-to-top controller lives
+  /// here too — not in the tab shell above, which builds no list.
+  final _scrollController = ScrollController();
+
   VideoHomeData? _home;
   List<VideoItem> _daily = [];
   List<WatchHistoryEntry> _history = [];
@@ -261,6 +267,7 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   @override
   void initState() {
     super.initState();
+    HaoScrollToTop.register(HaoScrollToTop.videoTab, _scrollController);
     // (1) Immediate render from cache + local history — never a bare
     // spinner while data exists. CMS rows only: Emby rows are shown
     // on the Emby page (shared store, per-source filter).
@@ -278,6 +285,8 @@ class _CmsHomePageState extends State<_CmsHomePage> {
 
   @override
   void dispose() {
+    HaoScrollToTop.unregister(HaoScrollToTop.videoTab, _scrollController);
+    _scrollController.dispose();
     _homeToken?.cancel();
     _dailyToken?.cancel();
     super.dispose();
@@ -412,6 +421,7 @@ class _CmsHomePageState extends State<_CmsHomePage> {
                     unawaited(_refreshHome(force: true));
                   })
                 : CustomScrollView(
+                    controller: _scrollController,
                     slivers: [
                       CupertinoSliverRefreshControl(
                         onRefresh: () async {

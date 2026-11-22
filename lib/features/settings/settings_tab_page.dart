@@ -64,6 +64,7 @@ import 'package:glassy_ui_ios/glassy_ui_ios.dart' as glassy;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/hao_scroll_to_top.dart';
 import '../../widgets/native_switch.dart';
 import 'package:get/get.dart';
 import '../../widgets/hao_toast.dart';
@@ -121,6 +122,7 @@ class SettingsTabPage extends StatefulWidget {
 /// No KeepAlive (P1-P3): a static settings list, no timers, streams
 /// or polling. State re-reads Hive in initState on every tab switch.
 class _SettingsTabPageState extends State<SettingsTabPage> {
+  final _scrollController = ScrollController();
   late String _engineKey;
 
   late bool _autoNext;
@@ -206,6 +208,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   @override
   void initState() {
     super.initState();
+    HaoScrollToTop.register(HaoScrollToTop.settingsTab, _scrollController);
     _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
     _autoNext = VideoPlaybackSettings.autoNext;
     _cellularDowngrade = liveCellularDowngradeEnabled();
@@ -256,6 +259,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       for (final id in _sectionIds)
         id: HiveStore.getBool(_sectionExpandedKey(id), true),
     };
+  }
+
+  @override
+  void dispose() {
+    HaoScrollToTop.unregister(HaoScrollToTop.settingsTab, _scrollController);
+    _scrollController.dispose();
+    super.dispose();
   }
 
   /// Build 29 B组: 点组头收起/展开. 乐观翻 UI 再写 Hive, 和壁纸/背景色
@@ -366,6 +376,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       // itself (MediaQuery), so the page needs no AppBar and no
       // SafeArea.
       body: ListView(
+        controller: _scrollController,
         // Bottom padding 34, not 40 (build 29 B组): the last section
         // carries 6px breathing room inside its clip (see
         // HaoCollapsibleSection), so 34 + 6 keeps the total page height

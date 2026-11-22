@@ -20,12 +20,12 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../core/storage/hive_store.dart';
 import '../../core/theme/hao_radius.dart';
-import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/liquid_glass_theme.dart';
 import '../../services/music/sleep_timer.dart';
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/hao_sheet.dart';
 
 /// What the user picked in the VOD sleep sheet.
 class VodSleepChoice {
@@ -108,16 +108,8 @@ Future<VodSleepChoice?> showVodSleepTimerSheet(
   BuildContext context, {
   required SleepTimer timer,
 }) {
-  return showModalBottomSheet<VodSleepChoice>(
+  return showHaoSheet<VodSleepChoice>(
     context: context,
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => _VodSleepTimerSheetContent(timer: timer),
   );
 }

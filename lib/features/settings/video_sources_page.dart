@@ -25,6 +25,7 @@ import '../video/video_history_store.dart';
 import '../video/video_home_service.dart';
 import '../video/video_models.dart';
 import 'emby_connect_page.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class VideoSourcesPage extends StatefulWidget {
   const VideoSourcesPage({super.key});
@@ -310,22 +311,19 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('影视源管理'),
-        actions: [
-          HaoGlassIconButton(
+      appBar: HaoNavBar(
+        title: '影视源管理',
+        actions: [HaoGlassIconButton(
             symbol: 'plus',
             fallbackIcon: Icons.add,
             tooltip: '添加影视源',
             onPressed: _addSource,
-          ),
-          HaoGlassIconButton(
+          ), HaoGlassIconButton(
             symbol: 'arrow.counterclockwise',
             fallbackIcon: Icons.restore,
             tooltip: '恢复默认',
             onPressed: _reset,
-          ),
-        ],
+          )],
       ),
       body: Column(
         children: [

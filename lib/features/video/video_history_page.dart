@@ -10,6 +10,7 @@
 // saved resume positions, so a cleared video offers no stale resume.
 
 import '../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 
@@ -19,6 +20,8 @@ import 'video_detail_router.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'widgets/referer_image.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_swipe_actions.dart';
 
 class VideoHistoryPage extends StatefulWidget {
   const VideoHistoryPage({super.key});
@@ -28,6 +31,14 @@ class VideoHistoryPage extends StatefulWidget {
 }
 
 class _VideoHistoryPageState extends State<VideoHistoryPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   void _openDetail(WatchHistoryEntry entry) {
     // 1.1.6: shared routing (`video_detail_router.dart`) — Emby rows
     // open EmbyDetailPage, CMS rows VideoDetailPage. Same branch as
@@ -56,16 +67,10 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
     final theme = HaoTheme.of(context);
     final history = VideoHistoryStore.getAll();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('历史记录'),
-        actions: [
-          if (history.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
-              tooltip: '清空历史记录',
-              onPressed: _confirmClear,
-            ),
-        ],
+      appBar: HaoNavBar(
+        title: '历史记录',
+        scrollController: _scrollController,
+        actions: [if (history.isNotEmpty) HaoNavBarButton( onPressed: _confirmClear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: history.isEmpty
           ? Center(
@@ -98,15 +103,32 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
               ),
             )
           : ListView.separated(
+              controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
               itemCount: history.length,
               separatorBuilder: (_, _) =>
                   Divider(height: 1, color: theme.hairline),
               itemBuilder: (context, i) {
                 final entry = history[i];
-                return _HistoryRow(
-                  entry: entry,
-                  onTap: () => _openDetail(entry),
+                return HaoSwipeActions(
+                  actions: [
+                    HaoSwipeAction(
+                      label: '删除',
+                      color: const Color(0xFFFF3B30),
+                      icon: CupertinoIcons.delete,
+                      onTap: () async {
+                        await VideoHistoryStore.remove(
+                          entry.source,
+                          entry.vodId,
+                        );
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ],
+                  child: _HistoryRow(
+                    entry: entry,
+                    onTap: () => _openDetail(entry),
+                  ),
                 );
               },
             ),

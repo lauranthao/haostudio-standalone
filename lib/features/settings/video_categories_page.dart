@@ -20,6 +20,7 @@ import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../widgets/native_switch.dart';
 import '../video/video_home_service.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class VideoCategoriesPage extends StatefulWidget {
   const VideoCategoriesPage({super.key});
@@ -95,7 +96,9 @@ class _VideoCategoriesPageState extends State<VideoCategoriesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('影视分类排序')),
+      appBar: HaoNavBar(
+        title: '影视分类排序',
+      ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
           : _entries.isEmpty
