@@ -658,7 +658,7 @@ class MusicResolvers {
     return servedMaster ? AudioQuality.master : AudioQuality.hires;
   }
 
-  // -- the 14 resolvers (order = try order) ----------------------------------
+  // -- the 10 resolvers (order = try order) ----------------------------------
 
   List<_Resolver> get _resolvers => [
         _Resolver(
@@ -674,44 +674,6 @@ class MusicResolvers {
           order: 1,
           fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async =>
               _u(await _huibqUrl(id, pf, q)),
-        ),
-        _Resolver(
-          key: 'ikun',
-          name: 'ikun',
-          platforms: const [MusicPlatform.wy],
-          // DISABLED 2026-11-19: api.ikunshare.com is DEAD — curl
-          // from this VM fails http + https (DNS resolves to
-          // 198.18.52.211 but connect fails, code 000), matching the
-          // logcat `Failed host lookup: 'api.ikunshare.com'` and the
-          // 2026-11-16 note below. Same precedent as huibq / hyw:
-          // disabled here, not deleted — re-enable only if the API
-          // revives. Master does not depend on it: zddyr/xinghai
-          // serve master live (see music_quality.dart).
-          enabled: false,
-          order: 2,
-          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
-            // Master only: the ikun API is the only direct resolver
-            // with a distinct master tier (quality=master). Other
-            // tiers already have many resolvers; asking ikun for them
-            // would only add load on a fragile API.
-            // iOS note: plain http:// — blocked by ATS unless an
-            // exception is added; zddyr/xinghai are https.
-            if (q != AudioQuality.master) return _u('');
-            final j = await _fetchJson(
-              'http://api.ikunshare.com/url?source=wy&songId=${Uri.encodeComponent(id)}&quality=master',
-              headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': 'lx-music-request/1.0',
-                'X-Request-Key': '',
-              },
-              timeout: const Duration(seconds: 8),
-            );
-            return _u(
-              (j != null && j['code'] == 200)
-                  ? toHttps(j['url']?.toString() ?? '')
-                  : '',
-            );
-          },
         ),
         _Resolver(
           key: 'tang',
@@ -868,75 +830,22 @@ class MusicResolvers {
               headers: {'User-Agent': _musicUa},
             );
             if (j == null || j['code'] != 0) return _u('');
-            final data = j['data'] as List<dynamic>?;
-            if (data == null || data.isEmpty) return _u('');
-            final first = data.first as Map<String, dynamic>?;
+            // 2026-11-23: the live API returns data as a Map
+            // {items: [{url, ...}]}; the old shape was a bare List.
+            // A blind `as List` cast throws on the Map shape, so the
+            // job errored on every call and never served a URL.
+            // Accept both shapes.
+            final raw = j['data'];
+            Map<String, dynamic>? first;
+            if (raw is List && raw.isNotEmpty) {
+              first = raw.first as Map<String, dynamic>?;
+            } else if (raw is Map<String, dynamic>) {
+              final items = raw['items'] as List<dynamic>?;
+              if (items != null && items.isNotEmpty) {
+                first = items.first as Map<String, dynamic>?;
+              }
+            }
             return _u(toHttps(first?['url']?.toString() ?? ''));
-          },
-        ),
-        _Resolver(
-          key: 'qjqq',
-          name: 'qjqq',
-          platforms: const [MusicPlatform.wy],
-          enabled: true,
-          order: 70,
-          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
-            final j = await _fetchJson(
-              'https://metings.qjqq.cn/Song_V1',
-              cancelToken: cancelToken,
-              method: 'POST',
-              headers: {
-                'User-Agent': _musicUa,
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body:
-                  'url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
-            );
-            final data = j?['data'] as Map<String, dynamic>?;
-            return _u(toHttps(data?['url']?.toString() ?? ''));
-          },
-        ),
-        _Resolver(
-          key: 'kangqi',
-          name: 'kangqi',
-          platforms: const [MusicPlatform.wy],
-          enabled: true,
-          order: 80,
-          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
-            final j = await _fetchJson(
-              'https://ncm.kangqiovo.com/Song_V1',
-              cancelToken: cancelToken,
-              method: 'POST',
-              headers: {
-                'User-Agent': _musicUa,
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body:
-                  'url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
-            );
-            final data = j?['data'] as Map<String, dynamic>?;
-            return _u(toHttps(data?['url']?.toString() ?? ''));
-          },
-        ),
-        _Resolver(
-          key: 'yutang',
-          name: 'yutang',
-          platforms: const [MusicPlatform.wy],
-          enabled: true,
-          order: 90,
-          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
-            final j = await _fetchJson(
-              'https://api.yutangxiaowu.cn/api/music/Song_V1?url=${Uri.encodeComponent(id)}&level=${songLevel(q)}&type=json',
-              cancelToken: cancelToken,
-              headers: {'User-Agent': _musicUa},
-            );
-            if (j == null) return _u('');
-            final data = j['data'] as Map<String, dynamic>?;
-            return _u(
-              toHttps(
-                j['url']?.toString() ?? data?['url']?.toString() ?? '',
-              ),
-            );
           },
         ),
         _Resolver(
@@ -968,28 +877,6 @@ class MusicResolvers {
               return _u('');
             }
             return _u(url);
-          },
-        ),
-        _Resolver(
-          key: 'hyw',
-          name: 'HYWmusic',
-          platforms: const [MusicPlatform.wy],
-          // Default OFF (direct-IP host, shared key) — same as the JS.
-          enabled: false,
-          order: 110,
-          fn: (id, pf, q, title, artist, {CancelToken? cancelToken}) async {
-            final j = await _fetchJson(
-              'https://103.79.184.97/api/music/url?platform=wy&source=wy&songId=${Uri.encodeComponent(id)}&quality=320k',
-              headers: {
-                'User-Agent': _musicUa,
-                'X-Card-Key': '6C1F-53W0-GRKI-EVFG',
-              },
-            );
-            return _u(
-              (j != null && j['code'] == 200)
-                  ? toHttps(j['url']?.toString() ?? '')
-                  : '',
-            );
           },
         ),
         _Resolver(

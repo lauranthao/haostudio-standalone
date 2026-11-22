@@ -60,9 +60,9 @@ void main() {
     );
   }
 
-  test('no persisted list returns the 19 defaults incl. 非凡主站', () {
+  test('no persisted list returns the 18 defaults incl. 非凡主站', () {
     final list = VideoSourcesStore.getAll();
-    expect(list.length, 19);
+    expect(list.length, 18);
     expect(
       list.any((s) => s.apiUrl == 'https://cj.ffzyapi.com/api.php/provide/vod'),
       isTrue,
@@ -96,7 +96,7 @@ void main() {
       ),
     ]);
     final list = VideoSourcesStore.getAll();
-    expect(list.length, 19);
+    expect(list.length, 18);
     final feifanMain = list.firstWhere(
       (s) => s.apiUrl == 'https://cj.ffzyapi.com/api.php/provide/vod',
     );
@@ -113,13 +113,13 @@ void main() {
     expect(ruyi.sort, 21);
     // Fire-and-forget persist from the merge must have landed.
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 4);
+    expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 5);
   });
 
   test('a user-deleted source is not resurrected on the next load', () async {
     await seedSources(kDefaultVideoSources);
     // First load runs the merge and bumps the revision.
-    expect(VideoSourcesStore.getAll().length, 19);
+    expect(VideoSourcesStore.getAll().length, 18);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     // User deletes 360 in settings.
     final kept = VideoSourcesStore.getAll()
@@ -127,7 +127,7 @@ void main() {
         .toList();
     await VideoSourcesStore.save(kept);
     final again = VideoSourcesStore.getAll();
-    expect(again.length, 18);
+    expect(again.length, 17);
     expect(
       again.any((s) => s.apiUrl == 'https://360zy.com/api.php/provide/vod'),
       isFalse,

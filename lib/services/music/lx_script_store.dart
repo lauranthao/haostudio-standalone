@@ -54,19 +54,15 @@ class LxCustomScript {
 }
 
 class LxScriptSourcesStore {
-  /// Bundled scripts disabled by default (dead upstream host, e.g.
-  /// ikun's api.ikunshare.com — curl-verified dead 2026-11-19, and
-  /// the built-in ikun resolver was disabled the same day): a fresh
-  /// install has them OFF, but they still load and show in 音源管理
-  /// with their toggle, and a user who turns one ON stays on — the
-  /// explicit-enable list is the record of that choice and is never
-  /// reset by an upgrade. No stored choice is ever overwritten:
-  /// before this change ikun was on by default, so there is no
-  /// recorded "user turned it on" to preserve — anyone who wants it
-  /// re-enables it with one tap. A user who disabled one before
-  /// stays disabled (the disabled list still wins for the others,
-  /// and for these ids the absent explicit-enable means off).
-  static const _defaultDisabledIds = {'ikun'};
+  /// Bundled scripts disabled by default (dead upstream host): a
+  /// fresh install has them OFF, but they still load and show in
+  /// 音源管理 with their toggle, and a user who turns one ON stays
+  /// on — the explicit-enable list is the record of that choice and
+  /// is never reset by an upgrade. No stored choice is ever
+  /// overwritten. (2026-11-23: the only entry, ikun, was DELETED
+  /// outright — api.ikunshare.com re-verified dead — along with
+  /// luoxue and xinlan, so this set is empty for now.)
+  static const _defaultDisabledIds = <String>{};
 
   static List<String> _explicitlyEnabledIds({Box<dynamic>? box}) {
     final b = _safeBox(box);

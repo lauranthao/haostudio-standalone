@@ -53,39 +53,39 @@ void main() {
     test('seed copies the asset, read returns it', () async {
       final store = fileStore();
       await store.seedIfMissing(
-        id: 'ikun',
-        assetPath: 'assets/lx_scripts/ikun.js',
+        id: 'suyin',
+        assetPath: 'assets/lx_scripts/suyin.js',
         assetLoader: (_) async => _dummyCode,
       );
-      expect(await store.read('ikun'), _dummyCode);
+      expect(await store.read('suyin'), _dummyCode);
       expect(
-        await File('${tempDir.path}/ikun.js').exists(),
+        await File('${tempDir.path}/suyin.js').exists(),
         isTrue,
       );
     });
 
     test('seed never overwrites an existing copy', () async {
       final store = fileStore();
-      final file = File('${tempDir.path}/ikun.js');
+      final file = File('${tempDir.path}/suyin.js');
       await file.writeAsString('user-edited');
       await store.seedIfMissing(
-        id: 'ikun',
-        assetPath: 'assets/lx_scripts/ikun.js',
+        id: 'suyin',
+        assetPath: 'assets/lx_scripts/suyin.js',
         assetLoader: (_) async => _dummyCode,
       );
-      expect(await store.read('ikun'), 'user-edited');
+      expect(await store.read('suyin'), 'user-edited');
     });
 
     test('delete removes the file, read returns null after', () async {
       final store = fileStore();
       await store.seedIfMissing(
-        id: 'ikun',
-        assetPath: 'assets/lx_scripts/ikun.js',
+        id: 'suyin',
+        assetPath: 'assets/lx_scripts/suyin.js',
         assetLoader: (_) async => _dummyCode,
       );
-      await store.delete('ikun');
-      expect(await store.read('ikun'), isNull);
-      expect(await File('${tempDir.path}/ikun.js').exists(), isFalse);
+      await store.delete('suyin');
+      expect(await store.read('suyin'), isNull);
+      expect(await File('${tempDir.path}/suyin.js').exists(), isFalse);
     });
 
     test('delete of a missing file does not throw', () async {
@@ -98,28 +98,28 @@ void main() {
     test('defaults to empty', () {
       expect(LxScriptSourcesStore.deletedBundledIds(box: box), isEmpty);
       expect(
-        LxScriptSourcesStore.isBundledDeleted('ikun', box: box),
+        LxScriptSourcesStore.isBundledDeleted('suyin', box: box),
         isFalse,
       );
     });
 
     test('mark persists and unmark removes', () async {
-      await LxScriptSourcesStore.markBundledDeleted('ikun', box: box);
+      await LxScriptSourcesStore.markBundledDeleted('suyin', box: box);
       expect(
-        LxScriptSourcesStore.isBundledDeleted('ikun', box: box),
+        LxScriptSourcesStore.isBundledDeleted('suyin', box: box),
         isTrue,
       );
       // Re-read through the global box (the engine's path).
-      expect(LxScriptSourcesStore.isBundledDeleted('ikun'), isTrue);
-      await LxScriptSourcesStore.markBundledDeleted('suyin', box: box);
+      expect(LxScriptSourcesStore.isBundledDeleted('suyin'), isTrue);
+      await LxScriptSourcesStore.markBundledDeleted('fish', box: box);
       expect(
         LxScriptSourcesStore.deletedBundledIds(box: box).toSet(),
-        {'ikun', 'suyin'},
+        {'suyin', 'fish'},
       );
-      await LxScriptSourcesStore.unmarkBundledDeleted('ikun', box: box);
+      await LxScriptSourcesStore.unmarkBundledDeleted('suyin', box: box);
       expect(
         LxScriptSourcesStore.deletedBundledIds(box: box),
-        ['suyin'],
+        ['fish'],
       );
     });
 
@@ -133,8 +133,8 @@ void main() {
     test('bundled delete removes the file and persists the id', () async {
       final store = fileStore();
       await store.seedIfMissing(
-        id: 'ikun',
-        assetPath: 'assets/lx_scripts/ikun.js',
+        id: 'suyin',
+        assetPath: 'assets/lx_scripts/suyin.js',
         assetLoader: (_) async => _dummyCode,
       );
       final engine = LxScriptEngine(
@@ -143,9 +143,9 @@ void main() {
         fileStore: store,
       );
       addTearDown(engine.dispose);
-      await engine.removeScript('ikun');
-      expect(await store.read('ikun'), isNull);
-      expect(LxScriptSourcesStore.isBundledDeleted('ikun'), isTrue);
+      await engine.removeScript('suyin');
+      expect(await store.read('suyin'), isNull);
+      expect(LxScriptSourcesStore.isBundledDeleted('suyin'), isTrue);
       // Custom-script records are untouched by a bundled delete.
       expect(LxScriptSourcesStore.customScripts(box: box), isEmpty);
     });
@@ -178,7 +178,7 @@ void main() {
 
     test('ensureInitialized never loads a deleted bundled script',
         () async {
-      await LxScriptSourcesStore.markBundledDeleted('ikun', box: box);
+      await LxScriptSourcesStore.markBundledDeleted('suyin', box: box);
       final engine = LxScriptEngine(
         dio: Dio(),
         assetLoader: (_) async => _dummyCode,
@@ -186,15 +186,15 @@ void main() {
       );
       addTearDown(engine.dispose);
       await engine.ensureInitialized();
-      // ikun: no info at all (skipped before seeding/loading).
-      expect(engine.script('ikun'), isNull);
+      // suyin: no info at all (skipped before seeding/loading).
+      expect(engine.script('suyin'), isNull);
       expect(
-        await File('${tempDir.path}/ikun.js').exists(),
+        await File('${tempDir.path}/suyin.js').exists(),
         isFalse,
       );
-      // The other nineteen were attempted (failed infos on Linux — the
+      // The other sixteen were attempted (failed infos on Linux — the
       // JS runtime factory throws without the native QuickJS lib).
-      expect(engine.scripts.length, 19);
+      expect(engine.scripts.length, 16);
       for (final s in engine.scripts) {
         expect(s.loaded, isFalse, reason: s.id);
       }
@@ -206,7 +206,7 @@ void main() {
       );
       addTearDown(engine2.dispose);
       await engine2.ensureInitialized();
-      expect(engine2.script('ikun'), isNull);
+      expect(engine2.script('suyin'), isNull);
     });
   });
 }

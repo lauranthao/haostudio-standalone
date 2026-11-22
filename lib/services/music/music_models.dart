@@ -143,8 +143,8 @@ bool isPlayableUrl(String? url) {
 /// URL string, no trial flag (verified live 2026-11-17: 11 songs x
 /// every testable built-in resolver and LX script returned full files
 /// — the preview only shows up for songs / sources the relays lack
-/// rights to, or when a relay is degraded; ikun / 落雪 APIs are
-/// unreachable from this VM so they could not be probed).
+/// rights to, or when a relay is degraded; unreachable relays
+/// could not be probed).
 ///
 /// The reliable signal is the player's real duration vs the metadata
 /// duration from search (`Song.dur`, seconds): a real file of 15 s

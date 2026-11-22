@@ -45,10 +45,11 @@
 //
 // iOS notes: the engine uses plain Dio, so script traffic follows the
 // app's ATS rules. Info.plist currently sets NO ATS exception, which
-// means cleartext http:// script hosts (ikun's api.ikunshare.com,
-// 落雪's http://220.167.101.253:6001) will be blocked on iOS until an
-// ATS exception is added or those hosts move to https. The https
-// scripts (新澜, zddyr-backed paths) are unaffected.
+// means any cleartext http:// script host would be blocked on iOS
+// until an ATS exception is added or the host moves to https.
+// (2026-11-23: the two cleartext hosts are gone with the scripts
+// that used them — ikun's api.ikunshare.com and 落雪's direct-IP
+// backend were deleted with those scripts; 新澜 was deleted too.)
 // Promise pumping on iOS (JavaScriptCore) relies on flutter_js's
 // polling pattern — verified on the VM's QuickJS only; chen's phone
 // test must confirm script playback on iOS.
@@ -349,28 +350,10 @@ class LxBundledScript {
 
 const List<LxBundledScript> kBundledLxScripts = [
   LxBundledScript(
-    id: 'ikun',
-    name: 'ikun音源',
-    assetPath: 'assets/lx_scripts/ikun.js',
-    blurb: 'ikun音源[公益版] · 网易云 / 酷我 · 仅播放链接',
-  ),
-  LxBundledScript(
-    id: 'xinlan',
-    name: '新澜音源',
-    assetPath: 'assets/lx_scripts/xinlan.js',
-    blurb: '新澜音源(公益版) · 全平台 320k · 仅播放链接',
-  ),
-  LxBundledScript(
     id: 'suyin',
     name: '溯音音源',
     assetPath: 'assets/lx_scripts/suyin.js',
     blurb: '溯音音源 · QQ / 网易 / 酷我 / 咪咕 · 播放链接 + 酷我/咪咕搜索',
-  ),
-  LxBundledScript(
-    id: 'luoxue',
-    name: '落雪',
-    assetPath: 'assets/lx_scripts/luoxue.js',
-    blurb: '落雪 · QQ / 网易 · 仅播放链接',
   ),
   LxBundledScript(
     id: 'jiexiang',
