@@ -2,9 +2,9 @@
 //
 // Was a centred floating card; iOS convention for a timer pick list
 // is a bottom sheet, so this now rises from the bottom on the app's
-// standard glass sheet pattern (showDragHandle + settle-spring rise,
-// top corners 14 — same as track_more_sheet). Options stacked
-// vertically, current choice marked; 取消 is a separate row at the
+// standard glass sheet pattern (showHaoSheet: floating grabber +
+// drag-to-dismiss, top corners 14 — same as track_more_sheet).
+// Options stacked vertically, current choice marked; 取消 is a separate row at the
 // bottom.
 //
 // Options: 5 / 15 / 30 / 45 / 60 / 90 分钟, 到歌单结束, 自定义分钟,
@@ -25,7 +25,6 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_radius.dart';
-import '../../../core/theme/hao_settle_spring.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../core/theme/liquid_glass_theme.dart';
@@ -33,18 +32,11 @@ import '../../../services/music/music_store.dart';
 import '../../../services/music/sleep_timer.dart';
 import '../../../widgets/hao_pressable.dart';
 import '../music_player_controller.dart';
+import '../../../widgets/hao_sheet.dart';
 
 Future<SleepTimerOption?> showSleepTimerSheet(BuildContext context) {
-  return showModalBottomSheet<SleepTimerOption>(
+  return showHaoSheet<SleepTimerOption>(
     context: context,
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => const _SleepTimerSheetContent(),
   );
 }

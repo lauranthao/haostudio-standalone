@@ -22,6 +22,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/logging/app_log.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class AppLogPage extends StatefulWidget {
   const AppLogPage({super.key, this.onShare});
@@ -142,29 +143,10 @@ class _AppLogPageState extends State<AppLogPage> {
     final theme = HaoTheme.of(context);
     final filtered = _filtered;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('日志'),
-        centerTitle: true,
-        leadingWidth: 76,
-        leading: TextButton(
-          onPressed: () => Get.back(),
-          child: Text(
-            '完成',
-            style: TextStyle(color: theme.accent, fontSize: 16),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
-            tooltip: '清空日志',
-            onPressed: _clear,
-          ),
-          IconButton(
-            icon: Icon(Icons.ios_share, shadows: HaoTheme.legibilityShadows(context),),
-            tooltip: '分享日志',
-            onPressed: _share,
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '日志',
+        leading: HaoNavBarTextButton(label: '完成', onPressed: () => Get.back()),
+        actions: [HaoNavBarButton( onPressed: _clear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),)), HaoNavBarButton( onPressed: _share,child: Icon(Icons.ios_share, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: Stack(
         children: [

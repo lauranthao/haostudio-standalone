@@ -38,6 +38,7 @@ import '../../services/video/poster_patch_service.dart';
 import 'emby_tab_page.dart';
 import 'video_detail_router.dart';
 import '../../widgets/hao_segmented_control.dart';
+import '../../widgets/hao_scroll_to_top.dart';
 import 'video_detail_service.dart';
 import 'video_favs_page.dart';
 import 'video_history_page.dart';
@@ -110,10 +111,12 @@ class VideoTabPage extends StatefulWidget {
 /// only on this tab root page — never on pushed detail/search pages.
 class _VideoTabPageState extends State<VideoTabPage> {
   VideoTabMode _mode = VideoTabMode.cms;
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    HaoScrollToTop.register(HaoScrollToTop.videoTab, _scrollController);
     // Dirty / missing value reads back as 'cms'
     // (VideoTabMode.fromString); an uninitialised Hive box throws
     // and is caught too.
@@ -278,6 +281,8 @@ class _CmsHomePageState extends State<_CmsHomePage> {
 
   @override
   void dispose() {
+    HaoScrollToTop.unregister(HaoScrollToTop.videoTab, _scrollController);
+    _scrollController.dispose();
     _homeToken?.cancel();
     _dailyToken?.cancel();
     super.dispose();
@@ -412,6 +417,7 @@ class _CmsHomePageState extends State<_CmsHomePage> {
                     unawaited(_refreshHome(force: true));
                   })
                 : CustomScrollView(
+                    controller: _scrollController,
                     slivers: [
                       CupertinoSliverRefreshControl(
                         onRefresh: () async {

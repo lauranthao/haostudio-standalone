@@ -12,6 +12,7 @@ import '../../widgets/native_switch.dart';
 import '../../widgets/settings_ui.dart';
 import '../../shared/platforms/sites.dart';
 import 'source_stores.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class LiveSourcesPage extends StatefulWidget {
   const LiveSourcesPage({super.key});
@@ -42,7 +43,9 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('直播源管理')),
+      appBar: HaoNavBar(
+        title: '直播源管理',
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

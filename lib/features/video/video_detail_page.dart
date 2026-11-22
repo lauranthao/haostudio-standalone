@@ -50,6 +50,7 @@ import '../../services/video/douban_parsers.dart';
 import '../../services/video/douban_service.dart';
 import '../../services/video/poster_patch_service.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_nav_bar.dart';
 import 'missing_episode_chips.dart';
 import 'native_video_player_page.dart';
 import 'skip_intro_dialog.dart';
@@ -721,14 +722,24 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final theme = HaoTheme.of(context);
     final preload = widget.preload;
     return Scaffold(
-      body: AnimatedOpacity(
-        opacity: _fadedIn ? 1 : 0,
-        duration: const Duration(milliseconds: 350),
-        child: _failed
-            ? _ErrorCard(onRetry: _load)
-            : _loading && _detail == null
-                ? _DetailSkeleton(preload: preload)
-                : _buildDetail(theme),
+      // Fixed back button over the body: the hero's own button lived
+      // inside the scrolling cover, so once the user scrolled down
+      // (and always in the load-failed card) there was no visible
+      // exit — only the edge swipe. One pinned button covers every
+      // state (loading / loaded / failed) at any scroll offset.
+      body: Stack(
+        children: [
+          AnimatedOpacity(
+            opacity: _fadedIn ? 1 : 0,
+            duration: const Duration(milliseconds: 350),
+            child: _failed
+                ? _ErrorCard(onRetry: _load)
+                : _loading && _detail == null
+                    ? _DetailSkeleton(preload: preload)
+                    : _buildDetail(theme),
+          ),
+          const HaoCoverBackButton(),
+        ],
       ),
     );
   }
@@ -1277,20 +1288,6 @@ class _CoverHero extends StatelessWidget {
               ),
             ),
           ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0x66000000),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(CupertinoIcons.back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1589,23 +1586,6 @@ class _DetailSkeleton extends StatelessWidget {
                             theme.scaffoldBackground,
                           ],
                           stops: const [0.0, 0.45, 1.0],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: MediaQuery.of(context).padding.top + 8,
-                      left: 12,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Color(0x66000000),
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context), 
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
                         ),
                       ),
                     ),

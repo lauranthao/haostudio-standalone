@@ -33,6 +33,7 @@ import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class AlbumDetailPage extends StatefulWidget {
   const AlbumDetailPage({
@@ -228,18 +229,13 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     // parses the whole favourites JSON on every call.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.albumName, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        actions: [
-          IconButton(
-            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share),
-            onPressed: () => ClipboardService.copyWithFeedback(
+      appBar: HaoNavBar(
+        title: widget.albumName,
+        actions: [HaoNavBarButton( onPressed: () => ClipboardService.copyWithFeedback(
               context,
               '${widget.albumName} - ${widget.artistName}',
               successMessage: '已复制专辑分享内容',
-            ),
-          ),
-        ],
+            ),child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share))],
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())

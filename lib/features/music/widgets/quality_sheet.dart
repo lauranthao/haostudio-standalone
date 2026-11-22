@@ -2,9 +2,9 @@
 //
 // Was a centred floating card; iOS convention for a quality pick list
 // is a bottom sheet, so this now rises from the bottom on the app's
-// standard glass sheet pattern (showDragHandle + settle-spring rise,
-// top corners 14 — same as track_more_sheet). Options stacked
-// vertically, current choice marked with a check; 取消 is a separate
+// standard glass sheet pattern (showHaoSheet: floating grabber +
+// drag-to-dismiss, top corners 14 — same as track_more_sheet).
+// Options stacked vertically, current choice marked with a check; 取消 is a separate
 // row at the bottom. Colours follow the active theme in both light
 // and dark mode.
 //
@@ -19,27 +19,19 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_radius.dart';
-import '../../../core/theme/hao_settle_spring.dart';
 import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../services/music/music_quality.dart';
 import '../../../widgets/hao_pressable.dart';
+import '../../../widgets/hao_sheet.dart';
 
 Future<AudioQuality?> showQualitySheet(
   BuildContext context,
   AudioQuality current,
 ) {
   final theme = HaoTheme.of(context);
-  return showModalBottomSheet<AudioQuality>(
+  return showHaoSheet<AudioQuality>(
     context: context,
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => GlassContainer(
       shape: const LiquidVerticalRoundedSuperellipse(
         topRadius: HaoRadius.sheet,

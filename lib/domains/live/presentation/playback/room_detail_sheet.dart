@@ -21,30 +21,30 @@
 // test per platform (see live_room_links.dart).
 
 import '../../../../core/theme/hao_radius.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/models/live_models.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/haptics.dart';
 import '../../../../core/theme/glass.dart';
 import '../../../../features/video/widgets/referer_image.dart';
 import '../../live_follow_store.dart';
 import '../../live_metrics.dart';
 import '../../live_status.dart';
 import 'live_room_links.dart';
+import '../../../../widgets/hao_sheet.dart';
 
 /// Open the room detail sheet for [room].
 Future<void> showRoomDetailSheet({
   required BuildContext context,
   required LiveRoom room,
 }) {
-  return showModalBottomSheet<void>(
+  return showHaoSheet<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (context) =>
         GlassSheetBackground(child: _RoomDetailSheet(room: room)),
   );
@@ -216,7 +216,10 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   ),
                 ),
                 FilledButton(
-                  onPressed: _toggleFollow,
+                  onPressed: () {
+                    HaoHaptics.medium();
+                    unawaited(_toggleFollow());
+                  },
                   style: FilledButton.styleFrom(
                     backgroundColor: _followed
                         ? theme.surface

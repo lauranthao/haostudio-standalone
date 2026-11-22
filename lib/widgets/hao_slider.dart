@@ -18,6 +18,7 @@ class HaoSlider extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.onChangeEnd,
+    this.onChangeStart,
     this.min = 0,
     this.max = 1,
     this.divisions,
@@ -28,6 +29,14 @@ class HaoSlider extends StatelessWidget {
   final double value;
   final ValueChanged<double>? onChanged;
   final ValueChanged<double>? onChangeEnd;
+
+  /// Called when a scrub starts. The Material fallback gets the
+  /// real `onChangeStart`; the native `UISlider` has no such
+  /// callback, so a pointer-down on the slider fires it instead —
+  /// a tap-to-seek is a scrub start too, so the semantics match
+  /// (used by the video progress bar to cancel the hide timer
+  /// before the drag can unmount the control bar).
+  final ValueChanged<double>? onChangeStart;
   final double min;
   final double max;
   final int? divisions;
@@ -37,6 +46,7 @@ class HaoSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onChanged = this.onChanged;
+    final onChangeStart = this.onChangeStart;
     final fallback = Slider(
       value: value,
       min: min,
@@ -46,9 +56,10 @@ class HaoSlider extends StatelessWidget {
       activeColor: activeColor,
       onChanged: onChanged,
       onChangeEnd: onChangeEnd,
+      onChangeStart: onChangeStart,
     );
     if (onChanged == null) return fallback;
-    return glassy.GlassSlider(
+    final native = glassy.GlassSlider(
       value: value,
       min: min,
       max: max,
@@ -57,6 +68,11 @@ class HaoSlider extends StatelessWidget {
       onChangeEnd: onChangeEnd,
       style: glassy.NativeStyle(tintColor: activeColor),
       fallback: fallback,
+    );
+    if (onChangeStart == null) return native;
+    return Listener(
+      onPointerDown: (_) => onChangeStart(value),
+      child: native,
     );
   }
 }

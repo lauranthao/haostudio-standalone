@@ -27,6 +27,7 @@ import '../../widgets/settings_ui.dart';
 import '../../domains/live/presentation/playback/danmaku_block_store.dart';
 import '../../shared/platforms/sites.dart';
 import 'source_stores.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class DanmakuSettingsPage extends StatefulWidget {
   const DanmakuSettingsPage({super.key});
@@ -124,7 +125,9 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('弹幕设置')),
+      appBar: HaoNavBar(
+        title: '弹幕设置',
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

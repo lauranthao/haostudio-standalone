@@ -11,6 +11,7 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 import 'package:get/get.dart';
@@ -26,6 +27,9 @@ import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
+import 'widgets/track_more_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_swipe_actions.dart';
 
 enum _DownloadFilter { all, done, downloading }
 
@@ -50,6 +54,14 @@ class DownloadsPage extends StatefulWidget {
 }
 
 class _DownloadsPageState extends State<DownloadsPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   var _filter = _DownloadFilter.all;
   var _totalBytes = 0;
 
@@ -97,7 +109,10 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('已下载')),
+      appBar: HaoNavBar(
+        title: '已下载',
+        scrollController: _scrollController,
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -267,6 +282,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 );
               }
               return ListView.builder(
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   bottom: MiniPlayerBar.bottomClearanceFor(context),
                 ),
@@ -286,7 +302,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Widget _buildRow(HaoTheme theme, _DownloadRow row) {
     final song = row.song;
     final isDone = row.status == DownloadStatus.downloaded;
-    return HaoPressable(
+    final rowWidget = HaoPressable(
       onTap: isDone
           ? () => _playSong(
                 song,
@@ -403,6 +419,38 @@ class _DownloadsPageState extends State<DownloadsPage> {
           ],
         ),
       ),
+    );
+    // Swipe actions only on downloaded rows: the delete path
+    // (service.delete) only works on an indexed entry, and the
+    // visible delete button has the same isDone condition —
+    // downloading / failed rows have no delete to offer.
+    if (!isDone) return rowWidget;
+    return HaoSwipeActions(
+      actions: [
+        HaoSwipeAction(
+          label: '更多',
+          color: const Color(0xFF8E8E93),
+          icon: CupertinoIcons.ellipsis,
+          onTap: () => unawaited(openSongQuickMenu(context, song)),
+        ),
+        HaoSwipeAction(
+          label: '删除',
+          color: const Color(0xFFFF3B30),
+          icon: CupertinoIcons.delete,
+          onTap: () async {
+            final ok = await showGlassConfirmDialog(
+              context,
+              title: '删除下载',
+              content: '将删除「${song.title}」的下载文件，之后需要重新下载才能离线播放。',
+              confirmLabel: '删除',
+            );
+            if (ok != true || !mounted) return;
+            await _service.delete(song);
+            await _refresh();
+          },
+        ),
+      ],
+      child: rowWidget,
     );
   }
 

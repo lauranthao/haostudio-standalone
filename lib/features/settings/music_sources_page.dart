@@ -42,6 +42,7 @@ import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
 import '../../services/music/music_models.dart';
 import 'source_stores.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class MusicSourcesPage extends StatefulWidget {
   const MusicSourcesPage({super.key});
@@ -305,7 +306,9 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('音源管理')),
+      appBar: HaoNavBar(
+        title: '音源管理',
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

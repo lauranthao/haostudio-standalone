@@ -21,6 +21,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/haptics.dart';
+import '../../../../widgets/hao_slider.dart';
 import '../../../../widgets/native_switch.dart';
 import '../live_audio_sleep.dart';
 import '../live_pip_support.dart';
@@ -150,13 +152,16 @@ class LiveRoomToolsSheet extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Slider(
+                      child: HaoSlider(
                         value: boostPct.toDouble(),
                         min: 100,
                         max: 300,
                         divisions: 8,
                         label: '$boostPct%',
+                        activeColor: theme.accent,
                         onChanged: (v) => onBoostChanged(v.round()),
+                        onChangeEnd: (v) =>
+                            HaoHaptics.sliderEnd(v, 100, 300),
                       ),
                     ),
                     SizedBox(

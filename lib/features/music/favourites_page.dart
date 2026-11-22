@@ -22,6 +22,8 @@ import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_swipe_actions.dart';
 
 class FavouritesPage extends StatefulWidget {
   const FavouritesPage({super.key});
@@ -31,6 +33,14 @@ class FavouritesPage extends StatefulWidget {
 }
 
 class _FavouritesPageState extends State<FavouritesPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   List<Song> _songs = [];
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
@@ -64,7 +74,10 @@ class _FavouritesPageState extends State<FavouritesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('我的收藏'), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: '我的收藏',
+        scrollController: _scrollController,
+      ),
       body: _songs.isEmpty
           ? Center(
               child: Text(
@@ -88,15 +101,38 @@ class _FavouritesPageState extends State<FavouritesPage> {
                 ),
                 Expanded(
                   child: ListView.builder(
+                    controller: _scrollController,
                     padding: EdgeInsets.only(
                       bottom: MiniPlayerBar.bottomClearanceFor(context),
                     ),
                     itemCount: _songs.length,
                     itemBuilder: (ctx, i) {
                       final song = _songs[i];
-                      return SongRow(
-                        song: song,
-                        isFav: true,
+                      return HaoSwipeActions(
+                        actions: [
+                          HaoSwipeAction(
+                            label: '更多',
+                            // iOS system gray (not liveRed: red is
+                            // reserved for the LIVE badge / recording).
+                            color: const Color(0xFF8E8E93),
+                            icon: CupertinoIcons.ellipsis,
+                            onTap: () =>
+                                unawaited(openSongQuickMenu(ctx, song)),
+                          ),
+                          HaoSwipeAction(
+                            label: '删除',
+                            // iOS destructive red (not liveRed).
+                            color: const Color(0xFFFF3B30),
+                            icon: CupertinoIcons.delete,
+                            onTap: () async {
+                              await _player.toggleFav(song);
+                              _refresh();
+                            },
+                          ),
+                        ],
+                        child: SongRow(
+                          song: song,
+                          isFav: true,
                         onPlay: () => _playSong(song),
                         onToggleFav: () async {
                           await _player.toggleFav(song);
@@ -117,6 +153,7 @@ class _FavouritesPageState extends State<FavouritesPage> {
                         ),
                         onLongPress: (rowCtx) =>
                                 unawaited(openSongQuickMenu(rowCtx, song)),
+                      ),
                       );
                     },
                   ),

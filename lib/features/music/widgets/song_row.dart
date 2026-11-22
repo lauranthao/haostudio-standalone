@@ -11,6 +11,7 @@
 //   without playing; tapping the artist name opens the artist page.
 
 import '../../../core/theme/hao_radius.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../../widgets/hao_pressable.dart';
 
@@ -43,9 +44,11 @@ class SongRow extends StatelessWidget {
   final VoidCallback? onOpenArtist;
   final VoidCallback? onOpenAlbum;
 
-  /// Long-press opens the song quick menu (下一首播放 / 下载 / 立即播放 /
-  /// 收藏) — the row's own context is passed so the menu anchors to
-  /// the row (Beans context-menu pattern), not the full `···` sheet.
+  /// Long-press opens the iOS context menu (CupertinoContextMenu:
+  /// preview + 播放 / 收藏 / 更多); its 更多 action opens the song
+  /// quick menu (下一首播放 / 下载 / 立即播放 / 收藏) — the row's own
+  /// context is passed so the menu anchors to the row (Beans
+  /// context-menu pattern), not the full `···` sheet.
   final void Function(BuildContext)? onLongPress;
 
   /// Optional leading widget (rank number, drag handle, ...).
@@ -77,12 +80,9 @@ class SongRow extends StatelessWidget {
           HaoHaptics.tap();
           onPlay();
         },
-        onLongPress: onLongPress == null
-            ? null
-            : () {
-                HaoHaptics.medium();
-                onLongPress!(context);
-              },
+        onLongPress: null, // Long-press is owned by the
+        // CupertinoContextMenu below (its 更多 action opens the
+        // quick menu); leaving it here would fire both.
         borderRadius: BorderRadius.circular(
           compact ? HaoRadius.standard : HaoRadius.large,
         ),
@@ -262,19 +262,20 @@ class SongRow extends StatelessWidget {
     );
     if (compact) {
       // Plain 64-high row: the owning list draws the dividers.
-      return SizedBox(
+      final content = SizedBox(
         height: 64,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: row,
         ),
       );
+      return _withContextMenu(context, content);
     }
     // Glass row (Beans `SongCell` glassRow, SongCell.swift: glassRow
     // branch: rowContent padded h10, glass RoundedRectangle radius 16;
     // v padding 6 inside, rows spaced 8 apart in the list — here the
     // 4pt vertical margin on each side gives the same 8pt gap).
-    return GlassPressScale(
+    final content = GlassPressScale(
       pressedScale: 0.97,
       child: GlassCard(
         radius: 16,
@@ -282,6 +283,42 @@ class SongRow extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: row,
       ),
+    );
+    return _withContextMenu(context, content);
+  }
+
+  /// iOS long-press menu (Apple Music pattern): the row itself is
+  /// the preview; 播放 / 收藏 / 更多 are the actions. 更多 opens
+  /// the existing quick menu sheet — the full controls (speed,
+  /// lyric offset, download) stay there, one tap away. Rows with
+  /// no [onLongPress] have no menu, exactly as before.
+  Widget _withContextMenu(BuildContext context, Widget content) {
+    if (onLongPress == null) return content;
+    return CupertinoContextMenu(
+      actions: [
+        CupertinoContextMenuAction(
+          child: const Text('播放'),
+          onPressed: () {
+            Navigator.of(context).pop();
+            onPlay();
+          },
+        ),
+        CupertinoContextMenuAction(
+          child: Text(isFav ? '取消收藏' : '收藏'),
+          onPressed: () {
+            Navigator.of(context).pop();
+            onToggleFav();
+          },
+        ),
+        CupertinoContextMenuAction(
+          child: const Text('更多…'),
+          onPressed: () {
+            Navigator.of(context).pop();
+            onLongPress!(context);
+          },
+        ),
+      ],
+      child: content,
     );
   }
 }

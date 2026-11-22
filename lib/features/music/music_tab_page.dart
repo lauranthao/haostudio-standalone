@@ -96,6 +96,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/hao_scroll_to_top.dart';
 import 'package:get/get.dart';
 
 import '../../core/storage/hive_store.dart';
@@ -210,6 +211,7 @@ class _FeatureTile {
 class _MusicTabPageState extends State<MusicTabPage>
     with AutomaticKeepAliveClientMixin {
   final _importController = TextEditingController();
+  final _scrollController = ScrollController();
   late final MusicApi _api = widget.api ?? MusicApi();
   var _playlistsExpanded = true;
   var _recentExpanded = true;
@@ -249,6 +251,7 @@ class _MusicTabPageState extends State<MusicTabPage>
   @override
   void initState() {
     super.initState();
+    HaoScrollToTop.register(HaoScrollToTop.musicTab, _scrollController);
     _playlistsExpanded =
         HiveStore.getBool(HiveKeys.musicPlaylistsExpanded, true);
     _recentExpanded = HiveStore.getBool(HiveKeys.musicRecentExpanded, true);
@@ -303,6 +306,8 @@ class _MusicTabPageState extends State<MusicTabPage>
 
   @override
   void dispose() {
+    HaoScrollToTop.unregister(HaoScrollToTop.musicTab, _scrollController);
+    _scrollController.dispose();
     _recentListenable?.removeListener(_onRecentChanged);
     _importController.dispose();
     super.dispose();
@@ -705,6 +710,7 @@ class _MusicTabPageState extends State<MusicTabPage>
             children: [
               Expanded(
                 child: ListView(
+                  controller: _scrollController,
                   children: [
                     _featureShelf(theme),
                     // Gap arithmetic (Kumone sectionSpacing 20):

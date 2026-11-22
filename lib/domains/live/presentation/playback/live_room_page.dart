@@ -52,6 +52,7 @@ import '../../../../core/models/live_models.dart';
 import '../../../../core/player/kernel/player_engine.dart';
 import '../../../../core/storage/hive_store.dart';
 import '../../../../core/theme/hao_themes.dart';
+import '../../../../core/theme/haptics.dart';
 import '../../../../core/theme/glass.dart';
 import '../../../../features/settings/source_stores.dart';
 import '../../../../features/settings/danmaku_settings_page.dart';
@@ -82,6 +83,8 @@ import 'live_player_settings_sheet.dart';
 import 'live_recording_center_page.dart';
 import 'room_detail_sheet.dart';
 import 'room_switch_panel.dart';
+import '../../../../widgets/hao_nav_bar.dart';
+import '../../../../widgets/hao_sheet.dart';
 
 /// Live room entry. Entry is ALWAYS portrait (fix 2): there is no
 /// parameter to request landscape — the VOD direct-to-landscape path
@@ -1376,12 +1379,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   /// not just the room behind it.
   void _openToolsSheet() {
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => StatefulBuilder(
           builder: (context, setSheetState) {
             void refreshSheet() => setSheetState(() {});
@@ -1456,12 +1455,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // but only while it is still open).
     var sheetOpen = true;
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => StatefulBuilder(
           builder: (context, setSheetState) {
             void refreshSheet() {
@@ -1591,15 +1586,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   void _onDanmakuLongPress(LiveMessage message) {
     final theme = HaoTheme.of(context);
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        // isScrollControlled + scrollable content: without them a tall
-        // sheet is capped at ~half the screen and the bottom rows are
-        // clipped — same bug class as the music track sheet (v1.0.6).
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => GlassSheetBackground(
           child: SafeArea(
           child: SingleChildScrollView(
@@ -1802,12 +1790,18 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         color: color,
       ),
       tooltip: _playing ? '暂停' : '播放',
-      onPressed: () => _session.togglePlayPause(),
+      onPressed: () {
+        HaoHaptics.medium();
+        _session.togglePlayPause();
+      },
     ),
     IconButton(
       icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh, color: color),
       tooltip: '刷新',
-      onPressed: _manualRetry,
+      onPressed: () {
+        HaoHaptics.tap();
+        _manualRetry();
+      },
     ),
     IconButton(
       icon: Icon(
@@ -1816,7 +1810,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         color: color,
       ),
       tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
-      onPressed: () => setState(() => _danmakuVisible = !_danmakuVisible),
+      onPressed: () {
+        HaoHaptics.select();
+        setState(() => _danmakuVisible = !_danmakuVisible);
+      },
     ),
     // D 组直播设置面板 (build 29): Pure Live-style control-bar
     // settings entry → bottom sheet. Lives in the shared bottom
@@ -1825,13 +1822,21 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     IconButton(
       icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.settings, color: color),
       tooltip: '直播设置',
-      onPressed: _openLiveSettingsSheet,
+      onPressed: () {
+        HaoHaptics.tap();
+        _openLiveSettingsSheet();
+      },
     ),
     Obx(() {
       final fs = _fullscreen.isFullscreen.value;
       if (!fs) return const SizedBox.shrink();
       return TextButton(
-        onPressed: _qualities.isEmpty ? null : _openQualitySheet,
+        onPressed: _qualities.isEmpty
+            ? null
+            : () {
+                HaoHaptics.tap();
+                _openQualitySheet();
+              },
         child: Text(
           _qualities.isEmpty ? '清晰度' : _qualities[_currentQuality].quality,
           style: TextStyle(
@@ -1847,7 +1852,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       final fs = _fullscreen.isFullscreen.value;
       if (!fs) return const SizedBox.shrink();
       return TextButton(
-        onPressed: _recovery.lines.length < 2 ? null : _openLineSheet,
+        onPressed: _recovery.lines.length < 2
+            ? null
+            : () {
+                HaoHaptics.tap();
+                _openLineSheet();
+              },
         child: Text(
           '线路 ${_recovery.currentLineIndex + 1}',
           style: TextStyle(
@@ -1863,7 +1873,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     IconButton(
       icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lock_open, color: color),
       tooltip: '锁定控制条',
-      onPressed: _lockControls,
+      onPressed: () {
+        HaoHaptics.tap();
+        _lockControls();
+      },
     ),
     IconButton(
       icon: Obx(
@@ -1876,7 +1889,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         ),
       ),
       tooltip: '全屏',
-      onPressed: () => _fullscreen.toggleFullscreen(),
+      onPressed: () {
+        HaoHaptics.tap();
+        _fullscreen.toggleFullscreen();
+      },
     ),
   ];
 
@@ -1885,15 +1901,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (_qualities.isEmpty) return;
     final theme = HaoTheme.of(context);
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        // isScrollControlled + scrollable content: 9 Huya qualities
-        // alone are ~500px — without these the bottom rows are clipped
-        // (same bug class as the music track sheet, v1.0.6).
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => GlassSheetBackground(
           child: SafeArea(
           child: SingleChildScrollView(
@@ -1945,14 +1954,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     if (_recovery.lines.length < 2) return;
     final theme = HaoTheme.of(context);
     unawaited(
-      showModalBottomSheet<void>(
+      showHaoSheet<void>(
         context: context,
-        // isScrollControlled + scrollable content: same bug class as
-        // the music track sheet (v1.0.6) — tall content was clipped.
-        isScrollControlled: true,
-        showDragHandle: true,
-        backgroundColor: Colors.transparent,
-        barrierColor: Colors.black.withValues(alpha: 0.35),
         builder: (sheetContext) => GlassSheetBackground(
           child: SafeArea(
           child: SingleChildScrollView(
@@ -2317,9 +2320,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   child: Row(
                     children: [
                       IconButton(
-                        icon: Icon(Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
+                        icon: Icon(CupertinoIcons.back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                         tooltip: '退出全屏',
-                        onPressed: () => _fullscreen.toggleFullscreen(),
+                        onPressed: () {
+                          HaoHaptics.tap();
+                          _fullscreen.toggleFullscreen();
+                        },
                       ),
                       Expanded(
                         child: Text(
@@ -2337,7 +2343,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                       IconButton(
                         icon: Icon(Icons.more_horiz, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                         tooltip: '直播工具',
-                        onPressed: _openToolsSheet,
+                        onPressed: () {
+                          HaoHaptics.tap();
+                          _openToolsSheet();
+                        },
                       ),
                     ],
                   ),
@@ -2434,7 +2443,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 child: IconButton(
                   icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lock, color: Colors.white),
                   tooltip: '解锁控制条',
-                  onPressed: _unlockControls,
+                  onPressed: () {
+                    HaoHaptics.tap();
+                    _unlockControls();
+                  },
                 ),
               ),
             ),
@@ -2511,32 +2523,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           // never filled the screen.
           appBar: fullscreen
               ? null
-              : AppBar(
-                  title: Text(_room.title.isEmpty ? '直播间' : _room.title, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-                  actions: [
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune),
-                      tooltip: '直播工具',
-                      // Build-29 tools sheet: pure audio / sleep /
-                      // boost / power saving / record / multi-view /
-                      // PiP verdicts.
-                      onPressed: _openToolsSheet,
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz),
-                      tooltip: '切换直播间',
-                      // L04: switch-room panel (follows / current list /
-                      // history / replay follows).
-                      onPressed: _openSwitchPanel,
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen),
-                      tooltip: '全屏',
-                      // The [ ] button is the ONLY path to landscape (fix 2).
-                      onPressed: () => _fullscreen.toggleFullscreen(),
-                    ),
-                  ],
-                ),
+              : HaoNavBar(
+                title: _room.title.isEmpty ? '直播间' : _room.title,
+                actions: [HaoNavBarButton( onPressed: _openToolsSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune)), HaoNavBarButton( onPressed: _openSwitchPanel,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz)), HaoNavBarButton( onPressed: () => _fullscreen.toggleFullscreen(),child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen))],
+              ),
           body: Column(
             children: [
               // 16:9 native video surface on top — in-page, portrait;

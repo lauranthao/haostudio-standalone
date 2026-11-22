@@ -28,7 +28,6 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../../core/theme/hao_themes.dart';
-import '../../../core/theme/hao_settle_spring.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../widgets/glass_dialog.dart';
@@ -49,6 +48,8 @@ import '../music_player_controller.dart';
 import '../player_expand_route.dart';
 import 'sleep_timer_sheet.dart';
 import 'music_image.dart';
+import '../../../widgets/hao_sheet.dart';
+import '../../../widgets/hao_slider.dart';
 
 enum TrackMoreAction {
   info,
@@ -332,39 +333,13 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
       ),
     ),
   );
-  return showModalBottomSheet<TrackMoreAction>(
+  return showHaoSheet<TrackMoreAction>(
     context: context,
-    // N-10: iOS grabber + settle-spring rise (same spring as the
-    // player close), so the sheet reads as draggable and lands
-    // instead of braking dead.
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    // isScrollControlled: without it the sheet is capped at ~half the
-    // screen height and tall content is clipped — the 取消 row was cut
-    // off at the bottom edge on chen's phone (v1.0.6). With it the sheet
-    // sizes to its content, and the SingleChildScrollView below is the
-    // safety net: on a short screen the list scrolls instead of clipping.
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => GlassContainer(
-      // Kumone redo: library glass (standard — dense action list,
-      // never premium shader) instead of the self-made
-      // GlassSheetBackground. Top corners 14 (D-7), bottom square: the
-      // sheet sits on the screen edge. The transparent Material is
-      // the text-style ancestor above the glass fill (a route with
-      // no Material ancestor falls back to the debug text style);
-      // its ink ripples are off by the theme's NoSplash (N-16), so
-      // rows dim on press instead of rippling.
       shape: const LiquidVerticalRoundedSuperellipse(
         topRadius: HaoRadius.sheet,
         bottomRadius: 0,
       ),
-      // Intensity-scaled optics (chen 2026-11-21): explicit settings
-      // so the sheet follows the slider instead of the ambient theme.
       settings: HaoLiquidGlass.ios27Settings(ctx),
       quality: GlassQuality.standard,
       useOwnLayer: true,
@@ -439,21 +414,13 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
               ),
             ),
             const Divider(height: 1),
-            // Beans menu grouping: playback actions first (most used
-            // while listening), then the song itself, then the list.
             section('播放'),
-            // M-P0-4: insert right after the current track.
             ListTile(
               dense: true,
               leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_play_next, color: theme.textPrimary),
               title: Text('下一首播放', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playNext),
             ),
-            // Personal FM / heartbeat: "不喜欢" skips the song and
-            // never recommends it again (FmService.dislike). The
-            // handler below has no mode guard and dislike() works on
-            // the heartbeat queue too (build 28), so the entry shows
-            // in both recommendation modes.
             if (FmService.ensure().isFM.value ||
                 FmService.ensure().isHeartbeat.value)
               ListTile(
@@ -476,10 +443,6 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playMode),
               ),
             ),
-            // Playback adjustments (build 29) live one tap deeper in
-            // the 播放设置 sub-sheet: with them inline the `···`
-            // sheet ran past one screen on chen's phone (sleep timer
-            // + cancel below the fold). The row shows the live speed.
             Obx(
               () => ListTile(
                 dense: true,
@@ -494,8 +457,6 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             ),
             const Divider(height: 1),
             section('歌曲'),
-            // Stage 3: equalizer entry with the real on/off state
-            // (same destination as the settings playback-panel row).
             AnimatedBuilder(
               animation: EqualizerStore.ensure(),
               builder: (context, _) => ListTile(
@@ -521,8 +482,6 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
               title: Text('评论', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.comments),
             ),
-            // Bookmarks (1.1.6): one row, opens the list / add /
-            // jump / delete dialog. The count reads at open time.
             ListTile(
               dense: true,
               leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark_outline, color: theme.textPrimary),
@@ -564,7 +523,6 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.sleepTimer),
               );
             }),
-            // M-P0-5: download the song to the device for offline play.
             Obx(() {
               final st = controller.downloads.statusFor(song);
               final prog = controller.downloads.progress[song.identityKey];
@@ -619,17 +577,8 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
 Future<void> showPlaybackSettingsSheet(BuildContext context) async {
   final theme = HaoTheme.of(context);
   final controller = MusicPlayerController.ensure();
-  await showModalBottomSheet<void>(
+  await showHaoSheet<void>(
     context: context,
-    // N-10: iOS grabber + settle-spring rise, same as the `···` sheet.
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => GlassContainer(
       shape: const LiquidVerticalRoundedSuperellipse(
         topRadius: HaoRadius.sheet,
@@ -659,11 +608,6 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                     ),
                   ),
                 ),
-            // M-P0-2: speed slider 0.5–2.0× (build 29: was 0.6–2.0),
-            // live value, takes effect immediately on the audio rate
-            // (controller.setSpeed). Pitch never changes with speed:
-            // the native fork pins every AVPlayerItem to
-            // AVAudioTimePitchAlgorithmTimeDomain.
             Obx(() {
               final speed = controller.speed.value;
               return Padding(
@@ -698,26 +642,19 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                         thumbColor: theme.accent,
                         overlayColor: theme.accentSoft,
                       ),
-                      child: Slider(
+                      child: HaoSlider(
                         value: speed,
                         min: 0.5,
                         max: 2.0,
                         divisions: 30,
                         label: '${speed.toStringAsFixed(2)}×',
+                        activeColor: theme.accent,
                         onChanged: (v) => unawaited(controller.setSpeed(v)),
-                        // N-13: light tap on release, click at either end.
                         onChangeEnd: (v) =>
                             HaoHaptics.sliderEnd(v, 0.5, 2.0),
                       ),
                     ),
-                    // Speed presets (build 29): one tap to a common
-                    // rate; the slider stays for fine tuning.
                     Row(
-                      // Six fixed-width slots (Expanded): the chips
-                      // share the row exactly, so the row can never
-                      // overflow — at 0.75x the Ahem test font the
-                      // labels are wider than the system font. The
-                      // label scales down inside its chip instead.
                       spacing: 6,
                       children: [
                         for (final preset
@@ -772,10 +709,7 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                 ),
               );
             }),
-            // A-B loop (build 29): set A / set B at the current
-            // position, loop the passage; cleared on track change.
             Obx(() {
-              // Read the version so this rebuilds on every A/B change.
               controller.abLoopVersion.value;
               final loop = controller.abLoop;
               return Padding(
@@ -828,8 +762,6 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                 ),
               );
             }),
-            // Lyric offset (build 29): ±5 s, shifts which line is
-            // active; tapping a line still seeks to its true time.
             Obx(() {
               final offset = controller.lyricOffsetMs.value;
               return Padding(
@@ -864,12 +796,13 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                         thumbColor: theme.accent,
                         overlayColor: theme.accentSoft,
                       ),
-                      child: Slider(
+                      child: HaoSlider(
                         value: offset.toDouble(),
                         min: -5000,
                         max: 5000,
                         divisions: 100,
                         label: LyricDisplay.offsetLabel(offset),
+                        activeColor: theme.accent,
                         onChanged: (v) => unawaited(
                           controller.setLyricOffsetMs(v.round()),
                         ),
@@ -879,8 +812,6 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                 ),
               );
             }),
-            // Translation + fade switches (build 29): native switch,
-            // never a Material SwitchListTile.
             Obx(
               () => ListTile(
                 leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.translate, color: theme.textPrimary),
@@ -911,8 +842,6 @@ Future<void> showPlaybackSettingsSheet(BuildContext context) async {
                 ),
               ),
             ),
-            // Zap 快速发现 (build 29): every song plays 5 s, then
-            // cuts to the next one. Off = normal queue playback.
             Obx(
               () => ListTile(
                 leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bolt, color: theme.textPrimary),

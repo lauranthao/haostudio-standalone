@@ -16,6 +16,7 @@ import 'video_detail_router.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class VideoFavsPage extends StatefulWidget {
   const VideoFavsPage({super.key});
@@ -44,8 +45,8 @@ class _VideoFavsPageState extends State<VideoFavsPage> {
     final theme = HaoTheme.of(context);
     final favs = VideoHistoryStore.getFavs();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的收藏'),
+      appBar: HaoNavBar(
+        title: '我的收藏',
       ),
       body: favs.isEmpty
           ? Center(

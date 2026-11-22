@@ -382,10 +382,9 @@ class DarkGlass extends StatelessWidget {
 
 /// Glass background for a modal bottom sheet: clips the top corners
 /// and blurs the content behind the sheet, then paints the theme's
-/// strong glass surface. Use as the root of a showModalBottomSheet
-/// builder with backgroundColor: Colors.transparent (the sheet's own
-/// shape/background would otherwise paint an opaque slab over the
-/// blur). [radius] matches the sheet's existing top radius.
+/// strong glass surface. Use as the root of a showHaoSheet builder
+/// (the sheet's own shape/background would otherwise paint an opaque
+/// slab over the blur). [radius] matches the sheet's existing top radius.
 class GlassSheetBackground extends StatelessWidget {
   const GlassSheetBackground({
     super.key,

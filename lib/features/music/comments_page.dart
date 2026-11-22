@@ -19,6 +19,7 @@ import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 /// Relative time for a comment timestamp (epoch ms, NetEase style).
 String formatCommentTime(int epochMs) {
@@ -122,9 +123,8 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('评论'),
-        centerTitle: true,
+      appBar: HaoNavBar(
+        title: '评论',
       ),
       body: _loading
           ? Center(

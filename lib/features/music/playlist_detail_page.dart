@@ -21,6 +21,8 @@ import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_swipe_actions.dart';
 
 class PlaylistDetailPage extends StatefulWidget {
   const PlaylistDetailPage({super.key, required this.playlistId});
@@ -32,6 +34,14 @@ class PlaylistDetailPage extends StatefulWidget {
 }
 
 class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   UserPlaylist? _list;
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
@@ -151,7 +161,9 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     final list = _list;
     if (list == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('我的歌单'), flexibleSpace: const HaoAppBarGlass()),
+        appBar: HaoNavBar(
+          title: '我的歌单',
+        ),
         body: Center(
           child: Text('这个歌单找不到了', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted)),
         ),
@@ -162,13 +174,10 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     // runs once per visible row per scroll frame.
     final favIds = MusicStore.getFavIds();
     return Scaffold(
-      appBar: AppBar(
-        title: Text(list.name, maxLines: 1, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        flexibleSpace: const HaoAppBarGlass(),
-        actions: [
-          IconButton(icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.edit), onPressed: _rename),
-          IconButton(icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete), onPressed: _deleteList),
-        ],
+      appBar: HaoNavBar(
+        title: list.name,
+        scrollController: _scrollController,
+        actions: [HaoNavBarButton( onPressed: _rename,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.edit)), HaoNavBarButton( onPressed: _deleteList,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete))],
       ),
       body: Column(
         children: [
@@ -208,40 +217,46 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                     ),
                   )
                 : ListView.builder(
+                    controller: _scrollController,
                     padding: EdgeInsets.only(
                       bottom: MiniPlayerBar.bottomClearanceFor(context),
                     ),
                     itemCount: list.tracks.length,
                     itemBuilder: (ctx, i) {
                       final song = list.tracks[i];
-                      return Dismissible(
+                      return HaoSwipeActions(
                         key: ValueKey(
                           '${song.identityKey}|$i',
                         ),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          color: theme.accentSoft,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          child: Icon(
-                            shadows: HaoTheme.legibilityShadows(ctx),
-                            Icons.delete,
-                            color: theme.textSecondary,
+                        actions: [
+                          HaoSwipeAction(
+                            label: '更多',
+                            color: const Color(0xFF8E8E93),
+                            icon: CupertinoIcons.ellipsis,
+                            onTap: () =>
+                                unawaited(openSongQuickMenu(ctx, song)),
                           ),
-                        ),
-                        confirmDismiss: (_) async {
-                          final ok = await showGlassConfirmDialog(
-                            context,
-                            title: '删除歌曲',
-                            content: '确定删除这首歌吗？',
-                            confirmLabel: '删除',
-                          );
-                          return ok == true;
-                        },
-                        onDismissed: (_) async {
-                          list.tracks.removeAt(i);
-                          await _save();
-                        },
+                          HaoSwipeAction(
+                            label: '删除',
+                            // iOS destructive red (not liveRed). The
+                            // confirm dialog stays: a full swipe fires
+                            // this action, and it still asks first —
+                            // the old Dismissible confirmed too.
+                            color: const Color(0xFFFF3B30),
+                            icon: CupertinoIcons.delete,
+                            onTap: () async {
+                              final ok = await showGlassConfirmDialog(
+                                context,
+                                title: '删除歌曲',
+                                content: '确定删除这首歌吗？',
+                                confirmLabel: '删除',
+                              );
+                              if (ok != true) return;
+                              list.tracks.removeAt(i);
+                              await _save();
+                            },
+                          ),
+                        ],
                         child: SongRow(
                           song: song,
                           isFav: favIds.contains(song.identityKey),

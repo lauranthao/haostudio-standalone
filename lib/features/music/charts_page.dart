@@ -24,6 +24,7 @@ import 'plaza_page.dart';
 import 'song_search_page.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class ChartsPage extends StatefulWidget {
   const ChartsPage({super.key, this.api});
@@ -73,7 +74,9 @@ class _ChartsPageState extends State<ChartsPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text('排行榜', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: '排行榜',
+      ),
       body: _charts == null
           ? const Center(child: CupertinoActivityIndicator())
           : _platform != MusicPlatform.wy

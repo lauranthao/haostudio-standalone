@@ -23,6 +23,7 @@ import '../../widgets/hao_toast.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class WallpaperPage extends StatelessWidget {
   const WallpaperPage({super.key});
@@ -56,15 +57,9 @@ class WallpaperPage extends StatelessWidget {
     final theme = HaoTheme.of(context);
     final controller = AppearanceController.ensure();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('壁纸'),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),),
-            tooltip: '上传壁纸',
-            onPressed: () => unawaited(_upload(context)),
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '壁纸',
+        actions: [HaoNavBarButton( onPressed: () => unawaited(_upload(context)),child: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: Obx(() {
         final paths = controller.wallpaperPaths;

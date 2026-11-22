@@ -18,6 +18,7 @@ import '../../services/music/smart_rules.dart';
 import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class SmartRulesPage extends StatefulWidget {
   const SmartRulesPage({super.key});
@@ -53,7 +54,9 @@ class _SmartRulesPageState extends State<SmartRulesPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('智能歌单')),
+      appBar: HaoNavBar(
+        title: '智能歌单',
+      ),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           16,

@@ -60,6 +60,7 @@ import '../live_search_progressive.dart';
 import '../live_status.dart';
 import 'live_link_sheet.dart';
 import 'playback/live_room_page.dart';
+import '../../../widgets/hao_nav_bar.dart';
 
 /// Search live rooms. [searchFn] is a test seam: production passes
 /// null and the page calls `Sites.of(platform).searchRooms(keyword)`.
@@ -90,6 +91,7 @@ class LiveSearchPage extends StatefulWidget {
 
 class _LiveSearchPageState extends State<LiveSearchPage> {
   final _controller = TextEditingController();
+  final _scrollController = ScrollController();
 
   /// Platform FILTER over the merged results (null = 全部). The
   /// search itself always runs on every enabled platform.
@@ -123,6 +125,7 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -228,15 +231,10 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
     final visible = _visible;
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text('搜索直播间', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-        actions: [
-          IconButton(
-            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link),
-            tooltip: '粘贴链接进房',
-            onPressed: _openLinkSheet,
-          ),
-        ],
+      appBar: HaoNavBar(
+        title: '搜索直播间',
+        scrollController: _scrollController,
+        actions: [HaoNavBarButton( onPressed: _openLinkSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link))],
       ),
       body: Column(
         children: [
@@ -336,6 +334,8 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
                               )
                             : _searched
                                 ? ListView.separated(
+                                    controller: _scrollController,
+                                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                                     padding: const EdgeInsets.fromLTRB(
                                       14,
                                       12,

@@ -27,6 +27,7 @@ import '../../core/theme/hao_radius.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/video/emby_client.dart';
 import '../../services/video/emby_models.dart';
+import '../../widgets/hao_nav_bar.dart';
 import 'emby_spec.dart';
 import 'native_video_player_page.dart';
 import 'skip_intro_dialog.dart';
@@ -535,19 +536,27 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
     final theme = HaoTheme.of(context);
     final preload = widget.preload;
     return Scaffold(
-      body: AnimatedOpacity(
-        opacity: _fadedIn ? 1 : 0,
-        duration: const Duration(milliseconds: 350),
-        child: _failed
-            ? _ErrorCard(message: _errorMessage, onRetry: _load)
-            : _loading && _detail == null
-                ? preload != null
-                    ? _LoadingWithPreload(
-                        preload: preload,
-                        imageHeaders: _client?.imageHeaders,
-                      )
-                    : const Center(child: CupertinoActivityIndicator())
-                : _buildDetail(theme),
+      // Fixed back button over the body (same dead end as the CMS
+      // detail page): the hero's button lived inside the scrolling
+      // cover, and the load-failed card had no exit at all.
+      body: Stack(
+        children: [
+          AnimatedOpacity(
+            opacity: _fadedIn ? 1 : 0,
+            duration: const Duration(milliseconds: 350),
+            child: _failed
+                ? _ErrorCard(message: _errorMessage, onRetry: _load)
+                : _loading && _detail == null
+                    ? preload != null
+                        ? _LoadingWithPreload(
+                            preload: preload,
+                            imageHeaders: _client?.imageHeaders,
+                          )
+                        : const Center(child: CupertinoActivityIndicator())
+                    : _buildDetail(theme),
+          ),
+          const HaoCoverBackButton(),
+        ],
       ),
     );
   }
@@ -921,20 +930,6 @@ class _CoverHero extends StatelessWidget {
                   theme.scaffoldBackground,
                 ],
                 stops: const [0.0, 0.22, 0.45, 0.78, 1.0],
-              ),
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0x66000000),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: Icon(CupertinoIcons.back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
               ),
             ),
           ),

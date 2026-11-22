@@ -30,6 +30,7 @@ import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 import 'widgets/mini_player_bar.dart';
 import 'widgets/music_image.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class ArtistDetailPage extends StatefulWidget {
   const ArtistDetailPage({
@@ -273,7 +274,9 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
 
   Widget _errorState(HaoTheme theme) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.artistName, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: widget.artistName,
+      ),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

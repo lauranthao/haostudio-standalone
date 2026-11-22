@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/models/live_models.dart';
 import '../../../../core/theme/hao_themes.dart';
 import '../live_link_parser.dart';
+import '../../../widgets/hao_sheet.dart';
 
 /// Show the paste-a-link sheet. [onOpenRoom] receives the parsed
 /// room (platform + room id); the caller opens the room page.
@@ -22,11 +23,8 @@ Future<void> showLiveLinkSheet({
   required BuildContext context,
   required void Function(LiveRoom room) onOpenRoom,
 }) {
-  return showModalBottomSheet<void>(
+  return showHaoSheet<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    backgroundColor: Colors.transparent,
     builder: (sheetContext) => Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(sheetContext).viewInsets.bottom,

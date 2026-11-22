@@ -20,7 +20,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/haptics.dart';
 import '../../services/music/hot_search_service.dart';
 import '../../services/music/music_api.dart';
@@ -43,6 +42,8 @@ import 'widgets/music_image.dart';
 import '../../widgets/platform_logo.dart';
 import '../../widgets/hao_search_field.dart';
 import '../../widgets/hao_segmented_control.dart';
+import '../../widgets/hao_nav_bar.dart';
+import '../../widgets/hao_sheet.dart';
 
 enum _SearchType { song, playlist, artist, album }
 
@@ -130,23 +131,8 @@ class _SongSearchPageState extends State<SongSearchPage> {
   /// glass rounded 14, checkmark for the current platform).
   Future<void> _openPlatformPicker() async {
     HaoHaptics.tap();
-    final picked = await showModalBottomSheet<MusicPlatform>(
+    final picked = await showHaoSheet<MusicPlatform>(
       context: context,
-      // N-10: iOS grabber + settle-spring rise (same spring as the
-      // player close). The picker is a floating card, so the handle
-      // floats just above it — same as the live sheets.
-      showDragHandle: true,
-      sheetAnimationStyle: const AnimationStyle(
-        curve: HaoSettleSpringCurve(),
-        reverseCurve: HaoSettleSpringCurve(),
-      ),
-      // isScrollControlled: without it the sheet height is capped at
-      // 9/16 of the screen, and the 48px the framework reserves above
-      // the content for the drag handle would overflow this
-      // non-scrollable floating card on <=667pt screens (56px at a
-      // 600pt viewport). With it the sheet sizes to its content.
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) {
         final theme = HaoTheme.of(ctx);
         final options = SearchPlatformStore.options();
@@ -188,9 +174,6 @@ class _SongSearchPageState extends State<SongSearchPage> {
                           ),
                           child: Row(
                             children: [
-                              // Real brand logo (chen 2026-11-18), not
-                              // the generic ♪ — the checkmark stays as
-                              // the trailing selected marker.
                               PlatformLogo(platform: pf, size: 28),
                               const SizedBox(width: 10),
                               Text(
@@ -615,7 +598,10 @@ class _SongSearchPageState extends State<SongSearchPage> {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text('搜歌', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))), flexibleSpace: const HaoAppBarGlass()),
+      appBar: HaoNavBar(
+        title: '搜歌',
+        scrollController: _scrollController,
+      ),
       body: Column(
         children: [
           Padding(
@@ -736,6 +722,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
     if (!_searched) {
       final history = MusicStore.getSearchHistory();
       return ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
           16,
           4,
@@ -850,6 +837,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(
                   bottom: MiniPlayerBar.bottomClearanceFor(context),
                 ),
@@ -931,6 +919,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(
                   bottom: MiniPlayerBar.bottomClearanceFor(context),
                 ),
@@ -1025,6 +1014,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(
                   bottom: MiniPlayerBar.bottomClearanceFor(context),
                 ),
@@ -1111,6 +1101,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
             ),
             Expanded(
               child: ListView.builder(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(
                   bottom: MiniPlayerBar.bottomClearanceFor(context),
                 ),

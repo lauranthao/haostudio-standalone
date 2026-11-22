@@ -32,6 +32,7 @@ import 'video_smart_groups.dart';
 import 'video_title_helpers.dart';
 import '../../widgets/hao_search_field.dart';
 import 'video_version_sheet.dart';
+import '../../widgets/hao_nav_bar.dart';
 
 class VideoSearchPage extends StatefulWidget {
   const VideoSearchPage({super.key});
@@ -251,8 +252,9 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
     final history = VideoHistoryStore.getSearchHistory();
     final hot = _hotNames.isEmpty ? _fallbackHot : _hotNames;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('搜索影片', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+      appBar: HaoNavBar(
+        title: '搜索影片',
+        scrollController: _scrollController,
       ),
       body: Column(
         children: [
@@ -315,6 +317,7 @@ class _VideoSearchPageState extends State<VideoSearchPage> {
                         ? _EmptyResults(query: _query)
                         : _searched
                             ? CustomScrollView(
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                                 controller: _scrollController,
                                 slivers: [
                                   SliverPadding(

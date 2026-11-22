@@ -34,38 +34,23 @@ import 'package:get/get.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/screen_capture.dart';
 import '../../core/theme/tab_bar_accent.dart';
 import '../../core/theme/theme_controller.dart';
 import 'accent_dropper_page.dart';
+import '../../widgets/hao_sheet.dart';
 
 /// Open the accent-colour sheet from a settings row tap.
 Future<void> showAccentColorSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+  return showHaoSheet<void>(
     context: context,
-    isScrollControlled: true,
-    // N-10: iOS grabber + settle-spring rise (same spring as the
-    // player close).
-    showDragHandle: true,
-    sheetAnimationStyle: const AnimationStyle(
-      curve: HaoSettleSpringCurve(),
-      reverseCurve: HaoSettleSpringCurve(),
-    ),
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => GlassContainer(
-      // App sheet pattern (track_more_sheet): top corners 14 (D-7),
-      // bottom square — the sheet sits on the screen edge. Standard
-      // glass (dense content, never premium shader).
       shape: const LiquidVerticalRoundedSuperellipse(
         topRadius: HaoRadius.sheet,
         bottomRadius: 0,
       ),
-      // Intensity-scaled optics (chen 2026-11-21): explicit settings
-      // so the sheet follows the slider instead of the ambient theme.
       settings: HaoLiquidGlass.ios27Settings(ctx),
       quality: GlassQuality.standard,
       child: Material(

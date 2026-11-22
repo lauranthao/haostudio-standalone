@@ -15,6 +15,7 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import '../../../widgets/hao_pressable.dart';
+import '../../../widgets/hao_scroll_to_top.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -62,6 +63,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? LiveTabController();
     _scrollController.addListener(_onScroll);
+    HaoScrollToTop.register(HaoScrollToTop.liveTab, _scrollController);
     // If the controller's platform was disabled in settings → 直播源管理,
     // start on the first enabled platform instead.
     final enabled = LiveSourcesStore.enabledIds();
@@ -74,6 +76,7 @@ class _LiveTabPageState extends State<LiveTabPage> {
 
   @override
   void dispose() {
+    HaoScrollToTop.unregister(HaoScrollToTop.liveTab, _scrollController);
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();
     super.dispose();
