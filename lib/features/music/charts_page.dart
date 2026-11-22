@@ -13,7 +13,8 @@ import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
-import '../../widgets/settings_ui.dart';
+import '../../widgets/hao_inset_grouped.dart';
+import '../../widgets/hao_glass_button.dart';
 import '../../core/theme/haptics.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_models.dart';
@@ -97,7 +98,8 @@ class _ChartsPageState extends State<ChartsPage> {
                     style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton(
+                  HaoGlassButton(
+                    label: '去搜索页切换平台',
                     onPressed: () {
                       Navigator.of(context).push(
                         CupertinoPageRoute<void>(
@@ -108,7 +110,19 @@ class _ChartsPageState extends State<ChartsPage> {
                         ),
                       );
                     },
-                    child: const Text('去搜索页切换平台'),
+                    fallback: FilledButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          CupertinoPageRoute<void>(
+                            settings: const RouteSettings(
+                              name: musicSubPageRouteName,
+                            ),
+                            builder: (_) => const SongSearchPage(),
+                          ),
+                        );
+                      },
+                      child: const Text('去搜索页切换平台'),
+                    ),
                   ),
                 ],
               ),
@@ -135,12 +149,19 @@ class _ChartsPageState extends State<ChartsPage> {
                     style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton(
+                  HaoGlassButton(
+                    label: '重试',
                     onPressed: () {
                       setState(() => _charts = null);
                       _load();
                     },
-                    child: const Text('重试'),
+                    fallback: FilledButton(
+                      onPressed: () {
+                        setState(() => _charts = null);
+                        _load();
+                      },
+                      child: const Text('重试'),
+                    ),
                   ),
                 ],
               ),
@@ -159,7 +180,7 @@ class _ChartsPageState extends State<ChartsPage> {
                   if (c.desc.isNotEmpty) c.desc,
                   if (c.trackCount > 0) '${c.trackCount}首',
                 ].join(' · ');
-                return HaoGlassCard(
+                return HaoInsetGroupedSection(
                   padding: const EdgeInsets.all(14),
                   margin: const EdgeInsets.only(bottom: 8),
                   child: HaoPressable(

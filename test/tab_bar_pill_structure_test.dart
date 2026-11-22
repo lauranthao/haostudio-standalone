@@ -1,20 +1,21 @@
-// Structural tests — GlassTabBar pill, Kumone restored 2026-11-21
-// (chen: Kumone那种，不要文字，不要影子）.
+// Structural tests — Apple-native tab bar (build-29 adoption, chen
+// 2026-11-22: “都要原生效果”). The Kumone bar is void.
 //
 // Skia goldens CANNOT prove no-doubling (they passed twice while
 // chen's phone doubled), so these widget-tree assertions are the
 // primary proof of the bar's structure:
-//  1. one pill only: a plain Container with pillKey, faint tint
-//     (white 0.10 dark / black 0.075 light), width cellW - 8;
-//     no lens GlassContainer, no resting-pill Opacity, no clip split;
-//  2. one icon row only: 4 icons, no Text, selected = theme accent,
-//     unselected = primary 0.8;
+//  1. one pill only: a plain Container with pillKey, transparent
+//     tint (theme accentSoft), width cellW - 8; no lens
+//     GlassContainer, no resting-pill Opacity, no clip split;
+//  2. one icon+label row only: 4 icons + 4 visible labels, selected
+//     = theme accent, unselected = primary 0.8;
 //  3. no shadow: no BoxDecoration with a boxShadow anywhere in the
 //     bar subtree (the mini player's shadow is gone too —
-//     mini_player_overlay_test covers that bar separately).
-// Asserted at rest, mid-slide, settled and mid-drag, in light and
-// dark. Goldens in render_tab_bar_pill_test.dart are only a
-// secondary visual check, not the proof.
+//     mini_player_overlay_test covers that bar separately);
+//  4. no drag: a finger drag moves neither the pill nor the selection.
+// Asserted at rest, mid-slide and settled, in light and dark.
+// Goldens in render_tab_bar_pill_test.dart are only a secondary
+// visual check, not the proof.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,10 +35,10 @@ void main() {
   });
 
   /// Minimal bar-only harness (glass_tab_bar_test.dart geometry):
-  /// 400pt viewport, outer Padding 12 + inset 4 leaves 368pt for 4
-  /// cells -> cellW 92, pill 84 wide. Settled pill left edges
-  /// (global): 20 / 112 / 204 / 296 for tabs 0..3. Cell centres
-  /// (global): 62 / 154 / 246 / 338, bar height 64, centre y = 32.
+  /// 400pt viewport, full-width bar, 4 cells -> cellW 100, pill 92
+  /// wide. Settled pill left edges (global): 4 / 104 / 204 / 304 for
+  /// tabs 0..3. Cell centres (global): 50 / 150 / 250 / 350, bar
+  /// height 64, centre y = 32.
   Future<void> pumpBar(
     WidgetTester tester, {
     required int currentIndex,
@@ -93,27 +94,24 @@ void main() {
   }
 
   double pillLeft(WidgetTester tester) =>
-      tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx;
+      tester.getTopLeft(find.byKey(GlassTabBar.pillKey)).dx;
 
   double pillWidth(WidgetTester tester) =>
-      tester.getSize(find.byKey(GlassTabBarState.pillKey)).width;
+      tester.getSize(find.byKey(GlassTabBar.pillKey)).width;
 
-  /// The pill is one plain Container with the Kumone faint tint.
-  void expectFaintPill(WidgetTester tester, {required bool isDark}) {
+  /// The pill is one plain Container with the transparent accent tint.
+  void expectTintPill(WidgetTester tester, ThemeData theme) {
+    final hao = theme.extension<HaoTheme>()!;
     final decoration = tester
-        .widget<Container>(find.byKey(GlassTabBarState.pillKey))
+        .widget<Container>(find.byKey(GlassTabBar.pillKey))
         .decoration as BoxDecoration;
-    expect(
-      decoration.color,
-      isDark
-          ? Colors.white.withValues(alpha: 0.10)
-          : Colors.black.withValues(alpha: 0.075),
-    );
-    expect(pillWidth(tester), closeTo(84, 0.5));
+    expect(decoration.color, hao.accentSoft);
+    expect(pillWidth(tester), closeTo(92, 0.5));
   }
 
-  /// Exactly one icon row, 4 icons, no labels, selected = accent.
-  void expectSingleIconRow(
+  /// Exactly one icon+label row, 4 icons, 4 visible labels, selected
+  /// = accent.
+  void expectIconLabelRow(
     WidgetTester tester,
     ThemeData theme, {
     required int selected,
@@ -126,21 +124,16 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(Icon), findsNWidgets(4));
-    expect(
-      find.descendant(
-        of: find.byType(GlassTabBar),
-        matching: find.byType(Text),
-      ),
-      findsNothing,
-    );
-    final hao = theme.extension<HaoTheme>()!;
-    final labels = <String>{};
-    for (var i = 0; i < 4; i++) {
-      final icon = tester.widget<Icon>(find.byType(Icon).at(i));
-      expect(icon.semanticLabel, isNotNull);
-      labels.add(icon.semanticLabel!);
+    for (final label in ['影视', '直播', '音乐', '设置']) {
+      expect(
+        find.descendant(
+          of: find.byType(GlassTabBar),
+          matching: find.text(label),
+        ),
+        findsOneWidget,
+      );
     }
-    expect(labels, {'影视', '直播', '音乐', '设置'});
+    final hao = theme.extension<HaoTheme>()!;
     expect(
       tester.widget<Icon>(find.byType(Icon).at(selected)).color,
       hao.accent,
@@ -186,98 +179,90 @@ void main() {
   void expectAtRest(
     WidgetTester tester,
     ThemeData theme, {
-    required bool isDark,
     int selected = 2,
   }) {
-    expectFaintPill(tester, isDark: isDark);
-    expectSingleIconRow(tester, theme, selected: selected);
+    expectTintPill(tester, theme);
+    expectIconLabelRow(tester, theme, selected: selected);
     expectNoShadow(tester);
   }
 
-  testWidgets('Kumone pill at rest, light', (tester) async {
+  testWidgets('native pill at rest, light', (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpBar(tester, currentIndex: 2, onTap: (_) {}, theme: theme);
-    expectAtRest(tester, theme, isDark: false);
+    expectAtRest(tester, theme);
     // 音乐 (index 2): settled left edge 204 global.
     expect(pillLeft(tester), closeTo(204.0, 0.5));
   });
 
-  testWidgets('Kumone pill at rest, dark', (tester) async {
+  testWidgets('native pill at rest, dark', (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).dark;
     await pumpBar(tester, currentIndex: 2, onTap: (_) {}, theme: theme);
-    expectAtRest(tester, theme, isDark: true);
+    expectAtRest(tester, theme);
     expect(pillLeft(tester), closeTo(204.0, 0.5));
   });
 
   testWidgets('pill mid-slide to 设置 keeps its width', (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpLiveBar(tester, start: 2, theme: theme);
-    expectAtRest(tester, theme, isDark: false);
-    await tester.tapAt(const Offset(338, 32));
+    expectAtRest(tester, theme);
+    await tester.tapAt(const Offset(350, 32));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    // 350ms settle spring still mid-flight: the pill has left rest
-    // (204) towards 设置 (296) at the same 84 width — no stretch.
-    // The upper bound allows the underdamped spring's ~1% overshoot
+    // 600ms bouncy slide still mid-flight: the pill has left rest
+    // (204) towards 设置 (304) at the same 92 width — no stretch.
+    // The upper bound allows the elastic curve's small overshoot
     // past the target.
-    expect(pillLeft(tester), inInclusiveRange(204.0, 300.0));
-    expect(pillWidth(tester), closeTo(84, 0.5));
-    expectFaintPill(tester, isDark: false);
+    expect(pillLeft(tester), inInclusiveRange(204.0, 308.0));
+    expect(pillWidth(tester), closeTo(92, 0.5));
+    expectTintPill(tester, theme);
     await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('pill settled on 设置', (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpLiveBar(tester, start: 2, theme: theme);
-    await tester.tapAt(const Offset(338, 32));
+    await tester.tapAt(const Offset(350, 32));
     await tester.pumpAndSettle();
-    expectAtRest(tester, theme, isDark: false, selected: 3);
-    expect(pillLeft(tester), closeTo(296.0, 1.0));
+    expectAtRest(tester, theme, selected: 3);
+    expect(pillLeft(tester), closeTo(304.0, 1.0));
   });
 
-  testWidgets('pill mid-drag follows the finger at full width',
+  testWidgets('drag moves neither the pill nor the selection',
       (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpLiveBar(tester, start: 2, theme: theme);
-    expectAtRest(tester, theme, isDark: false);
-    final gesture = await tester.startGesture(const Offset(200, 32));
-    await gesture.moveBy(const Offset(40, 0));
+    expectAtRest(tester, theme);
+    // Kumone drag is void: a drag across a cell boundary switches
+    // nothing and the pill stays put.
+    final gesture = await tester.startGesture(const Offset(250, 32));
+    await gesture.moveBy(const Offset(100, 0));
     await tester.pump();
-    // First move only wins the gesture arena (glass_tab_bar_test):
-    // the drag starts at the post-move finger position, so this
-    // move's own update is below the 8pt threshold and the pill has
-    // not moved yet.
-    await gesture.moveBy(const Offset(60, 0));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
-    // Finger owns the pill: it tracks the finger at full width.
-    expect(pillLeft(tester), inInclusiveRange(204.0, 296.0));
-    expect(pillWidth(tester), closeTo(84, 0.5));
     await gesture.up();
     await tester.pumpAndSettle();
-    expectAtRest(tester, theme, isDark: false, selected: 3);
+    expect(pillLeft(tester), closeTo(204.0, 0.5));
+    expectAtRest(tester, theme);
   });
 
   testWidgets('all four tabs settle at cellW - 8', (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpLiveBar(tester, start: 2, theme: theme);
-    const expectedLeft = [20.0, 112.0, 204.0, 296.0];
+    const expectedLeft = [4.0, 104.0, 204.0, 304.0];
     for (var i = 0; i < 4; i++) {
-      await tester.tapAt(Offset(62 + 92.0 * i, 32));
+      await tester.tapAt(Offset(50 + 100.0 * i, 32));
       await tester.pumpAndSettle();
-      expectAtRest(tester, theme, isDark: false, selected: i);
+      expectAtRest(tester, theme, selected: i);
       expect(pillLeft(tester), closeTo(expectedLeft[i], 1.0));
-      expect(pillWidth(tester), closeTo(84, 0.5));
+      expect(pillWidth(tester), closeTo(92, 0.5));
     }
   });
 
-  testWidgets('Kumone bar: icon-only, selected is the accent',
+  testWidgets('native bar: labels visible, selected is the accent',
       (tester) async {
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light;
     await pumpBar(tester, currentIndex: 2, onTap: (_) {}, theme: theme);
-    expectSingleIconRow(tester, theme, selected: 2);
+    expectIconLabelRow(tester, theme, selected: 2);
     expectNoShadow(tester);
   });
 }

@@ -36,13 +36,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
+import '../../widgets/native_switch.dart';
 
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
+import '../../services/music/autoeq_presets.dart';
 import '../../services/music/equalizer_store.dart';
 import '../../widgets/glass_dialog.dart';
 
@@ -74,6 +73,8 @@ class EqualizerPage extends StatelessWidget {
             _ControlCard(store: store),
             const SizedBox(height: 14),
             _PresetCard(store: store),
+            const SizedBox(height: 14),
+            _AutoEqCard(store: store),
             const SizedBox(height: 14),
             _BandsCard(store: store),
           ],
@@ -281,19 +282,14 @@ class _ControlCard extends StatelessWidget {
                   ],
                 ),
               ),
-              GlassSwitch(
+              HaoNativeSwitch(
                 value: store.enabled,
-                // N-8: iOS size 51x31 (was the library default 58x26).
-                width: 51,
-                height: 31,
                 onChanged: (value) {
                   HaoHaptics.select();
                   unawaited(store.setEnabled(value));
                 },
                 activeColor: theme.accent,
-                // Intensity-scaled optics (chen 2026-11-21).
-                settings: HaoLiquidGlass.ios27Settings(context),
-                enableHaptics: HaoHaptics.enabled,
+                semanticsLabel: '均衡器',
               ),
             ],
           ),
@@ -688,6 +684,120 @@ class _PresetCard extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+/// AutoEq headphone presets (build 29): one tap applies a
+/// community AutoEq-style correction for that model through the
+/// same native channel as any preset. The gains are approximations
+/// mapped onto our 10 fixed bands — NOT per-unit measurements —
+/// so the card says so, and any hand-tune afterwards clears the
+/// AutoEq label (the gains are the truth, the name is only a label).
+///
+/// Crossfeed is deliberately absent: it needs L/R sample mixing
+/// inside the native tap (HaoEqualizer.m), which is the native
+/// group's file — no dead toggle is shipped here.
+class _AutoEqCard extends StatelessWidget {
+  const _AutoEqCard({required this.store});
+
+  final EqualizerStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return GlassCard(
+      radius: 18,
+      quality: GlassCardQuality.standard,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '耳机校准 · AutoEq',
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                  color: theme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (store.selectedAutoEqName != null)
+                Text(
+                  store.selectedAutoEqName!,
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                    color: theme.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '社区校准近似值（非实测），仅作起点；觉得不对就直接调频段。',
+            style: TextStyle(
+              color: theme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              mainAxisExtent: 34,
+            ),
+            itemCount: kAutoEqPresets.length,
+            itemBuilder: (context, index) {
+              final preset = kAutoEqPresets[index];
+              final selected = store.selectedAutoEqName == preset.name;
+              return Material(
+                color: Colors.transparent,
+                child: HaoPressable(
+                  onTap: () {
+                    HaoHaptics.select();
+                    unawaited(store.applyAutoEqPreset(preset));
+                  },
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: selected
+                          ? theme.accent.withValues(alpha: 0.14)
+                          : theme.textPrimary.withValues(alpha: 0.035),
+                      border: Border.all(
+                        color: selected
+                            ? theme.accent.withValues(alpha: 0.42)
+                            : theme.textPrimary.withValues(alpha: 0.06),
+                        width: 0.8,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      preset.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                        color: selected ? theme.accent : theme.textPrimary,
+                        fontSize: 12,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 

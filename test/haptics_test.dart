@@ -19,11 +19,23 @@ void main() {
   const channel = MethodChannel('flutter/platform', JSONMethodCodec());
   final calls = <MethodCall>[];
 
+  // The native notification channel (HaoHapticsPlugin). Mocked to
+  // succeed by default; the fallback test overrides it to throw.
+  const notificationChannel =
+      MethodChannel('com.haostudio.standalone/haptics');
+  final notificationCalls = <MethodCall>[];
+
   setUp(() {
     calls.clear();
+    notificationCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
+      return null;
+    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(notificationChannel, (call) async {
+      notificationCalls.add(call);
       return null;
     });
   });
@@ -32,6 +44,8 @@ void main() {
     HaoHaptics.debugEnabledOverride = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(notificationChannel, null);
   });
 
   // _fire is unawaited fire-and-forget; flush the microtask queue.
@@ -41,7 +55,8 @@ void main() {
   }
 
   group('HaoHaptics', () {
-    test('each entry point fires one platform call with its type', () async {
+    test('each impact entry point fires one platform call with its type',
+        () async {
       HaoHaptics.debugEnabledOverride = true;
 
       HaoHaptics.tap();
@@ -56,14 +71,55 @@ void main() {
       expect(calls.single.arguments, 'HapticFeedbackType.mediumImpact');
       calls.clear();
 
+      HaoHaptics.select();
+      await flush();
+      expect(calls.single.arguments, 'HapticFeedbackType.selectionClick');
+    });
+
+    test('notification entry points use the native channel, not impact',
+        () async {
+      HaoHaptics.debugEnabledOverride = true;
+
+      HaoHaptics.success();
+      await flush();
+      expect(notificationCalls, hasLength(1));
+      expect(notificationCalls.single.method, 'notification');
+      expect(notificationCalls.single.arguments, {'type': 'success'});
+      expect(calls, isEmpty);
+
+      notificationCalls.clear();
+      HaoHaptics.warning();
+      await flush();
+      expect(notificationCalls.single.arguments, {'type': 'warning'});
+      expect(calls, isEmpty);
+
+      notificationCalls.clear();
+      HaoHaptics.error();
+      await flush();
+      expect(notificationCalls.single.arguments, {'type': 'error'});
+      expect(calls, isEmpty);
+    });
+
+    test('notification channel missing: impact fallback fires', () async {
+      HaoHaptics.debugEnabledOverride = true;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(notificationChannel, (call) async {
+        throw PlatformException(code: 'missing_plugin');
+      });
+
       HaoHaptics.success();
       await flush();
       expect(calls.single.arguments, 'HapticFeedbackType.heavyImpact');
       calls.clear();
 
-      HaoHaptics.select();
+      HaoHaptics.warning();
       await flush();
-      expect(calls.single.arguments, 'HapticFeedbackType.selectionClick');
+      expect(calls.single.arguments, 'HapticFeedbackType.mediumImpact');
+      calls.clear();
+
+      HaoHaptics.error();
+      await flush();
+      expect(calls.single.arguments, 'HapticFeedbackType.heavyImpact');
     });
 
     test('switch off: no entry point reaches the platform', () async {
@@ -72,10 +128,13 @@ void main() {
       HaoHaptics.tap();
       HaoHaptics.medium();
       HaoHaptics.success();
+      HaoHaptics.warning();
+      HaoHaptics.error();
       HaoHaptics.select();
       await flush();
 
       expect(calls, isEmpty);
+      expect(notificationCalls, isEmpty);
     });
 
     test('enabled defaults to true when the override is null', () {

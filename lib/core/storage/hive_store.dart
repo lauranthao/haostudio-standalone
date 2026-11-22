@@ -212,6 +212,53 @@ class HiveKeys {
   static const String videoAutoNext = 'hao_video_auto_next';
   static const String vodPlaybackRate = 'hao_vod_playback_rate';
 
+  /// I-影视 (build 29): one key per new VOD feature, each read in
+  /// exactly one place (vod_features.dart) and written only from
+  /// Settings → 影视播放 (or the player toggle that owns the same
+  /// key — never a second key for the same switch). All default
+  /// OFF (or the neutral value) so no existing default behaviour
+  /// changes: a fresh install plays exactly like build 28 until
+  /// the user turns something on.
+  ///
+  /// 1. 双击快进秒数: int, default 10, options 5/10/15/30/60.
+  static const String vodDoubleTapSeekSeconds =
+      'hao_vod_double_tap_seconds';
+
+  /// 3. 对白增强: bool, default false. UI/logic/prefs only — the
+  /// mpv `volume-max=300` + centre-channel cap is K 组's
+  /// (mpv_backend.dart); this key only gates
+  /// PlaybackSession.setDialogueBoost, which no-ops on backends
+  /// without the DialogueBoostCapableBackend capability.
+  static const String vodDialogueBoost = 'hao_vod_dialogue_boost';
+
+  /// 5. 防剧透: hide the synopsis / blur the cover poster of
+  /// unwatched titles on the detail page. Both bool, default false.
+  static const String vodSpoilerHideSynopsis =
+      'hao_vod_spoiler_hide_synopsis';
+  static const String vodSpoilerBlurUnwatched =
+      'hao_vod_spoiler_blur_unwatched';
+
+  /// 9. 纯音频后台模式 default: bool, default false. The player
+  /// toggle writes this same key; the next open reads it.
+  static const String vodAudioOnly = 'hao_vod_audio_only';
+
+  /// 8. VOD sleep timer: custom minutes (int 1..720, default 30)
+  /// and "播完 N 集" count (int 1..10, default 3). Same clamps as
+  /// the music timer (SleepTimer) — the state machine is shared,
+  /// only the persisted values are separate keys.
+  static const String vodSleepCustomMinutes =
+      'hao_vod_sleep_custom_minutes';
+  static const String vodSleepEpisodeCount = 'hao_vod_sleep_episode_count';
+
+  /// 4. 元数据手动纠错: JSON map `'<source>|<vodId>'` →
+  /// `{title?, year?, poster?}`. Local override only; Douban stays
+  /// the only metadata source (no TMDB anywhere).
+  static const String vodMetadataOverrides = 'hao_vod_metadata_overrides';
+
+  /// 10. 影视分类显示/隐藏/重排: JSON `{hidden: [name],
+  /// order: [name]}`. Names are home-row (CMS type) names.
+  static const String vodCategoryPrefs = 'hao_video_category_prefs';
+
   /// VOD picture fit (`hao_vod_video_fit`): 'auto' | 'fill' | 'cover',
   /// default 'auto' (contain). PiliPlus VideoFitType + Kazumi
   /// PlayerAspectRatio intersection — see `VideoFitMode`.

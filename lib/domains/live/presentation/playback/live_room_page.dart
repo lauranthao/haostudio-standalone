@@ -42,6 +42,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../widgets/hao_toast.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/danmaku/danmaku_occlusion.dart';
 import '../../../../core/danmaku/danmaku_occlusion_mask.dart';
@@ -65,9 +66,20 @@ import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../features/live/live_breadcrumb.dart';
 import '../../../../features/live/live_recovery.dart';
 import '../../../../features/music/music_player_controller.dart';
+import '../../live_audio_sleep.dart';
 import '../../live_history_store.dart';
+import '../../live_metrics.dart';
+import '../../live_network_quality.dart';
+import '../../live_power_saving.dart';
+import '../../live_recorder.dart';
+import '../../live_volume_boost.dart';
+import '../live_room_tools_sheet.dart';
 import 'danmaku_block_store.dart';
 import 'danmaku_filter.dart';
+import 'live_fullscreen_clock.dart';
+import 'live_multiview_page.dart';
+import 'live_player_settings_sheet.dart';
+import 'live_recording_center_page.dart';
 import 'room_detail_sheet.dart';
 import 'room_switch_panel.dart';
 
@@ -166,6 +178,32 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   // only — the transport keeps running; hides the portrait list and
   // the fullscreen barrage alike.
   bool _danmakuVisible = true;
+  // Build-29 live tools (I group): pure-audio + sleep timer, volume
+  // boost, power saving, recording, fullscreen clock. All state
+  // lives here (the tools sheet only displays it); all of it is
+  // per-room and dies with the room except the persisted boost %
+  // and clock corner.
+  bool _audioOnlyManual = false;
+  late final LiveSleepTimer _sleepTimer;
+  int _boostPct = 100;
+  // Last session volume _applyBoost actually wrote, and the engine
+  // it was written to. A fresh backend starts at 1.0 (the room
+  // never sets a player volume of its own — the drag drives the
+  // SYSTEM volume), so the guard starts at the default engine's
+  // 1.0: entering a room at boost 100% writes nothing to the
+  // session. An engine swap resets the guard (the new backend must
+  // get the boost even if the value matches the old backend's).
+  PlayerEngine _lastBoostEngine = PlayerEngine.mediaKit;
+  double _lastBoostVolume = 1.0;
+  final LivePowerSaving _powerSaving = LivePowerSaving();
+  LiveRecorder? _recorder;
+  bool _isRecording = false;
+  LiveClockCorner _clockCorner = LiveClockCorner.topRight;
+  // D 组直播设置面板: cellular entry-downgrade opt-out (default ON
+  // = today's behaviour). Read once at entry; the panel toggles the
+  // same key for the NEXT room entry (the downgrade applies at
+  // entry only, never mid-room).
+  bool _cellularDowngrade = true;
   // Vertical drag brightness/volume (P1-U2): shared
   // [SystemDragController] with the VOD player — same seed, HUD and
   // sensitivity (300 px = full range). The vertical drag drives the
@@ -290,6 +328,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _recovery = LiveRecovery(site: _site, room: _room);
     AppLog.info('进入直播间：${_room.platform} ${_room.roomId}');
     _danmakuFilter = DanmakuContentFilter();
+    // Build-29 tools: sleep timer (expiry pauses the session),
+    // persisted volume boost + fullscreen clock corner.
+    _sleepTimer = LiveSleepTimer(onExpire: _onSleepExpire);
+    _boostPct = loadBoostPct();
+    _clockCorner = loadClockCorner();
+    _cellularDowngrade = liveCellularDowngradeEnabled();
     _readDanmakuSettings();
     _subscribeDanmakuSettings();
     _session.onError.listen(_onSessionError);
@@ -322,6 +366,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         }
       });
       if (playing) {
+        // Build-29 volume boost: re-apply on every (re-)open, so a
+        // ladder engine swap never silently drops the gain.
+        unawaited(_applyBoost());
         // Pause any playing music the moment this live room starts
         // playing (chen: same rule as VOD — only when the stream
         // actually starts, never on browsing the live list or on
@@ -378,6 +425,19 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       _currentQuality = preferredIndex >= 0
           ? preferredIndex
           : _fallbackQualityIndex(qualities, preferred);
+      // Build-29 item 3: mobile data auto-drops a notch (Wi-Fi /
+      // unknown keeps the preferred quality). Best-effort: a
+      // detection failure reads as unknown and never downgrades.
+      // D 组: the panel's opt-out switch gates this (default ON).
+      final network = await detectNetworkType();
+      if (network == LiveNetworkType.cellular &&
+          liveCellularDowngradeEnabled()) {
+        _currentQuality = entryQualityIndex(
+          qualities,
+          _currentQuality,
+          network: network,
+        );
+      }
       await _resolveAndPlay();
     } catch (e) {
       if (mounted) {
@@ -1175,6 +1235,354 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(showRoomDetailSheet(context: context, room: _room));
   }
 
+  // ---- Build-29 live tools (I group) ---------------------------------
+  //
+  // All of these are room-local state; the tools sheet only displays
+  // them. Audio-only / sleep / boost / power-saving / recording /
+  // fullscreen clock / multi-view / PiP verdicts.
+
+  /// Sleep timer expiry: pause the session once, say so.
+  void _onSleepExpire() {
+    unawaited(_session.pause());
+    HaoToast.show('定时关闭', message: '已按定时暂停直播');
+  }
+
+  /// Manual pure-audio toggle. The session path is MPV-only
+  /// (IJK / AVPlayer no-op in the backend); the sheet's subtitle
+  /// says so when the engine is not MPV. The background handler
+  /// re-applies this flag on foreground return (see
+  /// _enterForeground) so a manual audio-only is never lost to a
+  /// background/foreground cycle.
+  Future<void> _setAudioOnlyManual(bool value) async {
+    _audioOnlyManual = value;
+    await _session.setAudioOnly(value || _backgroundAudioOnly);
+    if (mounted) setState(() {});
+  }
+
+  /// Apply the persisted volume boost for the live engine. Base
+  /// player volume is 1.0 (the room never sets a player volume of
+  /// its own — the drag drives the SYSTEM volume); the boost is a
+  /// software gain on top, clamped to the engine's real ceiling
+  /// (MPV 300% since volume-max=300 landed, IJK/AVPlayer 100% —
+  /// see live_volume_boost). When the effective volume already
+  /// equals what this engine has, the write is skipped: entering
+  /// a room at boost 100% must not touch the session at all.
+  Future<void> _applyBoost() async {
+    final engine = _session.activeEngine ?? PlayerEngine.mediaKit;
+    final effective = effectiveSessionVolume(
+      baseVolume: 1.0,
+      boostPct: _boostPct,
+      engine: engine,
+    );
+    if (engine == _lastBoostEngine &&
+        (effective - _lastBoostVolume).abs() < 0.001) {
+      return;
+    }
+    _lastBoostEngine = engine;
+    _lastBoostVolume = effective;
+    await _session.setVolume(effective);
+  }
+
+  Future<void> _setBoostPct(int pct) async {
+    _boostPct = clampBoostPct(pct);
+    unawaited(saveBoostPct(_boostPct));
+    await _applyBoost();
+    if (mounted) setState(() {});
+  }
+
+  /// Power saving on/off: lowest quality + hide danmaku, restoring
+  /// the exact previous quality + danmaku on exit. The quality
+  /// switch never persists the power-saving tier (persist: false).
+  Future<void> _setPowerSaving(bool value) async {
+    if (value) {
+      final target = _powerSaving.enter(
+        qualityCount: _qualities.length,
+        currentQualityIndex: _currentQuality,
+      );
+      setState(() => _danmakuVisible = false);
+      if (target != null && target != _currentQuality) {
+        await _switchQuality(target, persist: false);
+      }
+    } else {
+      final prev = _powerSaving.exit();
+      setState(() => _danmakuVisible = true);
+      if (prev != null && prev != _currentQuality) {
+        await _switchQuality(prev, persist: false);
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Start / stop recording the current stream to local storage
+  /// (FLV raw copy / HLS segments, see LiveRecorder). The URL is
+  /// the currently playing line.
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      final file = await _recorder?.stop();
+      _recorder = null;
+      if (mounted) setState(() => _isRecording = false);
+      HaoToast.show(
+        '录制已保存',
+        message: file?.path.split('/').last ?? '',
+      );
+      return;
+    }
+    final lines = _recovery.lines;
+    if (lines.isEmpty) {
+      HaoToast.show('提示', message: '当前没有可录制的流');
+      return;
+    }
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/live_recordings');
+      final recorder = LiveRecorder(dio: Dio(), directory: dir);
+      final url = lines[_recovery.currentLineIndex % lines.length];
+      await recorder.start(
+        streamUrl: url,
+        platform: _room.platform,
+        roomId: _room.roomId,
+        headers: _playbackHeaders,
+      );
+      _recorder = recorder;
+      if (mounted) setState(() => _isRecording = true);
+      HaoToast.show('开始录制', message: '录制保存到本地，可在录制中心查看');
+    } catch (_) {
+      HaoToast.show('提示', message: '录制启动失败');
+    }
+  }
+
+  /// Open the multi-view page with this room first, then the
+  /// playlist neighbours (up to 4 total). Opening one cell
+  /// full-screen replaces the multi-view page with a single room.
+  void _openMultiView() {
+    final others = widget.playlist
+        .where(
+          (r) => r.platform != _room.platform || r.roomId != _room.roomId,
+        )
+        .toList();
+    final rooms = [_room, ...others].take(4).toList();
+    Get.to(
+      () => LiveMultiViewPage(
+        rooms: rooms,
+        onOpenSingle: (room) => Get.to(
+          () => LiveRoomPage(room: room, playlist: widget.playlist),
+        ),
+      ),
+    );
+  }
+
+  /// The tools sheet (items 4/8/10/12/13/14/15). Built inside a
+  /// StatefulBuilder so toggling a row refreshes the sheet itself,
+  /// not just the room behind it.
+  void _openToolsSheet() {
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            void refreshSheet() => setSheetState(() {});
+            return LiveRoomToolsSheet(
+              audioOnly: _audioOnlyManual,
+              onAudioOnlyChanged: (v) async {
+                await _setAudioOnlyManual(v);
+                refreshSheet();
+              },
+              sleep: _sleepTimer.current,
+              onSleepChanged: (d) {
+                _sleepTimer.set(d);
+                if (mounted) setState(() {});
+                refreshSheet();
+              },
+              boostPct: _boostPct,
+              onBoostChanged: (pct) async {
+                await _setBoostPct(pct);
+                refreshSheet();
+              },
+              engine: _session.activeEngine ?? PlayerEngine.mediaKit,
+              baseVolume: 1.0,
+              powerSaving: _powerSaving.isOn,
+              onPowerSavingChanged: (v) async {
+                await _setPowerSaving(v);
+                refreshSheet();
+              },
+              isRecording: _isRecording,
+              onToggleRecording: () async {
+                await _toggleRecording();
+                refreshSheet();
+              },
+              onOpenMultiView: () {
+                Navigator.of(sheetContext).pop();
+                _openMultiView();
+              },
+              onOpenRecordingCenter: () {
+                Navigator.of(sheetContext).pop();
+                Get.to(() => const LiveRecordingCenterPage());
+              },
+              clockCorner: _clockCorner,
+              onClockCornerChanged: (c) {
+                _clockCorner = c;
+                unawaited(saveClockCorner(c));
+                if (mounted) setState(() {});
+                refreshSheet();
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // -- D 组直播设置面板 (build 29) --------------------------------------
+  //
+  // Pure Live-style control-bar settings entry → bottom sheet, LIVE
+  // ONLY (no speed / super-resolution / dialogue boost). Every row
+  // writes the SAME Hive key the settings page reads
+  // (DanmakuSettings keys / the persisted boost %) or the same room
+  // state the tools sheet displays — one key, one room state, no
+  // second copy — so a change takes effect on the current room
+  // immediately and the settings page reads the same value after.
+  // The tools sheet (I 组) is untouched; this panel is a second
+  // entry to the same room state, not a second state.
+
+  void _openLiveSettingsSheet() {
+    // Guard for completion refreshes: a switch that finishes after
+    // the sheet was popped must not call setSheetState on a disposed
+    // sheet (a quality switch restores the old quality on failure,
+    // after the optimistic update — the sheet needs that refresh,
+    // but only while it is still open).
+    var sheetOpen = true;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            void refreshSheet() {
+              if (sheetOpen) setSheetState(() {});
+            }
+
+            return LivePlayerSettingsSheet(
+              settings: _liveSettingsSnapshot(refreshSheet),
+            );
+          },
+        ),
+      ).then((_) => sheetOpen = false),
+    );
+  }
+
+  /// Cycle to the next quality tier (the panel's 画质 row). The
+  /// room's [_switchQuality] keeps the fidelity semantics: the
+  /// preference is only persisted after a successful open, and a
+  /// failed switch restores the old quality.
+  Future<void> _cycleLiveQuality() async {
+    if (_qualities.length < 2) return;
+    await _switchQuality((_currentQuality + 1) % _qualities.length);
+  }
+
+  LivePlayerSettings _liveSettingsSnapshot(void Function() refreshSheet) {
+    final engine = _session.activeEngine ?? PlayerEngine.mediaKit;
+    return LivePlayerSettings(
+      qualityLabel: _qualities.isEmpty
+          ? ''
+          : _qualities[_currentQuality.clamp(0, _qualities.length - 1)]
+                .quality,
+      canCycleQuality: _qualities.length >= 2,
+      onQualityCycle: () {
+        // Optimistic refresh (the switch updates _currentQuality
+        // before its open), plus a completion refresh so a failed
+        // switch restoring the old quality shows up in the sheet.
+        refreshSheet();
+        unawaited(_cycleLiveQuality().then((_) => refreshSheet()));
+      },
+      danmakuEnabled: _danmakuEnabled,
+      onDanmakuEnabledChanged: (value) {
+        // The room's danmaku listener re-reads the gate live (same
+        // path as a Settings change while the room is open).
+        unawaited(DanmakuSettings.setEnabled(_site.id, value));
+        refreshSheet();
+      },
+      similarityEnabled: DanmakuSettings.similarityEnabled(),
+      onSimilarityChanged: (value) {
+        // The filter config is re-read by the room's danmaku
+        // listener (the key is in its listenable set).
+        unawaited(DanmakuSettings.setSimilarityEnabled(value));
+        refreshSheet();
+      },
+      blockEmoteOnly: DanmakuSettings.blockEmoteOnly(),
+      onBlockEmoteChanged: (value) {
+        unawaited(DanmakuSettings.setBlockEmoteOnly(value));
+        refreshSheet();
+      },
+      blockLong: DanmakuSettings.blockLong(),
+      onBlockLongChanged: (value) {
+        unawaited(DanmakuSettings.setBlockLong(value));
+        refreshSheet();
+      },
+      douyuBotFilter: DanmakuSettings.douyuBotFilter(),
+      onDouyuBotChanged: (value) {
+        unawaited(DanmakuSettings.setDouyuBotFilter(value));
+        refreshSheet();
+      },
+      danmakuOcclusionAvoidance: HiveStore.getBool(
+        HiveKeys.danmakuOcclusionAvoidance,
+        false,
+      ),
+      onDanmakuOcclusionChanged: (value) {
+        // The occlusion gate re-evaluates on the next build (see
+        // build(): _occlusion.update runs there).
+        unawaited(
+          HiveStore.put(HiveKeys.danmakuOcclusionAvoidance, value),
+        );
+        if (mounted) setState(() {});
+        refreshSheet();
+      },
+      audioOnly: _audioOnlyManual,
+      onAudioOnlyChanged: (value) {
+        unawaited(_setAudioOnlyManual(value));
+        refreshSheet();
+      },
+      sleep: _sleepTimer.current,
+      onSleepCycle: () {
+        final order = LiveSleepDuration.values;
+        final next = order[
+            (order.indexOf(_sleepTimer.current) + 1) % order.length];
+        _sleepTimer.set(next);
+        if (mounted) setState(() {});
+        refreshSheet();
+      },
+      boostPct: _boostPct,
+      effectiveBoostPct: effectiveBoostPct(
+        baseVolume: 1.0,
+        boostPct: _boostPct,
+        engine: engine,
+      ),
+      onBoostChanged: (pct) {
+        unawaited(_setBoostPct(pct));
+        refreshSheet();
+      },
+      powerSaving: _powerSaving.isOn,
+      onPowerSavingChanged: (value) {
+        unawaited(_setPowerSaving(value));
+        refreshSheet();
+      },
+      cellularDowngrade: _cellularDowngrade,
+      onCellularDowngradeChanged: (value) {
+        // Applies at the NEXT room entry (the downgrade runs at
+        // entry only) — the row subtitle says so.
+        setState(() => _cellularDowngrade = value);
+        unawaited(saveLiveCellularDowngrade(value));
+        refreshSheet();
+      },
+    );
+  }
+
   /// S4: long-press a danmaku item — block this user / block this
   /// message / cancel, in place, without leaving the room. The block
   /// lands in [DanmakuBlockStore] (shared with the settings page),
@@ -1410,6 +1818,15 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
       onPressed: () => setState(() => _danmakuVisible = !_danmakuVisible),
     ),
+    // D 组直播设置面板 (build 29): Pure Live-style control-bar
+    // settings entry → bottom sheet. Lives in the shared bottom
+    // bar, so it shows in portrait (below the video) and in
+    // fullscreen alike. The tools sheet (I 组) is untouched.
+    IconButton(
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.settings, color: color),
+      tooltip: '直播设置',
+      onPressed: _openLiveSettingsSheet,
+    ),
     Obx(() {
       final fs = _fullscreen.isFullscreen.value;
       if (!fs) return const SizedBox.shrink();
@@ -1592,6 +2009,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     _hideControlsTimer?.cancel();
     _fullscreenWorker?.dispose();
     _fullscreenWorker = null;
+    _sleepTimer.dispose();
+    unawaited(_recorder?.stop());
     _drag.dispose();
     _barrageController.dispose();
     _occlusion.dispose();
@@ -1674,7 +2093,10 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   Future<void> _enterForeground() async {
     if (!_backgroundAudioOnly) return;
     _backgroundAudioOnly = false;
-    await _session.setAudioOnly(false);
+    // Build-29: a MANUAL audio-only stays on across the
+    // background/foreground cycle (only the automatic background
+    // audio-only is lifted here).
+    await _session.setAudioOnly(_audioOnlyManual);
     // Foreground return re-evaluates the occlusion gate (the switch
     // may have changed in Settings while away).
     _occlusion.update(
@@ -1834,7 +2256,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(_dragHudIcon, color: Colors.white),
+                            Icon(_dragHudIcon, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
@@ -1895,7 +2317,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        icon: Icon(Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                         tooltip: '退出全屏',
                         onPressed: () => _fullscreen.toggleFullscreen(),
                       ),
@@ -1910,6 +2332,12 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                             fontWeight: FontWeight.w700,
                           ),
                         ),
+                      ),
+                      // Build-29 tools sheet, fullscreen too.
+                      IconButton(
+                        icon: Icon(Icons.more_horiz, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
+                        tooltip: '直播工具',
+                        onPressed: _openToolsSheet,
                       ),
                     ],
                   ),
@@ -1957,6 +2385,42 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                   ),
                   child: Row(children: _bottomBarButtons(Colors.white)),
                 ),
+              ),
+            );
+          }),
+          // Build-29 item 12: fullscreen corner clock. Fullscreen
+          // only; the top bar (~56px + safe area) and the bottom bar
+          // own the screen edges, so the clock sits just inside
+          // them. Tap cycles the four corners (the position is
+          // persisted; the tools sheet shows it too).
+          Obx(() {
+            final fs = _fullscreen.isFullscreen.value;
+            if (!fs) return const SizedBox.shrink();
+            final corner = _clockCorner;
+            return Positioned(
+              top: corner == LiveClockCorner.topLeft ||
+                      corner == LiveClockCorner.topRight
+                  ? 64
+                  : null,
+              bottom: corner == LiveClockCorner.bottomLeft ||
+                      corner == LiveClockCorner.bottomRight
+                  ? 76
+                  : null,
+              left: corner == LiveClockCorner.topLeft ||
+                      corner == LiveClockCorner.bottomLeft
+                  ? 12
+                  : null,
+              right: corner == LiveClockCorner.topRight ||
+                      corner == LiveClockCorner.bottomRight
+                  ? 12
+                  : null,
+              child: LiveFullscreenClock(
+                corner: corner,
+                onCornerChanged: (c) {
+                  _clockCorner = c;
+                  unawaited(saveClockCorner(c));
+                  if (mounted) setState(() {});
+                },
               ),
             );
           }),
@@ -2050,6 +2514,14 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               : AppBar(
                   title: Text(_room.title.isEmpty ? '直播间' : _room.title, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
                   actions: [
+                    IconButton(
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune),
+                      tooltip: '直播工具',
+                      // Build-29 tools sheet: pure audio / sleep /
+                      // boost / power saving / record / multi-view /
+                      // PiP verdicts.
+                      onPressed: _openToolsSheet,
+                    ),
                     IconButton(
                       icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz),
                       tooltip: '切换直播间',
@@ -2172,9 +2644,11 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                                 ),
                               ),
                               Text(
-                                _room.watching > 0
-                                    ? '${_room.watching} 人在看'
-                                    : '',
+                                // Build-29 item 6: the number is
+                                // labelled by its real metric kind
+                                // (在线 / 热度 / 观看) — never a bare
+                                // "X 人在看".
+                                metricLabelFor(_room.platform, _room.watching),
                                 style: TextStyle(
                                   shadows: HaoTheme.legibilityShadows(context),
                                   color: theme.textMuted,

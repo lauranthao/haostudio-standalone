@@ -7,18 +7,19 @@
 // Shared habits, kept on purpose: `sharedDio()` + injectable fetcher
 // + 8 s per-request timeout + CancelToken cancel is never a failure.
 //
-// Auth: API key only, sent as `X-Emby-Token` header on every API
-// call. The key enters a URL in exactly ONE place — the playback
-// stream URL ([streamUrl]), because the native player kernels take a
-// bare URL and no custom headers. That URL is never logged, never
-// put in an exception message, never used as a cache key (images use
-// the header form instead, see [imageHeaders]).
-//
-// BACKUP auth (not implemented, no UI): username/password exchange
-// via POST /Users/AuthenticateByName returning AccessToken + User.Id,
-// after which requests carry `Authorization: Emby UserId="…",
-// Token=<token>` + `X-Emby-Token: <token>`. Only enable if API-key
-// auth ever fails against the user's server.
+// Auth (build 29): two modes, one credential on the wire.
+// - Username + password (primary, connect page): POST
+//   /Users/AuthenticateByName returns AccessToken + User.Id; the
+//   token is stored, the password never is. See [authenticateByName].
+// - API key (fallback, connect page 高级设置): the old X-Emby-Token.
+// Whichever is present rides as `X-Emby-Token` on every API call
+// ([_authHeaders]) and as `api_key` on the stream URL
+// ([streamUrl]) — Emby accepts a user token in both places, same
+// as an API key. The key enters a URL in exactly ONE place — the
+// playback stream URL ([streamUrl]), because the native player
+// kernels take a bare URL and no custom headers. That URL is never
+// logged, never put in an exception message, never used as a cache
+// key (images use the header form instead, see [imageHeaders]).
 //
 // API root prefix: the official Emby API lives under `/emby`
 // (http://host:8096/emby/...), but some deployments answer at the
@@ -62,6 +63,13 @@ class EmbyException implements Exception {
   factory EmbyException.unauthorized() => const EmbyException(
         EmbyErrorKind.unauthorized,
         'Emby 密钥不对，请在设置里重新填写',
+      );
+
+  /// 401 on a password login: the account name or the password is
+  /// wrong (never "the key" — there is no key in this mode).
+  factory EmbyException.unauthorizedAccount() => const EmbyException(
+        EmbyErrorKind.unauthorized,
+        'Emby 用户名或密码不对，请重新登录',
       );
 
   factory EmbyException.notFound([String? message]) => EmbyException(
@@ -333,18 +341,26 @@ class EmbyClient {
   /// first (the official API root).
   bool _useEmbyPrefix = true;
 
+  /// Temporary base-URL override, used only while one probe /
+  /// login attempt tries a 备用线路. Always cleared in a finally
+  /// (see [_probeBase] / [authenticateByName]) so data calls can
+  /// never accidentally use a fallback address.
+  String? _baseOverride;
+
   bool get isConfigured => config.isConfigured;
 
   String get _base {
-    var base = config.baseUrl.trim();
+    var base = (_baseOverride ?? config.baseUrl).trim();
     while (base.endsWith('/')) {
       base = base.substring(0, base.length - 1);
     }
     return base;
   }
 
+  /// Account token when logged in, else the API key (see
+  /// [EmbyServerConfig.authToken]).
   Map<String, String> get _authHeaders =>
-      <String, String>{'X-Emby-Token': config.apiKey};
+      <String, String>{'X-Emby-Token': config.authToken};
 
   /// Image auth headers for [RefererImage]: the image URL itself
   /// stays clean (no api_key), so it can be a cache key safely.
@@ -382,6 +398,13 @@ class EmbyClient {
   /// a URL — the player kernels take a bare URL. Never log this
   /// value, never put it in an exception, never use it as a key.
   ///
+  /// STRM 直连 ([EmbyServerConfig.strmDirect], default off): when
+  /// on and the item's MediaSource path is a remote http(s) URL
+  /// (a .strm target), that URL is returned directly — no server
+  /// round-trip, no credential in the URL. A local server path
+  /// ('/media/….strm') or strmDirect off always takes the server
+  /// stream endpoint below, which works on nearly every server.
+  ///
   /// [facts] (from the item's MediaSources) rides as `hao_*` query
   /// markers so the kernel can pick a capable engine before the
   /// first open (an MKV/TrueHD/Dolby-Vision file must never be
@@ -389,8 +412,15 @@ class EmbyClient {
   /// no markers when facts are absent, and the URL is then exactly
   /// the unmarked form.
   String streamUrl(String itemId, {EmbyStreamFacts? facts}) {
+    final strmPath = facts?.sourcePath;
+    if (config.strmDirect &&
+        strmPath != null &&
+        (strmPath.startsWith('http://') ||
+            strmPath.startsWith('https://'))) {
+      return strmPath;
+    }
     final base =
-        '${_apiUrl('/Videos/$itemId/stream')}?static=true&api_key=${Uri.encodeComponent(config.apiKey)}';
+        '${_apiUrl('/Videos/$itemId/stream')}?static=true&api_key=${Uri.encodeComponent(config.authToken)}';
     final markers = facts?.toQueryParams() ?? const {};
     if (markers.isEmpty) return base;
     final qs = markers.entries
@@ -430,7 +460,12 @@ class EmbyClient {
       cancelToken: cancelToken,
     );
     final status = res.statusCode;
-    if (status == 401) throw EmbyException.unauthorized();
+    if (status == 401) {
+      // Password login vs API key: different wording, same tier.
+      throw config.usesPasswordAuth
+          ? EmbyException.unauthorizedAccount()
+          : EmbyException.unauthorized();
+    }
     if (status == 404) throw EmbyException.notFound();
     if (status < 200 || status >= 300) {
       throw EmbyException.other('Emby 服务器返回了错误（$status）');
@@ -440,57 +475,247 @@ class EmbyClient {
 
   // -- Probe -----------------------------------------------------------
 
-  /// GET /System/Info with the key. Tries `/emby` first, then the
-  /// root, and remembers the working prefix. 200 + ServerName /
-  /// Version = "server reachable, key correct". 401 = key wrong
-  /// (same on both prefixes — no point trying the second). Anything
-  /// else on both prefixes = unreachable / wrong address.
-  /// On success also fetches GET /Users (the API key carries no user
-  /// context, so userId must come from here).
+  /// GET /System/Info with the credential. Tries `/emby` first,
+  /// then the root, and remembers the working prefix. 200 +
+  /// ServerName / Version = "server reachable, credential correct".
+  /// 401 = credential wrong (same on both prefixes — no point
+  /// trying the second). Anything else on both prefixes =
+  /// unreachable / wrong address.
+  ///
+  /// On success also fetches GET /Users — unless [config.userId]
+  /// is already known (password login filled it in), in which
+  /// case the fetch is skipped: a non-admin user token cannot
+  /// read /Users, and a failed fetch must not fail a probe whose
+  /// credential System/Info already accepted. A failed fetch in
+  /// key mode is likewise tolerated (same reason: the credential
+  /// is already proven) and yields an empty user list.
   Future<EmbyProbeResult> probe({CancelToken? cancelToken}) async {
-    EmbyException? lastError;
-    for (final prefix in <bool>[true, false]) {
-      _useEmbyPrefix = prefix;
-      try {
-        final info = await _getJson(
-          _apiUrl('/System/Info'),
+    final bases = <String>[
+      config.baseUrl,
+      ...config.fallbackUrls.where((u) => u.trim().isNotEmpty),
+    ];
+    EmbyProbeResult? lastFailure;
+    for (final base in bases) {
+      final result = await _probeBase(base, cancelToken: cancelToken);
+      if (result.ok) return result;
+      lastFailure = result;
+      // 401 is base-independent: the credential itself is wrong.
+      if (result.errorKind == EmbyErrorKind.unauthorized) return result;
+    }
+    final failure = lastFailure ?? EmbyProbeResult(
+      ok: false,
+      errorKind: EmbyErrorKind.unreachable,
+      errorMessage: EmbyException.unreachable().message,
+    );
+    return failure;
+  }
+
+  /// Probe ONE base URL (both prefixes). The override is always
+  /// cleared afterwards, so a later data call uses [config.baseUrl].
+  Future<EmbyProbeResult> _probeBase(
+    String base, {
+    CancelToken? cancelToken,
+  }) async {
+    _baseOverride = base;
+    try {
+      EmbyException? lastError;
+      for (final prefix in <bool>[true, false]) {
+        _useEmbyPrefix = prefix;
+        try {
+          final info = await _getJson(
+            _apiUrl('/System/Info'),
+            cancelToken: cancelToken,
+          );
+          final serverName = (info['ServerName'] as String?) ?? '';
+          final version = (info['Version'] as String?) ?? '';
+          if (serverName.isEmpty && version.isEmpty) {
+            throw EmbyException.other('Emby 服务器没有返回服务器信息');
+          }
+          final users = await _fetchUsersOrEmpty(cancelToken: cancelToken);
+          return EmbyProbeResult(
+            ok: true,
+            serverName: serverName,
+            version: version,
+            users: users,
+            workingBaseUrl: base,
+          );
+        } on EmbyException catch (e) {
+          // 401 is prefix-independent: the credential itself is wrong.
+          if (e.kind == EmbyErrorKind.unauthorized) {
+            return EmbyProbeResult(
+              ok: false,
+              errorKind: e.kind,
+              errorMessage: e.message,
+            );
+          }
+          lastError = e;
+          // 404/other on this prefix: try the other one.
+          continue;
+        }
+      }
+      final e = lastError ?? EmbyException.unreachable();
+      return EmbyProbeResult(
+        ok: false,
+        errorKind: e.kind,
+        // A 404 on BOTH prefixes means the address path is wrong.
+        errorMessage: e.kind == EmbyErrorKind.notFound
+            ? 'Emby 服务器地址不对，请检查地址'
+            : e.message,
+      );
+    } finally {
+      _baseOverride = null;
+    }
+  }
+
+  /// Users for the probe: skipped when [config.userId] is already
+  /// known; a failed fetch is an empty list, never a probe failure
+  /// (see [probe]).
+  Future<List<EmbyUser>> _fetchUsersOrEmpty({
+    CancelToken? cancelToken,
+  }) async {
+    if (config.userId.isNotEmpty) return const [];
+    try {
+      return await _fetchUsers(cancelToken: cancelToken);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  // -- Account login ---------------------------------------------------
+
+  /// Username + password login: POST /Users/AuthenticateByName.
+  /// Returns the AccessToken + User Id to store; the password is
+  /// sent once in the request body and never stored anywhere.
+  ///
+  /// Tries `/emby` first, then the root (same prefix walk as
+  /// [probe]). 401 = wrong name/password. [baseUrl] tries a
+  /// 备用线路 instead of the main address (the connect page uses
+  /// it after the main address fails); the override is always
+  /// cleared afterwards.
+  Future<EmbyAuthResult> authenticateByName({
+    required String username,
+    required String password,
+    String? baseUrl,
+    Duration timeout = const Duration(seconds: 8),
+    CancelToken? cancelToken,
+  }) async {
+    final deviceId = config.deviceId.isNotEmpty
+        ? config.deviceId
+        : EmbyServerConfig.newDeviceId();
+    _baseOverride = baseUrl;
+    try {
+      EmbyException? lastError;
+      for (final prefix in <bool>[true, false]) {
+        _useEmbyPrefix = prefix;
+        try {
+          final res = await _mutator(
+            'POST',
+            _apiUrl('/Users/AuthenticateByName'),
+            headers: <String, String>{
+              'X-Emby-Authorization':
+                  'MediaBrowser Client="HAo Studio", Device="iPhone", '
+                  'DeviceId="$deviceId", Version="1.1.6"',
+            },
+            jsonBody: <String, dynamic>{
+              'Username': username,
+              'Pw': password,
+            },
+            timeout: timeout,
+            cancelToken: cancelToken,
+          );
+          if (res.statusCode == 401) {
+            return EmbyAuthResult(
+              ok: false,
+              errorKind: EmbyErrorKind.unauthorized,
+              errorMessage:
+                  EmbyException.unauthorizedAccount().message,
+            );
+          }
+          if (res.statusCode == 404) continue;
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return EmbyAuthResult(
+              ok: false,
+              errorKind: EmbyErrorKind.other,
+              errorMessage: 'Emby 服务器返回了错误（${res.statusCode}）',
+            );
+          }
+          final doc = res.json;
+          if (doc is Map<String, dynamic>) {
+            final token = (doc['AccessToken'] as String?) ?? '';
+            final user = doc['User'];
+            final userId = user is Map<String, dynamic>
+                ? (user['Id'] as String?) ?? ''
+                : '';
+            final userName = user is Map<String, dynamic>
+                ? (user['Name'] as String?) ?? ''
+                : '';
+            if (token.isEmpty || userId.isEmpty) {
+              return const EmbyAuthResult(
+                ok: false,
+                errorKind: EmbyErrorKind.other,
+                errorMessage: 'Emby 登录没有返回有效的凭证',
+              );
+            }
+            return EmbyAuthResult(
+              ok: true,
+              accessToken: token,
+              userId: userId,
+              userName: userName,
+            );
+          }
+          return const EmbyAuthResult(
+            ok: false,
+            errorKind: EmbyErrorKind.other,
+            errorMessage: 'Emby 登录返回了无法识别的数据',
+          );
+        } on EmbyException catch (e) {
+          lastError = e;
+          continue;
+        }
+      }
+      final e = lastError ?? EmbyException.unreachable();
+      return EmbyAuthResult(
+        ok: false,
+        errorKind: e.kind,
+        errorMessage: e.message,
+      );
+    } finally {
+      _baseOverride = null;
+    }
+  }
+
+  /// Lightweight reachability check for one 备用线路, no
+  /// credential needed: GET /System/Info/Public (the public,
+  /// unauthenticated endpoint). 200 + a server-identity field =
+  /// "this address is an Emby server". Used by the fallback-line
+  /// editor's per-line test; never throws.
+  Future<bool> checkPublicLine(
+    String lineBaseUrl, {
+    CancelToken? cancelToken,
+  }) async {
+    var base = lineBaseUrl.trim();
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+    if (base.isEmpty) return false;
+    try {
+      for (final prefix in <String>['/emby', '']) {
+        final res = await _fetcher(
+          '$base$prefix/System/Info/Public',
+          timeout: const Duration(seconds: 5),
           cancelToken: cancelToken,
         );
-        final serverName = (info['ServerName'] as String?) ?? '';
-        final version = (info['Version'] as String?) ?? '';
-        if (serverName.isEmpty && version.isEmpty) {
-          throw EmbyException.other('Emby 服务器没有返回服务器信息');
+        if (res.statusCode != 200) continue;
+        final doc = res.json;
+        if (doc is Map<String, dynamic> &&
+            ((doc['ServerName'] as String?)?.isNotEmpty == true ||
+                (doc['Version'] as String?)?.isNotEmpty == true ||
+                (doc['Id'] as String?)?.isNotEmpty == true)) {
+          return true;
         }
-        final users = await _fetchUsers(cancelToken: cancelToken);
-        return EmbyProbeResult(
-          ok: true,
-          serverName: serverName,
-          version: version,
-          users: users,
-        );
-      } on EmbyException catch (e) {
-        // 401 is prefix-independent: the key itself is wrong.
-        if (e.kind == EmbyErrorKind.unauthorized) {
-          return EmbyProbeResult(
-            ok: false,
-            errorKind: e.kind,
-            errorMessage: e.message,
-          );
-        }
-        lastError = e;
-        // 404/other on this prefix: try the other one.
-        continue;
       }
-    }
-    final e = lastError ?? EmbyException.unreachable();
-    return EmbyProbeResult(
-      ok: false,
-      errorKind: e.kind,
-      // A 404 on BOTH prefixes means the address path is wrong.
-      errorMessage: e.kind == EmbyErrorKind.notFound
-          ? 'Emby 服务器地址不对，请检查地址'
-          : e.message,
-    );
+    } catch (_) {}
+    return false;
   }
 
   /// Resolve (and remember) the working API prefix without returning
@@ -718,6 +943,22 @@ class EmbyClient {
     }
   }
 
+  /// Automatic playback sync (start / progress / stopped / mark
+  /// played) behind the 数据上报 switch ([EmbyServerConfig.
+  /// reportProgress], default on): when the user turns it off, NO
+  /// request is sent at all — the method returns false without
+  /// touching the network. Explicit user actions (favorite / like
+  /// below) use [_mutate] directly and are never gated: tapping
+  /// them is the user asking the server to record it.
+  Future<bool> _reportMutate(
+    String method,
+    String url, {
+    CancelToken? cancelToken,
+  }) {
+    if (!config.reportProgress) return Future.value(false);
+    return _mutate(method, url, cancelToken: cancelToken);
+  }
+
   String _playingItemsUrl(String itemId, [String suffix = '']) =>
       _apiUrl('/Users/${config.userId}/PlayingItems/$itemId$suffix');
 
@@ -733,27 +974,30 @@ class EmbyClient {
   }
 
   /// Report that playback of [itemId] started (position in seconds).
+  /// Gated by the 数据上报 switch (see [_reportMutate]).
   Future<bool> reportPlaybackStart(
     String itemId, {
     double positionSeconds = 0,
     CancelToken? cancelToken,
   }) =>
-      _mutate(
+      _reportMutate(
         'POST',
         '${_playingItemsUrl(itemId)}?${_ticksQuery(positionSeconds)}',
         cancelToken: cancelToken,
       );
 
   /// Periodic progress report (position in seconds). The player
-  /// throttles calls to one per 15 s + exit + completion; the server
-  /// is the resume source of truth across devices.
+  /// throttles calls to one per 15 s of forward playback + exit +
+  /// completion (native_video_player_page.dart _reportEmbyProgress);
+  /// the server is the resume source of truth across devices.
+  /// Gated by the 数据上报 switch (see [_reportMutate]).
   Future<bool> reportPlaybackProgress(
     String itemId, {
     required double positionSeconds,
     bool isPaused = false,
     CancelToken? cancelToken,
   }) =>
-      _mutate(
+      _reportMutate(
         'POST',
         '${_playingItemsUrl(itemId, '/Progress')}?'
         '${_ticksQuery(positionSeconds, isPaused: isPaused)}',
@@ -763,18 +1007,23 @@ class EmbyClient {
   /// Report that playback of [itemId] stopped. The final position
   /// should already have been reported via [reportPlaybackProgress];
   /// this only ends the session server-side.
+  /// Gated by the 数据上报 switch (see [_reportMutate]).
   Future<bool> reportPlaybackStopped(
     String itemId, {
     CancelToken? cancelToken,
   }) =>
-      _mutate('DELETE', _playingItemsUrl(itemId), cancelToken: cancelToken);
+      _reportMutate('DELETE', _playingItemsUrl(itemId),
+          cancelToken: cancelToken);
 
   /// Mark [itemId] played on the server.
+  /// Gated by the 数据上报 switch (see [_reportMutate]): the
+  /// 已看标记 is part of the same sync, and it is fired
+  /// automatically on episode end, not by a user tap.
   Future<bool> markPlayed(
     String itemId, {
     CancelToken? cancelToken,
   }) =>
-      _mutate(
+      _reportMutate(
         'POST',
         _apiUrl('/Users/${config.userId}/PlayedItems/$itemId'),
         cancelToken: cancelToken,
@@ -935,6 +1184,7 @@ class EmbyClient {
         source: sourceId,
         vodId: itemId,
         meta: meta,
+        mediaType: type,
         lines: [
           PlayLine(name: '直链', episodes: [
             PlayEpisode(
@@ -990,6 +1240,7 @@ class EmbyClient {
         source: sourceId,
         vodId: itemId,
         meta: meta,
+        mediaType: type,
         lines: lines,
       );
     }

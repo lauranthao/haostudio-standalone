@@ -383,11 +383,29 @@ void main() {
       await pumpPlayer(tester);
       expect(VideoPlaybackSettings.autoNext, isTrue);
 
-      await tester.tap(find.byTooltip('自动连播'));
+      // Auto-next moved into the 更多 menu (build 29, K): the top
+      // bar no longer has its own toggle. The sheet slides in over
+      // ~300 ms — this file's settle() pumps one frame without
+      // advancing fake time, so push the clock or the tap lands
+      // below the fold while the sheet is still sliding up.
+      // Measured: one pump(1500 ms) does NOT move it — the route's
+      // animation only starts ticking on the SECOND pump call (the
+      // time advance inside the first pump runs before the route's
+      // first frame). Two time-advancing pumps land it.
+      Future<void> openMoreMenu() async {
+        await tester.tap(find.byTooltip('更多'));
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump();
+      }
+
+      await openMoreMenu();
+      await tester.tap(find.text('自动连播：开'));
       await settle(tester);
       expect(VideoPlaybackSettings.autoNext, isFalse);
 
-      await tester.tap(find.byTooltip('自动连播'));
+      await openMoreMenu();
+      await tester.tap(find.text('自动连播：关'));
       await settle(tester);
       expect(VideoPlaybackSettings.autoNext, isTrue);
       await unmountPlayer(tester);

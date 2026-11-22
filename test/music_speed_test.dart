@@ -1,6 +1,6 @@
 // Music speed (M-P0-2) — slider range, persistence, lyrics sync.
 //
-// Covers: clamp to 0.6–2.0, setSpeed persists like quality (Hive,
+// Covers: clamp to 0.5–2.0, setSpeed persists like quality (Hive,
 // default 1.0), and the lyrics-sync invariant — lyrics are keyed to
 // the media clock (lyricIndexFor(position)), so changing the rate
 // cannot desync them: the same media position maps to the same lyric
@@ -34,25 +34,25 @@ void main() {
   });
 
   group('clampSpeed', () {
-    test('range is 0.6–2.0', () {
-      expect(MusicPlayerController.clampSpeed(0.6), 0.6);
+    test('range is 0.5–2.0', () {
+      expect(MusicPlayerController.clampSpeed(0.5), 0.5);
       expect(MusicPlayerController.clampSpeed(2.0), 2.0);
       expect(MusicPlayerController.clampSpeed(1.0), 1.0);
       expect(MusicPlayerController.clampSpeed(1.5), 1.5);
     });
 
-    test('below 0.6 clamps up, above 2.0 clamps down', () {
-      expect(MusicPlayerController.clampSpeed(0.3), 0.6);
-      expect(MusicPlayerController.clampSpeed(0.0), 0.6);
-      expect(MusicPlayerController.clampSpeed(-1.0), 0.6);
+    test('below 0.5 clamps up, above 2.0 clamps down', () {
+      expect(MusicPlayerController.clampSpeed(0.3), 0.5);
+      expect(MusicPlayerController.clampSpeed(0.0), 0.5);
+      expect(MusicPlayerController.clampSpeed(-1.0), 0.5);
       expect(MusicPlayerController.clampSpeed(2.5), 2.0);
       expect(MusicPlayerController.clampSpeed(10.0), 2.0);
     });
 
     test('slider step 0.05 lands inside the range', () {
-      // 28 divisions over 0.6–2.0 (the sheet slider).
-      for (var i = 0; i <= 28; i++) {
-        final v = 0.6 + (2.0 - 0.6) * i / 28;
+      // 30 divisions over 0.5–2.0 (the sheet slider).
+      for (var i = 0; i <= 30; i++) {
+        final v = 0.5 + (2.0 - 0.5) * i / 30;
         expect(
           MusicPlayerController.clampSpeed(v),
           closeTo(v, 1e-9),
@@ -76,8 +76,8 @@ void main() {
     test('out-of-range values persist clamped', () async {
       final c = MusicPlayerController();
       await c.setSpeed(0.3);
-      expect(c.speed.value, 0.6);
-      expect(MusicStore.speed, 0.6);
+      expect(c.speed.value, 0.5);
+      expect(MusicStore.speed, 0.5);
       await c.setSpeed(2.5);
       expect(c.speed.value, 2.0);
       expect(MusicStore.speed, 2.0);

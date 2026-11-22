@@ -36,6 +36,7 @@ import '../../../../features/video/widgets/referer_image.dart';
 import '../../../../shared/platforms/sites.dart';
 import '../../live_follow_store.dart';
 import '../../live_history_store.dart';
+import '../../live_metrics.dart';
 import '../../live_status.dart';
 
 /// Open the switch-room sheet. [onSelect] runs AFTER the sheet is
@@ -402,7 +403,7 @@ class _RoomRow extends StatelessWidget {
                           height: 54,
                           color: theme.surfaceSolid,
                           child: Icon(
-                            Icons.live_tv_outlined,
+                            Icons.live_tv_outlined, shadows: HaoTheme.legibilityShadows(context), 
                             color: theme.textMuted,
                           ),
                         )
@@ -418,7 +419,7 @@ class _RoomRow extends StatelessWidget {
                             height: 54,
                             color: theme.surfaceSolid,
                             child: Icon(
-                              Icons.live_tv_outlined,
+                              Icons.live_tv_outlined, shadows: HaoTheme.legibilityShadows(context), 
                               color: theme.textMuted,
                             ),
                           ),
@@ -482,7 +483,8 @@ class _RoomRow extends StatelessWidget {
                       ),
                       if (room.watching > 0)
                         Text(
-                          '${room.watching} 人在看 · ${platformName(room.platform)}',
+                          // Build-29 item 6: labelled by metric kind.
+                          '${metricLabelFor(room.platform, room.watching)} · ${platformName(room.platform)}',
                           style: TextStyle(
                             shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,

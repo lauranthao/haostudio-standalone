@@ -10,8 +10,10 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:glassy_ui_ios/glassy_ui_ios.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../widgets/hao_glass_button.dart';
 import '../../services/video/cms_client.dart';
 import '../../services/video/poster_patch_service.dart';
 import 'video_detail_service.dart';
@@ -316,16 +318,23 @@ class _VideoTypePageState extends State<VideoTypePage> {
                               style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary),
                             ),
                             const SizedBox(height: 16),
-                            FilledButton(
+                            HaoGlassButton(
+                              label: '重试',
                               onPressed: _load,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: theme.accent,
-                                // Theme-defined onPrimary per mode.
-                                foregroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .onPrimary,
+                              style: NativeStyle(
+                                tintColor: theme.accent,
                               ),
-                              child: const Text('重试'),
+                              fallback: FilledButton(
+                                onPressed: _load,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: theme.accent,
+                                  // Theme-defined onPrimary per mode.
+                                  foregroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
+                                ),
+                                child: const Text('重试'),
+                              ),
                             ),
                           ],
                         ),

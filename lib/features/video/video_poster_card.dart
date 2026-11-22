@@ -178,7 +178,7 @@ class _MissingArtwork extends StatelessWidget {
     return ColoredBox(
       color: theme.surfaceStrong,
       child: Center(
-        child: Icon(Icons.play_arrow, color: theme.textMuted, size: 36),
+        child: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted, size: 36),
       ),
     );
   }
@@ -196,7 +196,7 @@ class _WatchedMark extends StatelessWidget {
         color: Color(0xA6000000),
         shape: BoxShape.circle,
       ),
-      child: const Icon(Icons.check, color: Colors.white, size: 13),
+      child: Icon(Icons.check, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white, size: 13),
     );
   }
 }

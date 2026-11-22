@@ -607,6 +607,7 @@ class VideoDetail {
     required this.vodId,
     required this.meta,
     required this.lines,
+    this.mediaType = '',
   });
 
   factory VideoDetail.fromJson(Map<String, dynamic> json) => VideoDetail(
@@ -621,6 +622,7 @@ class VideoDetail {
             .whereType<Map<String, dynamic>>()
             .map(PlayLine.fromJson)
             .toList(),
+        mediaType: (json['mediaType'] as String?) ?? '',
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -628,12 +630,21 @@ class VideoDetail {
         'vodId': vodId,
         'meta': meta.toJson(),
         'lines': lines.map((l) => l.toJson()).toList(),
+        'mediaType': mediaType,
       };
 
   final dynamic source;
   final String vodId;
   final VideoMeta meta;
   final List<PlayLine> lines;
+
+  /// Emby item type: 'Movie' | 'Series' | 'Episode' ('' on CMS —
+  /// CMS has no item type; the movie regex on meta.type is the
+  /// fallback there). The player reads this FIRST for the movie
+  /// check in _recordHistory: Emby meta.type is genres
+  /// ('动作 / 科幻'), never 'Movie', so the regex alone cannot tell
+  /// an Emby movie from a series.
+  final String mediaType;
 
   String get sourceKey => source.toString();
 
@@ -791,6 +802,41 @@ class DoubanDetail {
   final String? episodes;
 }
 
+/// Episode names that are alternate VERSIONS of one title, not a
+/// next episode (b29 Next Up fix — the 《空枪》 case).
+///
+/// A CMS movie line lists its dubs as "episodes" (粤语 / 国语), so
+/// the naive "next entry in the line" is the same film in another
+/// language — and the film landed in 下一集 as "下一集 · 国语". The
+/// same holds for a film split into parts (上集 / 下集). A real
+/// sequential episode is never named like this (series episodes are
+/// 第 N 集 or a title), so refusing these names as "next" cannot
+/// hide a genuine next episode.
+bool isVersionEpisodeName(String name) {
+  var n = name.trim();
+  // Trailing qualifiers never change what the entry is: 国语版,
+  // 粤语中字 and 国语中字版 are all the same version entry.
+  var changed = true;
+  while (changed) {
+    changed = false;
+    for (final suffix in ['版', '中字']) {
+      if (n.endsWith(suffix) && n.length > suffix.length) {
+        n = n.substring(0, n.length - suffix.length).trim();
+        changed = true;
+      }
+    }
+  }
+  return _kVersionEpisodeNames.contains(n);
+}
+
+const _kVersionEpisodeNames = {
+  // Dub / language variants: one film, several dubs.
+  '粤语', '国语', '普通话', '英语', '英文', '日语', '韩语', '法语', '德语',
+  '泰语', '俄语', '原声', '中字', '中文字幕',
+  // One film split into parts.
+  '上集', '下集', '上部', '下部',
+};
+
 /// Next-episode info for a history write (1.1.6, browse A3 §4):
 /// total episodes of the CURRENT line + the next episode's name.
 /// Same-line next first; when the line is exhausted, [allowCrossLine]
@@ -799,6 +845,10 @@ class DoubanDetail {
 /// `nextEpName` is '' when there is no next episode or the lines are
 /// unknown. The caller (player record) passes its live lines; the
 /// home page never fetches a detail to fill these in.
+///
+/// b29: a "next" entry that is only another version of the same
+/// title ([isVersionEpisodeName] — a movie's dub, e.g. 粤语 → 国语)
+/// is NOT a next episode, so it never produces a `nextEpName`.
 ({int totalEpisodes, String nextEpName}) historyNextEpisode({
   required List<PlayLine> lines,
   required int lineIdx,
@@ -809,15 +859,21 @@ class DoubanDetail {
     return (totalEpisodes: 0, nextEpName: '');
   }
   final eps = lines[lineIdx].episodes;
-  if (epIdx + 1 < eps.length) {
-    return (totalEpisodes: eps.length, nextEpName: eps[epIdx + 1].name);
+  // Same-line next first; a version entry in between (a movie's
+  // dub) is skipped, never returned as the "next episode".
+  for (var ei = epIdx + 1; ei < eps.length; ei++) {
+    if (!isVersionEpisodeName(eps[ei].name)) {
+      return (totalEpisodes: eps.length, nextEpName: eps[ei].name);
+    }
   }
   if (allowCrossLine) {
     for (var li = lineIdx + 1; li < lines.length; li++) {
       if (lines[li].episodes.isNotEmpty) {
+        final first = lines[li].episodes.first.name;
+        if (isVersionEpisodeName(first)) continue;
         return (
           totalEpisodes: eps.length,
-          nextEpName: lines[li].episodes.first.name,
+          nextEpName: first,
         );
       }
     }
@@ -927,6 +983,8 @@ class WatchHistoryEntry {
   /// Name of the next episode (1.1.6). '' when there is no next
   /// episode, the title is a movie, or the row predates the field —
   /// such rows never enter the 下一集栏 until re-recorded.
+  /// b29: a dub/version name (粤语 / 国语 / 上集 …) is never a next
+  /// episode — see [isVersionEpisodeName].
   final String nextEpName;
 
   /// True only when a next episode is KNOWN (never guessed).

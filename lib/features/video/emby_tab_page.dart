@@ -43,6 +43,51 @@ import 'video_history_store.dart';
 import 'video_models.dart';
 import 'widgets/referer_image.dart';
 
+/// Series ids that may feed a NextUp lookup from LOCAL history
+/// (b29): only rows with a KNOWN next episode. A local row's vodId
+/// is the series id for a series detail — but for a movie it is the
+/// movie id, and passing a movie id as `seriesId` to /Shows/NextUp
+/// is how a film could leak into 下一集. Movies never carry
+/// `nextEpName` (see `historyNextEpisode`), so this filter keeps
+/// them out. Rows recorded from a single-episode detail carry an
+/// episode id, not a series id — the server answers those with an
+/// empty list, never a wrong episode.
+List<String> embyFallbackNextUpSeriesIds(List<WatchHistoryEntry> history) {
+  final ids = <String>[];
+  for (final h in history) {
+    if (h.hasNextEpisode && h.vodId.isNotEmpty && !ids.contains(h.vodId)) {
+      ids.add(h.vodId);
+    }
+  }
+  return ids;
+}
+
+/// Drop NextUp items whose series is already in the resume rail
+/// (b29): while an episode is still in progress the series poster
+/// is already in 继续观看 — showing its next episode in 下一集 as
+/// well is the same duplicate chen reported on the CMS bar. A series
+/// enters 下一集 only once its current episode leaves 继续观看
+/// (finished). Items with no series id cannot be matched, so they
+/// are kept. Repeated episodes of one series keep the first only.
+List<VideoItem> filterEmbyNextUp(
+  List<VideoItem> nextUp,
+  Set<String> resumeSeriesIds,
+) {
+  final seen = <String>{};
+  final out = <VideoItem>[];
+  for (final item in nextUp) {
+    final sid = item.seriesId;
+    if (sid.isEmpty) {
+      out.add(item);
+      continue;
+    }
+    if (resumeSeriesIds.contains(sid)) continue;
+    if (!seen.add(sid)) continue;
+    out.add(item);
+  }
+  return out;
+}
+
 class EmbyTabPage extends StatefulWidget {
   const EmbyTabPage({super.key, this.client});
 
@@ -320,8 +365,11 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       }
     }
     if (seriesIds.isEmpty) {
-      for (final h in _history) {
-        addSeries(h.vodId);
+      // Local-history fallback: series rows only (b29). Every local
+      // row's vodId was passed here before — including movie rows,
+      // whose vodId is a movie id, not a series id.
+      for (final sid in embyFallbackNextUpSeriesIds(_history)) {
+        addSeries(sid);
       }
     }
     final next = <VideoItem>[];
@@ -333,10 +381,22 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
         // One series without a next episode must not kill the rail.
       }
     }
+    // One work, one rail (b29): a series already in 继续观看 — the
+    // server resume items, or the local-history rows shown when the
+    // server has nothing in progress — stays out of 下一集.
+    final resumeSeries = <String>{
+      for (final item in resume)
+        if (item.seriesId.isNotEmpty)
+          item.seriesId
+        else if (item.mediaType == 'Series')
+          item.vodId,
+      for (final h in _history)
+        if (h.hasNextEpisode) h.vodId,
+    };
     if (!mounted) return;
     setState(() {
       _serverResume = resume;
-      _nextUp = next;
+      _nextUp = filterEmbyNextUp(next, resumeSeries);
       _resumeFromServer = true;
     });
   }
@@ -550,7 +610,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            Icon(Icons.cloud_off, shadows: HaoTheme.legibilityShadows(context),  size: 48, color: theme.textMuted),
             const SizedBox(height: 16),
             Text(
               title,
@@ -569,7 +629,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _openSettings,
-              icon: const Icon(Icons.settings),
+              icon: Icon(Icons.settings, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('去设置连接'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
@@ -589,7 +649,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            Icon(Icons.cloud_off, shadows: HaoTheme.legibilityShadows(context),  size: 48, color: theme.textMuted),
             const SizedBox(height: 16),
             Text(
               'Emby 加载失败',
@@ -611,7 +671,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                 setState(() => _phase = _EmbyPhase.loading);
                 unawaited(_load(force: true));
               },
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
@@ -650,7 +710,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.search,
+                            Icons.search, shadows: HaoTheme.legibilityShadows(context), 
                             color: theme.textMuted,
                             size: 20,
                           ),
@@ -681,7 +741,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.info_outline,
+                            Icons.info_outline, shadows: HaoTheme.legibilityShadows(context), 
                             color: theme.accent,
                             size: 16,
                           ),
@@ -759,6 +819,10 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                 // "下一集": a SEPARATE rail from "继续观看" (1.1.6) —
                 // the next unwatched episode of each in-progress
                 // series, from the server (GET /Shows/NextUp).
+                // One work, one rail (b29): a series already in
+                // 继续观看 stays out of this rail (filtered in
+                // _loadServerResume), so the same poster never
+                // shows in both rails at once.
                 // Tapping one opens that episode's detail, which
                 // plays it directly.
                 if (_nextUp.isNotEmpty) ...[
@@ -843,7 +907,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
           child: Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: Icon(Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context),),
                 onPressed: _closeSearch,
               ),
               Expanded(
@@ -1143,7 +1207,7 @@ class _MissingArtwork extends StatelessWidget {
     return ColoredBox(
       color: theme.surfaceStrong,
       child: Center(
-        child: Icon(Icons.play_arrow, color: theme.textMuted, size: 36),
+        child: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted, size: 36),
       ),
     );
   }
@@ -1161,7 +1225,7 @@ class _WatchedMark extends StatelessWidget {
         color: Color(0xA6000000),
         shape: BoxShape.circle,
       ),
-      child: const Icon(Icons.check, color: Colors.white, size: 13),
+      child: Icon(Icons.check, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white, size: 13),
     );
   }
 }

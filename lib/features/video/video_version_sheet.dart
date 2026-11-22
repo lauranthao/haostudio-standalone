@@ -252,7 +252,7 @@ class _VersionSheetState extends State<_VersionSheet> {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.close, color: theme.textMuted),
+                  icon: Icon(Icons.close, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted),
                   tooltip: '关闭',
                   onPressed: () => Navigator.of(context).pop(),
                 ),
@@ -285,6 +285,7 @@ class _VersionSheetState extends State<_VersionSheet> {
                             : theme.hairline,
                       ),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _filter == f
                             ? theme.accent
                             : theme.textSecondary,
@@ -403,7 +404,7 @@ class _VersionSheetState extends State<_VersionSheet> {
                               ),
                               const SizedBox(width: 8),
                               Icon(
-                                Icons.play_circle_outline,
+                                Icons.play_circle_outline, shadows: HaoTheme.legibilityShadows(context), 
                                 color: theme.accent,
                                 size: 28,
                               ),

@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../core/theme/hao_themes.dart';
 import '../services/music/music_models.dart';
 
 /// Square brand logo for [platform], clipped to app-icon corners.
@@ -56,7 +57,7 @@ class PlatformLogo extends StatelessWidget {
       return SizedBox(
         width: size,
         height: size,
-        child: Icon(Icons.music_note, size: size * 0.7),
+        child: Icon(Icons.music_note, shadows: HaoTheme.legibilityShadows(context),  size: size * 0.7),
       );
     }
     return ClipRRect(

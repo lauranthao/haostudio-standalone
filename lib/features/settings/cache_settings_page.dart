@@ -10,6 +10,7 @@ import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_glass_button.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/music_downloads.dart';
 import 'cache_service.dart';
@@ -176,7 +177,14 @@ class _CacheSettingsPageState extends State<CacheSettingsPage> {
               ],
             ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: _clearAll, child: const Text('清除全部缓存')),
+            HaoGlassButton(
+              label: '清除全部缓存',
+              onPressed: _clearAll,
+              fallback: FilledButton(
+                onPressed: _clearAll,
+                child: const Text('清除全部缓存'),
+              ),
+            ),
           ],
         ],
       ),

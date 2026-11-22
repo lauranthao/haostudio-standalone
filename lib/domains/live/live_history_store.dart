@@ -131,14 +131,16 @@ class LiveHistoryStore {
   }
 
   /// Record / refresh one entry (moves to the front with fresh
-  /// title/cover/time). Called on entering a live room.
+  /// title/cover/time). Called on entering a live room. Entries
+  /// older than the retention period (item 11b, key
+  /// `hao_live_hist_retention_days`, 0 = forever) are pruned here.
   static Future<void> record(LiveRoom room, {DateTime? at}) async {
     final entry = LiveHistoryEntry.fromRoom(room, at: at);
     final list = getAll()
         .where((e) => e.identityKey != entry.identityKey)
         .toList();
     list.insert(0, entry);
-    await _save(_applyLimit(list));
+    await _save(_applyLimit(_applyRetention(list)));
   }
 
   /// Record a pre-built entry (tests / re-entry from the history page).
@@ -147,7 +149,7 @@ class LiveHistoryStore {
         .where((e) => e.identityKey != entry.identityKey)
         .toList();
     list.insert(0, entry);
-    await _save(_applyLimit(list));
+    await _save(_applyLimit(_applyRetention(list)));
   }
 
   static Future<void> remove(String platform, String roomId) async {
@@ -228,6 +230,45 @@ class LiveHistoryStore {
     final l = limit;
     if (l <= 0) return list;
     return list.take(l).toList();
+  }
+
+  // -- Retention (item 11b) -------------------------------------------
+  //
+  // Time-based expiry, read from the literal key
+  // `hao_live_hist_retention_days` (0 = forever, default). Kept as a
+  // literal here (not via live_history_retention.dart) so this store
+  // does not import the module that imports it back.
+
+  static int _retentionDays() {
+    try {
+      return HiveStore.getInt('hao_live_hist_retention_days', 0);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Drop entries older than the retention period (no-op when the
+  /// period is 0 / forever). [now] is injectable for tests.
+  static List<LiveHistoryEntry> _applyRetention(
+    List<LiveHistoryEntry> list, {
+    DateTime? now,
+  }) {
+    final days = _retentionDays();
+    if (days <= 0) return list;
+    final cutoff = (now ?? DateTime.now())
+        .subtract(Duration(days: days))
+        .millisecondsSinceEpoch;
+    return list.where((e) => e.at >= cutoff).toList();
+  }
+
+  /// Delete entries older than the retention period right now.
+  /// Returns how many were deleted.
+  static Future<int> pruneExpired({DateTime? now}) async {
+    final all = getAll();
+    final kept = _applyRetention(all, now: now);
+    final deleted = all.length - kept.length;
+    if (deleted > 0) await _save(kept);
+    return deleted;
   }
 
   // -- Grouping / filtering (pure, unit-testable) -----------------------

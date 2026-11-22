@@ -14,18 +14,17 @@
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/appearance_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/settings/settings_tab_page.dart';
+import 'package:standalone/widgets/native_switch.dart';
 
 /// A store whose switch writes never land (and never throw — the
 /// real store swallows errors, so the page must notice via re-read).
@@ -119,20 +118,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// The visible GlassSwitches, in page order: wallpaper, background
-  /// colour, then the rest of the flat 6-group page (9 _BeansSwitchRow
-  /// + 3 _PanelSwitch = 12; the old "3" predates the 1.1.6 flat regroup).
-  List<GlassSwitch> switches(WidgetTester tester) =>
-      tester.widgetList<GlassSwitch>(find.byType(GlassSwitch)).toList();
+  /// The visible HaoNativeSwitches, in page order: wallpaper, background
+  /// colour, then the rest of the flat 6-group page (13 _BeansSwitchRow
+  /// + 3 _PanelSwitch = 16; the old "12" predates the I-影视 VOD rows
+  /// — dialogue boost, 2x spoiler, pure-audio — 4 switches).
+  List<HaoNativeSwitch> switches(WidgetTester tester) =>
+      tester.widgetList<HaoNativeSwitch>(find.byType(HaoNativeSwitch)).toList();
 
   group('G-P2-2 optimistic switches', () {
     testWidgets('wallpaper switch flips on the first frame, then persists',
         (tester) async {
       await pumpPage(tester);
-      expect(switches(tester).length, 12);
+      expect(switches(tester).length, 16);
       expect(switches(tester).first.value, isFalse);
 
-      await tester.tap(find.byType(GlassSwitch).first);
+      await tester.tap(find.byType(HaoNativeSwitch).first);
       await tester.pump(); // exactly one frame — no settle
       expect(switches(tester).first.value, isTrue);
 
@@ -146,7 +146,7 @@ void main() {
       await pumpPage(tester);
       expect(switches(tester)[1].value, isFalse);
 
-      await tester.tap(find.byType(GlassSwitch).at(1));
+      await tester.tap(find.byType(HaoNativeSwitch).at(1));
       await tester.pump();
       expect(switches(tester)[1].value, isTrue);
 
@@ -161,7 +161,7 @@ void main() {
       await pumpPage(tester);
       expect(switches(tester).first.value, isFalse);
 
-      await tester.tap(find.byType(GlassSwitch).first);
+      await tester.tap(find.byType(HaoNativeSwitch).first);
       await tester.pump(); // write still pending (300ms delay)
       expect(switches(tester).first.value, isTrue);
 
@@ -188,7 +188,7 @@ void main() {
       await pumpPage(tester);
       expect(switches(tester)[1].value, isFalse);
 
-      await tester.tap(find.byType(GlassSwitch).at(1));
+      await tester.tap(find.byType(HaoNativeSwitch).at(1));
       await tester.pump();
       expect(switches(tester)[1].value, isTrue);
 
@@ -227,19 +227,41 @@ void main() {
       expect(controller.glassIntensity.value, 1.0);
       expect(HiveStore.box.get('haoGlassIntensity'), isNull);
 
-      // Two Sliders live on the page in 1.1.6 (glass intensity
-      // 0.0–1.0 + subtitle offset −10–10): scope to the glass one.
+      // Two CupertinoSliders live on the page in 1.1.6 (glass
+      // intensity 0.0–1.0 + subtitle offset −10–10; G-设置 Wave 2
+      // replaced the Material Sliders): scope to the glass one.
       final slider = find.byWidgetPredicate(
-        (w) => w is Slider && w.min == 0.0 && w.max == 1.0,
+        (w) => w is CupertinoSlider && w.min == 0.0 && w.max == 1.0,
       );
       expect(slider, findsOneWidget);
-      final gesture = await tester.startGesture(tester.getCenter(slider));
+      // CupertinoSlider only grabs near the thumb (iOS behaviour);
+      // at value 1.0 the thumb sits at the right end, so start the
+      // gesture there — the widget centre misses (see
+      // settings_tab_page_test.dart's sliderThumb helper for the
+      // same math: padding 8, thumb radius 14).
+      final topLeft = tester.getTopLeft(slider);
+      final size = tester.getSize(slider);
+      final thumb = Offset(
+        topLeft.dx + size.width - 8.0 - 14.0,
+        topLeft.dy + size.height / 2,
+      );
+      final gesture = await tester.startGesture(thumb);
+      // The first move only arms the drag: CupertinoSlider's
+      // recognizer uses DragStartBehavior.start, so the move that
+      // crosses the touch slop is discarded — the value does not
+      // move and nothing is written. (The Material Slider moved
+      // on the first move; verified side by side: Material
+      // 1.0 -> 0.9913 on the first -20, Cupertino stays 1.0
+      // until the second move.) The G-P2-3 contract is about the
+      // Hive puts, not the first move: nothing during the drag,
+      // one put on release.
       await gesture.moveBy(const Offset(-20, 0));
       await tester.pump();
-      expect(controller.glassIntensity.value, lessThan(1.0));
+      expect(controller.glassIntensity.value, 1.0);
       expect(HiveStore.box.get('haoGlassIntensity'), isNull);
       await gesture.moveBy(const Offset(-20, 0));
       await tester.pump();
+      expect(controller.glassIntensity.value, lessThan(1.0));
       expect(HiveStore.box.get('haoGlassIntensity'), isNull);
       await gesture.up();
       await tester.pumpAndSettle();

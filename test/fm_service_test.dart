@@ -776,6 +776,16 @@ void main() {
       for (var i = 0;
           i < 12 && controller.queue.length < 30;
           i++) {
+        // Nudge the index first: setting the same value twice never
+        // fires the `ever` refill worker, so a refill that appends 0
+        // (random anchors hitting the per-artist caps) used to freeze
+        // the queue at 20 for the rest of the loop. Each iteration
+        // now moves the index for real, so every iteration gets a
+        // fresh refill draw — the way listening advances the index
+        // in real use.
+        final len = controller.queue.length;
+        controller.currentIndex.value = len - 3;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
         controller.currentIndex.value = controller.queue.length - 2;
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }

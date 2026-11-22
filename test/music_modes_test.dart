@@ -167,11 +167,12 @@ void main() {
   group('prevTrackIndex', () {
     const len = 5;
 
-    test('steps back and wraps at the start', () {
+    test('steps back; sequential/single stop at the first track', () {
       expect(prevTrackIndex(PlayMode.sequential, 2, len), 1);
-      expect(prevTrackIndex(PlayMode.sequential, 0, len), 4);
+      expect(prevTrackIndex(PlayMode.sequential, 0, len), -1);
       expect(prevTrackIndex(PlayMode.listLoop, 0, len), 4);
-      expect(prevTrackIndex(PlayMode.single, 0, len), 4);
+      expect(prevTrackIndex(PlayMode.single, 0, len), -1);
+      expect(prevTrackIndex(PlayMode.singleLoop, 0, len), 4);
     });
 
     test('shuffle picks a different track', () {

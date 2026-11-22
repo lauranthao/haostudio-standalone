@@ -196,94 +196,109 @@ class _HaoToastBannerState extends State<_HaoToastBanner>
       top: media.padding.top + 8,
       left: 12,
       right: 12,
-      child: SlideTransition(
-        position: _slide,
-        child: FadeTransition(
-          opacity: _fade,
-          child: Dismissible(
-            key: const ValueKey('hao-toast'),
-            direction: DismissDirection.up,
-            onDismissed: (_) => widget.onDismiss(),
-            child: GestureDetector(
-              onTap: widget.onDismiss,
-              child: GlassCard(
-                radius: 14,
-                shadow: GlassShadow.panel,
-                quality: GlassCardQuality.premium,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(icon, color: iconColor, size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: TextStyle(
-                              color: theme.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (message != null && message.isNotEmpty) ...[
-                            const SizedBox(height: 2),
+      // Material wrapper: the banner is inserted by a raw
+      // OverlayEntry, so without a Material ancestor its Texts
+      // fall back to the WidgetsApp error style (monospace +
+      // yellow double underline - the yellow lines chen reported
+      // under 提示 / 下次打开生效). Material supplies the
+      // theme bodyMedium ambient style instead.
+      child: Material(
+        color: Colors.transparent,
+        child: SlideTransition(
+          position: _slide,
+          child: FadeTransition(
+            opacity: _fade,
+            child: Dismissible(
+              key: const ValueKey('hao-toast'),
+              direction: DismissDirection.up,
+              onDismissed: (_) => widget.onDismiss(),
+              child: GestureDetector(
+                onTap: widget.onDismiss,
+                child: GlassCard(
+                  radius: 14,
+                  shadow: GlassShadow.panel,
+                  quality: GlassCardQuality.premium,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(icon, shadows: HaoTheme.legibilityShadows(context),  color: iconColor, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              message,
+                              widget.title,
                               style: TextStyle(
-                                color: theme.textSecondary,
-                                fontSize: 13,
-                                height: 1.4,
+                                shadows: HaoTheme.legibilityShadows(context),
+                                color: theme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ],
-                          if (widget.actions.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (final action in widget.actions)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        widget.onDismiss();
-                                        action.onTap();
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: theme.accentSoft,
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          action.label,
-                                          style: TextStyle(
-                                            color: theme.accent,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
+                            if (message != null && message.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                message,
+                                style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(context),
+                                  color: theme.textSecondary,
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                            if (widget.actions.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final action in widget.actions)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          widget.onDismiss();
+                                          action.onTap();
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: theme.accentSoft,
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            action.label,
+                                            style: TextStyle(
+                                              shadows:
+                                                  HaoTheme.legibilityShadows(
+                                                    context,
+                                                  ),
+                                              color: theme.accent,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

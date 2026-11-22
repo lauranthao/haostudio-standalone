@@ -102,16 +102,38 @@ void main() {
   }
 
   Future<void> openTrackSheet(WidgetTester tester) async {
-    expect(find.byTooltip('音轨与字幕'), findsOneWidget);
-    await tester.tap(find.byTooltip('音轨与字幕'));
+    // Tracks moved into the 更多 menu (build 29, K): open the
+    // CupertinoActionSheet first, then the 音轨与字幕 action. Push
+    // the clock so the sheet finishes sliding in (its rows start
+    // below the fold). Measured: one pump(1500 ms) does NOT move
+    // it — the route's animation only starts ticking on the SECOND
+    // pump call (the time advance inside the first pump runs before
+    // the route's first frame). Two time-advancing pumps land it;
+    // the same pair after the tap lets the pop finish (its label
+    // otherwise stays in the tree next to the track sheet's title).
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump();
+    await tester.tap(find.text('音轨与字幕'));
     await settle(tester);
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump();
     expect(find.text('音轨与字幕'), findsOneWidget);
   }
 
   Future<void> closeTrackSheet(WidgetTester tester) async {
-    // Tap the barrier above the sheet (sheet is 0.6 of the height).
-    await tester.tapAt(const Offset(400, 100));
+    // Tap the barrier above the sheet. The sheet is content-height
+    // (taller than the old 0.6 guess), so tap near the top of the
+    // viewport; then push the clock twice — the dismiss animation,
+    // like the more menu's entrance, only ticks on a second
+    // time-advancing pump.
+    await tester.tapAt(const Offset(400, 10));
     await settle(tester);
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump(const Duration(milliseconds: 800));
+    await tester.pump();
     expect(find.text('音轨与字幕'), findsNothing);
   }
 
@@ -242,6 +264,11 @@ void main() {
     await closeTrackSheet(tester);
 
     // Next episode: same session, so the remembered choice stays.
+    // The sheet round-trip burned >5 s of fake time, so the 5 s
+    // auto-hide already hid the control bar — wake it with one
+    // surface tap first (tap-down re-shows it immediately).
+    await tester.tap(find.byKey(const ValueKey('fake-video')));
+    await tester.pump();
     await tester.tap(find.byTooltip('下一集'));
     await settle(tester);
     expect(session.currentAudioTrackId, '2');

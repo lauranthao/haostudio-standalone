@@ -12,6 +12,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
@@ -48,7 +49,14 @@ class _FavouritesPageState extends State<FavouritesPage> {
 
   void _playSong(Song song) {
     final idx = _songs.indexWhere((s) => s.identityKey == song.identityKey);
-    unawaited(_player.playQueue(_songs, idx < 0 ? 0 : idx, label: '我的收藏'));
+    unawaited(
+      _player.playQueue(
+        _songs,
+        idx < 0 ? 0 : idx,
+        label: '我的收藏',
+        sourceKey: QueueSource.favourites,
+      ),
+    );
     unawaited(openPlayerPage<void>(context));
   }
 

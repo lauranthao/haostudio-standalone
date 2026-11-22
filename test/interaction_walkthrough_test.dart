@@ -77,6 +77,8 @@ class _NoLoadController extends MusicPlayerController {
     List<Song> songs,
     int index, {
     String label = '',
+    String sourceKey = '',
+    bool resumeFromMemory = false,
   }) async {
     playQueueCalls.add((songs, index));
     queue.assignAll(songs);
@@ -353,8 +355,9 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('open'));
       await tester.pump();
-      // Glass shell, not a raw AlertDialog.
-      expect(find.byType(AlertDialog), findsNothing);
+      // NativeDialog.alert's off-iOS fallback IS a Material
+      // AlertDialog (the old glass shell is gone).
+      expect(find.byType(AlertDialog), findsOneWidget);
       await tester.tap(find.text(tapLabel));
       await tester.pump();
       return result;

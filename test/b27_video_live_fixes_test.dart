@@ -1412,7 +1412,10 @@ void main() {
       // must not show twice (before the fix it read "主播甲 · 哔哩哔哩").
       expect(find.text('主播甲 · 哔哩哔哩'), findsNothing);
       // Watching pill, same style as the live tab's card.
-      expect(find.text('1.2万'), findsOneWidget);
+      // Build-29 item 6: the pill is labelled by metric kind, never a
+      // bare number — bilibili reports 在线人数, so 12345 renders as
+      // "在线 1.2万人" (same text as the live tab's card).
+      expect(find.text('在线 1.2万人'), findsOneWidget);
       expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
     });
 
@@ -1675,7 +1678,7 @@ void main() {
       // Play to 10:00 on episode 5, then switch lines.
       backends.last.emitPosition(const Duration(minutes: 10));
       await settle(tester);
-      await tester.tap(find.widgetWithText(ChoiceChip, '线路2'));
+      await tester.tap(find.text('线路2'));
       // The tap's _switchLine awaits _saveProgress (a Hive write)
       // before opening the new line, and that write starts in the
       // fake zone — plain settles do not release it in time (probed

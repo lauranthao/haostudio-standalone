@@ -16,6 +16,7 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/settings/danmaku_settings_page.dart';
 import 'package:standalone/features/settings/source_stores.dart';
 import 'package:standalone/widgets/hao_segmented_control.dart';
+import 'package:standalone/widgets/native_switch.dart';
 
 import 'helpers/hive_test_setup.dart' as hive_setup;
 
@@ -138,10 +139,13 @@ void main() {
     // Default OFF (opt-in): absent key means disabled for 'vod',
     // unlike the live platforms which default ON.
     expect(DanmakuSettings.isEnabled(DanmakuSettings.vodSiteId), isFalse);
-    final tile = tester.widget<SwitchListTile>(
-      find.ancestor(
-        of: find.text('影视弹幕'),
-        matching: find.byType(SwitchListTile),
+    final tile = tester.widget<HaoNativeSwitch>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('影视弹幕'),
+          matching: find.byType(ListTile),
+        ),
+        matching: find.byType(HaoNativeSwitch),
       ),
     );
     expect(tile.value, isFalse);

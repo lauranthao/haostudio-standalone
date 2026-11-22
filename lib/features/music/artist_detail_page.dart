@@ -18,6 +18,7 @@ import '../../core/theme/haptics.dart';
 import '../../core/theme/glass.dart';
 import '../../services/clipboard_service.dart';
 import '../../services/music/music_api.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'album_detail_page.dart';
@@ -107,7 +108,15 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
   void _playAll() {
     final songs = _detail?.songs ?? [];
     if (songs.isEmpty) return;
-    unawaited(_player.playQueue(songs, 0, label: widget.artistName));
+    unawaited(
+      _player.playQueue(
+        songs,
+        0,
+        label: widget.artistName,
+        sourceKey: QueueSource.artist(widget.artistName),
+        resumeFromMemory: true,
+      ),
+    );
     unawaited(openPlayerPage<void>(context));
   }
 
@@ -188,7 +197,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                               onPressed: _playAll,
                               backgroundColor: theme.accent,
                               foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                              child: const Icon(Icons.play_arrow, size: 32),
+                              child: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  size: 32),
                             ),
                           ],
                         ),
@@ -293,7 +302,13 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
       song: song,
       isFav: favIds.contains(song.identityKey),
       onPlay: () {
-        unawaited(_player.playQueue(queue, index));
+        unawaited(
+          _player.playQueue(
+            queue,
+            index,
+            sourceKey: QueueSource.artist(widget.artistName),
+          ),
+        );
         unawaited(openPlayerPage<void>(context));
       },
       onToggleFav: () async {

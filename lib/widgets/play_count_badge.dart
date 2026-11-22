@@ -111,7 +111,7 @@ class PlayCountBadge extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Kumone Components.swift:149-150：play.fill，size 8。
-            const Icon(Icons.play_arrow, size: 8, color: Colors.white),
+            Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  size: 8, color: Colors.white),
             // Kumone Components.swift:148：HStack spacing 3。
             const SizedBox(width: 3),
             Text(

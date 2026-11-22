@@ -3,6 +3,9 @@
 // - Title + optional message; kind icon inferred from the title.
 // - Auto-dismisses after 2.5s by default; tap dismisses immediately.
 // - Actions (retry / next) render as inline buttons and fire on tap.
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -118,4 +121,152 @@ void main() {
     expect(find.text('第二条'), findsOneWidget);
     HaoToast.dismiss();
   });
+
+  // J (chen 2026-11-22): 提示 / 下次打开生效两行字下的黄线。根因是
+  // toast 经 raw OverlayEntry 插入、没有 Material 祖先，Text 回落到
+  // WidgetsApp 的 _errorTextStyle（monospace + 黄色双下划线）。修法是
+  // banner 内包一层透明 Material；此测试锁死：toast 渲染出的每个
+  // span 都不带下划线、不带黄色、不带 monospace。
+  testWidgets('toast texts never fall back to the yellow-underlined error style',
+      (tester) async {
+    await _pumpApp(tester);
+    HaoToast.show('提示', message: '下次打开生效');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('提示'), findsOneWidget);
+    expect(find.text('下次打开生效'), findsOneWidget);
+
+    final richTexts = find
+        .byType(RichText)
+        .evaluate()
+        .map((e) => e.widget as RichText)
+        .toList();
+    expect(richTexts, isNotEmpty);
+    var checked = 0;
+    void checkSpan(InlineSpan span) {
+      if (span is TextSpan) {
+        final style = span.style;
+        if (style != null) {
+          expect(style.decoration, anyOf(isNull, TextDecoration.none),
+              reason: 'toast text must not be underlined');
+          expect(style.decorationColor, isNot(Colors.yellow),
+              reason: 'toast text must not carry the error-style yellow underline');
+          expect(style.fontFamily, isNot('monospace'),
+              reason: 'toast text must use the theme font, not the error fallback');
+          checked++;
+        }
+        span.children?.forEach(checkSpan);
+      }
+    }
+
+    for (final rt in richTexts) {
+      checkSpan(rt.text);
+    }
+    expect(checked, greaterThanOrEqualTo(2));
+    HaoToast.dismiss();
+  });
+
+  testWidgets('golden: toast over busy wallpaper at glass 0% has no yellow underline',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      GetMaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: HaoThemes.of(
+          HaoThemeId.appleGlass,
+          glassIntensity: 0,
+          backgroundActive: true,
+        ).light,
+        home: const Scaffold(
+          body: _ToastBackdrop(child: SizedBox.expand()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    HaoToast.show('提示', message: '下次打开生效');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('下次打开生效'), findsOneWidget);
+    await expectLater(
+      find.byType(GetMaterialApp),
+      matchesGoldenFile('goldens/hao_toast_no_underline_glass0.png'),
+    );
+    HaoToast.dismiss();
+  });
+}
+
+/// Painted busy wallpaper + the 0.55 theme scrim, exactly like the
+/// production AppearanceBackgroundLayer (same seed-28 painter as the
+/// b29 glass-0 goldens).
+class _ToastBackdrop extends StatelessWidget {
+  const _ToastBackdrop({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.ofOrDefault(context);
+    return SizedBox(
+      width: 800,
+      height: 600,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(painter: _ToastBusyPainter(), size: const Size(800, 600)),
+          Container(
+            color: theme.scaffoldBackground.withValues(alpha: 0.55),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ToastBusyPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black);
+    final random = math.Random(28);
+    for (var i = 0; i < 240; i++) {
+      final x = random.nextDouble() * (size.width - 40);
+      final y = random.nextDouble() * (size.height - 40);
+      final w = 20 + random.nextDouble() * 100;
+      final h = 20 + random.nextDouble() * 100;
+      canvas.drawRect(
+        Rect.fromLTWH(x, y, w, h),
+        Paint()
+          ..color = Color.fromRGBO(
+            random.nextInt(256),
+            random.nextInt(256),
+            random.nextInt(256),
+            1,
+          ),
+      );
+    }
+    final points = <Offset>[];
+    for (var i = 0; i < 8000; i++) {
+      points.add(
+        Offset(
+          random.nextDouble() * size.width,
+          random.nextDouble() * size.height,
+        ),
+      );
+    }
+    canvas.drawPoints(
+      ui.PointMode.points,
+      points,
+      Paint()
+        ..color = Colors.white
+        ..strokeWidth = 1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ToastBusyPainter oldDelegate) => false;
 }

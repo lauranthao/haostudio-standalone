@@ -14,11 +14,15 @@
 // fullscreen flying danmaku, and the UI says so.
 
 import 'package:flutter/material.dart';
+import 'package:glassy_ui_ios/glassy_ui_ios.dart';
 
 import '../../core/storage/hive_store.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
 import '../../widgets/hao_segmented_control.dart';
+import '../../widgets/hao_glass_button.dart';
+import '../../widgets/hao_slider.dart';
+import '../../widgets/native_switch.dart';
 import '../../widgets/settings_ui.dart';
 import '../../domains/live/presentation/playback/danmaku_block_store.dart';
 import '../../shared/platforms/sites.dart';
@@ -130,13 +134,9 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               ...Sites.supportedSiteIds.map((id) {
                 final site = Sites.of(id);
                 final on = _enabled[id] ?? true;
-                return SwitchListTile(
-                  title: Text(
-                    site.name,
-                    style: TextStyle(color: theme.textPrimary),
-                  ),
+                return HaoSwitchRow(
+                  title: site.name,
                   value: on,
-                  activeThumbColor: theme.accent,
                   onChanged: (v) async {
                     await DanmakuSettings.setEnabled(id, v);
                     if (!mounted) return;
@@ -147,13 +147,9 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               // VOD ("影视弹幕") — same Hive map, its own key, default
               // OFF. Not a live platform, so it is not in
               // Sites.supportedSiteIds and gets its own row.
-              SwitchListTile(
-                title: Text(
-                  '影视弹幕',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
+              HaoSwitchRow(
+                title: '影视弹幕',
                 value: _enabled[DanmakuSettings.vodSiteId] ?? false,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setEnabled(
                     DanmakuSettings.vodSiteId,
@@ -167,17 +163,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               // key, default off — see the comment on the key in
               // hive_store.dart. No DanmakuSettings wrapper, so the
               // switch reads/writes HiveStore directly.
-              SwitchListTile(
-                title: Text(
-                  '弹幕防遮挡',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '仅 MPV 生效（点播 + 直播）；人物快速移动时约 100–200ms 残影',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '弹幕防遮挡',
+                subtitle: '仅 MPV 生效（点播 + 直播）；人物快速移动时约 100–200ms 残影',
                 value: _occlusionAvoidance,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await HiveStore.put(
                     HiveKeys.danmakuOcclusionAvoidance,
@@ -194,7 +183,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
           Row(
             children: [
               Expanded(
-                child: Slider(
+                child: HaoSlider(
                   value: _fontSize,
                   min: DanmakuSettings.minFontSize,
                   max: DanmakuSettings.maxFontSize,
@@ -231,7 +220,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
           Row(
             children: [
               Expanded(
-                child: Slider(
+                child: HaoSlider(
                   value: _opacity,
                   min: DanmakuSettings.minOpacity,
                   max: DanmakuSettings.maxOpacity,
@@ -300,17 +289,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
           const HaoSectionTitle('全屏飞弹幕'),
           SettingsGroup(
             children: [
-              SwitchListTile(
-                title: Text(
-                  '描边',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '仅全屏飞弹幕生效',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '描边',
+                subtitle: '仅全屏飞弹幕生效',
                 value: _stroke,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setStroke(v);
                   if (!mounted) return;
@@ -330,7 +312,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Slider(
+                    child: HaoSlider(
                       value: _strokeWidth,
                       min: DanmakuSettings.minStrokeWidth,
                       max: DanmakuSettings.maxStrokeWidth,
@@ -377,7 +359,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Slider(
+                    child: HaoSlider(
                       value: _speed,
                       min: DanmakuSettings.minSpeed,
                       max: DanmakuSettings.maxSpeed,
@@ -422,7 +404,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Slider(
+                    child: HaoSlider(
                       value: _maxCount.toDouble(),
                       min: DanmakuSettings.minMaxCount.toDouble(),
                       max: DanmakuSettings.maxMaxCount.toDouble(),
@@ -537,13 +519,9 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   },
                 ),
               ),
-              SwitchListTile(
-                title: Text(
-                  '显示用户名',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
+              HaoSwitchRow(
+                title: '显示用户名',
                 value: _showUsernames,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setShowUsernames(v);
                   if (!mounted) return;
@@ -556,17 +534,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
           const HaoSectionTitle('内容过滤'),
           SettingsGroup(
             children: [
-              SwitchListTile(
-                title: Text(
-                  '过滤相似弹幕',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '与刚显示过的弹幕相似（如加标点、数字变体）时隐藏',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '过滤相似弹幕',
+                subtitle: '与刚显示过的弹幕相似（如加标点、数字变体）时隐藏',
                 value: _similarityEnabled,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setSimilarityEnabled(v);
                   if (!mounted) return;
@@ -586,7 +557,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
               Row(
                 children: [
                   Expanded(
-                    child: Slider(
+                    child: HaoSlider(
                       value: _similarityThreshold.toDouble(),
                       min: DanmakuSettings.minSimilarityThreshold.toDouble(),
                       max: DanmakuSettings.maxSimilarityThreshold.toDouble(),
@@ -621,34 +592,20 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   ),
                 ],
               ),
-              SwitchListTile(
-                title: Text(
-                  '屏蔽纯表情弹幕',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '只由表情（或 [表情]）组成的弹幕不显示',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '屏蔽纯表情弹幕',
+                subtitle: '只由表情（或 [表情]）组成的弹幕不显示',
                 value: _blockEmoteOnly,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setBlockEmoteOnly(v);
                   if (!mounted) return;
                   setState(() => _blockEmoteOnly = v);
                 },
               ),
-              SwitchListTile(
-                title: Text(
-                  '屏蔽超长弹幕',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '超过设定字数的弹幕不显示',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '屏蔽超长弹幕',
+                subtitle: '超过设定字数的弹幕不显示',
                 value: _blockLong,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setBlockLong(v);
                   if (!mounted) return;
@@ -659,7 +616,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Slider(
+                      child: HaoSlider(
                         value: _blockLongLength.toDouble(),
                         min: DanmakuSettings.minBlockLongLength.toDouble(),
                         max: DanmakuSettings.maxBlockLongLength.toDouble(),
@@ -692,17 +649,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                     ),
                   ],
                 ),
-              SwitchListTile(
-                title: Text(
-                  '斗鱼疑似机器人过滤',
-                  style: TextStyle(color: theme.textPrimary),
-                ),
-                subtitle: Text(
-                  '仅斗鱼：隐藏平台标记为疑似自动发送的弹幕',
-                  style: TextStyle(color: theme.textSecondary),
-                ),
+              HaoSwitchRow(
+                title: '斗鱼疑似机器人过滤',
+                subtitle: '仅斗鱼：隐藏平台标记为疑似自动发送的弹幕',
                 value: _douyuBotFilter,
-                activeThumbColor: theme.accent,
                 onChanged: (v) async {
                   await DanmakuSettings.setDouyuBotFilter(v);
                   if (!mounted) return;
@@ -720,7 +670,10 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                   controller: _blockInput,
                   decoration: InputDecoration(
                     hintText: '输入要屏蔽的词或用户名',
-                    hintStyle: TextStyle(color: theme.textMuted),
+                    hintStyle: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                      color: theme.textMuted,
+                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
@@ -742,10 +695,17 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                 },
               ),
               const SizedBox(width: 8),
-              FilledButton(
+              HaoGlassButton(
+                label: '添加',
                 onPressed: _addBlock,
-                style: FilledButton.styleFrom(backgroundColor: theme.accent),
-                child: const Text('添加'),
+                style: NativeStyle(
+                  tintColor: theme.accent,
+                ),
+                fallback: FilledButton(
+                  onPressed: _addBlock,
+                  style: FilledButton.styleFrom(backgroundColor: theme.accent),
+                  child: const Text('添加'),
+                ),
               ),
             ],
           ),
@@ -770,7 +730,7 @@ class _DanmakuSettingsPageState extends State<DanmakuSettingsPage> {
                       style: TextStyle(color: theme.textSecondary),
                     ),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
+                      icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
                       color: theme.textSecondary,
                       tooltip: '删除',
                       onPressed: () => _removeBlock(entry.id),

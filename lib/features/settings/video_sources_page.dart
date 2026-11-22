@@ -9,22 +9,22 @@
 // shipped defaults. `kind: search` sources are search-only — their
 // play URLs are not trusted — and are labelled as such.
 
-import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../../widgets/hao_toast.dart';
 
-import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/haptics.dart';
-import '../../core/theme/liquid_glass_theme.dart';
-import '../../services/video/emby_client.dart';
 import '../../services/video/emby_models.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/native_switch.dart';
+import '../../widgets/hao_inset_grouped.dart';
+import '../../widgets/hao_glass_button.dart';
 import '../../widgets/settings_ui.dart';
 import '../video/cms_sources.dart';
 import '../video/video_history_store.dart';
+import '../video/video_home_service.dart';
 import '../video/video_models.dart';
+import 'emby_connect_page.dart';
 
 class VideoSourcesPage extends StatefulWidget {
   const VideoSourcesPage({super.key});
@@ -36,143 +36,41 @@ class VideoSourcesPage extends StatefulWidget {
 class _VideoSourcesPageState extends State<VideoSourcesPage> {
   late List<VideoSource> _sources;
 
-  // Emby: one server, configured here, stored under its own Hive key
-  // (hao_emby_config). The key never leaves this card's controllers
-  // and EmbyClient — no logging, no toString, no share text.
+  // Emby: one server, configured on the Emby connect page, stored
+  // under its own Hive key (hao_emby_config). This page only shows
+  // the entry row (name / status / enable switch) and opens the
+  // connect page; the address / login / probe / user-pick logic
+  // lives in emby_connect_page.dart. The key/token never leaves
+  // EmbyConfigStore and EmbyClient — no logging, no toString, no
+  // share text.
   EmbyServerConfig? _embyConfig;
-  late final TextEditingController _embyBaseController;
-  late final TextEditingController _embyKeyController;
-  bool _embyProbing = false;
-  String _embyProbeStatus = '';
-  bool _embyProbeOk = false;
-  List<EmbyUser> _embyUsers = const [];
-  String? _embySelectedUserId;
-  bool _embyHttpWarned = false;
-  CancelToken? _embyProbeToken;
 
   @override
   void initState() {
     super.initState();
     _sources = VideoSourcesStore.getAll();
     _embyConfig = EmbyConfigStore.load();
-    _embyBaseController =
-        TextEditingController(text: _embyConfig?.baseUrl ?? '');
-    _embyKeyController =
-        TextEditingController(text: _embyConfig?.apiKey ?? '');
-    _embySelectedUserId = _embyConfig?.userId.isNotEmpty == true
-        ? _embyConfig!.userId
-        : null;
-  }
-
-  @override
-  void dispose() {
-    _embyProbeToken?.cancel();
-    _embyBaseController.dispose();
-    _embyKeyController.dispose();
-    super.dispose();
-  }
-
-  EmbyServerConfig _embyFromFields({bool? enabled, String? userId}) {
-    final prev = _embyConfig;
-    return EmbyServerConfig(
-      baseUrl: _embyBaseController.text.trim(),
-      apiKey: _embyKeyController.text.trim(),
-      userId: userId ?? prev?.userId ?? '',
-      enabled: enabled ?? prev?.enabled ?? true,
-      movieLibraryId: prev?.movieLibraryId,
-      tvLibraryId: prev?.tvLibraryId,
-    );
-  }
-
-  Future<void> _saveEmby({bool? enabled, String? userId}) async {
-    final config = _embyFromFields(enabled: enabled, userId: userId);
-    _embyConfig = config;
-    await EmbyConfigStore.save(config);
   }
 
   Future<void> _toggleEmbyEnabled(bool value) async {
-    await _saveEmby(enabled: value);
+    final prev = _embyConfig;
+    if (prev == null) return;
+    final config = prev.copyWith(enabled: value);
+    _embyConfig = config;
+    await EmbyConfigStore.save(config);
     if (mounted) setState(() {});
   }
 
-  Future<void> _probeEmby() async {
-    final baseUrl = _embyBaseController.text.trim();
-    final apiKey = _embyKeyController.text.trim();
-    if (baseUrl.isEmpty || apiKey.isEmpty) {
-      setState(() {
-        _embyProbeOk = false;
-        _embyProbeStatus = '请先填写服务器地址和 API 密钥';
-      });
-      return;
-    }
-    if (!baseUrl.startsWith('http://') &&
-        !baseUrl.startsWith('https://')) {
-      setState(() {
-        _embyProbeOk = false;
-        _embyProbeStatus = '服务器地址必须以 http:// 或 https:// 开头';
-      });
-      return;
-    }
-    if (isPlainHttpVideoSourceUrl(baseUrl) && !_embyHttpWarned) {
-      // Plain-http server: warn clearly (requests go in the clear),
-      // but do NOT block — a LAN http address is a legal setup.
-      // Same glass confirm shell as the CMS add-source warning.
-      final keep = await showGlassConfirmDialog(
-        context,
-        title: '该地址使用明文 http',
-        content:
-            'Emby 服务器地址是 http://，请求将以明文传输，同一网络下可能被窃听或篡改。建议改用支持 https 的地址。',
-        confirmLabel: '仍要连接',
-      );
-      if (keep != true || !mounted) return;
-      _embyHttpWarned = true;
-    }
-    await _saveEmby();
-    setState(() {
-      _embyProbing = true;
-      _embyProbeStatus = '正在连接…';
-    });
-    _embyProbeToken?.cancel();
-    final token = _embyProbeToken = CancelToken();
-    final result = await EmbyClient(config: _embyConfig!)
-        .probe(cancelToken: token);
-    if (!mounted) return;
-    if (token.isCancelled) return;
-    if (result.ok) {
-      if (result.users.length == 1) {
-        await _saveEmby(userId: result.users.first.id);
-        _embySelectedUserId = result.users.first.id;
-        _embyUsers = const [];
-      } else {
-        _embyUsers = result.users;
-        if (_embyUsers.isNotEmpty &&
-            (_embySelectedUserId == null ||
-                !_embyUsers.any((u) => u.id == _embySelectedUserId))) {
-          _embySelectedUserId = null;
-        }
-      }
-      setState(() {
-        _embyProbing = false;
-        _embyProbeOk = true;
-        _embyProbeStatus = result.serverName.isNotEmpty
-            ? '已连接：${result.serverName}'
-                '${result.version.isNotEmpty ? '（${result.version}）' : ''}'
-            : '已连接';
-      });
-    } else {
-      setState(() {
-        _embyProbing = false;
-        _embyProbeOk = false;
-        _embyProbeStatus = result.errorMessage;
-      });
-    }
-  }
-
-  Future<void> _onEmbyUserSelected(String? userId) async {
-    if (userId == null) return;
-    await _saveEmby(userId: userId);
-    if (mounted) {
-      setState(() => _embySelectedUserId = userId);
+  /// Open the Emby connect page; reload the entry row when it pops
+  /// with a saved config.
+  Future<void> _openEmbyConnect() async {
+    final saved = await Navigator.of(context).push<bool>(
+      CupertinoPageRoute<bool>(
+        builder: (_) => EmbyConnectPage(initialConfig: _embyConfig),
+      ),
+    );
+    if (saved == true && mounted) {
+      setState(() => _embyConfig = EmbyConfigStore.load());
     }
   }
 
@@ -206,6 +104,21 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       for (var i = 0; i < _sources.length; i++) _sources[i].copyWith(sort: i),
     ];
     await _save();
+  }
+
+  /// Re-scan ONE source (I-影视 item 11): only that source's home
+  /// rows are re-fetched (VideoHomeService.rescanSource) — no other
+  /// source is touched, and a failed row keeps its old items.
+  /// A search-only source owns no home row: the service returns
+  /// null and the toast says so instead of pretending it worked.
+  Future<void> _rescan(VideoSource source) async {
+    final updated = await VideoHomeService().rescanSource(source);
+    if (!mounted) return;
+    if (updated == null) {
+      HaoToast.show('该源没有可重扫的分类', message: '仅搜索的源不参与首页');
+      return;
+    }
+    HaoToast.show('已重扫「${source.name}」', message: '首页该源的分类已更新');
   }
 
   Future<void> _delete(VideoSource source) async {
@@ -325,99 +238,58 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
     await _save();
   }
 
-  /// Emby config card: sits above the CMS list, independent of it.
-  /// Fields: server address + API key + probe + enable switch. No
-  /// extra hint text. The user id is never typed here — probe fills
-  /// it in (single user), or the picker below appears (multi-user).
+  /// Emby entry row: sits above the CMS list, independent of it.
+  /// Tap the row to open the Emby connect page; the switch toggles
+  /// the server on/off without leaving this page. The video tab's
+  /// switching behaviour is unchanged (config.enabled + isConfigured
+  /// still decide what the Emby tab shows).
   Widget _buildEmbyCard(HaoTheme theme) {
-    final enabled = _embyConfig?.enabled ?? true;
-    return HaoGlassCard(
+    final config = _embyConfig;
+    final enabled = config?.enabled ?? true;
+    final configured = config?.isConfigured ?? false;
+    final String subtitle;
+    if (!configured) {
+      subtitle = '未配置，点击添加服务器';
+    } else if (!enabled) {
+      subtitle = '已停用';
+    } else if (config!.serverName.isNotEmpty) {
+      subtitle = '已连接：${config.serverName}'
+          '${config.serverVersion.isNotEmpty ? '（${config.serverVersion}）' : ''}';
+    } else {
+      subtitle = '已配置';
+    }
+    return HaoInsetGroupedSection(
       margin: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-      quality: GlassCardQuality.standard,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Emby',
-                style: TextStyle(
-                  color: theme.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              GlassSwitch(
-                value: enabled,
-                // N-8: iOS size 51x31 (was Material Switch).
-                width: 51,
-                height: 31,
-                activeColor: theme.accent,
-                settings: HaoLiquidGlass.ios27Settings(context),
-                enableHaptics: HaoHaptics.enabled,
-                onChanged: _toggleEmbyEnabled,
-              ),
-            ],
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      child: ListTile(
+        contentPadding: const EdgeInsets.only(left: 0, right: 4),
+        leading: EmbyLogo(size: 40),
+        title: Text(
+          config?.name ?? 'Emby',
+          style: TextStyle(
+            color: theme.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
           ),
-          TextField(
-            controller: _embyBaseController,
-            decoration: const InputDecoration(
-              labelText: '服务器地址',
-              hintText: 'http://192.168.1.10:8096',
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: theme.textSecondary, fontSize: 13),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            HaoNativeSwitch(
+              value: configured && enabled,
+              onChanged: configured ? _toggleEmbyEnabled : null,
+              activeColor: theme.accent,
+              semanticsLabel: 'Emby',
             ),
-            keyboardType: TextInputType.url,
-            onChanged: (_) => _saveEmby(),
-          ),
-          TextField(
-            controller: _embyKeyController,
-            decoration: const InputDecoration(labelText: 'API 密钥'),
-            obscureText: true,
-            onChanged: (_) => _saveEmby(),
-          ),
-          if (_embyUsers.length > 1) ...[
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _embySelectedUserId,
-              decoration: const InputDecoration(labelText: '用户'),
-              items: _embyUsers
-                  .map(
-                    (u) => DropdownMenuItem<String>(
-                      value: u.id,
-                      child: Text(u.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _onEmbyUserSelected,
-            ),
+            const SizedBox(width: 4),
+            const HaoChevron(),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              OutlinedButton(
-                onPressed: _embyProbing ? null : _probeEmby,
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: theme.hairline),
-                  foregroundColor: theme.accent,
-                ),
-                child: Text(_embyProbing ? '连接中…' : '测连通'),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _embyProbeStatus,
-                  style: TextStyle(
-                    color: _embyProbeOk
-                        ? theme.accent
-                        : theme.textSecondary,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
+        onTap: _openEmbyConnect,
       ),
     );
   }
@@ -441,13 +313,15 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
       appBar: AppBar(
         title: const Text('影视源管理'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
+          HaoGlassIconButton(
+            symbol: 'plus',
+            fallbackIcon: Icons.add,
             tooltip: '添加影视源',
             onPressed: _addSource,
           ),
-          IconButton(
-            icon: const Icon(Icons.restore),
+          HaoGlassIconButton(
+            symbol: 'arrow.counterclockwise',
+            fallbackIcon: Icons.restore,
             tooltip: '恢复默认',
             onPressed: _reset,
           ),
@@ -461,9 +335,8 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
             child: HaoHint('长按拖动排序，搜索按顺序尝试；「仅搜索」的源只参与搜索，不提供播放地址。'),
           ),
           Expanded(
-            child: HaoGlassCard(
+            child: HaoInsetGroupedSection(
               margin: const EdgeInsets.symmetric(horizontal: 8),
-              quality: GlassCardQuality.standard,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: ReorderableListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -487,20 +360,22 @@ class _VideoSourcesPageState extends State<VideoSourcesPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.delete_outline),
+                          icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
+                          color: theme.textSecondary,
+                          tooltip: '重新扫描',
+                          onPressed: () => _rescan(source),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
                           color: theme.textSecondary,
                           tooltip: '删除',
                           onPressed: () => _delete(source),
                         ),
-                        GlassSwitch(
+                        HaoNativeSwitch(
                           value: source.enabled,
-                          // N-8: iOS size 51x31 (was Material Switch).
-                          width: 51,
-                          height: 31,
-                          activeColor: theme.accent,
-                          settings: HaoLiquidGlass.ios27Settings(context),
-                          enableHaptics: HaoHaptics.enabled,
                           onChanged: (v) => _toggle(source, v),
+                          activeColor: theme.accent,
+                          semanticsLabel: source.name,
                         ),
                       ],
                     ),

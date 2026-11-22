@@ -22,6 +22,7 @@
 
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flame_barrage/flame_barrage.dart';
 import 'package:flutter/foundation.dart';
@@ -30,22 +31,31 @@ import '../../widgets/hao_pressable.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/danmaku/danmaku_occlusion.dart';
 import '../../core/danmaku/danmaku_occlusion_mask.dart';
 import '../../core/native/person_segmentation.dart';
+import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_backend.dart';
 import '../../core/player/kernel/video_fit.dart';
+import '../../core/player/super_resolution.dart';
 import '../../core/player/vod_controls.dart';
+import '../../core/player/vod_features.dart';
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/local_paths.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/hao_settle_spring.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/haptics.dart';
+import '../../services/music/sleep_timer.dart';
 import '../../services/video/emby_client.dart';
 import '../../services/video/emby_models.dart';
 import '../../domains/live/presentation/playback/danmaku_filter.dart';
 import '../../services/video/vod_danmaku_client.dart';
+import '../../widgets/hao_toast.dart';
+import '../../widgets/native_vod_controls.dart';
 import '../music/music_player_controller.dart';
 import '../player/fullscreen_controller.dart';
 import '../player/playback_session.dart';
@@ -57,6 +67,8 @@ import 'video_detail_service.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
+import 'vod_player_settings_sheet.dart';
+import 'vod_sleep_timer_sheet.dart';
 
 /// Next episode index when the current episode ends, or null when
 /// playback must stop at the end state (V-P0-2, pure — unit-tested):
@@ -123,6 +135,56 @@ int? autoNextEpisodeIndex({
   );
 }
 
+/// Emby periodic progress throttle (C 缺口, build 29): report at
+/// most once per 15 s of FORWARD playback, plus once on exit /
+/// completion. Position-based, not wall-clock: position only moves
+/// while playing, so a paused film reports nothing, and a widget
+/// test can drive it with fake positions instead of waiting 15 real
+/// seconds. At 1x speed 15 s of position is 15 s of wall time; at
+/// 2x it reports twice as often, which Emby tolerates. The exit
+/// report is unconditional (see [_NativeVideoPlayerPageState
+/// ._reportEmbyProgress], isExit).
+bool shouldReportEmbyProgress({
+  required double lastReportedPosition,
+  required double position,
+}) =>
+    position - lastReportedPosition >= 15.0;
+
+// -- D 组播放设置面板: cycle orders + labels (same values as
+// Settings → 影视播放; the panel and the settings page only share
+// the Hive keys, not these display maps).
+const List<String> _skipIntroOrder = ['off', 'manual', 'auto3s', 'autoNow'];
+const Map<String, String> _skipIntroLabels = {
+  'off': '关',
+  'manual': '手动',
+  'auto3s': '自动延时 3 秒',
+  'autoNow': '自动立即',
+};
+const List<String> _subFontOrder = ['small', 'medium', 'large'];
+const Map<String, String> _subFontLabels = {
+  'small': '小',
+  'medium': '标准',
+  'large': '大',
+};
+const List<String> _subColorOrder = ['white', 'yellow', 'cyan'];
+const Map<String, String> _subColorLabels = {
+  'white': '白色',
+  'yellow': '黄色',
+  'cyan': '青色',
+};
+const List<String> _subPositionOrder = ['bottom', 'middle', 'top'];
+const Map<String, String> _subPositionLabels = {
+  'bottom': '底部',
+  'middle': '中部',
+  'top': '顶部',
+};
+
+/// Next value in a cycle order (unknown current reads as the first).
+String _nextTier(List<String> order, String current) {
+  final i = order.indexOf(current);
+  return order[(i < 0 ? 0 : i + 1) % order.length];
+}
+
 /// Opens [detail] at [initialLineIndex]/[initialEpisodeIndex] in
 /// landscape fullscreen. [onClose] reports the last line/episode/
 /// position so the detail page can refresh its resume state.
@@ -144,6 +206,8 @@ class NativeVideoPlayerPage extends StatefulWidget {
     this.session,
     this.detailService,
     this.danmakuClient,
+    this.embyClientFactory,
+    this.nativeVodControls = false,
   });
 
   final VideoDetail detail;
@@ -164,6 +228,20 @@ class NativeVideoPlayerPage extends StatefulWidget {
   /// Test seam: an injected [VodDanmakuClient]. Null in production
   /// (the page owns a default client hitting danmu-api).
   final VodDanmakuClient? danmakuClient;
+
+  /// Test seam: an injected Emby client factory (progress reports).
+  /// Null in production — the page builds [EmbyClient] from the
+  /// stored config as before.
+  final EmbyClient Function(EmbyServerConfig config)? embyClientFactory;
+
+  /// iOS-native player control clusters (build 29, K): when true
+  /// the bottom bar renders the SwiftUI transport + trailing
+  /// clusters via [NativeVodControls]; when false (default) the
+  /// widget renders the Flutter buttons verbatim. The plugin is
+  /// NOT registered yet (G group: AppDelegate + Runner target) —
+  /// flipping this on before that lands shows an empty box, so
+  /// keep it false until the native side is built and registered.
+  final bool nativeVodControls;
 
   @override
   State<NativeVideoPlayerPage> createState() => _NativeVideoPlayerPageState();
@@ -190,7 +268,48 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   bool _resumeSought = false;
   bool _scrubbing = false;
   double _scrubValue = 0;
+  // I-影视 (build 29) — VOD-only gestures / modes. Every default
+  // comes from vod_features.dart (one Hive key each); the live room
+  // reads none of this.
+  // 1. 双击快进秒数 (settings-configurable, default 10 s).
+  int _doubleTapSeekSeconds = kVodDoubleTapSeekDefault;
+  // 2. 双指点按 tracker (pure — see TwoFingerTapTracker) + 捏合
+  // tracker (pure — see PinchTracker; GestureDetector forbids a
+  // scale recognizer next to the horizontal + vertical drags, so
+  // pinch is tracked from raw pointer events, never onScale) +
+  // last seek-drag haptic tick target (10 s boundaries).
+  final TwoFingerTapTracker _twoFingerTracker = TwoFingerTapTracker();
+  final PinchTracker _pinchTracker = PinchTracker();
+  double _lastSeekTickTarget = 0;
+  Timer? _seekHintTimer;
+  // Tap/double-tap bookkeeping: onTapDown wakes immediately (the
+  // v1.0.7 pin — a tap must never wait for the double-tap timeout),
+  // onTap fires ~300 ms later when a double-tap recognizer is
+  // present, so _wokeByThisPress tells onTap to skip the toggle
+  // for the press that already woke the controls.
+  bool _wokeByThisPress = false;
+  // 7. 播放锁屏: runtime state only (no Hive key — a lock is a
+  // per-session mode, not a default). While locked every gesture
+  // below early-returns; only the persistent lock button unlocks.
+  bool _locked = false;
+  // 9. 纯音频后台模式: persisted default (vodAudioOnly), toggle
+  // writes the same key. While on, backgrounding does NOT pause.
+  bool _audioOnly = false;
+  // 8. 睡眠定时: the MUSIC SleepTimer state machine, owned here
+  // (same class, same option enum — no second timer). onFire
+  // pauses; episode-end modes are checked in _onEpisodeEnded.
+  late final SleepTimer _sleepTimer;
+  // Set in dispose BEFORE cancelling the timer: SleepTimer.cancel
+  // calls onChanged, and setState during dispose hits a defunct
+  // element (mounted is still true while dispose runs).
+  bool _disposing = false;
+  bool _screenshotBusy = false;
   DateTime _lastSave = DateTime.fromMillisecondsSinceEpoch(0);
+  // C 缺口 (build 29): Emby periodic progress — position (seconds)
+  // of the last reportPlaybackProgress, 0 = none yet. Exit reports
+  // are once per page (see _embyExitProgressSent).
+  double _lastEmbyProgressPosition = 0;
+  bool _embyExitProgressSent = false;
   bool _loading = true;
   bool _failed = false;
   String _loadingHint = '正在加载…';
@@ -209,6 +328,20 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // ONLY reset point — _openCurrent/_onEpisodeEnded/_switchLine
   // belong to the source-chain group and are never edited here.
   VodSkipIntroMode _skipMode = VodSkipIntroMode.off;
+  // D 组播放设置面板 (build 29): the panel rows read these fields
+  // (same Hive keys Settings → 影视播放 reads); each toggle writes
+  // the key + updates the field + applies to the running session
+  // where the backend allows. Read once at open, like _skipMode.
+  bool _dialogueBoost = false;
+  bool _superResolution = false;
+  bool _interpolation = false;
+  bool _sdrToHdr = false;
+  bool _dvP8Downgrade = true;
+  LowMemoryMode _lowMemoryMode = LowMemoryMode.auto;
+  String _subFontTier = 'medium';
+  String _subColorTier = 'white';
+  String _subPositionTier = 'bottom';
+  bool _occlusionAvoidance = false;
   int _skipEpLine = -1;
   int _skipEpIdx = -1;
   ({double start, double end})? _skipIntroWindow;
@@ -257,6 +390,17 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   double _dragSeekStart = 0;
   double _dragSeekDelta = 0;
   Timer? _hideTimer;
+  // Manual double-tap state (I-影视 item 2, see _onSurfaceTapDown):
+  // current tap-down + previous tap-up. _singleTapTimer is the
+  // 300 ms hide delay for a lone tap; cancelled in dispose, on
+  // drag start, and on long-press start.
+  double _lastTapDownX = 0;
+  double _lastTapWidth = 1;
+  bool _lastTapDownInMiddle = false;
+  DateTime? _prevTapUpAt;
+  double _prevTapUpX = 0;
+  bool _prevTapUpInMiddle = false;
+  Timer? _singleTapTimer;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<PlaybackStatus>? _statusSub;
@@ -294,7 +438,67 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _fullscreen = Get.put(FullscreenController());
     _rate = VideoPlaybackSettings.playbackRate;
     unawaited(_session.setRate(_rate));
+    // I-影视: read the VOD-only prefs once at open (settings is
+    // never open during playback). Dialogue boost (item 3) is
+    // forwarded to the session — a no-op until K 组 implements the
+    // mpv cap. Audio-only (item 9) is applied the same way, so a
+    // remembered choice takes effect from the first frame.
+    _doubleTapSeekSeconds = vodDoubleTapSeekSeconds();
+    _audioOnly = vodAudioOnlyDefault();
+    _sleepTimer = SleepTimer(
+      onFire: () {
+        if (!mounted || _disposing) return;
+        unawaited(_session.pause());
+        HaoToast.show('睡眠定时已到', message: '已暂停播放');
+        if (mounted && !_disposing) setState(() {});
+      },
+      onChanged: () {
+        if (mounted && !_disposing) setState(() {});
+      },
+    );
+    // D 组播放设置面板: read the panel prefs once at open (same
+    // guarded readers Settings uses — a missing/corrupt Hive reads
+    // as the default, never a throw in a test without Hive init).
+    // Dialogue boost MUST be read BEFORE the forwarding call below
+    // (it forwards the field, not the key).
+    _dialogueBoost = vodDialogueBoostEnabled();
+    unawaited(
+      _session.setDialogueBoost(
+        shouldApplyDialogueBoost(
+          isLive: false,
+          switchOn: _dialogueBoost,
+        ),
+      ),
+    );
+    if (_audioOnly) unawaited(_session.setAudioOnly(true));
     _skipMode = vodSkipIntroMode();
+    _superResolution = superResolutionSwitchOn();
+    _interpolation = vodInterpolationSwitchOn();
+    _sdrToHdr = vodSdrToHdrSwitchOn();
+    try {
+      _dvP8Downgrade = HiveStore.getBool(HiveKeys.vodDvP8Downgrade, true);
+    } catch (_) {}
+    _lowMemoryMode = LowMemoryMode.current;
+    try {
+      _subFontTier = HiveStore.getString(
+        HiveKeys.vodSubtitleFontSize,
+        'medium',
+      );
+      if (!_subFontOrder.contains(_subFontTier)) _subFontTier = 'medium';
+      _subColorTier = HiveStore.getString(HiveKeys.vodSubtitleColor, 'white');
+      if (!_subColorOrder.contains(_subColorTier)) _subColorTier = 'white';
+      _subPositionTier = HiveStore.getString(
+        HiveKeys.vodSubtitlePosition,
+        'bottom',
+      );
+      if (!_subPositionOrder.contains(_subPositionTier)) {
+        _subPositionTier = 'bottom';
+      }
+      _occlusionAvoidance = HiveStore.getBool(
+        HiveKeys.danmakuOcclusionAvoidance,
+        false,
+      );
+    } catch (_) {}
     // Subtitle offset + appearance (1.1.6): persisted delay and
     // appearance tiers, MPV only. The session remembers them and
     // re-applies them on every backend swap, so applying once here
@@ -357,6 +561,17 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       if (now.difference(_lastSave) > const Duration(seconds: 10)) {
         _lastSave = now;
         unawaited(_saveProgress());
+      }
+      // C 缺口: Emby periodic progress (15 s of forward playback).
+      // The gate is on the method (数据上报 switch); a failed
+      // report never breaks playback.
+      if (_detail.sourceKey == EmbyClient.sourceId &&
+          shouldReportEmbyProgress(
+            lastReportedPosition: _lastEmbyProgressPosition,
+            position: _position,
+          )) {
+        _lastEmbyProgressPosition = _position;
+        unawaited(_reportEmbyProgress());
       }
     });
     _durationSub = _session.durationStream.listen((dur) {
@@ -649,9 +864,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // stream URL for series episodes, the detail id for movies.
     if (mounted && _detail.sourceKey == EmbyClient.sourceId) {
       try {
-        final config = EmbyConfigStore.load();
-        if (config != null && config.isConfigured) {
-          final emby = EmbyClient(config: config);
+        final emby = _embyClientOrNull();
+        if (emby != null) {
           final itemId =
               EmbyClient.episodeIdFromStreamUrl(_episode.url) ??
                   _detail.vodId;
@@ -663,6 +877,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           );
         }
       } catch (_) {}
+    }
+    // K (build 29): a new episode/line starts with its controls
+    // visible + the 5 s timer re-armed. Before this, _openCurrent
+    // never touched _showControls: bars hidden when the previous
+    // episode ended (or a line/episode switch happened) stayed
+    // hidden into the new episode with NO timer pending — the
+    // control row was simply gone until the user guessed a tap
+    // (repro: video_controls_show_test 'episode auto-advance
+    // re-shows the controls').
+    if (mounted && !_locked) {
+      setState(() => _showControls = true);
+      _armHideTimer();
     }
     // Danmaku is strictly post-first-frame: the open above already
     // verified playback, so this never delays首播 (hop 1 alone took
@@ -681,6 +907,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       // Continue Bar's "下一集" row — same-line next first; cross-line
       // only for Emby (its lines are seasons; CMS lines are play
       // lines, not seasons, so a CMS row never jumps lines).
+      // K (build 29, L 缺口): a movie never has a "下一集" — its
+      // line holds versions/parts of one film, so a multi-entry
+      // movie line must not produce a next-episode row.
+      // NOTE: Emby meta.type is genres ('动作 / 科幻'), not
+      // 'Movie', so the regex alone misses Emby movies. mediaType
+      // (plumbed from VideoItem / Emby `Type`) is the first check;
+      // the CMS string regex is the fallback for CMS details,
+      // whose mediaType is ''.
+      final isMovie =
+          _detail.mediaType == 'Movie' || kVideoMovieRe.hasMatch(m.type);
       final next = historyNextEpisode(
         lines: _detail.lines,
         lineIdx: _lineIdx,
@@ -703,7 +939,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           position: _position,
           duration: _duration,
           totalEpisodes: next.totalEpisodes,
-          nextEpName: next.nextEpName,
+          nextEpName: isMovie ? '' : next.nextEpName,
           at: DateTime.now(),
         ),
       );
@@ -727,6 +963,47 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     } catch (_) {}
   }
 
+  /// Emby client for this page, or null when this is not an Emby
+  /// detail / no server is configured. The factory seam is test-only.
+  EmbyClient? _embyClientOrNull() {
+    if (_detail.sourceKey != EmbyClient.sourceId) return null;
+    try {
+      final config = EmbyConfigStore.load();
+      if (config == null || !config.isConfigured) return null;
+      return widget.embyClientFactory?.call(config) ??
+          EmbyClient(config: config);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// C 缺口 (build 29): report the current position to the Emby
+  /// server. Periodic calls are throttled by the position listener
+  /// (15 s of forward playback); [isExit] forces one final report
+  /// on exit / completion, once per page (the _close cleanup and
+  /// dispose both call it — the flag stops the double-send).
+  /// Best-effort like every other Emby call here: the client gates
+  /// on the 数据上报 switch and returns false instead of throwing,
+  /// so a dead server never breaks playback or exit.
+  Future<void> _reportEmbyProgress({bool isExit = false}) async {
+    if (_detail.sourceKey != EmbyClient.sourceId) return;
+    if (isExit) {
+      if (_embyExitProgressSent) return;
+      _embyExitProgressSent = true;
+    }
+    try {
+      final client = _embyClientOrNull();
+      if (client == null) return;
+      final itemId =
+          EmbyClient.episodeIdFromStreamUrl(_episode.url) ?? _detail.vodId;
+      await client.reportPlaybackProgress(
+        itemId,
+        positionSeconds: _position,
+        isPaused: !_playing,
+      );
+    } catch (_) {}
+  }
+
   /// Auto-play the next episode on end (same line only, V-P0-2).
   /// Toggle OFF or the last episode -> the end state, never a loop.
   /// Advancing clears the resume position: the new episode starts
@@ -746,6 +1023,31 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   /// action. CMS has no "next season" concept — never guessed.
   void _onEpisodeEnded() {
     if (!mounted) return;
+    // I-影视 item 8 (sleep timer, VOD words for the music modes):
+    // "播完本集后停止" pauses here instead of advancing; "播完 N 集
+    // 后停止" counts natural completions and pauses at the target.
+    // A wall-clock timer already fired (and paused) via onFire, so
+    // by the time this runs the timer is off — nothing to do.
+    if (_sleepTimer.isCurrentTrackEnd) {
+      _sleepTimer.cancel();
+      unawaited(_saveProgress());
+      unawaited(_session.pause());
+      setState(() {
+        _ended = true;
+        _showControls = true;
+      });
+      return;
+    }
+    if (_sleepTimer.isAfterNTracks && _sleepTimer.noteTrackCompleted()) {
+      _sleepTimer.cancel();
+      unawaited(_saveProgress());
+      unawaited(_session.pause());
+      setState(() {
+        _ended = true;
+        _showControls = true;
+      });
+      return;
+    }
     final eps = _detail.lines[_lineIdx].episodes;
     final next = autoNextEpisodeIndex(
       current: _epIdx,
@@ -759,14 +1061,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       unawaited(_openCurrent());
       return;
     }
-    // End of this line: save + (Emby) end the server session and
-    // mark played. Best-effort — never thrown into the end state.
+    // End of this line: save + (Emby) final progress, end the
+    // server session and mark played. Best-effort — never thrown
+    // into the end state.
     unawaited(_saveProgress());
+    unawaited(_reportEmbyProgress(isExit: true));
     if (_detail.sourceKey == EmbyClient.sourceId) {
       try {
-        final config = EmbyConfigStore.load();
-        if (config != null && config.isConfigured) {
-          final emby = EmbyClient(config: config);
+        final emby = _embyClientOrNull();
+        if (emby != null) {
           final itemId =
               EmbyClient.episodeIdFromStreamUrl(_episode.url) ??
                   _detail.vodId;
@@ -935,6 +1238,112 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     final next = !_autoNext;
     setState(() => _autoNext = next);
     unawaited(VideoPlaybackSettings.setAutoNext(next));
+  }
+
+  // -- I-影视: lock / audio-only / screenshot / sleep -------------
+
+  /// Playback lock (item 7): while locked every surface gesture
+  /// early-returns and the bars hide; only the persistent lock
+  /// button (overlay, always visible while locked) unlocks.
+  /// Runtime state only — no Hive key, no default to persist.
+  void _toggleLock() {
+    HaoHaptics.tap();
+    setState(() {
+      _locked = !_locked;
+      _showControls = !_locked;
+    });
+    if (!_locked) _armHideTimer();
+  }
+
+  /// Pure-audio mode (item 9): video track off (session call —
+  /// same mechanism as live background audio), screen may sleep,
+  /// backgrounding does not pause (see didChangeAppLifecycleState).
+  /// The choice persists to the SAME key the settings row reads
+  /// (fire-and-forget: awaiting a Hive put in the widget-test
+  /// fake zone never resolves — see _toggleAutoNext above).
+  Future<void> _toggleAudioOnly() async {
+    final next = !_audioOnly;
+    setState(() => _audioOnly = next);
+    await _session.setAudioOnly(next);
+    unawaited(HiveStore.put(HiveKeys.vodAudioOnly, next).catchError((_) {}));
+    HaoToast.show(
+      next ? '纯音频播放中' : '已恢复画面',
+      message: next ? '只听声音，后台继续播' : '',
+    );
+    _armHideTimer();
+  }
+
+  /// Screenshot (item 6): MPV only — the only backend with a frame
+  /// outlet. Saves to Documents/screenshots/ and opens the share
+  /// sheet (the only way the file reaches the user on iOS).
+  /// IJK / AVPlayer have no frame outlet: honest toast, no fake.
+  Future<void> _takeScreenshot() async {
+    if (_screenshotBusy) return;
+    final backend = _session.frameCapableBackend;
+    if (backend == null) {
+      HaoToast.show('当前内核不支持截图', message: '仅 MPV 内核可截图');
+      return;
+    }
+    setState(() => _screenshotBusy = true);
+    try {
+      final jpeg = await backend.captureFrameJpeg();
+      if (jpeg == null) {
+        HaoToast.show('截图失败', message: '未能抓取当前画面');
+        return;
+      }
+      final docsPath = LocalPaths.documentsPathSync ??
+          (await getApplicationDocumentsDirectory()).path;
+      final file = await saveVodScreenshot(
+        jpeg: jpeg,
+        documentsDir: Directory(docsPath),
+      );
+      if (!mounted) return;
+      try {
+        await SharePlus.instance.share(
+          ShareParams(files: [XFile(file.path)]),
+        );
+      } catch (_) {
+        // Share sheet unavailable (e.g. widget test): the file is
+        // still saved — say so instead of failing the capture.
+        HaoToast.show('截图已保存', message: file.path);
+      }
+    } catch (_) {
+      if (mounted) HaoToast.show('截图失败', message: '请重试');
+    } finally {
+      if (mounted) setState(() => _screenshotBusy = false);
+    }
+  }
+
+  /// Sleep timer (item 8): opens the VOD sheet (same SleepTimer
+  /// state machine as music) and applies the choice to this page's
+  /// timer. Wall-clock options fire via onFire (pause); episode
+  /// options are checked in _onEpisodeEnded.
+  Future<void> _openSleepSheet() async {
+    final choice = await showVodSleepTimerSheet(
+      context,
+      timer: _sleepTimer,
+    );
+    if (choice == null || !mounted) return;
+    unawaited(
+      HiveStore.put(HiveKeys.vodSleepCustomMinutes, choice.customMinutes)
+          .catchError((_) {}),
+    );
+    unawaited(
+      HiveStore.put(HiveKeys.vodSleepEpisodeCount, choice.trackCount)
+          .catchError((_) {}),
+    );
+    switch (choice.option) {
+      case SleepTimerOption.off:
+        _sleepTimer.cancel();
+      case SleepTimerOption.custom:
+        _sleepTimer.startCustom(choice.customMinutes);
+      case SleepTimerOption.afterNTracks:
+        _sleepTimer.startAfterNTracks(choice.trackCount);
+      default:
+        _sleepTimer.start(choice.option);
+    }
+    if (mounted) setState(() {});
+    _armHideTimer();
   }
 
   Future<void> _goEpisode(int delta) async {
@@ -1224,7 +1633,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   /// loaded yet. The master gate lives in Settings, not here.
   void _toggleDanmakuVisible() {
     if (!_danmakuEnabled) return;
-    final next = !_danmakuVisible;
+    _setDanmakuVisible(!_danmakuVisible);
+  }
+
+  /// Set the per-episode danmaku display to [next] (the settings
+  /// panel's explicit-value form of [_toggleDanmakuVisible] — same
+  /// body, no second path). No-op when the master gate is off or
+  /// the value is unchanged.
+  void _setDanmakuVisible(bool next) {
+    if (!_danmakuEnabled || next == _danmakuVisible) return;
     setState(() => _danmakuVisible = next);
     if (!next) {
       _barrageController.clear();
@@ -1282,6 +1699,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
 
   void _armHideTimer() {
     _hideTimer?.cancel();
+    // K (build 29): a pending 300 ms single-tap hide is stale the
+    // moment anything explicitly re-arms the 5 s timer — e.g. the
+    // user tapped the surface (scheduling the hide) and then tapped
+    // pause within 300 ms: without this the bars vanished right
+    // after pausing, with the 5 s playing-only timer offering no
+    // re-show. Re-arming means the user is interacting; the hide
+    // the earlier tap scheduled must not fire afterwards.
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
     // 5 s, Pure Live's value: after revealing the controls the user
     // needs enough time to find and tap the exit button.
     _hideTimer = Timer(const Duration(seconds: 5), () {
@@ -1303,31 +1729,197 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     });
   }
 
-  // NO double-tap seek (PiliPlus has it — quarters, 10 s step — but
-  // deliberately NOT ported): adding onDoubleTap makes Flutter hold
-  // every single tap until the double-tap timeout (~300 ms, the
-  // DoubleTap recognizer holds the arena on first tap-up,
-  // multitap.dart _registerFirstTap -> arena.hold), so the tap that
-  // wakes the controls after auto-hide lands 300 ms late — the
-  // v1.0.7 "controls gone, can't exit" path. PiliPlus's
-  // ImmediateTap only makes onTapDown immediate, not onTapUp, so it
-  // does not fix this either; PiliPlus accepts the delay, we don't
-  // (video_controls_show_test pins the immediate wake-tap). If this
-  // is ever revisited, it needs a tap path that stays immediate AND
-  // a double-tap path — not GestureDetector's onDoubleTap.
+  // Tap / double-tap (I-影视 items 1+2) — the v1.0.7 constraint
+  // still rules: a tap that wakes the controls must land
+  // IMMEDIATELY. GestureDetector's onDoubleTap would hold every
+  // onTap for the ~300 ms double-tap timeout AND leave the
+  // recognizer's internal countdown timer pending at test teardown
+  // ("A Timer is still pending") — so double-tap is detected
+  // MANUALLY, with no DoubleTapGestureRecognizer at all:
+  // - onTapDown fires on pointer-down, before any arena decision:
+  //   hidden -> show at once (wake, no delay) and mark the press
+  //   so onTap skips it; shown -> just record the tap-down (time
+  //   + x + middle-zone) for the pair check in onTap.
+  // - onTap fires on tap-up, immediately (no double-tap recognizer
+  //   holds it): a wake press is skipped; a tap that completes a
+  //   pair (previous tap-up within 300 ms, same half, both in the
+  //   middle video zone) seeks instead of toggling; any other tap
+  //   starts a 300 ms hide timer — the second tap of a pair
+  //   cancels it. Hiding waits 300 ms; waking never does.
+  // A hold that started hidden is a wake press, never 2x: the
+  // long-press handler checks _wokeByThisPress (see below).
+  void _onSurfaceTapDown(TapDownDetails details) {
+    if (_locked) return;
+    final size = MediaQuery.of(context).size;
+    _lastTapDownX = details.globalPosition.dx;
+    _lastTapWidth = size.width;
+    _lastTapDownInMiddle = _isMiddleTap(
+      details.globalPosition.dy,
+      size.height,
+    );
+    if (!_showControls) {
+      _wokeByThisPress = true;
+      setState(() => _showControls = true);
+      _armHideTimer();
+    }
+  }
+
+  bool _isMiddleTap(double y, double height) =>
+      y > 110 && y < height - 150;
+
   void _onSurfaceTap() {
-    setState(() => _showControls = !_showControls);
-    if (_showControls) _armHideTimer();
+    if (_locked) return;
+    if (_wokeByThisPress) {
+      _wokeByThisPress = false;
+      _recordTapUp();
+      return;
+    }
+    final now = DateTime.now();
+    final prevAt = _prevTapUpAt;
+    if (prevAt != null &&
+        now.difference(prevAt) <= const Duration(milliseconds: 300) &&
+        _lastTapDownInMiddle &&
+        _prevTapUpInMiddle &&
+        (_lastTapDownX >= _lastTapWidth / 2) ==
+            (_prevTapUpX >= _lastTapWidth / 2)) {
+      // Second tap of a pair: cancel the hide the first tap
+      // scheduled, seek instead.
+      _singleTapTimer?.cancel();
+      _singleTapTimer = null;
+      _prevTapUpAt = null;
+      _doubleTapSeek();
+      return;
+    }
+    // Single tap: hide after the double-tap window, so a second
+    // tap can still turn this into a seek instead of a hide.
+    // Failed/ended: no hide — the top bar is the way out (back)
+    // and the failure/ended card is not a video surface to toggle;
+    // hiding the bar here removes the exit path the failed-state
+    // comment promises ("a failed player never traps the user
+    // without a way out").
+    if (_failed || _ended) {
+      _recordTapUp();
+      return;
+    }
+    _singleTapTimer?.cancel();
+    _singleTapTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted || _disposing) return;
+      if (_showControls) setState(() => _showControls = false);
+    });
+    _recordTapUp();
+  }
+
+  void _recordTapUp() {
+    _prevTapUpAt = DateTime.now();
+    _prevTapUpX = _lastTapDownX;
+    _prevTapUpInMiddle = _lastTapDownInMiddle;
+  }
+
+  void _doubleTapSeek() {
+    if (_failed || _ended || _duration <= 0) return;
+    final forward = _lastTapDownX >= _lastTapWidth / 2;
+    final target = resolveDoubleTapSeek(
+      position: _position,
+      duration: _duration,
+      forward: forward,
+      seconds: _doubleTapSeekSeconds,
+    );
+    final delta = target - _position;
+    if (delta == 0) return;
+    HaoHaptics.select();
+    unawaited(_session.seekTo(Duration(milliseconds: (target * 1000).round())));
+    _barrageController.seekTo(
+      Duration(milliseconds: (target * 1000).round()),
+    );
+    _flashSeekHint(target, delta);
+    _armHideTimer();
+  }
+
+  /// Flash the centre seek hint (same pill as the drag preview)
+  /// for 800 ms after a double-tap seek.
+  void _flashSeekHint(double target, double delta) {
+    _seekHintTimer?.cancel();
+    setState(() {
+      _dragSeekTarget = target;
+      _dragSeekDelta = delta;
+    });
+    _seekHintTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+      setState(() => _dragSeekTarget = null);
+    });
+  }
+
+  // Two-finger tap (item 2): play/pause, tracked by Listener
+  // (arena-independent — a two-finger tap must work even though
+  // the scale recognizer also sees the second pointer). Pinch
+  // movement disqualifies the tap (the tracker watches it).
+  void _onPointerDown(PointerDownEvent event) {
+    _twoFingerTracker.pointerDown(
+      event.pointer,
+      event.position.dx,
+      event.position.dy,
+      DateTime.now(),
+    );
+    _pinchTracker.pointerDown(
+      event.pointer,
+      event.position.dx,
+      event.position.dy,
+    );
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    _twoFingerTracker.pointerMove(
+      event.pointer,
+      event.position.dx,
+      event.position.dy,
+    );
+    _pinchTracker.pointerMove(
+      event.pointer,
+      event.position.dx,
+      event.position.dy,
+    );
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    if (_twoFingerTracker.pointerUp(event.pointer, DateTime.now())) {
+      if (_locked || _failed || _ended) return;
+      HaoHaptics.tap();
+      _session.togglePlayPause();
+      _armHideTimer();
+    }
+    // Pinch end (item 2): a real pinch-out/in flips the fit; a
+    // plain two-finger tap returns ~1.0, which maps to no change.
+    final pinchScale = _pinchTracker.pointerUp(event.pointer);
+    if (pinchScale != null) _applyPinchFit(pinchScale);
+  }
+
+  // Pinch to remove black bars (item 2): pinch OUT -> cover
+  // (crop), pinch IN -> back to 自动. Only the end state applies,
+  // so a mid-pinch wobble never flips the fit twice.
+  void _applyPinchFit(double scale) {
+    if (_locked || _failed || _ended) return;
+    final target = pinchFitTarget(scale);
+    if (target == null || target == _videoFit) return;
+    _setVideoFit(target);
+    HaoToast.show(
+      target == VideoFitMode.cover ? '已去除黑边' : '已恢复完整画面',
+      message: target == VideoFitMode.cover ? '双指捏合可恢复' : '双指张开可去黑边',
+    );
+  }
+
+  /// Set + persist the picture fit (shared by the fit button and
+  /// the pinch gesture — one path, no duplicate state).
+  void _setVideoFit(VideoFitMode mode) {
+    setState(() => _videoFit = mode);
+    unawaited(VideoPlaybackSettings.setVideoFit(mode));
+    _armHideTimer();
   }
 
   /// Cycle the VOD picture fit (自动 -> 拉伸 -> 裁剪): persists, then
   /// rebuilds — MPV/IJK re-apply the fit live, AVPlayer on next open
   /// (see video_fit.dart).
   void _cycleVideoFit() {
-    final next = _videoFit.next;
-    setState(() => _videoFit = next);
-    unawaited(VideoPlaybackSettings.setVideoFit(next));
-    _armHideTimer();
+    _setVideoFit(_videoFit.next);
   }
 
   String get _rateLabel => '${_longPressSpeeding ? 2.0 : _rate}x';
@@ -1344,6 +1936,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // stay hidden and there is no way out (chen v1.0.7: controls
     // gone, can't exit). Reveal first; 2x only when the controls
     // are already up.
+    // I-影视: onTapDown already woke the controls on pointer-down
+    // (immediate wake), so a hold that STARTED hidden reaches here
+    // with _showControls true — the wake flag marks that press, and
+    // it must still not start 2x.
+    if (_locked) return;
+    if (_wokeByThisPress) return;
+    // A hold right after a tap must not be eaten by the tap's
+    // 300 ms hide timer, and a drag/hold between two taps breaks
+    // the double-tap pair.
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+    _prevTapUpAt = null;
     if (!_showControls) {
       setState(() => _showControls = true);
       _armHideTimer();
@@ -1371,6 +1975,9 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   }
 
   void _restoreRateAfterLongPress() {
+    // The press is over either way: a wake flag left set would
+    // wrongly veto the NEXT hold's 2x.
+    _wokeByThisPress = false;
     if (!_longPressSpeeding) return;
     setState(() => _longPressSpeeding = false);
     unawaited(_session.setRate(_rate));
@@ -1544,6 +2151,27 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   /// Cycle the playback speed through Pure Live's defaultRates
   /// (0.5x -> 2.0x); the choice persists and survives episode
   /// switches (the session re-applies it on backend swap).
+  // Native control clusters (build 29, K): one router for the
+  // five actions the SwiftUI buttons (or their Flutter fallback)
+  // report. Bodies are the bottom bar's existing callbacks
+  // verbatim — play/pause also re-arms the hide timer, exactly as
+  // the old IconButton did.
+  void _onVodControlAction(VodControlAction action) {
+    switch (action) {
+      case VodControlAction.prev:
+        _goEpisode(-1);
+      case VodControlAction.playPause:
+        _session.togglePlayPause();
+        _armHideTimer();
+      case VodControlAction.next:
+        _goEpisode(1);
+      case VodControlAction.rate:
+        unawaited(_cycleRate());
+      case VodControlAction.exit:
+        _close();
+    }
+  }
+
   Future<void> _cycleRate() async {
     final rates = VideoPlaybackSettings.vodRates;
     final idx = rates.indexOf(_rate);
@@ -1560,12 +2188,18 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // -- Horizontal drag: seek with a preview, one seek on release. --
 
   void _onSeekDragStart(DragStartDetails details) {
+    if (_locked) return;
+    _wokeByThisPress = false;
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+    _prevTapUpAt = null;
     if (_duration <= 0 || _failed || _ended) return;
     _hideTimer?.cancel();
     setState(() {
       _dragSeekStart = _scrubbing ? _scrubValue : _position;
       _dragSeekTarget = _dragSeekStart;
       _dragSeekDelta = 0;
+      _lastSeekTickTarget = _dragSeekStart;
     });
   }
 
@@ -1577,6 +2211,17 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       _dragSeekDelta += details.delta.dx / width * _seekSpan;
       _dragSeekTarget = (_dragSeekStart + _dragSeekDelta).clamp(0.0, _duration);
     });
+    // I-影视 item 2: drag-progress haptic — a tick each time the
+    // preview crosses a 10 s boundary since the last tick, so a
+    // long drag buzzes regularly instead of once per pixel.
+    final target = _dragSeekTarget!;
+    if (shouldTickSeekHaptic(
+      lastTickTarget: _lastSeekTickTarget,
+      target: target,
+    )) {
+      _lastSeekTickTarget = target;
+      HaoHaptics.select();
+    }
   }
 
   Future<void> _onSeekDragEnd(DragEndDetails details) async {
@@ -1613,6 +2258,11 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
   // linger is armed on the last tick as well as on drag end.
 
   void _onSystemDragStart(DragStartDetails details) async {
+    if (_locked) return;
+    _wokeByThisPress = false;
+    _singleTapTimer?.cancel();
+    _singleTapTimer = null;
+    _prevTapUpAt = null;
     if (_failed || _ended) return;
     _hideTimer?.cancel();
     final size = MediaQuery.of(context).size;
@@ -1635,6 +2285,311 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // _onSeekDragCancel: losing the arena to another gesture means the
     // user is still interacting; re-arming would hide the controls
     // mid-gesture.
+  }
+
+  // "更多" menu (build 29, K): the seven secondary top-bar actions
+  // (auto-next, tracks, fit, lock, audio-only, sleep, screenshot)
+  // live here instead of in the bar — 10 x 48 px IconButtons
+  // overflowed a 390 px portrait screen by 114 px during the
+  // rotation transition (b16). iOS-native CupertinoActionSheet,
+  // NOT a Material PopupMenuButton (station rule: new UI is
+  // Cupertino/SwiftUI only). Each action pops the sheet first,
+  // then runs the existing callback; sheet-opening actions
+  // (tracks, sleep) defer one microtask so the pop settles
+  // before the next modal opens.
+  void _openMoreMenu() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (sheetContext) {
+        Widget action(String label, VoidCallback run) {
+          return CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(sheetContext).pop();
+              run();
+            },
+            child: Text(label),
+          );
+        }
+
+        Widget sheetAction(String label, Future<void> Function() run) {
+          return CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(sheetContext).pop();
+              // One microtask: the pop must settle before a new
+              // modal route opens, or the framework throws on the
+              // double route push.
+              Future.microtask(() => unawaited(run()));
+            },
+            child: Text(label),
+          );
+        }
+
+        return CupertinoActionSheet(
+          actions: [
+            action(
+              _autoNext ? '自动连播：开' : '自动连播：关',
+              _toggleAutoNext,
+            ),
+            sheetAction('音轨与字幕', _openTrackSheet),
+            action('画面比例：${_videoFit.label}', _cycleVideoFit),
+            action(_locked ? '已锁定' : '锁定屏幕', _toggleLock),
+            action(
+              _audioOnly ? '纯音频播放中' : '纯音频播放',
+              () => unawaited(_toggleAudioOnly()),
+            ),
+            sheetAction(
+              _sleepTimer.isActive
+                  ? '睡眠定时：${_sleepTimer.remainingText.isEmpty ? '播完本集' : _sleepTimer.remainingText}'
+                  : '睡眠定时',
+              _openSleepSheet,
+            ),
+            action(
+              '截图',
+              () => unawaited(_takeScreenshot()),
+            ),
+            // D 组: 画中画 (K 组已接 AvPlayerBackend) — only when
+            // the active backend supports it, never a dead button.
+            if (_session.supportsPictureInPicture)
+              action(
+                '画中画',
+                () => unawaited(_enterPictureInPicture()),
+              ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(sheetContext).pop(),
+            child: const Text('取消'),
+          ),
+        );
+      },
+    );
+  }
+
+  // -- D 组播放设置面板 (build 29) --------------------------------------
+  //
+  // Pure Live-style control-bar settings entry (top-bar gear) → bottom
+  // sheet. Every row writes the SAME Hive key Settings → 影视播放
+  // reads and applies to the running session where the backend
+  // allows, so a panel change takes effect on the current playback
+  // immediately and the settings page reads the same value after
+  // (and vice versa — the panel re-reads the keys on every open).
+  // Next-open-only rows (super-res / interpolation / SDR→HDR /
+  // DV P8 / low-memory) say so in their subtitle, like Settings.
+
+  void _openVodSettingsSheet() {
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        sheetAnimationStyle: const AnimationStyle(
+          curve: HaoSettleSpringCurve(),
+          reverseCurve: HaoSettleSpringCurve(),
+        ),
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black.withValues(alpha: 0.35),
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            void refreshSheet() => setSheetState(() {});
+            return VodPlayerSettingsSheet(
+              settings: _vodSettingsSnapshot(
+                refreshSheet: refreshSheet,
+                popSheet: () => Navigator.of(sheetContext).pop(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Apply the persisted subtitle appearance tiers to the running
+  /// session (MPV `sub-font-size` / `sub-color` / `sub-pos`). The
+  /// values come from the panel's tier fields, not a Hive re-read,
+  /// so a mid-panel change applies even before the Hive put flushes.
+  void _applySubtitleAppearance() {
+    unawaited(
+      _session.setSubtitleAppearance(
+        fontSize: vodSubtitleFontSizeValues[_subFontTier] ?? 55,
+        color: vodSubtitleColorValues[_subColorTier] ?? '#FFFFFF',
+        position: vodSubtitlePositionValues[_subPositionTier] ?? 100.0,
+      ),
+    );
+  }
+
+  VodPlayerSettings _vodSettingsSnapshot({
+    required void Function() refreshSheet,
+    required VoidCallback popSheet,
+  }) {
+    // The trio is mutually exclusive in display (same rule as
+    // Settings): a row locked by another trio switch gets a null
+    // callback and renders greyed out — its stored value is never
+    // cleared by the lock.
+    final trioLockedSuper = _interpolation || _sdrToHdr;
+    final trioLockedInterp = _superResolution || _sdrToHdr;
+    final trioLockedSdr = _superResolution || _interpolation;
+    return VodPlayerSettings(
+      rateLabel: _rateLabel,
+      onRateCycle: () {
+        unawaited(_cycleRate());
+        refreshSheet();
+      },
+      doubleTapSeekSeconds: _doubleTapSeekSeconds,
+      onDoubleTapSeekCycle: () {
+        final next = nextDoubleTapSeekSeconds(_doubleTapSeekSeconds);
+        setState(() => _doubleTapSeekSeconds = next);
+        unawaited(HiveStore.put(HiveKeys.vodDoubleTapSeekSeconds, next));
+        refreshSheet();
+      },
+      autoNext: _autoNext,
+      onAutoNextChanged: (_) {
+        _toggleAutoNext();
+        refreshSheet();
+      },
+      videoFitLabel: _videoFit.label,
+      onVideoFitCycle: () {
+        _cycleVideoFit();
+        refreshSheet();
+      },
+      skipIntroLabel: _skipIntroLabels[_skipMode.name] ?? '关',
+      onSkipIntroCycle: () {
+        final next = _nextTier(_skipIntroOrder, _skipMode.name);
+        setState(() => _skipMode = parseVodSkipIntroMode(next));
+        unawaited(HiveStore.put(HiveKeys.vodSkipIntroMode, next));
+        refreshSheet();
+      },
+      dialogueBoost: _dialogueBoost,
+      onDialogueBoostChanged: (value) {
+        setState(() => _dialogueBoost = value);
+        unawaited(HiveStore.put(HiveKeys.vodDialogueBoost, value));
+        unawaited(
+          _session.setDialogueBoost(
+            shouldApplyDialogueBoost(isLive: false, switchOn: value),
+          ),
+        );
+        refreshSheet();
+      },
+      audioOnly: _audioOnly,
+      onAudioOnlyChanged: (_) {
+        unawaited(_toggleAudioOnly());
+        refreshSheet();
+      },
+      superResolution: _superResolution,
+      superResolutionLocked: trioLockedSuper,
+      onSuperResolutionChanged: trioLockedSuper
+          ? null
+          : (value) {
+              setState(() => _superResolution = value);
+              unawaited(
+                HiveStore.put(HiveKeys.vodSuperResolution, value),
+              );
+              refreshSheet();
+            },
+      interpolation: _interpolation,
+      interpolationLocked: trioLockedInterp,
+      onInterpolationChanged: trioLockedInterp
+          ? null
+          : (value) {
+              setState(() => _interpolation = value);
+              unawaited(HiveStore.put(HiveKeys.vodInterpolation, value));
+              refreshSheet();
+            },
+      sdrToHdr: _sdrToHdr,
+      sdrToHdrLocked: trioLockedSdr,
+      onSdrToHdrChanged: trioLockedSdr
+          ? null
+          : (value) {
+              setState(() => _sdrToHdr = value);
+              unawaited(HiveStore.put(HiveKeys.vodSdrToHdr, value));
+              refreshSheet();
+            },
+      dvP8Downgrade: _dvP8Downgrade,
+      onDvP8Changed: (value) {
+        setState(() => _dvP8Downgrade = value);
+        unawaited(HiveStore.put(HiveKeys.vodDvP8Downgrade, value));
+        refreshSheet();
+      },
+      lowMemoryLabel: _lowMemoryMode.label,
+      onLowMemoryCycle: () {
+        final next = _lowMemoryMode.next;
+        setState(() => _lowMemoryMode = next);
+        unawaited(LowMemoryMode.save(next));
+        refreshSheet();
+      },
+      subtitleDelay: _session.currentSubtitleDelay,
+      onSubtitleDelayChanged: (value) {
+        final rounded = double.parse(value.toStringAsFixed(1));
+        unawaited(_session.setSubtitleDelay(rounded));
+        unawaited(HiveStore.put(HiveKeys.vodSubtitleDelay, rounded));
+        refreshSheet();
+      },
+      subtitleFontLabel: _subFontLabels[_subFontTier] ?? '标准',
+      onSubtitleFontCycle: () {
+        final next = _nextTier(_subFontOrder, _subFontTier);
+        setState(() => _subFontTier = next);
+        unawaited(HiveStore.put(HiveKeys.vodSubtitleFontSize, next));
+        _applySubtitleAppearance();
+        refreshSheet();
+      },
+      subtitleColorLabel: _subColorLabels[_subColorTier] ?? '白色',
+      onSubtitleColorCycle: () {
+        final next = _nextTier(_subColorOrder, _subColorTier);
+        setState(() => _subColorTier = next);
+        unawaited(HiveStore.put(HiveKeys.vodSubtitleColor, next));
+        _applySubtitleAppearance();
+        refreshSheet();
+      },
+      subtitlePositionLabel: _subPositionLabels[_subPositionTier] ?? '底部',
+      onSubtitlePositionCycle: () {
+        final next = _nextTier(_subPositionOrder, _subPositionTier);
+        setState(() => _subPositionTier = next);
+        unawaited(HiveStore.put(HiveKeys.vodSubtitlePosition, next));
+        _applySubtitleAppearance();
+        refreshSheet();
+      },
+      dualSubtitleOn: _session.currentSecondarySubtitleTrackId != null,
+      onDualSubtitleTap: () {
+        // The second-subtitle picker lives in the track sheet —
+        // pop this panel first, then open it (same microtask
+        // pattern as the 更多 menu's sheet-opening actions).
+        popSheet();
+        Future.microtask(() => unawaited(_openTrackSheet()));
+      },
+      danmakuEnabled: _danmakuEnabled,
+      onDanmakuEnabledChanged: (value) {
+        // The page's danmaku listener re-reads the gate live (same
+        // path as a Settings change while the player is open).
+        unawaited(DanmakuSettings.setEnabled(DanmakuSettings.vodSiteId, value));
+        refreshSheet();
+      },
+      danmakuVisible: _danmakuVisible,
+      onDanmakuVisibleChanged: (value) {
+        _setDanmakuVisible(value);
+        refreshSheet();
+      },
+      danmakuOcclusionAvoidance: _occlusionAvoidance,
+      onDanmakuOcclusionChanged: (value) {
+        // The occlusion gate re-evaluates on the next build (see
+        // build(): _occlusion.update runs there).
+        setState(() => _occlusionAvoidance = value);
+        unawaited(
+          HiveStore.put(HiveKeys.danmakuOcclusionAvoidance, value),
+        );
+        refreshSheet();
+      },
+    );
+  }
+
+  /// Picture-in-Picture (VOD, K 组已接 AvPlayerBackend): the 更多
+  /// menu only offers this when the active backend supports it
+  /// (see [PlaybackSession.supportsPictureInPicture]) — MPV/IJK
+  /// never show the entry, so there is no dead button. A false
+  /// return (the system refused PiP) toasts honestly instead of
+  /// silently doing nothing.
+  Future<void> _enterPictureInPicture() async {
+    final ok = await _session.enterPictureInPicture();
+    if (!ok && mounted) {
+      HaoToast.show('无法进入画中画', message: '当前内核或系统不支持画中画');
+    }
   }
 
   void _openEpisodeSheet() {
@@ -1837,7 +2792,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                             ),
                           ),
                           trailing: selected
-                              ? Icon(Icons.check, color: theme.accent)
+                              ? Icon(Icons.check, shadows: HaoTheme.legibilityShadows(context),  color: theme.accent)
                               : null,
                           onTap: selected
                               ? null
@@ -2028,6 +2983,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           .catchError((_) {}),
     );
     unawaited(_saveProgress());
+    unawaited(_reportEmbyProgress(isExit: true));
   }
 
   // Screen-on follows the session (playback_session.dart): background
@@ -2059,6 +3015,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
         // value, so the return keeps the user's system brightness.
         unawaited(ScreenBrightness.reset());
         final s = _session.status;
+        // I-影视 item 9: pure-audio mode keeps playing in
+        // background (the video track is already off via
+        // setAudioOnly, so a suspended vo cannot pause the
+        // stream — same mechanism as live background audio).
+        // Without it, VOD pauses on background as before.
+        if (_audioOnly) return;
         if (s == PlaybackStatus.playing ||
             s == PlaybackStatus.buffering ||
             s == PlaybackStatus.opening) {
@@ -2090,6 +3052,12 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     // survive to be re-applied on the next foreground return).
     unawaited(ScreenBrightness.reset());
     _hideTimer?.cancel();
+    _seekHintTimer?.cancel();
+    _singleTapTimer?.cancel();
+    // Cancel the timer AFTER flagging disposal (see _disposing):
+    // cancel() fires onChanged, which must not setState now.
+    _disposing = true;
+    _sleepTimer.cancel();
     _cancelSkipCountdown();
     _drag.dispose();
     _danmakuSettingsListenable?.removeListener(_onDanmakuSettingsChanged);
@@ -2100,6 +3068,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     _statusSub?.cancel();
     _errorSub?.cancel();
     unawaited(_saveProgress());
+    unawaited(_reportEmbyProgress(isExit: true));
     unawaited(_session.dispose());
     try {
       Get.delete<FullscreenController>();
@@ -2128,21 +3097,38 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _onSurfaceTap,
-          onLongPressStart: _onLongPressStart,
-          onLongPressEnd: _onLongPressEnd,
-          onLongPressCancel: _onLongPressCancel,
-          onHorizontalDragStart: _onSeekDragStart,
-          onHorizontalDragUpdate: _onSeekDragUpdate,
-          onHorizontalDragEnd: _onSeekDragEnd,
-          onHorizontalDragCancel: _onSeekDragCancel,
-          onVerticalDragStart: _onSystemDragStart,
-          onVerticalDragUpdate: _onSystemDragUpdate,
-          onVerticalDragEnd: _onSystemDragEnd,
-          onVerticalDragCancel: _onSystemDragCancel,
-          child: Stack(
+        // Two-finger tap (item 2) is tracked by a Listener, not by
+        // the gesture arena: a two-finger tap must toggle play/pause
+        // even though the scale recognizer also sees the second
+        // pointer. Listener is passive — it never claims gestures.
+        body: Listener(
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: (_) {
+            _twoFingerTracker.reset();
+            _pinchTracker.reset();
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: _onSurfaceTapDown,
+            onTap: _onSurfaceTap,
+            // NOTE: no onDoubleTap — double-tap is detected manually
+            // in _onSurfaceTapDown/_onSurfaceTap (see there). The
+            // recognizer would hold every onTap ~300 ms and leave
+            // its internal countdown timer pending at test teardown.
+            onLongPressStart: _onLongPressStart,
+            onLongPressEnd: _onLongPressEnd,
+            onLongPressCancel: _onLongPressCancel,
+            onHorizontalDragStart: _onSeekDragStart,
+            onHorizontalDragUpdate: _onSeekDragUpdate,
+            onHorizontalDragEnd: _onSeekDragEnd,
+            onHorizontalDragCancel: _onSeekDragCancel,
+            onVerticalDragStart: _onSystemDragStart,
+            onVerticalDragUpdate: _onSystemDragUpdate,
+            onVerticalDragEnd: _onSystemDragEnd,
+            onVerticalDragCancel: _onSystemDragCancel,
+            child: Stack(
             fit: StackFit.expand,
             children: [
               _session.buildVideoWidget(),
@@ -2278,8 +3264,8 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                     child: Row(
                       children: [
                         IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
+                          icon: Icon(
+                            Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context), 
                             color: Colors.white,
                           ),
                           onPressed: _close,
@@ -2310,16 +3296,6 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                         ),
                         // NO quality selector on VOD — one URL per
                         // episode, no quality tiers (live only).
-                        // Auto-play-next toggle (V-P0-2, default ON):
-                        // dimmed when off, white when on.
-                        IconButton(
-                          icon: Icon(
-                            Icons.playlist_play,
-                            color: _autoNext ? Colors.white : Colors.white38,
-                          ),
-                          tooltip: '自动连播',
-                          onPressed: _toggleAutoNext,
-                        ),
                         // Danmaku (build 28, opt-in, default OFF): icon
                         // + tooltip copied from the live room. Greyed
                         // (not hidden) while the master gate is off,
@@ -2329,7 +3305,7 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           icon: Icon(
                             _danmakuVisible
                                 ? Icons.chat_bubble_outline
-                                : Icons.chat_bubble,
+                                : Icons.chat_bubble, shadows: HaoTheme.legibilityShadows(context), 
                             color: _danmakuEnabled
                                 ? Colors.white
                                 : Colors.white38,
@@ -2342,35 +3318,31 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                               ? () => unawaited(_cycleDanmakuCandidate())
                               : null,
                         ),
-                        // Audio/subtitle tracks (build 28, Emby
-                        // formats): one entry opening the track sheet
-                        // below — same bottom-sheet pattern as 选集,
-                        // no new menu system. Always enabled: on a
-                        // backend that cannot enumerate tracks the
-                        // sheet shows the empty state instead.
                         IconButton(
-                          icon: const Icon(
-                            Icons.subtitles,
-                            color: Colors.white,
-                          ),
-                          tooltip: '音轨与字幕',
-                          onPressed: () => unawaited(_openTrackSheet()),
-                        ),
-                        // Picture fit (PiliPlus VideoFitType + Kazumi
-                        // PlayerAspectRatio): cycles 自动/拉伸/裁剪.
-                        // VOD only — this page never serves live.
-                        IconButton(
-                          icon: const Icon(
-                            Icons.aspect_ratio,
-                            color: Colors.white,
-                          ),
-                          tooltip: '画面比例：${_videoFit.label}',
-                          onPressed: _cycleVideoFit,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.list, color: Colors.white),
+                          icon: Icon(Icons.list, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                           tooltip: '选集',
                           onPressed: _openEpisodeSheet,
+                        ),
+                        // D 组播放设置面板 (build 29): Pure Live-style
+                        // control-bar settings entry → bottom sheet.
+                        IconButton(
+                          icon: Icon(Icons.settings, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
+                          tooltip: '播放设置',
+                          onPressed: _openVodSettingsSheet,
+                        ),
+                        // "更多" (build 29, K): the seven secondary
+                        // top-bar actions live in a CupertinoActionSheet
+                        // instead of the bar — 10 x 48 px buttons
+                        // overflowed a 390 px portrait screen by 114 px
+                        // (b16). Visible bar is now back + title +
+                        // danmaku + episodes + more = ~216 px.
+                        IconButton(
+                          icon: Icon(
+                            Icons.more_horiz, shadows: HaoTheme.legibilityShadows(context),
+                            color: Colors.white,
+                          ),
+                          tooltip: '更多',
+                          onPressed: _openMoreMenu,
                         ),
                       ],
                     ),
@@ -2408,36 +3380,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 4,
                                   ),
-                                  child: ChoiceChip(
-                                    label: Text(_detail.lines[i].name),
+                                  child: _LinePill(
+                                    label: _detail.lines[i].name,
                                     selected: selected,
-                                    // Player surface is ALWAYS black
-                                    // video, in every theme/mode — so
-                                    // the light-mode accents (dark gold
-                                    // / dark teal / dark blue, made for
-                                    // light scaffolds) are unreadable
-                                    // here. White-on-black pills are the
-                                    // correct treatment on this surface.
-                                    selectedColor: Colors.white
-                                        .withValues(alpha: 0.20),
-                                    backgroundColor: Colors.white
-                                        .withValues(alpha: 0.08),
-                                    side: BorderSide(
-                                      color: selected
-                                          ? Colors.white
-                                              .withValues(alpha: 0.60)
-                                          : Colors.white
-                                              .withValues(alpha: 0.25),
-                                    ),
-                                    labelStyle: TextStyle(
-                                      color: selected
-                                          ? Colors.white
-                                          : Colors.white70,
-                                      fontWeight: selected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                    ),
-                                    onSelected: (_) => _switchLine(i),
+                                    onTap: () => _switchLine(i),
                                   ),
                                 );
                               },
@@ -2445,32 +3391,15 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                           ),
                         Row(
                           children: [
-                            IconButton(
-                              icon: Icon(
-                                _playing ? Icons.pause : Icons.play_arrow,
-                                color: Colors.white,
-                                size: 32,
-                              ),
-                              onPressed: () {
-                                _session.togglePlayPause();
-                                _armHideTimer();
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.skip_previous,
-                                color: Colors.white,
-                              ),
-                              tooltip: '上一集',
-                              onPressed: () => _goEpisode(-1),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.skip_next,
-                                color: Colors.white,
-                              ),
-                              tooltip: '下一集',
-                              onPressed: () => _goEpisode(1),
+                            // Native transport cluster (prev / play-
+                            // pause / next) when nativeVodControls is
+                            // on — the widget falls back to these
+                            // exact buttons otherwise (see
+                            // native_vod_controls.dart).
+                            NativeVodControls.transport(
+                              playing: _playing,
+                              nativeEnabled: widget.nativeVodControls,
+                              onAction: _onVodControlAction,
                             ),
                             const SizedBox(width: 8),
                             // Elapsed left / remaining right (fix 6 thin
@@ -2516,7 +3445,16 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                                       // cancel/re-arm pattern as the
                                       // outer seek/brightness drags
                                       // (onChangeEnd re-arms below).
+                                      // K (build 29): the 300 ms
+                                      // single-tap hide is the same
+                                      // hazard — a surface tap <300 ms
+                                      // before this drag would unmount
+                                      // the Slider mid-drag (the outer
+                                      // drag handlers never run here:
+                                      // the Slider wins the arena).
                                       _hideTimer?.cancel();
+                                      _singleTapTimer?.cancel();
+                                      _singleTapTimer = null;
                                       setState(() {
                                         _scrubbing = true;
                                         _scrubValue = _position;
@@ -2556,24 +3494,10 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
                             const Spacer(),
                             // Playback speed (Pure Live rates, tap to
                             // cycle 0.5x -> 2.0x).
-                            TextButton(
-                              onPressed: _cycleRate,
-                              child: Text(
-                                _rateLabel,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.fullscreen_exit,
-                                color: Colors.white,
-                              ),
-                              tooltip: '退出全屏',
-                              onPressed: _close,
+                            NativeVodControls.trailing(
+                              rateLabel: _rateLabel,
+                              nativeEnabled: widget.nativeVodControls,
+                              onAction: _onVodControlAction,
                             ),
                           ],
                         ),
@@ -2610,8 +3534,38 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
               ),
               if (_longPressSpeeding)
                 const Center(child: _LongPressSpeedHint()),
+              // I-影视 item 7: persistent unlock button — visible
+              // whenever locked, even with the bars hidden, so a
+              // locked player can never trap the user.
+              if (_locked)
+                Positioned(
+                  top: 32,
+                  right: 16,
+                  child: IconButton(
+                    key: const ValueKey('vod_lock_overlay'),
+                    icon: const Icon(Icons.lock, color: Colors.white),
+                    tooltip: '解锁',
+                    onPressed: _toggleLock,
+                  ),
+                ),
+              // I-影视 item 7: lock state chip, centre.
+              if (_locked)
+                const Center(
+                  child: _LockedHint(),
+                ),
+              // I-影视 item 9: pure-audio chip — the picture is off
+              // by design, say so instead of a black screen.
+              if (_audioOnly && !_locked)
+                const Positioned(
+                  key: ValueKey('vod_audio_only_hint'),
+                  top: 96,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _AudioOnlyHint()),
+                ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -2654,6 +3608,90 @@ class _FailureCard extends StatelessWidget {
   }
 }
 
+
+/// Line-switch pill (H, build 29): opaque custom pill, NOT ChoiceChip.
+///
+/// Root cause it replaces (chen 2026-11-22 screenshot: two solid white
+/// blocks above the control bar, left with a dark ✓, text invisible):
+/// the old ChoiceChip passed translucent fills (white 0.08, selected
+/// 0.20) assuming they composite over the black video — but RawChip
+/// paints that fill in an Ink OVER a Material whose colour defaults
+/// to ThemeData.canvasColor (= ColorScheme.surface = surfaceSolid:
+/// WHITE in light mode, #1C1C1E in dark). Translucent white over
+/// opaque white canvas is solid white, so in light mode the white
+/// label vanished (1:1 contrast) while the dark accent checkmark
+/// (chipTheme.checkmarkColor = accent = pure black in appleGlass
+/// light) stayed visible. Dark mode never showed it (canvas #1C1C1E
+/// → dark grey pills), which is why only light-mode chen hit it.
+/// A static read of the player file alone cannot see it — the canvas
+/// layer only appears by following RawChip → Material → ThemeData
+/// (verified: golden pixels (255,255,255) in light, (46,46,48) /
+/// (73,73,75) in dark, exactly the alpha-blend math over each
+/// mode's canvas).
+///
+/// This pill paints its own OPAQUE fill + explicit white label +
+/// explicit white check, so no theme layer (ChipTheme, ColorScheme,
+/// canvasColor, glass intensity) can move it again. The fills keep
+/// the old dark-mode look exactly (unselected #2E2E30 = old
+/// white-0.08-over-#1C1C1E, selected #49494B = old white-0.20-over-
+/// #1C1C1E), so dark mode is byte-identical and light mode now
+/// matches it. Same layout as before: 36 high, same list, same tap.
+class _LinePill extends StatelessWidget {
+  const _LinePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  /// Opaque fills (see class doc): never translucent, never themed.
+  static const Color selectedFill = Color(0xFF49494B);
+  static const Color unselectedFill = Color(0xFF2E2E30);
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: HaoPressable(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(HaoRadius.large),
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? selectedFill : unselectedFill,
+            borderRadius: BorderRadius.circular(HaoRadius.large),
+            border: Border.all(
+              color: selected
+                  ? Colors.white.withValues(alpha: 0.60)
+                  : Colors.white.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                const Icon(Icons.check, size: 18, color: Colors.white),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white70,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Skip intro/outro pill (1.1.6): white pill, black text — the player
 /// surface is always black video, so the white-on-black treatment
@@ -2732,7 +3770,7 @@ class _SeekHint extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              forward ? Icons.fast_forward : Icons.fast_rewind,
+              forward ? Icons.fast_forward : Icons.fast_rewind, shadows: HaoTheme.legibilityShadows(context), 
               color: Colors.white,
             ),
             const SizedBox(width: 8),
@@ -2762,10 +3800,10 @@ class _LongPressSpeedHint extends StatelessWidget {
     return _HintPill(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: const Row(
+        child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.fast_forward, color: Colors.white),
+          Icon(Icons.fast_forward, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
           SizedBox(width: 8),
           Text(
             '2.0x',
@@ -2799,7 +3837,7 @@ class _SystemHint extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isBrightness ? Icons.brightness_6 : Icons.volume_up,
+            isBrightness ? Icons.brightness_6 : Icons.volume_up, shadows: HaoTheme.legibilityShadows(context), 
             color: Colors.white,
           ),
           const SizedBox(height: 8),
@@ -2849,6 +3887,71 @@ class _EndedCard extends StatelessWidget {
             const SizedBox(height: 12),
             FilledButton(onPressed: onClose, child: const Text('返回详情')),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// I-影视 item 7: centre chip while the player is locked — says
+/// what happened and how to get out (tap the lock button, top
+/// right). IgnorePointer: the chip itself never eats taps.
+class _LockedHint extends StatelessWidget {
+  const _LockedHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: _HintPill(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock, color: Colors.white),
+              const SizedBox(width: 8),
+              const Text(
+                '已锁定，点右上角锁图标解锁',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// I-影视 item 9: chip shown while pure-audio mode is on — the
+/// black video area is intentional (video track off), not a stall.
+class _AudioOnlyHint extends StatelessWidget {
+  const _AudioOnlyHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: _HintPill(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.headphones, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              const Text(
+                '纯音频播放中',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

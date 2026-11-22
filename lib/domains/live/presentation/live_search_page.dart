@@ -1,9 +1,16 @@
-// Live search page — search live rooms on one platform at a time.
+// Live search page — progressive multi-platform search (build 29,
+// item 2).
 //
-// chen 2026-11-17: the live tab had NO search entry at all (not a
-// broken search — the feature was entirely absent). The platform
-// adapters all implement searchRooms already, so this page is UI +
-// history only, no new parsing:
+// One query fans out to every enabled platform concurrently
+// (LiveProgressiveSearch): each platform's results appear the moment
+// that platform answers, a single platform's 12 s timeout / failure
+// never blocks the others, and the error state only shows when ALL
+// platforms failed with nothing found. The platform row is a FILTER
+// over the merged results (not a re-search), and "包含未开播" toggles
+// whether offline rooms are shown (default on — the old behaviour).
+//
+// The platform adapters all implement searchRooms already (see the
+// old header comment for the per-platform notes, kept below):
 //
 //   Huya     search.cdn.huya.com — real API, paginated.
 //   Douyu    www.douyu.com/japi/search/api/searchShow — real API.
@@ -14,11 +21,11 @@
 //   Kuaishou author search — the web search page never lists rooms,
 //            so results are anchors as rooms (only a `living` flag).
 //
-// Rooms only, one platform at a time: searchAnchors is NOT offered
-// here — Douyin's throws ("抖音暂不支持搜索主播") and Kuaishou has no
-// separate room search, so a second tab would be broken on two of the
-// five platforms. Room search matches title AND anchor nick on the
-// server side, which covers "搜直播间/主播名".
+// Rooms only: searchAnchors is NOT offered — Douyin's throws
+// ("抖音暂不支持搜索主播") and Kuaishou has no separate room search,
+// so a second tab would be broken on two of the five platforms.
+// Room search matches title AND anchor nick on the server side,
+// which covers "搜直播间/主播名".
 //
 // Entry is the same as the room grid: tap records a history entry and
 // opens LiveRoomPage, which re-parses play URLs fresh on entry
@@ -45,8 +52,13 @@ import '../../../core/theme/haptics.dart';
 import '../../../features/settings/source_stores.dart';
 import '../../../features/video/widgets/referer_image.dart';
 import '../../../widgets/hao_search_field.dart';
+import '../../../widgets/native_switch.dart';
 import '../../../shared/platforms/sites.dart';
 import '../live_history_store.dart';
+import '../live_metrics.dart';
+import '../live_search_progressive.dart';
+import '../live_status.dart';
+import 'live_link_sheet.dart';
 import 'playback/live_room_page.dart';
 
 /// Search live rooms. [searchFn] is a test seam: production passes
@@ -79,22 +91,31 @@ class LiveSearchPage extends StatefulWidget {
 class _LiveSearchPageState extends State<LiveSearchPage> {
   final _controller = TextEditingController();
 
-  late String _platform;
+  /// Platform FILTER over the merged results (null = 全部). The
+  /// search itself always runs on every enabled platform.
+  String? _platformFilter;
   List<LiveRoom> _results = [];
+
+  /// Per-platform completion, for the progressive display + the
+  /// partial-failure note.
+  Set<String> _donePlatforms = {};
+  Set<String> _failedPlatforms = {};
   bool _searching = false;
   bool _searched = false;
-  bool _failed = false;
   int _searchSeq = 0;
   String _query = '';
+
+  /// "包含未开播" — default on (old behaviour showed offline rooms).
+  bool _includeOffline = true;
 
   @override
   void initState() {
     super.initState();
     final enabled = LiveSourcesStore.enabledIds();
-    _platform = widget.initialPlatform != null &&
+    _platformFilter = widget.initialPlatform != null &&
             enabled.contains(widget.initialPlatform)
-        ? widget.initialPlatform!
-        : enabled.first;
+        ? widget.initialPlatform
+        : null;
     _controller.addListener(() {
       if (mounted) setState(() {});
     });
@@ -112,45 +133,73 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
     return Sites.of(platform).searchRooms(keyword);
   }
 
+  /// Progressive fan-out: every enabled platform concurrently, each
+  /// with its own 12 s timeout; results appear per platform as they
+  /// land. The generation guard ([_searchSeq]) drops stale rounds.
   Future<void> _search(String query) async {
     final q = query.trim();
     if (q.isEmpty) return;
     final seq = ++_searchSeq;
+    final platforms = LiveSourcesStore.enabledIds();
     setState(() {
       _query = q;
       _searching = true;
       _searched = true;
-      _failed = false;
       _results = [];
+      _donePlatforms = {};
+      _failedPlatforms = {};
     });
     await LiveHistoryStore.saveSearchQuery(q);
-    List<LiveRoom> rooms;
-    try {
-      rooms = await _runSearch(_platform, q).timeout(
-        const Duration(seconds: 20),
-        onTimeout: () => throw TimeoutException('live search timeout'),
-      );
-    } catch (_) {
-      if (seq != _searchSeq || !mounted) return;
-      setState(() {
-        _searching = false;
-        _failed = true;
-      });
-      return;
-    }
+    final search = LiveProgressiveSearch(search: _runSearch);
+    await search.run(
+      q,
+      platforms,
+      generation: () => _searchSeq,
+      onPlatformDone: (result) {
+        if (seq != _searchSeq || !mounted) return;
+        setState(() {
+          _donePlatforms = {..._donePlatforms, result.platform};
+          if (result.failed) {
+            _failedPlatforms = {..._failedPlatforms, result.platform};
+          }
+          // Merge this platform's rooms (dedupe by platform|roomId).
+          final seen = _results
+              .map((r) => '${r.platform}|${r.roomId}')
+              .toSet();
+          for (final room in result.rooms) {
+            if (seen.add('${room.platform}|${room.roomId}')) {
+              _results = [..._results, room];
+            }
+          }
+        });
+      },
+    );
     if (seq != _searchSeq || !mounted) return;
-    setState(() {
-      _searching = false;
-      _results = rooms;
-    });
+    setState(() => _searching = false);
   }
 
-  void _selectPlatform(String id) {
-    if (id == _platform) return;
-    setState(() => _platform = id);
-    // The platform is part of the search context: a searched query
-    // re-runs on the new platform instead of showing stale results.
-    if (_searched && _query.isNotEmpty) unawaited(_search(_query));
+  /// The platform row filters the merged results — it never re-runs
+  /// the query (the search already covered every platform).
+  void _selectPlatform(String? id) {
+    if (id == _platformFilter) return;
+    setState(() => _platformFilter = id);
+  }
+
+  /// Failed only when every platform failed AND nothing was found.
+  bool get _failed =>
+      _searched &&
+      !_searching &&
+      _results.isEmpty &&
+      _failedPlatforms.isNotEmpty &&
+      _donePlatforms.length == _failedPlatforms.length;
+
+  List<LiveRoom> get _visible {
+    var list = _results;
+    final filter = _platformFilter;
+    if (filter != null) {
+      list = list.where((r) => r.platform == filter).toList();
+    }
+    return applyOfflineFilter(list, includeOffline: _includeOffline);
   }
 
   void _openRoom(LiveRoom room) {
@@ -166,13 +215,28 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
     );
   }
 
+  void _openLinkSheet() {
+    unawaited(
+      showLiveLinkSheet(context: context, onOpenRoom: _openRoom),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final history = LiveHistoryStore.getSearchHistory();
     final enabled = LiveSourcesStore.enabledIds();
+    final visible = _visible;
+    final theme = HaoTheme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: Text('搜索直播间', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+        actions: [
+          IconButton(
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link),
+            tooltip: '粘贴链接进房',
+            onPressed: _openLinkSheet,
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -194,16 +258,28 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
                 setState(() {
                   _results = [];
                   _searched = false;
-                  _failed = false;
+                  _donePlatforms = {};
+                  _failedPlatforms = {};
                   _query = '';
                 });
               },
             ),
         ),
           _PlatformRow(
-            platform: _platform,
+            platform: _platformFilter,
             platforms: enabled,
             onSelect: _selectPlatform,
+          ),
+          // Build-29 item 2: "包含未开播" filter (HaoNativeSwitch).
+          // Default on — the old behaviour showed offline rooms.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: HaoSwitchRow(
+              title: '包含未开播',
+              subtitle: _includeOffline ? '开播和未开播的都显示' : '只显示正在开播的',
+              value: _includeOffline,
+              onChanged: (v) => setState(() => _includeOffline = v),
+            ),
           ),
           if (!_searched && history.isNotEmpty)
             _HistorySection(
@@ -217,8 +293,35 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
                 if (mounted) setState(() {});
               },
             ),
+          // Progressive note: which platforms are still searching /
+          // failed alone (a single slow platform never blocks the rest).
+          if (_searched && _failedPlatforms.isNotEmpty && !_failed)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(
+                    shadows: HaoTheme.legibilityShadows(context),
+                    Icons.warning_amber_outlined,
+                    size: 14,
+                    color: theme.textMuted,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '${_failedPlatforms.map(platformName).join('、')}搜索失败，其他平台结果照常显示',
+                      style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
+                        color: theme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
-            child: _searching
+            child: _searching && _results.isEmpty
                 ? const Center(child: CupertinoActivityIndicator())
                 : _failed
                     ? _SearchError(
@@ -227,26 +330,30 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
                       )
                     : _searched && _results.isEmpty
                         ? _EmptyResults(query: _query)
-                        : _searched
-                            ? ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  12,
-                                  14,
-                                  16,
-                                ),
-                                itemCount: _results.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(height: 12),
-                                itemBuilder: (context, i) {
-                                  final room = _results[i];
-                                  return _RoomRow(
-                                    room: room,
-                                    onTap: () => _openRoom(room),
-                                  );
-                                },
+                        : _searched && visible.isEmpty
+                            ? _EmptyResults(
+                                query: '$_query（当前筛选下没有结果）',
                               )
-                            : const SizedBox.shrink(),
+                            : _searched
+                                ? ListView.separated(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      12,
+                                      14,
+                                      16,
+                                    ),
+                                    itemCount: visible.length,
+                                    separatorBuilder: (_, _) =>
+                                        const SizedBox(height: 12),
+                                    itemBuilder: (context, i) {
+                                      final room = visible[i];
+                                      return _RoomRow(
+                                        room: room,
+                                        onTap: () => _openRoom(room),
+                                      );
+                                    },
+                                  )
+                                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -254,8 +361,10 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
   }
 }
 
-/// Platform switcher — same ChoiceChip language as the live tab's
-/// platform row (Big-5 only, minus platforms disabled in settings).
+/// Platform filter — same ChoiceChip language as the live tab's
+/// platform row (Big-5 only, minus platforms disabled in settings),
+/// plus 全部. Filtering never re-runs the query: the search already
+/// covered every platform.
 class _PlatformRow extends StatelessWidget {
   const _PlatformRow({
     required this.platform,
@@ -263,43 +372,52 @@ class _PlatformRow extends StatelessWidget {
     required this.onSelect,
   });
 
-  final String platform;
+  /// Null = 全部.
+  final String? platform;
   final List<String> platforms;
-  final ValueChanged<String> onSelect;
+  final ValueChanged<String?> onSelect;
 
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    Widget chip(String label, bool selected, VoidCallback onTap) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ChoiceChip(
+          label: Text(label, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+          selected: selected,
+          selectedColor: theme.accentSoft,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
+          ),
+          side: BorderSide(
+            color: selected ? theme.accent : theme.hairline,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+            color: selected ? theme.accent : theme.textSecondary,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+          onSelected: (_) => onTap(),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 48,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: platforms.map((id) {
-          final site = Sites.of(id);
-          final selected = id == platform;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: ChoiceChip(
-              label: Text(site.name, style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
-              selected: selected,
-              selectedColor: theme.accentSoft,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(HaoRadius.panel),
-              ),
-              side: BorderSide(
-                color: selected ? theme.accent : theme.hairline,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                color: selected ? theme.accent : theme.textSecondary,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-              onSelected: (_) => onSelect(id),
+        children: [
+          chip('全部', platform == null, () => onSelect(null)),
+          for (final id in platforms)
+            chip(
+              Sites.of(id).name,
+              id == platform,
+              () => onSelect(id),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }
@@ -485,7 +603,9 @@ class _RoomRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          _formatWatching(room.watching),
+                          // Build-29 item 6: labelled by metric kind
+                          // (在线 / 热度 / 观看), never a bare number.
+                          metricLabelFor(room.platform, room.watching),
                           style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 12,
@@ -625,11 +745,6 @@ class _EmptyResults extends StatelessWidget {
   }
 }
 
-/// Watching count — same rule as the live tab's formatWatching:
-/// 12345 -> "1.2万", smaller counts as-is.
-String _formatWatching(int watching) {
-  if (watching >= 10000) {
-    return '${(watching / 10000).toStringAsFixed(1)}万';
-  }
-  return '$watching';
-}
+/// Watching counts are formatted + labelled by live_metrics
+/// (metricLabelFor) — the old local _formatWatching copy is gone so
+/// the label can never drift from the tab / follow cards again.

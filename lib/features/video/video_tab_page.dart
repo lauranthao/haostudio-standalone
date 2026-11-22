@@ -27,6 +27,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/player/vod_features.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
@@ -51,17 +52,40 @@ import 'video_version_sheet.dart';
 import 'widgets/referer_image.dart';
 
 /// Split an aggregated history list into the two bars (pure, tested).
-/// "在看" = unfinished rows; "下一集" = rows with a KNOWN next
-/// episode. The two bars never mix: resuming the current episode and
-/// starting the next one are different actions (Infuse lesson,
-/// audit §4). A row can appear in both bars (unfinished episode with
-/// a known next episode) — that is correct, the actions differ.
+/// "在看" = unfinished rows; "下一集" = rows whose current episode is
+/// FINISHED and whose next episode is KNOWN. The two bars never show
+/// the same work twice: while an episode is still unfinished the row
+/// stays in "在看" only — b29 (chen: the same film in both bars at
+/// once, e.g. 《空枪》 in 继续观看 and 下一集, reads as a duplicate).
+/// A finished movie / last-episode row never enters "下一集" (old
+/// rows without `nextEpName` stay out until re-recorded; a stale
+/// next-episode name that is only a dub/version tag stays out too).
+/// One work = one bar: a finished row of a film already in "在看"
+/// (same title + year, or same source + vodId when untitled) stays
+/// out of "下一集" — different languages / lines of one film are the
+/// same work.
 ({List<WatchHistoryEntry> watching, List<WatchHistoryEntry> nextUp})
     splitContinueWatching(List<WatchHistoryEntry> all) {
+  final watching = all.where((e) => !e.isFinished).toList();
+  final watchingWorks = <String>{for (final e in watching) _splitWorkKey(e)};
   return (
-    watching: all.where((e) => !e.isFinished).toList(),
-    nextUp: all.where((e) => e.hasNextEpisode).toList(),
+    watching: watching,
+    nextUp: all
+        .where((e) =>
+            e.hasNextEpisode &&
+            e.isFinished &&
+            !isVersionEpisodeName(e.nextEpName) &&
+            !watchingWorks.contains(_splitWorkKey(e)))
+        .toList(),
   );
+}
+
+/// Work identity for the two-bar split: the film key when the row
+/// has one, else the exact source + vodId (same rule as the store's
+/// film dedup, minus the legacy year-less merge).
+String _splitWorkKey(WatchHistoryEntry e) {
+  final film = VideoHistoryStore.filmKey(e);
+  return film.isEmpty ? e.identityKey : film;
 }
 
 /// Bumps whenever any video detail/history navigation returns, so the
@@ -196,16 +220,22 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   final _patchAttempted = <String>{};
 
   /// Apply cached poster patches to a cached/fresh home payload.
+  /// I-影视 item 10: the user's category prefs (hide/reorder) are
+  /// applied here, so every render — cached or fresh — honours
+  /// them, and "我的媒体" (rows.take(5)) follows the same order.
   VideoHomeData _patchedHome(VideoHomeData data) => VideoHomeData(
-        rows: data.rows
-            .map(
-              (row) => VideoHomeRow(
-                name: row.name,
-                count: row.count,
-                items: _posterPatch.withCachedPatches(row.items),
-              ),
-            )
-            .toList(),
+        rows: applyCategoryPrefs(
+          data.rows
+              .map(
+                (row) => VideoHomeRow(
+                  name: row.name,
+                  count: row.count,
+                  items: _posterPatch.withCachedPatches(row.items),
+                ),
+              )
+              .toList(),
+          readCategoryPrefs(),
+        ),
         fetchedAt: data.fetchedAt,
       );
 
@@ -969,9 +999,12 @@ class _CollectionCard extends StatelessWidget {
 /// per-source bars inside the CMS/Emby pages stay as they are.
 ///
 /// Two separate rows, never one mixed row: "在看" (unfinished, tap =
-/// resume this episode) and "下一集" (known next episode only, tap =
-/// open the detail page at the next episode from 0 — the current
-/// episode's position is never carried over). A finished row never
+/// resume this episode) and "下一集" (current episode FINISHED and
+/// next episode known, tap = open the detail page at the next
+/// episode from 0 — the current episode's position is never carried
+/// over). One work appears in at most one row (b29): while an
+/// episode is unfinished its row stays in "在看" only, so the same
+/// poster never shows in both rows at once. A finished row never
 /// enters "在看"; a movie / last-episode row never enters "下一集"
 /// (old rows without `nextEpName` stay out until re-recorded).
 /// Reads the store on every build + on [_continueRefresh], so a
@@ -1220,7 +1253,7 @@ class _HomeError extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,

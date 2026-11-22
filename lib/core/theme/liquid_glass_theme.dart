@@ -19,7 +19,7 @@
 //   the library resolves `GlassTheme.brightnessOf` from it, so our
 //   light/dark/system modes flow through unchanged.
 // - Accent mapping happens at the WIDGET level, where the API
-//   exposes it (e.g. `GlassSwitch.activeColor: theme.accent`). Our
+//   exposes it (e.g. `HaoNativeSwitch.activeColor: theme.accent`). Our
 //   accent is black/grey/gold/teal per theme/mode — never the
 //   library's blue — unless the user picked a custom accent
 //   (ThemeController), which replaces it app-wide.

@@ -247,6 +247,12 @@ void main() {
     }
 
     testWidgets('groups entries by day, newest first', (tester) async {
+      // Tall viewport: all 3 day groups must be built at once, or
+      // ListView.builder leaves the oldest group below the fold.
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final now = DateTime.now();
       await resetHistory(tester);
       await recordHistory(

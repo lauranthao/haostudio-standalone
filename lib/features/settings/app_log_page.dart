@@ -155,12 +155,12 @@ class _AppLogPageState extends State<AppLogPage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
             tooltip: '清空日志',
             onPressed: _clear,
           ),
           IconButton(
-            icon: const Icon(Icons.ios_share),
+            icon: Icon(Icons.ios_share, shadows: HaoTheme.legibilityShadows(context),),
             tooltip: '分享日志',
             onPressed: _share,
           ),

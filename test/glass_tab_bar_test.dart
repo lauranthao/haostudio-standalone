@@ -1,21 +1,17 @@
-// GlassTabBar drag-to-switch (Beans KumoneGlassTabBar dragGesture)
-// + settle spring (GlassTabBar.swift:36 spring(0.35, 0.82))
-// + Kumone pill, restored 2026-11-21 (chen: Kumone那种，不要文字，
-// 不要影子）: faint-tint pill, cellW - 8 = 84 wide, slides as one
-// piece (no lens, no stretch, no magnification); icon-only tabs;
-// selected icon = theme accent, unselected = primary 0.8; no shadow
-// on the bar or the mini player.
+// Apple-native tab bar (build-29 adoption, chen 2026-11-22: “都要原生
+// 效果”): glassy_ui_ios GlassTabBar on iOS, the Flutter
+// _AppleTabBarFallback on this host — labels under every icon,
+// transparent tint pill (theme accentSoft), .bouncy slide, tap only,
+// NO drag, NO Kumone settle spring.
 //
-// Geometry at a 400pt-wide viewport: outer Padding 12 + GlassCard
-// inset 4 leaves 368pt for 4 cells -> cellW 92, cell centres (global)
-// 62 / 154 / 246 / 338, bar height 56 + 8 inset at the top. The pill
-// is 84 wide, so its settled left edge (global) is
-// 20 / 112 / 204 / 296 for tabs 0..3, top edge 4.
+// Geometry at a 400pt-wide viewport: full-width bar, 4 cells ->
+// cellW 100, pill cellW - 8 = 92 wide, 56 high, top 4. Settled pill
+// left edges (global): 4 / 104 / 204 / 304 for tabs 0..3. Cell
+// centres (global): 50 / 150 / 250 / 350, bar height 64, centre y = 32.
 
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
@@ -57,6 +53,49 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> pumpLiveBar(
+    WidgetTester tester, {
+    int start = 0,
+  }) async {
+    var current = start;
+    tester.view.physicalSize = const Size(400, 200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      GetMaterialApp(
+        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              return GlassTabBar(
+                currentIndex: current,
+                onTap: (i) => setState(() => current = i),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('every tab shows its label', (tester) async {
+    await pumpBar(tester, currentIndex: 0, onTap: (_) {});
+    for (final label in ['影视', '直播', '音乐', '设置']) {
+      expect(
+        find.descendant(
+          of: find.byType(GlassTabBar),
+          matching: find.text(label),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(find.byType(Icon), findsNWidgets(4));
+  });
+
   testWidgets('tap switches to the tapped tab', (tester) async {
     final tapped = <int>[];
     var current = 0;
@@ -69,136 +108,27 @@ void main() {
       },
     );
 
-    await tester.tapAt(const Offset(246, 32));
+    await tester.tapAt(const Offset(250, 32));
     await tester.pumpAndSettle();
     expect(tapped, [2]);
     expect(current, 2);
   });
 
-  test('settle spring is a real underdamped spring (Kumone 0.35/0.82)', () {
-    // SpringDescription from GlassTabBar.swift:36 response 0.35,
-    // dampingFraction 0.82: ω = 2π/0.35, stiffness = ω²,
-    // damping = 2·ζ·ω. ζ < 1, so the simulation must overshoot its
-    // target slightly and then converge — an ease curve cannot do
-    // either of these, which is what distinguishes the real spring.
-    final sim = SpringSimulation(GlassTabBarState.settleSpring, 0.0, 1.0, 0.0);
-    var max = 0.0;
-    for (var t = 0.0; t <= 1.0; t += 0.001) {
-      max = math.max(max, sim.x(t));
-    }
-    expect(max, greaterThan(1.002));
-    expect(sim.x(1.0), closeTo(1.0, 0.002));
-  });
+  testWidgets('tap settles the pill on the tapped tab', (tester) async {
+    await pumpLiveBar(tester, start: 0);
 
-  testWidgets('tap settles the pill on the tapped tab with the spring',
-      (tester) async {
-    var current = 0;
-    tester.view.physicalSize = const Size(400, 200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      GetMaterialApp(
-        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return GlassTabBar(
-                currentIndex: current,
-                onTap: (i) => setState(() => current = i),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    // Exact Offset equality is too strict here: the spring settles
-    // to within simulation tolerance, not to the exact double.
-    var topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(20, 0.5));
+    var topLeft = tester.getTopLeft(find.byKey(GlassTabBar.pillKey));
+    expect(topLeft.dx, closeTo(4, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
 
-    await tester.tapAt(const Offset(246, 32));
+    await tester.tapAt(const Offset(250, 32));
     await tester.pumpAndSettle();
-    expect(current, 2);
-    topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
+    topLeft = tester.getTopLeft(find.byKey(GlassTabBar.pillKey));
     expect(topLeft.dx, closeTo(204, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
   });
 
-  testWidgets('drag tracks the finger, release settles on the tab',
-      (tester) async {
-    var current = 0;
-    tester.view.physicalSize = const Size(400, 200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      GetMaterialApp(
-        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return GlassTabBar(
-                currentIndex: current,
-                onTap: (i) => setState(() => current = i),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final gesture = await tester.startGesture(const Offset(62, 32));
-    await gesture.moveBy(const Offset(40, 0));
-    await tester.pump();
-    // The first move only wins the gesture arena: the drag starts at
-    // the post-move finger position, so this move's own update is
-    // below the 8pt threshold and the pill has not moved yet.
-    expect(
-      tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx,
-      closeTo(20, 0.5),
-    );
-    await gesture.moveBy(const Offset(60, 0));
-    await tester.pump();
-    // Finger at global x 162 (content-local 146): the pill's left
-    // edge follows it exactly (146 - 42 = 104 content-local, 120
-    // global) — no 350ms ease lag while dragging.
-    expect(
-      tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx,
-      closeTo(120, 1.0),
-    );
-    await gesture.moveBy(const Offset(60, 0));
-    await tester.pump();
-    await gesture.up();
-    await tester.pumpAndSettle();
-
-    expect(current, 2);
-    final topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(204, 0.5));
-    expect(topLeft.dy, closeTo(4, 0.5));
-  });
-
-  testWidgets('tap on the current tab does nothing', (tester) async {
-    final tapped = <int>[];
-    await pumpBar(
-      tester,
-      currentIndex: 1,
-      onTap: tapped.add,
-    );
-
-    await tester.tapAt(const Offset(154, 32));
-    await tester.pump();
-    expect(tapped, isEmpty);
-  });
-
-  testWidgets('drag across cells switches per cell crossed', (tester) async {
+  testWidgets('drag across cells switches nothing', (tester) async {
     final tapped = <int>[];
     var current = 0;
     tester.view.physicalSize = const Size(400, 200);
@@ -227,126 +157,73 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final gesture = await tester.startGesture(const Offset(62, 32));
-    // The first 40pt move only wins the gesture arena (the drag
-    // starts at the post-move finger position, still in cell 0 ->
-    // no switch), then each cell crossing switches.
-    await gesture.moveBy(const Offset(40, 0));
+    // Kumone drag is void: a finger drag across two cells must not
+    // switch tabs and must not move the pill. Only taps switch.
+    final gesture = await tester.startGesture(const Offset(50, 32));
+    await gesture.moveBy(const Offset(100, 0));
     await tester.pump();
-    await gesture.moveBy(const Offset(60, 0));
-    await tester.pump();
-    await gesture.moveBy(const Offset(60, 0));
+    await gesture.moveBy(const Offset(100, 0));
     await tester.pump();
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(tapped, [1, 2]);
-    expect(current, 2);
-  });
-
-  testWidgets('drag under 8pt does not switch', (tester) async {
-    final tapped = <int>[];
-    await pumpBar(
-      tester,
-      currentIndex: 0,
-      onTap: tapped.add,
-    );
-
-    final gesture = await tester.startGesture(const Offset(62, 32));
-    await gesture.moveBy(const Offset(5, 0));
-    await gesture.up();
-    await tester.pump();
     expect(tapped, isEmpty);
+    expect(current, 0);
+    expect(
+      tester.getTopLeft(find.byKey(GlassTabBar.pillKey)).dx,
+      closeTo(4, 0.5),
+    );
   });
 
-  testWidgets('rest width is cellW - 8', (tester) async {
+  testWidgets('rest pill is cellW - 8 with the tint', (tester) async {
     await pumpBar(
       tester,
       currentIndex: 1,
       onTap: (_) {},
     );
 
-    final size = tester.getSize(find.byKey(GlassTabBarState.pillKey));
-    expect(size.width, closeTo(84, 1.0)); // cellW 92 - 8
+    final size = tester.getSize(find.byKey(GlassTabBar.pillKey));
+    expect(size.width, closeTo(92, 1.0)); // cellW 100 - 8
     expect(size.height, closeTo(56, 0.5));
-    final topLeft = tester.getTopLeft(find.byKey(GlassTabBarState.pillKey));
-    expect(topLeft.dx, closeTo(112, 0.5));
+    final topLeft = tester.getTopLeft(find.byKey(GlassTabBar.pillKey));
+    expect(topLeft.dx, closeTo(104, 0.5));
     expect(topLeft.dy, closeTo(4, 0.5));
+    final decoration = tester
+        .widget<Container>(find.byKey(GlassTabBar.pillKey))
+        .decoration as BoxDecoration;
+    final hao =
+        HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!;
+    expect(decoration.color, hao.accentSoft);
   });
 
   testWidgets('slide does not stretch mid-flight', (tester) async {
-    var current = 0;
-    tester.view.physicalSize = const Size(400, 200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      GetMaterialApp(
-        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return GlassTabBar(
-                currentIndex: current,
-                onTap: (i) => setState(() => current = i),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpLiveBar(tester, start: 0);
 
-    // One-cell slide (tab 0 -> 1): the Kumone pill slides as ONE
-    // piece on a single spring — no leading/trailing stagger, so its
-    // width stays cellW - 8 = 84 throughout the flight.
-    await tester.tapAt(const Offset(154, 32));
+    // One-cell slide (tab 0 -> 1): the pill slides as ONE piece —
+    // no leading/trailing stagger, so its width stays cellW - 8 = 92
+    // throughout the flight.
+    await tester.tapAt(const Offset(150, 32));
     await tester.pump();
     var maxWidth = 0.0;
     var minWidth = 1000.0;
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
-      final w = tester.getSize(find.byKey(GlassTabBarState.pillKey)).width;
+      final w = tester.getSize(find.byKey(GlassTabBar.pillKey)).width;
       maxWidth = math.max(maxWidth, w);
       minWidth = math.min(minWidth, w);
     }
-    expect(maxWidth, closeTo(84, 1.0));
-    expect(minWidth, closeTo(84, 1.0));
+    expect(maxWidth, closeTo(92, 1.0));
+    expect(minWidth, closeTo(92, 1.0));
     await tester.pumpAndSettle();
     expect(
-      tester.getSize(find.byKey(GlassTabBarState.pillKey)).width,
-      closeTo(84, 1.0),
+      tester.getSize(find.byKey(GlassTabBar.pillKey)).width,
+      closeTo(92, 1.0),
     );
-    expect(current, 1);
   });
 
   testWidgets('selected icon is the theme accent, others primary 0.8',
       (tester) async {
-    var current = 0;
-    tester.view.physicalSize = const Size(400, 200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    await tester.pumpWidget(
-      GetMaterialApp(
-        theme: HaoThemes.of(HaoThemeId.appleGlass).light,
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return GlassTabBar(
-                currentIndex: current,
-                onTap: (i) => setState(() => current = i),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpLiveBar(tester, start: 0);
     final hao =
         HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!;
 
@@ -354,13 +231,13 @@ void main() {
         tester.widget<Icon>(find.byType(Icon).at(i)).color!;
     // At rest the selected tab (0) is the theme accent, the rest are
     // primary at 0.8 — the pill + the accent together mark the
-    // selection (Kumone).
+    // selection.
     expect(iconColor(0), hao.accent);
     expect(iconColor(1), hao.textPrimary.withValues(alpha: 0.8));
     // Mid-slide (tab 0 -> 1): the tap already moved the selection
     // (onTap fires on tapUp; only the pill animates), so the colours
     // have already switched — icon 1 is the accent, icon 0 is 0.8.
-    await tester.tapAt(const Offset(154, 32));
+    await tester.tapAt(const Offset(150, 32));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pump(const Duration(milliseconds: 100));
@@ -372,7 +249,7 @@ void main() {
     expect(iconColor(0), hao.textPrimary.withValues(alpha: 0.8));
   });
 
-  testWidgets('theme matrix: pill + icons readable in all 8 combos',
+  testWidgets('theme matrix: pill + icons + labels in all 8 combos',
       (tester) async {
     tester.view.physicalSize = const Size(400, 200);
     tester.view.devicePixelRatio = 1.0;
@@ -394,11 +271,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         final hao = themeData.extension<HaoTheme>()!;
-        // The pill is present and every tab icon follows the Kumone
+        // The tint pill is present and every tab icon follows the
         // rule (selected = accent, unselected = primary 0.8) in
-        // every combination.
+        // every combination — and every label is drawn.
         expect(
-          find.byKey(GlassTabBarState.pillKey),
+          find.byKey(GlassTabBar.pillKey),
           findsOneWidget,
           reason: '$id $mode: pill missing',
         );
@@ -412,19 +289,21 @@ void main() {
           hao.textPrimary.withValues(alpha: 0.8),
           reason: '$id $mode: unselected tab icon is not primary 0.8',
         );
-        // The pill is the Kumone faint tint (white 0.10 dark /
-        // black 0.075 light) — the exact value, not a luminance
-        // threshold: the tint is faint by design.
         final pillDecoration = tester
-            .widget<Container>(find.byKey(GlassTabBarState.pillKey))
+            .widget<Container>(find.byKey(GlassTabBar.pillKey))
             .decoration as BoxDecoration;
         expect(
           pillDecoration.color,
-          mode == Brightness.dark
-              ? Colors.white.withValues(alpha: 0.10)
-              : Colors.black.withValues(alpha: 0.075),
-          reason: '$id $mode: pill tint',
+          hao.accentSoft,
+          reason: '$id $mode: pill is not the transparent accent tint',
         );
+        for (final label in ['影视', '直播', '音乐', '设置']) {
+          expect(
+            find.text(label),
+            findsOneWidget,
+            reason: '$id $mode: label $label missing',
+          );
+        }
         expect(tester.takeException(), isNull);
       }
     }

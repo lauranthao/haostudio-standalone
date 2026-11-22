@@ -9,9 +9,9 @@
 // hairline dividers (no right-aligned Material TextButton row).
 
 import 'package:flutter/material.dart';
+import 'package:glassy_ui_ios/glassy_ui_ios.dart';
 
 import '../core/theme/glass.dart';
-import '../core/theme/hao_themes.dart';
 
 /// Generic glass dialog shell. [builder] returns the dialog content
 /// (title + body + actions, laid out by the caller). [padding] is the
@@ -49,44 +49,17 @@ Future<T?> showGlassDialog<T>(
   );
 }
 
-/// One full-width stacked action row for an iOS-style alert: 17pt,
-/// centred, min 44pt tall, separated from its neighbours by a
-/// hairline divider above it.
-Widget _alertAction(
-  BuildContext context, {
-  required String label,
-  required VoidCallback onPressed,
-  required Color color,
-  FontWeight weight = FontWeight.w400,
-}) {
-  final theme = HaoTheme.of(context);
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Container(height: 1, color: theme.hairline),
-      TextButton(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          minimumSize: const Size.fromHeight(44),
-          shape: const RoundedRectangleBorder(),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: color, fontSize: 17, fontWeight: weight),
-        ),
-      ),
-    ],
-  );
-}
-
-/// Glass confirm dialog: title 17 w600 centered, content 13
-/// secondary centered, two full-width stacked actions (confirm on
-/// top, cancel at the bottom — iOS stacked order) separated by
-/// hairline dividers. Returns true only when the confirm button
-/// is tapped.
+/// Confirm dialog — a real UIAlertController on iOS
+/// (NativeDialog.alert): title + message + two actions (confirm,
+/// cancel). Returns true only when the confirm button is tapped.
+/// Off-iOS NativeDialog falls back to a Material AlertDialog with the
+/// same two actions, so the bool contract is identical everywhere.
+/// [confirmColor] is kept for API compatibility: a caller that passes
+/// an explicit confirm colour means the confirm is destructive (red
+/// on iOS); no caller passes one today, so the confirm action is a
+/// normal action. (The old glass version stacked confirm above
+/// cancel; UIAlertController lays two alert actions side by side —
+/// that is the native layout, not a regression.)
 Future<bool> showGlassConfirmDialog(
   BuildContext context, {
   required String title,
@@ -95,61 +68,24 @@ Future<bool> showGlassConfirmDialog(
   String cancelLabel = '取消',
   Color? confirmColor,
 }) async {
-  final result = await showGlassDialog<bool>(
-    context,
-    padding: EdgeInsets.zero,
-    builder: (ctx) {
-      final theme = HaoTheme.of(ctx);
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    shadows: HaoTheme.legibilityShadows(ctx),
-                    color: theme.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  content,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    shadows: HaoTheme.legibilityShadows(ctx),
-                    color: theme.textSecondary,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _alertAction(
-            ctx,
-            label: confirmLabel,
-            color: confirmColor ?? theme.accent,
-            weight: FontWeight.w600,
-            onPressed: () => Navigator.of(ctx).pop(true),
-          ),
-          _alertAction(
-            ctx,
-            label: cancelLabel,
-            color: theme.textSecondary,
-            onPressed: () => Navigator.of(ctx).pop(false),
-          ),
-        ],
-      );
-    },
+  final id = await NativeDialog.alert(
+    title: title,
+    message: content,
+    actions: [
+      NativeItem(
+        id: 'confirm',
+        title: confirmLabel,
+        role: confirmColor == null
+            ? NativeItemRole.normal
+            : NativeItemRole.destructive,
+      ),
+      NativeItem(
+        id: 'cancel',
+        title: cancelLabel,
+        role: NativeItemRole.cancel,
+      ),
+    ],
+    context: context,
   );
-  return result ?? false;
+  return id == 'confirm';
 }

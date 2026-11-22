@@ -17,6 +17,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart'; // Obx (wallpaper switch state)
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/native_switch.dart';
 import '../../widgets/hao_toast.dart';
 
 import '../../core/theme/appearance_store.dart';
@@ -59,7 +60,7 @@ class WallpaperPage extends StatelessWidget {
         title: const Text('壁纸'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),),
             tooltip: '上传壁纸',
             onPressed: () => unawaited(_upload(context)),
           ),
@@ -74,11 +75,11 @@ class WallpaperPage extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.wallpaper, size: 48, color: theme.textMuted),
+                Icon(Icons.wallpaper, shadows: HaoTheme.legibilityShadows(context),  size: 48, color: theme.textMuted),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: () => unawaited(_upload(context)),
-                  icon: const Icon(Icons.add, size: 18),
+                  icon: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),  size: 18),
                   label: const Text('上传壁纸'),
                 ),
               ],
@@ -91,10 +92,9 @@ class WallpaperPage extends StatelessWidget {
             // Build 28 D3: the wallpaper switch on the settings page
             // is the master gate — it is shown here too, so the page
             // states whether a wallpaper is actually applied.
-            SwitchListTile(
-              title: const Text('壁纸'),
+            HaoSwitchRow(
+              title: '壁纸',
               value: enabled,
-              activeThumbColor: theme.accent,
               onChanged: (value) {
                 HaoHaptics.select();
                 unawaited(controller.setWallpaperEnabled(value));
@@ -147,7 +147,7 @@ class WallpaperPage extends StatelessWidget {
                                   errorBuilder: (_, _, _) => Container(
                                     color: theme.accentSoft,
                                     child: Icon(
-                                      Icons.broken_image,
+                                      Icons.broken_image, shadows: HaoTheme.legibilityShadows(context), 
                                       color: theme.textMuted,
                                     ),
                                   ),
@@ -169,7 +169,7 @@ class WallpaperPage extends StatelessWidget {
                               color: theme.accent,
                             ),
                             child: Icon(
-                              Icons.check,
+                              Icons.check, shadows: HaoTheme.legibilityShadows(context), 
                               size: 14,
                               color: Theme.of(
                                 context,
@@ -189,10 +189,10 @@ class WallpaperPage extends StatelessWidget {
                               HaoHaptics.tap();
                               unawaited(controller.deleteWallpaper(path));
                             },
-                            child: const Padding(
+                            child: Padding(
                               padding: EdgeInsets.all(4),
                               child: Icon(
-                                Icons.close,
+                                Icons.close, shadows: HaoTheme.legibilityShadows(context), 
                                 size: 14,
                                 color: Colors.white,
                               ),

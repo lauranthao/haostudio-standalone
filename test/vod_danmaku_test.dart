@@ -343,6 +343,201 @@ void main() {
     });
   });
 
+  group('build 29: cold start, 429 retry, empty retry, title gate', () {
+    test('hop budgets cover a cold start (hop1 60s, hop2 30s)', () {
+      final client = VodDanmakuClient();
+      expect(client.hop1Timeout, const Duration(seconds: 60));
+      expect(client.hop2Timeout, const Duration(seconds: 30));
+      expect(client.maxRetries, 2);
+      // Legacy single budget still sets both (existing timeout test).
+      final legacy = VodDanmakuClient(
+        hopTimeout: const Duration(milliseconds: 50),
+      );
+      expect(legacy.hop1Timeout, const Duration(milliseconds: 50));
+      expect(legacy.hop2Timeout, const Duration(milliseconds: 50));
+    });
+
+    test('slow hop 1 survives the new budget, still times out when '
+        'genuinely exceeded', () async {
+      Future<String?> slow(Uri uri) async {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        return _hop1Body;
+      }
+
+      // Audit cold start: 24.6 s vs the old 10 s budget — dead on
+      // arrival. Scaled down here (300 ms delay): the default
+      // budget lets it through.
+      final client = VodDanmakuClient(fetcher: slow);
+      final candidates = await client.fetchCandidates(
+        title: '狂飙',
+        episode: '第1集',
+      );
+      expect(candidates?.length, 3);
+      // And the timeout still bites when the response is slower
+      // than the budget — the fix raises the budget, it does not
+      // remove the timeout.
+      final tightClient = VodDanmakuClient(
+        hopTimeout: const Duration(milliseconds: 100),
+        fetcher: slow,
+      );
+      expect(
+        await tightClient.fetchCandidates(title: '狂飙', episode: '第1集'),
+        isNull,
+      );
+    });
+
+    test('429 then success: retries and returns candidates', () async {
+      var calls = 0;
+      final client = VodDanmakuClient(
+        retryBaseDelay: const Duration(milliseconds: 1),
+        fetcher: (uri) async {
+          calls++;
+          if (calls == 1) {
+            throw const VodDanmakuTransientError(
+              retryAfter: Duration(milliseconds: 1),
+            );
+          }
+          return _hop1Body;
+        },
+      );
+      final candidates = await client.fetchCandidates(
+        title: '狂飙',
+        episode: '第1集',
+      );
+      expect(candidates?.length, 3);
+      expect(calls, 2);
+    });
+
+    test('persistent 429: gives up silent after 1 + maxRetries tries',
+        () async {
+      var calls = 0;
+      final client = VodDanmakuClient(
+        maxRetries: 2,
+        retryBaseDelay: const Duration(milliseconds: 1),
+        fetcher: (uri) async {
+          calls++;
+          throw const VodDanmakuTransientError(
+            retryAfter: Duration(milliseconds: 1),
+          );
+        },
+      );
+      expect(
+        await client.fetchCandidates(title: '狂飙', episode: '第1集'),
+        isNull,
+      );
+      expect(calls, 3);
+    });
+
+    test('transient 5xx without Retry-After: backoff retry succeeds',
+        () async {
+      var calls = 0;
+      final client = VodDanmakuClient(
+        retryBaseDelay: const Duration(milliseconds: 1),
+        fetcher: (uri) async {
+          calls++;
+          if (calls == 1) {
+            throw const VodDanmakuTransientError();
+          }
+          return _hop2Body;
+        },
+      );
+      final comments = await client.fetchCommentsFor(
+        const VodDanmakuCandidate(
+          name: '狂飙(2023) - 第1集',
+          url: 'https://example.com/api/v2/comment/11479?format=xml',
+        ),
+      );
+      expect(comments?.length, 3);
+      expect(calls, 2);
+    });
+
+    test('empty hop-1 200 then success: one delayed re-try', () async {
+      var calls = 0;
+      final client = VodDanmakuClient(
+        emptyRetryDelay: const Duration(milliseconds: 1),
+        fetcher: (uri) async {
+          calls++;
+          return calls == 1 ? '[]' : _hop1Body;
+        },
+      );
+      final candidates = await client.fetchCandidates(
+        title: '狂飙',
+        episode: '第1集',
+      );
+      expect(candidates?.length, 3);
+      expect(calls, 2);
+    });
+
+    test('persistent empty hop-1: null after exactly one re-try',
+        () async {
+      var calls = 0;
+      final client = VodDanmakuClient(
+        emptyRetryDelay: const Duration(milliseconds: 1),
+        fetcher: (uri) async {
+          calls++;
+          return '[]';
+        },
+      );
+      expect(
+        await client.fetchCandidates(title: 'XYZQQQ999', episode: '1'),
+        isNull,
+      );
+      expect(calls, 2);
+    });
+
+    test('title gate: whitespace + Chinese-numeral spellings match', () {
+      // Live server data (2026-11-22): one show's candidates mix
+      // "庆余年 第二季(2024)…" and "庆余年第二季(2024)…" spellings.
+      const withSpace =
+          '庆余年 第二季(2024)【国产剧】from tencent - 【qq】 庆余年第二季 第1集';
+      const noSpace =
+          '庆余年第二季(2024)【电视剧】from 360 - 【qq】 第1集';
+      for (final query in ['庆余年 第2季', '庆余年第二季', '庆余年 第二季']) {
+        for (final name in [withSpace, noSpace]) {
+          expect(
+            vodDanmakuCandidatePasses(
+              VodDanmakuCandidate(name: name, url: 'https://x/c/1'),
+              queryTitle: query,
+              year: '2024',
+            ),
+            isTrue,
+            reason: 'query "$query" must match candidate "$name"',
+          );
+        }
+      }
+      expect(
+        vodDanmakuMatchKey('庆余年 第2季'),
+        vodDanmakuMatchKey('庆余年第二季'),
+      );
+    });
+
+    test('title gate: season is preserved — S1 never matches an S2 query',
+        () {
+      const s1 = '庆余年(2019)【电视剧】from 360 - 【qq】 第1集';
+      expect(
+        vodDanmakuCandidatePasses(
+          const VodDanmakuCandidate(name: s1, url: 'https://x/c/1'),
+          queryTitle: '庆余年 第2季',
+          year: '2024',
+        ),
+        isFalse,
+        reason: 'S1 danmaku over S2 video would be wrong-show spoilers',
+      );
+      // And the S2 query still matches its own season when the year
+      // is unknown (no year gate to fall back on).
+      expect(
+        vodDanmakuCandidatePasses(
+          const VodDanmakuCandidate(
+            name: '庆余年第二季(2024)【电视剧】from 360 - 【qq】 第1集',
+            url: 'https://x/c/1',
+          ),
+          queryTitle: '庆余年 第2季',
+        ),
+        isTrue,
+      );
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Widget tests: player wiring
   // -------------------------------------------------------------------------
@@ -593,7 +788,9 @@ void main() {
         expect(danmakuToggle(tester, open: true), findsOneWidget);
         // Controls still work: back button present, no error UI.
         expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-        expect(find.byIcon(Icons.playlist_play), findsOneWidget);
+        // Build 29 (K): auto-next (playlist_play) moved into the
+        // 更多 menu — the menu button is the controls probe now.
+        expect(find.byIcon(Icons.more_horiz), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {
         await unmountSafely(tester);

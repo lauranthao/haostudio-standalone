@@ -83,6 +83,39 @@ EmbyResponse okJson(dynamic json) =>
 void main() {
   group('T1 probe three states', () {
     test('200 + ServerName/Version + users => ok', () async {
+      // No userId yet: the probe really fetches /Users to list them.
+      // (_config carries userId 'user-1', which skips the fetch by
+      // design — see _fetchUsersOrEmpty — so it cannot be used here.)
+      const configNoUser = EmbyServerConfig(
+        baseUrl: 'http://127.0.0.1:8096',
+        apiKey: 'test-key-123',
+        userId: '',
+      );
+      final fetcher = CannedEmbyFetcher({
+        '/System/Info': okJson({'ServerName': 'Home', 'Version': '4.8.0'}),
+        '/Users': okJson({
+          'Items': [
+            {'Id': 'user-1', 'Name': 'chen'},
+          ],
+        }),
+      });
+      final client = EmbyClient(config: configNoUser, fetcher: fetcher.call);
+      final result = await client.probe();
+      expect(result.ok, isTrue);
+      expect(result.serverName, 'Home');
+      expect(result.version, '4.8.0');
+      expect(result.users.map((u) => u.id), ['user-1']);
+      // /emby prefix is tried first (official API root).
+      expect(fetcher.seenUrls.first, contains('/emby/System/Info'));
+      // Auth rides the header, never the URL.
+      expect(fetcher.seenHeaders.first?['X-Emby-Token'], 'test-key-123');
+      expect(fetcher.seenUrls.every((u) => !u.contains('api_key')), isTrue);
+    });
+
+    test('userId already known => users skipped, still ok', () async {
+      // Intended behavior (emby_client.dart _fetchUsersOrEmpty):
+      // when config.userId is already known the /Users fetch is
+      // skipped and the probe reports an empty user list.
       final fetcher = CannedEmbyFetcher({
         '/System/Info': okJson({'ServerName': 'Home', 'Version': '4.8.0'}),
         '/Users': okJson({
@@ -94,14 +127,11 @@ void main() {
       final client = EmbyClient(config: _config, fetcher: fetcher.call);
       final result = await client.probe();
       expect(result.ok, isTrue);
-      expect(result.serverName, 'Home');
-      expect(result.version, '4.8.0');
-      expect(result.users.map((u) => u.id), ['user-1']);
-      // /emby prefix is tried first (official API root).
-      expect(fetcher.seenUrls.first, contains('/emby/System/Info'));
-      // Auth rides the header, never the URL.
-      expect(fetcher.seenHeaders.first?['X-Emby-Token'], 'test-key-123');
-      expect(fetcher.seenUrls.every((u) => !u.contains('api_key')), isTrue);
+      expect(result.users, isEmpty);
+      expect(
+        fetcher.seenUrls.any((u) => u.contains('/Users')),
+        isFalse,
+      );
     });
 
     test('401 => key wrong, distinct message', () async {

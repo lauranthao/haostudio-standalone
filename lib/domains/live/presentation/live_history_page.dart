@@ -28,6 +28,7 @@ import '../../../widgets/glass_dialog.dart';
 import '../../../widgets/hao_search_field.dart';
 import '../../../shared/platforms/live_site.dart';
 import '../live_follow_store.dart';
+import '../live_history_retention.dart';
 import '../live_history_store.dart';
 import '../live_status.dart';
 import 'live_status_badge.dart';
@@ -265,6 +266,7 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
     final limitLabel = LiveHistoryStore.limit == 0
         ? '不限'
         : '${LiveHistoryStore.limit} 条';
+    final retention = liveHistoryRetention();
     return Scaffold(
       appBar: AppBar(
         title: Text('直播历史', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
@@ -316,6 +318,83 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
                   child: Text(
                     '上限设置',
                     style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Build-29 item 11b: retention period. Shrinking it prunes
+          // expired entries at once (the count is shown before
+          // confirming, like the limit dialog).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+            child: Row(
+              children: [
+                Text(
+                  '保留期',
+                  style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
+                    color: theme.textMuted,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final r in LiveHistoryRetention.values)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(r.label),
+                              selected: retention == r,
+                              selectedColor: theme.accentSoft,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  HaoRadius.panel,
+                                ),
+                              ),
+                              side: BorderSide(
+                                color: retention == r
+                                    ? theme.accent
+                                    : theme.hairline,
+                              ),
+                              labelStyle: TextStyle(
+                                shadows: HaoTheme.legibilityShadows(context),
+                                color: retention == r
+                                    ? theme.accent
+                                    : theme.textSecondary,
+                                fontSize: 12,
+                                fontWeight: retention == r
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                              onSelected: (_) async {
+                                final wouldDelete = retentionWouldDelete(
+                                  LiveHistoryStore.getAll(),
+                                  r.days,
+                                );
+                                if (wouldDelete > 0) {
+                                  final confirmed =
+                                      await showGlassConfirmDialog(
+                                        context,
+                                        title: '缩短保留期？',
+                                        content:
+                                            '将删除超过 ${r.label}的最旧 $wouldDelete 条记录，此操作无法恢复。',
+                                        confirmLabel: '删除并切换',
+                                      );
+                                  if (confirmed != true) return;
+                                }
+                                await setLiveHistoryRetention(r);
+                                await LiveHistoryStore.pruneExpired();
+                                if (mounted) setState(() {});
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -544,7 +623,7 @@ class _HistoryCardState extends State<_HistoryCard> {
                           )
                         else
                           Icon(
-                            Icons.live_tv_outlined,
+                            Icons.live_tv_outlined, shadows: HaoTheme.legibilityShadows(context), 
                             color: theme.textMuted,
                             size: 28,
                           ),

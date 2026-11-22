@@ -53,5 +53,39 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.PersonSegmentationPlugin") {
       PersonSegmentationPlugin.register(with: registrar)
     }
+    // Native iOS switch (build 29, E group): real UISwitch via
+    // PlatformView — the app's only switch component (see
+    // lib/widgets/native_switch.dart). No second switch state:
+    // the native view mirrors the Flutter-side value.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.NativeSwitchPlugin") {
+      NativeSwitchPlugin.register(with: registrar)
+    }
+    // Native VOD controls (build 29, G group): real SwiftUI
+    // buttons via PlatformView — transport + trailing clusters
+    // (see lib/widgets/native_vod_controls.dart). Same pattern
+    // as NativeSwitchPlugin above. The page keeps
+    // nativeVodControls false until this is Codemagic-verified
+    // (no Xcode on the VM), so the Flutter fallback renders.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.VodControlsPlugin") {
+      VodControlsPlugin.register(with: registrar)
+    }
+    // Native music transport (build 29 adoption): real SwiftUI
+    // buttons via PlatformView — prev / play-pause / next (see
+    // lib/widgets/native_music_transport.dart). Same pattern as
+    // VodControlsPlugin above. The page keeps
+    // nativeMusicTransport false until this is Codemagic-verified
+    // (no Xcode on the VM), so the Flutter fallback renders.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.MusicTransportPlugin") {
+      MusicTransportPlugin.register(with: registrar)
+    }
+    // Notification haptics (build 29 adoption): real
+    // UINotificationFeedbackGenerator for success / warning / error
+    // (see lib/core/theme/haptics.dart). Same pattern as
+    // VodControlsPlugin above. Dart falls back to the old impact
+    // call when the channel is missing, so this is safe before
+    // Codemagic verifies the build (no Xcode on the VM).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "com.haostudio.standalone.HaoHapticsPlugin") {
+      HaoHapticsPlugin.register(with: registrar)
+    }
   }
 }

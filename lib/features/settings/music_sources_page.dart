@@ -29,14 +29,14 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import '../../widgets/hao_toast.dart';
+import '../../widgets/native_switch.dart';
 
-import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../core/theme/haptics.dart';
-import '../../core/theme/liquid_glass_theme.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_inset_grouped.dart';
+import '../../widgets/hao_glass_button.dart';
 import '../../widgets/settings_ui.dart';
 import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
@@ -270,7 +270,7 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
       leading: ReorderableDragStartListener(
         index: dragIndex,
         child: Icon(
-          Icons.drag_handle,
+          Icons.drag_handle, shadows: HaoTheme.legibilityShadows(context), 
           size: 20,
           color: theme.textSecondary,
         ),
@@ -285,20 +285,16 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
         children: [
           if (onDelete != null)
             IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20),
+              icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),  size: 20),
               color: theme.textSecondary,
               tooltip: '删除',
               onPressed: onDelete,
             ),
-          GlassSwitch(
+          HaoNativeSwitch(
             value: on,
-            // N-8: iOS size 51x31 (was Material Switch).
-            width: 51,
-            height: 31,
-            activeColor: theme.accent,
-            settings: HaoLiquidGlass.ios27Settings(context),
-            enableHaptics: HaoHaptics.enabled,
             onChanged: (v) => _toggleScript(id, v),
+            activeColor: theme.accent,
+            semanticsLabel: title,
           ),
         ],
       ),
@@ -317,17 +313,10 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             children: [
               ...kSearchPlatforms.map((pf) {
                 final on = _enabled.contains(pf);
-                return SwitchListTile(
-                  title: Text(
-                    pf.displayName,
-                    style: TextStyle(color: theme.textPrimary),
-                  ),
-                  subtitle: Text(
-                    '搜索该平台的歌曲',
-                    style: TextStyle(color: theme.textSecondary),
-                  ),
+                return HaoSwitchRow(
+                  title: pf.displayName,
+                  subtitle: '搜索该平台的歌曲',
                   value: on,
-                  activeThumbColor: theme.accent,
                   onChanged: (v) => _toggle(pf, v),
                 );
               }),
@@ -378,7 +367,10 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             onSubmitted: (_) => _addCustom(),
             decoration: InputDecoration(
               hintText: 'https://…/xxx.js',
-              hintStyle: TextStyle(color: theme.textSecondary),
+              hintStyle: TextStyle(
+                shadows: HaoTheme.legibilityShadows(context),
+                color: theme.textSecondary,
+              ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,
@@ -386,15 +378,24 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
             ),
           ),
           const SizedBox(height: 10),
-          FilledButton(
+          HaoGlassButton(
+            label: _adding ? '验证中…' : '添加',
             onPressed: _adding ? null : _addCustom,
-            child: Text(_adding ? '验证中…' : '添加'),
+            fallback: FilledButton(
+              onPressed: _adding ? null : _addCustom,
+              child: Text(_adding ? '验证中…' : '添加'),
+            ),
           ),
           const SizedBox(height: 10),
-          FilledButton.icon(
+          HaoGlassButton(
+            label: _adding ? '验证中…' : '上传 .js 文件',
+            iconSymbol: 'square.and.arrow.up',
             onPressed: _adding ? null : _addCustomFromFile,
-            icon: const Icon(Icons.upload_file, size: 20),
-            label: Text(_adding ? '验证中…' : '上传 .js 文件'),
+            fallback: FilledButton.icon(
+              onPressed: _adding ? null : _addCustomFromFile,
+              icon: Icon(Icons.upload_file, shadows: HaoTheme.legibilityShadows(context),  size: 20),
+              label: Text(_adding ? '验证中…' : '上传 .js 文件'),
+            ),
           ),
         ],
       ),
@@ -405,9 +406,8 @@ class _MusicSourcesPageState extends State<MusicSourcesPage> {
   /// manual order, in the same glass card as the old SettingsGroup.
   Widget _scriptList() {
     final ordered = _orderedScriptInfos();
-    return HaoGlassCard(
+    return HaoInsetGroupedSection(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      quality: GlassCardQuality.standard,
       child: ReorderableListView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),

@@ -122,6 +122,71 @@ class VideoHomeService {
     }
   }
 
+  /// Re-scan ONE CMS source (I-影视 item 11) — only that source's
+  /// rows are re-fetched, nothing else.
+  ///
+  /// How it stays single-source: the type map is read from its
+  /// 10-min cache (no `?ac=list` round-trip when fresh), and only
+  /// the types whose PRIMARY entry belongs to [source] are
+  /// re-fetched via homeRowOne (one `?ac=videolist` per type, same
+  /// as a home load). The refreshed rows replace their same-name
+  /// rows in the cached home data in place (order kept); a row
+  /// whose re-fetch fails keeps its old items instead of going
+  /// blank. The merged data is saved to the Hive home cache, so
+  /// the next tab entry renders it with no network.
+  ///
+  /// Returns the updated home data, or null when there is nothing
+  /// to re-scan (no cached home yet — caller falls back to
+  /// fetchFresh(force: true) — or this source owns no home row,
+  /// e.g. a search-only source, whose rows never appear on home).
+  Future<VideoHomeData?> rescanSource(
+    VideoSource source, {
+    CancelToken? cancelToken,
+  }) async {
+    final cached = loadCached();
+    if (cached == null) return fetchFresh(force: true);
+    late final Map<String, CmsTypeEntry> map;
+    try {
+      map = await _cms.typeMap(cancelToken: cancelToken);
+    } catch (_) {
+      return null;
+    }
+    final names = map.entries
+        .where((e) => e.value.source.toString() == source.idKey)
+        .map((e) => e.key)
+        .toList();
+    if (names.isEmpty) return null;
+    final rows = List<VideoHomeRow>.of(cached.rows);
+    var changed = false;
+    for (final name in names) {
+      VideoHomeRow? fresh;
+      try {
+        fresh = await _cms.homeRowOne(
+          name,
+          map[name]!,
+          cancelToken: cancelToken,
+        );
+      } catch (_) {
+        fresh = null;
+      }
+      if (fresh == null) continue;
+      final idx = rows.indexWhere((r) => r.name == name);
+      if (idx >= 0) {
+        rows[idx] = fresh;
+      } else {
+        rows.add(fresh);
+      }
+      changed = true;
+    }
+    if (!changed) return null;
+    final updated = VideoHomeData(
+      rows: rows,
+      fetchedAt: DateTime.now(),
+    );
+    await _saveCache(updated);
+    return updated;
+  }
+
   /// Type names for the category rows (from the cached type map).
   Future<List<String>> typeNames() async {
     try {

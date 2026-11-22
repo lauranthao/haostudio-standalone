@@ -34,6 +34,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../services/music/music_models.dart';
+import '../../services/music/playback_cache.dart';
 
 /// One AVPlayer-backed audio player (one half of the A/B crossfade pair).
 class AvMusicPlayer {
@@ -88,6 +89,31 @@ class AvMusicPlayer {
   /// preload leaves nothing behind ([isPreloadedFor] stays false).
   var _preloadedUrl = '';
 
+  /// The audio source for [url]: file:// opens directly; http(s)
+  /// streams through just_audio's LockCachingAudioSource when the
+  /// playback cache is on (build 29) — bytes are written to disk AS
+  /// they are played, so the cache only ever holds what was actually
+  /// heard, and a replay resumes from the cached prefix on a weak
+  /// network. Any cache failure falls back to a plain stream (never
+  /// blocks playback), and the cache dir is pruned to its 500 MB
+  /// cap in the background.
+  Future<AudioSource> _sourceFor(String url) async {
+    if (url.startsWith('file://')) {
+      return AudioSource.uri(Uri.parse(url));
+    }
+    if (!PlaybackCache.enabled) {
+      return AudioSource.uri(Uri.parse(url));
+    }
+    try {
+      final file = await PlaybackCache.fileForUrl(url);
+      unawaited(PlaybackCache.prune());
+      // ignore: experimental_member_use
+      return LockCachingAudioSource(Uri.parse(url), cacheFile: file);
+    } catch (_) {
+      return AudioSource.uri(Uri.parse(url));
+    }
+  }
+
   Future<bool> preload(String url) async {
     // No native audio on this platform (Linux tests): never touch
     // just_audio's platform channel — its setUrl throws
@@ -97,11 +123,7 @@ class AvMusicPlayer {
     _preloadedUrl = '';
     if (!isPlayableUrl(url)) return false;
     try {
-      if (url.startsWith('file://')) {
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
-      } else {
-        await _player.setUrl(url);
-      }
+      await _player.setAudioSource(await _sourceFor(url));
       // The preloaded source IS loaded: play()/seek() must work on
       // this player once the crossfade swaps it in as active.
       _hasSource = true;
@@ -136,11 +158,7 @@ class AvMusicPlayer {
     // isPlayableUrl). Refuse it here instead.
     if (!isPlayableUrl(url)) return false;
     try {
-      if (url.startsWith('file://')) {
-        await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
-      } else {
-        await _player.setUrl(url);
-      }
+      await _player.setAudioSource(await _sourceFor(url));
       _hasSource = true;
       if (play) await _player.play();
     } on PlayerException {
@@ -189,6 +207,13 @@ class AvMusicPlayer {
       await _player.setVolume(volume.clamp(0.0, 1.0));
     } catch (_) {}
   }
+
+  /// The volume most recently set on the player (just_audio tracks
+  /// it synchronously). Fade-outs must start from this, not from the
+  /// track's target gain: during a fade-in the sounding volume is
+  /// still below the target, and restarting a fade-out from the
+  /// target jumps loud before fading out.
+  double get volume => _player.volume;
 
   /// Playback rate, 1.0 = normal (media_kit setRate).
   Future<void> setRate(double rate) async {

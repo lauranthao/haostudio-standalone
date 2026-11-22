@@ -285,20 +285,104 @@ void main() {
       expect(findEpisodeByName(lines, ''), isNull);
     });
 
-    test('splitContinueWatching keeps the two bars separate', () {
+    test('historyNextEpisode: a movie\'s dub variants are not a next episode',
+        () {
+      // 《空枪》 case: one CMS line whose "episodes" are dubs of the
+      // same film — watching 粤语 must NOT yield 国语 as 下一集.
+      final movieLines = [
+        PlayLine(name: '线路1', episodes: const [
+          PlayEpisode(name: '粤语', url: 'u1'),
+          PlayEpisode(name: '国语', url: 'u2'),
+        ]),
+      ];
+      expect(
+        historyNextEpisode(
+          lines: movieLines,
+          lineIdx: 0,
+          epIdx: 0,
+          allowCrossLine: false,
+        ).nextEpName,
+        '',
+      );
+      // Suffixed variants (国语版 / 粤语中字) are the same entry.
+      expect(isVersionEpisodeName('国语版'), isTrue);
+      expect(isVersionEpisodeName('粤语中字'), isTrue);
+      expect(isVersionEpisodeName('国语中字版'), isTrue);
+      // A film split into parts is still one film.
+      final parts = [
+        PlayLine(name: '线路1', episodes: const [
+          PlayEpisode(name: '上集', url: 'u1'),
+          PlayEpisode(name: '下集', url: 'u2'),
+        ]),
+      ];
+      expect(
+        historyNextEpisode(
+          lines: parts,
+          lineIdx: 0,
+          epIdx: 0,
+          allowCrossLine: false,
+        ).nextEpName,
+        '',
+      );
+      // A cross-line first entry that is only a dub is skipped too.
+      final crossDub = [
+        PlayLine(name: '线路1', episodes: const [
+          PlayEpisode(name: '正片', url: 'u1'),
+        ]),
+        PlayLine(name: '线路2', episodes: const [
+          PlayEpisode(name: '国语', url: 'u2'),
+        ]),
+      ];
+      expect(
+        historyNextEpisode(
+          lines: crossDub,
+          lineIdx: 0,
+          epIdx: 0,
+          allowCrossLine: true,
+        ).nextEpName,
+        '',
+      );
+      // And a series is untouched: 第1集 → 第2集, with the right name.
+      final series = [
+        PlayLine(name: '线路1', episodes: const [
+          PlayEpisode(name: '第1集', url: 'u1'),
+          PlayEpisode(name: '第2集', url: 'u2'),
+        ]),
+      ];
+      final next = historyNextEpisode(
+        lines: series,
+        lineIdx: 0,
+        epIdx: 0,
+        allowCrossLine: false,
+      );
+      expect(next.nextEpName, '第2集');
+      expect(next.totalEpisodes, 2);
+      expect(isVersionEpisodeName('第2集'), isFalse);
+      expect(isVersionEpisodeName('Pilot'), isFalse);
+    });
+
+    test('splitContinueWatching: one work in one bar only', () {
       final split = splitContinueWatching([
         _history(source: 12, vodId: 'a', title: '在看无下一集'),
         _history(source: 'emby', vodId: 'b', title: '在看有下一集', nextEpName: '第2集'),
         _history(source: 12, vodId: 'c', title: '看完有下一集', position: 1790, nextEpName: '第4集'),
         _history(source: 12, vodId: 'd', title: '看完电影', position: 1790),
+        // Stale row from before the fix: finished film whose stored
+        // next name is only a dub — in neither bar.
+        _history(source: 12, vodId: 'e', title: '看完旧电影', position: 1790, nextEpName: '国语'),
+        // Same film twice (two languages / sources): the unfinished
+        // row keeps the film in 在看, the finished twin stays out
+        // of 下一集.
+        _history(source: 12, vodId: 'f', title: '同片双语', year: '2024'),
+        _history(source: 5, vodId: 'g', title: '同片双语', year: '2024', position: 1790, nextEpName: '第2集'),
       ]);
       expect(
         split.watching.map((e) => e.title).toList(),
-        ['在看无下一集', '在看有下一集'],
+        ['在看无下一集', '在看有下一集', '同片双语'],
       );
       expect(
         split.nextUp.map((e) => e.title).toList(),
-        ['在看有下一集', '看完有下一集'],
+        ['看完有下一集'],
       );
     });
   });
@@ -760,13 +844,15 @@ void main() {
         (tester) async {
       await tester.runAsync(seedHistory);
       await pumpBar(tester);
-      // Watching bar: A + B (C is finished). Next bar: B + C.
+      // Watching bar: A + B (C is finished). Next bar: C only — B's
+      // episode is still unfinished, so it stays out of 下一集 (b29:
+      // one work, one bar).
       expect(find.text('继续观看'), findsOneWidget);
       expect(find.text('下一集'), findsOneWidget);
       expect(find.text('在看无下一集'), findsOneWidget);
-      expect(find.text('在看有下一集'), findsNWidgets(2));
+      expect(find.text('在看有下一集'), findsOneWidget);
       expect(find.text('看完有下一集'), findsOneWidget);
-      expect(find.text('下一集 · 第2集'), findsOneWidget);
+      expect(find.text('下一集 · 第2集'), findsNothing);
       expect(find.text('下一集 · 第4集'), findsOneWidget);
       // Drain: the seeded Hive write must not leave the
       // ReadWriteSync queue stuck for the next test (see

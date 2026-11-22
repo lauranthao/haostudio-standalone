@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/glass.dart';
 
 import '../core/theme/hao_themes.dart';
+import 'hao_inset_grouped.dart';
 
 /// Section heading: 13 / w700 / muted, with a little tracking.
 /// Same on every settings page (settings tab, danmaku, sources...).
@@ -27,10 +28,12 @@ class HaoSectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
-          color: theme.textMuted,
+          // Apple grouped-list section header = Footnote 13 regular,
+          // secondary label (build-29 typography: was 13 w700,
+          // letterSpacing 0.6 — heavier than any iOS section header).
+          color: theme.textSecondary,
           fontSize: 13,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
+          fontWeight: FontWeight.w400,
         ),
       ),
     );
@@ -54,7 +57,8 @@ class HaoHint extends StatelessWidget {
         style: TextStyle(
           color: theme.textSecondary,
           fontSize: 13,
-          height: 1.55,
+          // Footnote leading 18/13 = 1.38 (was 1.55).
+          height: 1.38,
         ),
       ),
     );
@@ -69,7 +73,7 @@ class HaoChevron extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Icon(
-      Icons.chevron_right,
+      Icons.chevron_right, shadows: HaoTheme.legibilityShadows(context), 
       color: HaoTheme.of(context).textMuted,
       size: 20,
     );
@@ -105,7 +109,7 @@ class HaoGlassCard extends StatelessWidget {
         shadow: GlassShadow.card,
         padding: padding,
         quality: quality,
-        // Transparent Material inside the glass: ListTile/SwitchListTile
+        // Transparent Material inside the glass: ListTile rows
         // paint their ink splashes on the nearest Material ancestor —
         // without this Flutter asserts ("ink splashes may be invisible")
         // and taps show no ripple. The Material is transparent, so the
@@ -117,7 +121,7 @@ class HaoGlassCard extends StatelessWidget {
   }
 }
 
-/// A grouped card of settings rows (ListTile / SwitchListTile /
+/// A grouped card of settings rows (ListTile / HaoSwitchRow /
 /// RadioListTile / slider rows): hairline dividers between rows only,
 /// no divider above the first or below the last row. The group takes
 /// any children, so existing rows move in unchanged — no logic moves.
@@ -128,12 +132,12 @@ class SettingsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Phase B: grouped settings sections render as standard liquid
-    // glass (library shader, built for scrolling lists). Children are
-    // Material ListTile/SwitchListTile/RadioListTile rows — no glass
+    // build-29 adoption: grouped settings sections render as iOS
+    // inset grouped sections (solid, 10pt radius, hairline, no
+    // shadow) instead of frosted-glass cards. Children are Material
+    // ListTile / HaoSwitchRow / RadioListTile rows — no glass
     // controls inside, so no nesting issue.
-    return HaoGlassCard(
-      quality: GlassCardQuality.standard,
+    return HaoInsetGroupedSection(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,

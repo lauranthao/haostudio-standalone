@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/daily_service.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
@@ -18,6 +19,7 @@ import 'music_navigation.dart';
 import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
+import 'widgets/music_image.dart';
 import 'widgets/song_row.dart';
 import 'widgets/track_more_sheet.dart';
 
@@ -81,7 +83,33 @@ class _DailyPageState extends State<DailyPage> {
   void _playAll() {
     final tracks = _tracks;
     if (tracks == null || tracks.isEmpty) return;
-    unawaited(_player.playQueue(tracks, 0, label: '每日推荐'));
+    unawaited(
+      _player.playQueue(
+        tracks,
+        0,
+        label: '每日推荐',
+        sourceKey: QueueSource.daily(dayKeyOf(DateTime.now())),
+        resumeFromMemory: true,
+      ),
+    );
+    unawaited(openPlayerPage<void>(context));
+  }
+
+  /// Play the 今日一 Pick inside the daily queue (same source, so
+  /// the queue position is remembered like the rest of the list).
+  void _playPick(Song pick) {
+    final tracks = _tracks;
+    if (tracks == null || tracks.isEmpty) return;
+    final idx = tracks.indexWhere((s) => s.identityKey == pick.identityKey);
+    if (idx < 0) return;
+    unawaited(
+      _player.playQueue(
+        tracks,
+        idx,
+        label: '每日推荐',
+        sourceKey: QueueSource.daily(dayKeyOf(DateTime.now())),
+      ),
+    );
     unawaited(openPlayerPage<void>(context));
   }
 
@@ -186,7 +214,7 @@ class _DailyPageState extends State<DailyPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: ElevatedButton.icon(
                         onPressed: _playAll,
-                        icon: const Icon(Icons.play_arrow),
+                        icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                         label: const Text('播放全部'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.accent,
@@ -197,6 +225,108 @@ class _DailyPageState extends State<DailyPage> {
                           ),
                         ),
                       ),
+                    ),
+                    // 今日一 Pick (build 29): one deterministic song
+                    // of the day from this list — same song all day,
+                    // a different one tomorrow.
+                    Builder(
+                      builder: (ctx) {
+                        final pick =
+                            DailyService.pickOfDay(_tracks!, now: now);
+                        if (pick == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => _playPick(pick),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  color: theme.accent.withValues(alpha: 0.1),
+                                  border: Border.all(
+                                    color: theme.accent.withValues(alpha: 0.3),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: pick.cover.isEmpty
+                                          ? Container(
+                                              width: 48,
+                                              height: 48,
+                                              color: theme.accentSoft,
+                                              child: Icon(
+                                                Icons.music_note,
+                                                shadows: HaoTheme.legibilityShadows(context),
+                                                color: theme.textMuted,
+                                              ),
+                                            )
+                                          : Image(
+                                              image: MusicImageProvider(
+                                                pick.cover,
+                                              ),
+                                              width: 48,
+                                              height: 48,
+                                              fit: BoxFit.cover,
+                                            ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            '今日一 Pick',
+                                            style: TextStyle(
+                                              shadows: HaoTheme.legibilityShadows(context),
+                                              color: theme.accent,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            pick.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              shadows: HaoTheme.legibilityShadows(context),
+                                              color: theme.textPrimary,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          Text(
+                                            pick.artist,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: theme.textSecondary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.play_circle_filled,
+                                      shadows: HaoTheme.legibilityShadows(context),
+                                      color: theme.accent,
+                                      size: 32,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     if (_cold)
                       Padding(
@@ -226,7 +356,13 @@ class _DailyPageState extends State<DailyPage> {
                                 isFav: favIds.contains(song.identityKey),
                                 onPlay: () {
                                   unawaited(
-                                    _player.playQueue(_tracks!, i),
+                                    _player.playQueue(
+                                      _tracks!,
+                                      i,
+                                      sourceKey: QueueSource.daily(
+                                        dayKeyOf(DateTime.now()),
+                                      ),
+                                    ),
                                   );
                                   unawaited(openPlayerPage<void>(context));
                                 },

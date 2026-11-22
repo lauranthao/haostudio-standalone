@@ -21,7 +21,23 @@ import 'player_engine.dart';
 import 'player_kernel.dart';
 import 'video_fit.dart';
 
-class MpvBackend implements TrackCapableBackend, FrameCapableBackend {
+/// mpv `volume-max` (K, build 29): 300% ceiling. mpv's default is
+/// 130 — without this, any session volume above 1.3 (live volume
+/// boost 131–300%) is clamped to 130% inside mpv.
+const String kMpvVolumeMax = '300';
+
+/// Dialogue-boost centre fold (K, build 29, I-影视 item 3): mpv `af`
+/// lavfi pan, front-centre (c2, 5.1 order FL FR FC LFE BL BR) at 0.7
+/// + surrounds (c4/c5) at 0.3 folded into L/R. `=` form on purpose:
+/// the `<` renormalized form would attenuate stereo by ~0.59x (a
+/// missing c2 still counts in the renormalization sum), while `=`
+/// leaves stereo bit-identical (verified with ffmpeg 8.1.2, see
+/// [MpvBackend.setDialogueBoost]). Coefficients 待真机验证.
+const String kDialogueBoostCentreFilter =
+    'lavfi[pan=stereo|c0=1.0*c0+0.7*c2+0.3*c4|c1=1.0*c1+0.7*c2+0.3*c5]';
+
+class MpvBackend
+    implements TrackCapableBackend, FrameCapableBackend, DialogueBoostCapableBackend {
   MpvBackend() {
     // Defensive: the native media_kit library must be initialised
     // before Player() is created. main() does this, but backends can
@@ -133,6 +149,13 @@ class MpvBackend implements TrackCapableBackend, FrameCapableBackend {
     for (final entry in mpvBaseProperties().entries) {
       await _setProperty(entry.key, entry.value);
     }
+    // K (build 29): mpv `volume-max=300` — the ceiling, not a gain.
+    // mpv's default is 130, so a session volume above 1.3 (live
+    // volume boost 131–300%, dialogue-boost headroom) is clamped
+    // to 130% without this. Set on EVERY open (live + VOD): the
+    // playing volume stays 100% until a gain is actually sent, so
+    // raising the ceiling alone changes nothing audible.
+    await _setProperty('volume-max', kMpvVolumeMax);
     final format = formatOf(url: url, declaredFormat: declaredFormat);
     final sourceProps = isLive
         ? mpvLiveSourceProperties(isHls: format == StreamFormat.hls)
@@ -160,6 +183,49 @@ class MpvBackend implements TrackCapableBackend, FrameCapableBackend {
     if (platform is NativePlayer) {
       await platform.setProperty(key, value);
     }
+  }
+
+  /// Dialogue boost (I-影视 item 3, VOD only): the mpv half of
+  /// [DialogueBoostCapableBackend]. The session remembers the switch
+  /// and re-applies it after every ladder swap, so this runs on a
+  /// fresh backend as well as mid-playback; `af` is a persistent
+  /// player option, so one set covers later episodes on the same
+  /// backend instance.
+  ///
+  /// Two parts, both best-effort (a rejected write never breaks
+  /// playback — same defensive pattern as the track setters):
+  /// 1. `volume-max=300` (re-asserted here: the ceiling must hold
+  ///    even if this backend was created before the open() set).
+  /// 2. The centre-channel fold (only when enabling): the front
+  ///    centre (c2) + surrounds (c4/c5) are folded into L/R, so
+  ///    dialogue sits louder against music/effects. Coefficients
+  ///    are 待真机验证 (a full-scale all-channels passage can clip
+  ///    with `=` gains summing past 1.0 — if chen hears
+  ///    distortion, retune to the `<` renormalized form).
+  ///
+  /// Layout safety — VERIFIED on this VM with ffmpeg 8.1.2 (same
+  /// filter engine family as mpv's bundled ffmpeg), not assumed:
+  /// a stereo source through this filter is bit-identical
+  /// (volumedetect -21.1 dB with and without the filter — a
+  /// missing c2 reads as silence), mono passes through too, and
+  /// a 5.1 source folds correctly. So the filter is applied
+  /// UNCONDITIONALLY when the switch is on: no channel-count gate
+  /// (no layout string is exposed by the backend anyway, and a
+  /// gate would need one). If mpv's older bundled ffmpeg ever
+  /// rejects the set, the throw is swallowed here and audio keeps
+  /// playing unfiltered.
+  @override
+  Future<void> setDialogueBoost(bool enabled) async {
+    try {
+      await _setProperty('volume-max', kMpvVolumeMax);
+      if (!enabled) {
+        // Off: drop the centre filter. The ceiling stays 300 —
+        // the live volume boost needs it regardless of this switch.
+        await _setProperty('af', '');
+        return;
+      }
+      await _setProperty('af', kDialogueBoostCentreFilter);
+    } catch (_) {}
   }
 
   Future<void> _command(List<String> args) async {

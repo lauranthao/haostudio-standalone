@@ -6,7 +6,11 @@
 // 播放模式 (cycles the five play modes — 顺序播放 / 列表循环 / 单曲循环 /
 // 随机播放 / 单曲播放, M-P0-1), 睡眠定时 (M-P0-3), 下一首播放 (insert
 // right after the current track, M-P0-4), 下载 (save to the device for
-// offline playback, M-P0-5), 倍速 slider 0.6–2.0× (M-P0-2), 取消.
+// offline playback, M-P0-5), 播放设置 (one tap deeper: 倍速 slider
+// 0.5–2.0× + presets (M-P0-2, build 29: was 0.6–2.0; pitch stays
+// correct — native TimeDomain algorithm), A-B 循环 / 歌词偏移 /
+// 翻译显隐 / 淡入淡出 / Zap 开关 — the adjustments moved out because
+// the sheet ran past one screen), 取消.
 // There is NO 分享 (share) button in this sheet. Tapping 播放列表 closes
 // the sheet and opens the floating queue panel above the player (Apple
 // Music "Up Next" style).
@@ -28,7 +32,9 @@ import '../../../core/theme/hao_settle_spring.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../core/theme/liquid_glass_theme.dart';
 import '../../../widgets/glass_dialog.dart';
+import '../../../widgets/native_switch.dart';
 import '../../../services/music/bookmarks_store.dart';
+import '../../../services/music/lyric_tools.dart';
 import '../../../services/music/music_downloads.dart';
 import '../../../services/music/music_models.dart';
 import '../../../services/music/music_quality.dart';
@@ -315,7 +321,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
   Widget section(String label) => Align(
     alignment: Alignment.centerLeft,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
       child: Text(
         label,
         style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
@@ -370,15 +376,15 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
               child: Row(
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(HaoRadius.standard),
                     child: song.cover.isEmpty
                         ? Container(
-                            width: 44,
-                            height: 44,
+                            width: 40,
+                            height: 40,
                             color: theme.accentSoft,
                             child: Icon(shadows: HaoTheme.legibilityShadows(context),
                               Icons.music_note,
@@ -387,12 +393,12 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                           )
                         : Image(
                             image: MusicImageProvider(song.cover),
-                            width: 44,
-                            height: 44,
+                            width: 40,
+                            height: 40,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => Container(
-                              width: 44,
-                              height: 44,
+                              width: 40,
+                              height: 40,
                               color: theme.accentSoft,
                               child: Icon(shadows: HaoTheme.legibilityShadows(context),
                                 Icons.music_note,
@@ -438,6 +444,7 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             section('播放'),
             // M-P0-4: insert right after the current track.
             ListTile(
+              dense: true,
               leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_play_next, color: theme.textPrimary),
               title: Text('下一首播放', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
               onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playNext),
@@ -450,12 +457,14 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
             if (FmService.ensure().isFM.value ||
                 FmService.ensure().isHeartbeat.value)
               ListTile(
+                dense: true,
                 leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.thumb_down, color: theme.textPrimary),
                 title: Text('不喜欢', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.dislike),
               ),
             Obx(
               () => ListTile(
+                dense: true,
                 leading: Icon(shadows: HaoTheme.legibilityShadows(context),
                   playModeIcon(controller.mode),
                   color: theme.textPrimary,
@@ -467,8 +476,194 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                 onTap: () => Navigator.of(ctx).pop(TrackMoreAction.playMode),
               ),
             ),
-            // M-P0-2: speed slider 0.6–2.0×, live value, takes effect
-            // immediately on the audio rate (controller.setSpeed).
+            // Playback adjustments (build 29) live one tap deeper in
+            // the 播放设置 sub-sheet: with them inline the `···`
+            // sheet ran past one screen on chen's phone (sleep timer
+            // + cancel below the fold). The row shows the live speed.
+            Obx(
+              () => ListTile(
+                dense: true,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune, color: theme.textPrimary),
+                title: Text('播放设置', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                trailing: Text(
+                  '${controller.speed.value.toStringAsFixed(2)}×',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+                ),
+                onTap: () => unawaited(showPlaybackSettingsSheet(ctx)),
+              ),
+            ),
+            const Divider(height: 1),
+            section('歌曲'),
+            // Stage 3: equalizer entry with the real on/off state
+            // (same destination as the settings playback-panel row).
+            AnimatedBuilder(
+              animation: EqualizerStore.ensure(),
+              builder: (context, _) => ListTile(
+                dense: true,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune, color: theme.textPrimary),
+                title: Text('均衡器', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                trailing: Text(
+                  EqualizerStore.ensure().enabled ? '已开启' : '已关闭',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+                ),
+                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.equalizer),
+              ),
+            ),
+            ListTile(
+              dense: true,
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.info_outline, color: theme.textPrimary),
+              title: Text('歌曲信息', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.info),
+            ),
+            ListTile(
+              dense: true,
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.comment_outlined, color: theme.textPrimary),
+              title: Text('评论', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.comments),
+            ),
+            // Bookmarks (1.1.6): one row, opens the list / add /
+            // jump / delete dialog. The count reads at open time.
+            ListTile(
+              dense: true,
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark_outline, color: theme.textPrimary),
+              title: Text('书签', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              trailing: Text(
+                BookmarksStore.countFor(song.identityKey) == 0
+                    ? '添加书签'
+                    : '${BookmarksStore.countFor(song.identityKey)} 个',
+                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+              ),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.bookmark),
+            ),
+            const Divider(height: 1),
+            section('列表'),
+            ListTile(
+              dense: true,
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_music, color: theme.textPrimary),
+              title: Text('播放列表', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.queue),
+            ),
+            Obx(() {
+              final option = controller.sleepOption.value;
+              final remaining = controller.sleepRemaining.value;
+              final subtitle = option == SleepTimerOption.off
+                  ? '未设置'
+                  : option == SleepTimerOption.queueEnd
+                  ? '到歌单结束'
+                  : remaining != null
+                  ? '剩余 ${SleepTimer.formatRemaining(remaining)}'
+                  : option.label;
+              return ListTile(
+                dense: true,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.timer, color: theme.textPrimary),
+                title: Text('睡眠定时', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                trailing: Text(
+                  subtitle,
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+                ),
+                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.sleepTimer),
+              );
+            }),
+            // M-P0-5: download the song to the device for offline play.
+            Obx(() {
+              final st = controller.downloads.statusFor(song);
+              final prog = controller.downloads.progress[song.identityKey];
+              final subtitle = switch (st) {
+                DownloadStatus.downloaded => '已下载',
+                DownloadStatus.downloading =>
+                  prog != null ? '下载中 ${(prog * 100).round()}%' : '下载中…',
+                DownloadStatus.failed => '下载失败，点按重试',
+                DownloadStatus.notDownloaded => '保存到本机，离线播放',
+              };
+              return ListTile(
+                dense: true,
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context),
+                  st == DownloadStatus.downloaded
+                      ? Icons.download_done
+                      : Icons.download,
+                  color: theme.textPrimary,
+                ),
+                title: Text('下载', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                trailing: Text(
+                  subtitle,
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+                ),
+                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.download),
+              );
+            }),
+            const Divider(height: 1),
+            ListTile(
+              dense: true,
+              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textPrimary),
+              title: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.cancel),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    ),
+    ),
+    ),
+  );
+}
+
+/// Playback settings sub-sheet (build 29): the adjustment controls
+/// that used to live inline in the `···` sheet — speed slider +
+/// presets, A-B loop, lyric offset, translation, fade, Zap. With
+/// them inline the `···` sheet ran past one screen on chen's phone
+/// (sleep timer + cancel below the fold), so adjustments live one
+/// tap deeper here; the `···` sheet keeps only actions and fits
+/// first screen. Opened stacked on top of the `···` sheet (no pop),
+/// so closing it returns to the sheet.
+Future<void> showPlaybackSettingsSheet(BuildContext context) async {
+  final theme = HaoTheme.of(context);
+  final controller = MusicPlayerController.ensure();
+  await showModalBottomSheet<void>(
+    context: context,
+    // N-10: iOS grabber + settle-spring rise, same as the `···` sheet.
+    showDragHandle: true,
+    sheetAnimationStyle: const AnimationStyle(
+      curve: HaoSettleSpringCurve(),
+      reverseCurve: HaoSettleSpringCurve(),
+    ),
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    builder: (ctx) => GlassContainer(
+      shape: const LiquidVerticalRoundedSuperellipse(
+        topRadius: HaoRadius.sheet,
+        bottomRadius: 0,
+      ),
+      settings: HaoLiquidGlass.ios27Settings(ctx),
+      quality: GlassQuality.standard,
+      useOwnLayer: true,
+      child: Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                  child: Center(
+                    child: Text(
+                      '播放设置',
+                      style: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
+                        color: theme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+            // M-P0-2: speed slider 0.5–2.0× (build 29: was 0.6–2.0),
+            // live value, takes effect immediately on the audio rate
+            // (controller.setSpeed). Pitch never changes with speed:
+            // the native fork pins every AVPlayerItem to
+            // AVAudioTimePitchAlgorithmTimeDomain.
             Obx(() {
               final speed = controller.speed.value;
               return Padding(
@@ -505,126 +700,304 @@ Future<TrackMoreAction?> showTrackMoreSheet(BuildContext context, Song song) {
                       ),
                       child: Slider(
                         value: speed,
-                        min: 0.6,
+                        min: 0.5,
                         max: 2.0,
-                        divisions: 28,
+                        divisions: 30,
                         label: '${speed.toStringAsFixed(2)}×',
                         onChanged: (v) => unawaited(controller.setSpeed(v)),
                         // N-13: light tap on release, click at either end.
                         onChangeEnd: (v) =>
-                            HaoHaptics.sliderEnd(v, 0.6, 2.0),
+                            HaoHaptics.sliderEnd(v, 0.5, 2.0),
+                      ),
+                    ),
+                    // Speed presets (build 29): one tap to a common
+                    // rate; the slider stays for fine tuning.
+                    Row(
+                      // Six fixed-width slots (Expanded): the chips
+                      // share the row exactly, so the row can never
+                      // overflow — at 0.75x the Ahem test font the
+                      // labels are wider than the system font. The
+                      // label scales down inside its chip instead.
+                      spacing: 6,
+                      children: [
+                        for (final preset
+                            in MusicPlayerController.speedPresets)
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () =>
+                                  unawaited(controller.setSpeed(preset)),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 5,
+                                ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                color: speed == preset
+                                    ? theme.accent.withValues(alpha: 0.14)
+                                    : theme.textPrimary.withValues(
+                                        alpha: 0.035,
+                                      ),
+                                border: Border.all(
+                                  color: speed == preset
+                                      ? theme.accent.withValues(alpha: 0.42)
+                                      : theme.textPrimary.withValues(
+                                          alpha: 0.06,
+                                        ),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '$preset×',
+                                  style: TextStyle(
+                                    shadows: HaoTheme.legibilityShadows(context),
+                                    color: speed == preset
+                                        ? theme.accent
+                                        : theme.textPrimary,
+                                    fontSize: 12,
+                                    fontWeight: speed == preset
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+            // A-B loop (build 29): set A / set B at the current
+            // position, loop the passage; cleared on track change.
+            Obx(() {
+              // Read the version so this rebuilds on every A/B change.
+              controller.abLoopVersion.value;
+              final loop = controller.abLoop;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(shadows: HaoTheme.legibilityShadows(context), Icons.repeat, color: theme.textPrimary),
+                        const SizedBox(width: 16),
+                        Text('A-B 循环', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                        const Spacer(),
+                        Text(
+                          loop.label.isEmpty ? '未设置' : loop.label,
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _AbButton(
+                          label: '设 A 点',
+                          theme: theme,
+                          active: loop.hasA,
+                          onTap: controller.setAbPointA,
+                        ),
+                        const SizedBox(width: 8),
+                        _AbButton(
+                          label: '设 B 点',
+                          theme: theme,
+                          active: loop.isActive,
+                          onTap: controller.setAbPointB,
+                        ),
+                        const SizedBox(width: 8),
+                        _AbButton(
+                          label: '清除',
+                          theme: theme,
+                          active: false,
+                          onTap: controller.clearAbLoop,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+            // Lyric offset (build 29): ±5 s, shifts which line is
+            // active; tapping a line still seeks to its true time.
+            Obx(() {
+              final offset = controller.lyricOffsetMs.value;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lyrics_outlined, color: theme.textPrimary),
+                        const SizedBox(width: 16),
+                        Text('歌词偏移', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                        const Spacer(),
+                        Text(
+                          LyricDisplay.offsetLabel(offset),
+                          style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(ctx).copyWith(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        activeTrackColor: theme.accent,
+                        inactiveTrackColor: theme.accentSoft,
+                        thumbColor: theme.accent,
+                        overlayColor: theme.accentSoft,
+                      ),
+                      child: Slider(
+                        value: offset.toDouble(),
+                        min: -5000,
+                        max: 5000,
+                        divisions: 100,
+                        label: LyricDisplay.offsetLabel(offset),
+                        onChanged: (v) => unawaited(
+                          controller.setLyricOffsetMs(v.round()),
+                        ),
                       ),
                     ),
                   ],
                 ),
               );
             }),
-            const Divider(height: 1),
-            section('歌曲'),
-            // Stage 3: equalizer entry with the real on/off state
-            // (same destination as the settings playback-panel row).
-            AnimatedBuilder(
-              animation: EqualizerStore.ensure(),
-              builder: (context, _) => ListTile(
-                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune, color: theme.textPrimary),
-                title: Text('均衡器', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-                trailing: Text(
-                  EqualizerStore.ensure().enabled ? '已开启' : '已关闭',
-                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+            // Translation + fade switches (build 29): native switch,
+            // never a Material SwitchListTile.
+            Obx(
+              () => ListTile(
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.translate, color: theme.textPrimary),
+                title: Text('歌词翻译', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                trailing: HaoNativeSwitch(
+                  value: controller.showLyricTranslation.value,
+                  onChanged: (v) =>
+                      unawaited(controller.setShowLyricTranslation(v)),
+                  activeColor: theme.accent,
+                  semanticsLabel: '歌词翻译',
                 ),
-                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.equalizer),
               ),
             ),
-            ListTile(
-              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.info_outline, color: theme.textPrimary),
-              title: Text('歌曲信息', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.info),
-            ),
-            ListTile(
-              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.comment_outlined, color: theme.textPrimary),
-              title: Text('评论', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.comments),
-            ),
-            // Bookmarks (1.1.6): one row, opens the list / add /
-            // jump / delete dialog. The count reads at open time.
-            ListTile(
-              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bookmark_outline, color: theme.textPrimary),
-              title: Text('书签', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-              trailing: Text(
-                BookmarksStore.countFor(song.identityKey) == 0
-                    ? '添加书签'
-                    : '${BookmarksStore.countFor(song.identityKey)} 个',
-                style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+            Obx(
+              () => ListTile(
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.blur_on, color: theme.textPrimary),
+                title: Text('淡入淡出', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                subtitle: Text(
+                  '暂停 / 恢复 / 切歌时渐变音量',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 12),
+                ),
+                trailing: HaoNativeSwitch(
+                  value: controller.fadeEnabled.value,
+                  onChanged: (v) =>
+                      unawaited(controller.setFadeEnabled(v)),
+                  activeColor: theme.accent,
+                  semanticsLabel: '淡入淡出',
+                ),
               ),
-              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.bookmark),
             ),
-            const Divider(height: 1),
-            section('列表'),
-            ListTile(
-              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.queue_music, color: theme.textPrimary),
-              title: Text('播放列表', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.queue),
+            // Zap 快速发现 (build 29): every song plays 5 s, then
+            // cuts to the next one. Off = normal queue playback.
+            Obx(
+              () => ListTile(
+                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.bolt, color: theme.textPrimary),
+                title: Text('Zap 快速发现', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                subtitle: Text(
+                  '每首播 5 秒试听，快速扫歌',
+                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 12),
+                ),
+                trailing: HaoNativeSwitch(
+                  value: controller.zapActive.value,
+                  onChanged: (v) async {
+                    if (v) {
+                      await controller.startZapFromLibrary();
+                    } else {
+                      controller.stopZap();
+                    }
+                  },
+                  activeColor: theme.accent,
+                  semanticsLabel: 'Zap 快速发现',
+                ),
+              ),
             ),
-            Obx(() {
-              final option = controller.sleepOption.value;
-              final remaining = controller.sleepRemaining.value;
-              final subtitle = option == SleepTimerOption.off
-                  ? '未设置'
-                  : option == SleepTimerOption.queueEnd
-                  ? '到歌单结束'
-                  : remaining != null
-                  ? '剩余 ${SleepTimer.formatRemaining(remaining)}'
-                  : option.label;
-              return ListTile(
-                leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.timer, color: theme.textPrimary),
-                title: Text('睡眠定时', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-                trailing: Text(
-                  subtitle,
-                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textPrimary),
+                  title: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
+                  onTap: () => Navigator.of(ctx).pop(),
                 ),
-                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.sleepTimer),
-              );
-            }),
-            // M-P0-5: download the song to the device for offline play.
-            Obx(() {
-              final st = controller.downloads.statusFor(song);
-              final prog = controller.downloads.progress[song.identityKey];
-              final subtitle = switch (st) {
-                DownloadStatus.downloaded => '已下载',
-                DownloadStatus.downloading =>
-                  prog != null ? '下载中 ${(prog * 100).round()}%' : '下载中…',
-                DownloadStatus.failed => '下载失败，点按重试',
-                DownloadStatus.notDownloaded => '保存到本机，离线播放',
-              };
-              return ListTile(
-                leading: Icon(shadows: HaoTheme.legibilityShadows(context),
-                  st == DownloadStatus.downloaded
-                      ? Icons.download_done
-                      : Icons.download,
-                  color: theme.textPrimary,
-                ),
-                title: Text('下载', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-                trailing: Text(
-                  subtitle,
-                  style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
-                ),
-                onTap: () => Navigator.of(ctx).pop(TrackMoreAction.download),
-              );
-            }),
-            const Divider(height: 1),
-            ListTile(
-              leading: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textPrimary),
-              title: Text('取消', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
-              onTap: () => Navigator.of(ctx).pop(TrackMoreAction.cancel),
+                const SizedBox(height: 8),
+              ],
             ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     ),
-    ),
-    ),
   );
+}
+
+/// Small pill button for the A-B loop row (build 29).
+class _AbButton extends StatelessWidget {
+  const _AbButton({
+    required this.label,
+    required this.theme,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final HaoTheme theme;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: active
+                ? theme.accent.withValues(alpha: 0.14)
+                : theme.textPrimary.withValues(alpha: 0.035),
+            border: Border.all(
+              color: active
+                  ? theme.accent.withValues(alpha: 0.42)
+                  : theme.textPrimary.withValues(alpha: 0.06),
+              width: 0.8,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              shadows: HaoTheme.legibilityShadows(context),
+              color: active ? theme.accent : theme.textPrimary,
+              fontSize: 13,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Bookmarks dialog (1.1.6): this song's saved positions.

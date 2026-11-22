@@ -1,11 +1,12 @@
-// Kumone settle spring as a shared curve (N-14, 1.1.6 原生感).
+// Settle spring as a shared curve (N-14, 1.1.6 原生感).
 //
-// GlassTabBar.swift:36 — `Animation.spring(response: 0.35,
-// dampingFraction: 0.82)`; the same numbers as
-// `GlassTabBarState.settleSpring` in app_shell.dart and the former
-// private `_SettleSpringCurve` in player_expand_route.dart (moved
-// here so the player close animation AND the bottom sheets share the
-// one spring instead of each inventing its own).
+// Spring(response: 0.35, dampingFraction: 0.82) — the same numbers as
+// the former private `_SettleSpringCurve` in player_expand_route.dart
+// (moved here so the player close animation AND the bottom sheets
+// share the one spring instead of each inventing its own). NOTE
+// (build-29 adoption): the tab bar NO LONGER uses this spring — the
+// Kumone bar is void, the Apple-native bar slides on .bouncy. This
+// curve lives on only for the player expand/close route + sheets.
 // ω = 2π / 0.35, stiffness = ω², damping = 2 · 0.82 · ω, mass 1.
 // Underdamped (ζ = 0.82 < 1): fast ease-out with a ~1% overshoot,
 // then it settles instead of stopping dead.
@@ -19,7 +20,7 @@
 import 'package:flutter/animation.dart';
 import 'package:flutter/physics.dart';
 
-/// Kumone settle spring (response 0.35, dampingFraction 0.82).
+/// Settle spring (response 0.35, dampingFraction 0.82).
 class HaoSettleSpringCurve extends Curve {
   const HaoSettleSpringCurve();
 

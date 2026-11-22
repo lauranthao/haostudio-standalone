@@ -8,7 +8,9 @@
 //   bug-4 fix (chen 2026-11-20: "菜单的那个玻璃也没有了" — the §4
 //   0.40 frost left the bar reading as a flat strip); the tint stays
 //   the page colour, so the bar is still not a white slab.
-// - the tab bar shell + the mini player bar both use it;
+// - the mini player bar uses it; the tab bar is the Apple-native bar
+//   since build 29 (glassy GlassTabBar on iOS, Flutter fallback in
+//   tests — labels on every tab, transparent accent-tint pill).
 // - the tab-root top bars (live + settings AppBars) ARE the page
 //   background: scaffold colour with wallpaper off, transparent
 //   (the background layer shows through) with wallpaper on.
@@ -213,31 +215,56 @@ void main() {
       }
     });
 
-    testWidgets('tab bar shell uses chromeSettings', (tester) async {
+    testWidgets('tab bar shell is the Apple-native bar (labels + '
+        'tint pill)', (tester) async {
       tester.view.physicalSize = const Size(400, 200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
+      var tapped = -1;
       await pumpThemed(
         tester,
         Scaffold(
-          body: GlassTabBar(currentIndex: 1, onTap: (_) {}),
+          body: GlassTabBar(currentIndex: 1, onTap: (i) => tapped = i),
         ),
         HaoThemes.of(HaoThemeId.appleGlass).light,
       );
       await tester.pumpAndSettle();
-      final shell = tester.widget<GlassContainer>(
-        find.byType(GlassContainer).first,
-      );
-      final page = HaoThemes.of(HaoThemeId.appleGlass)
+      // Apple-native bar (build-29 adoption): every tab shows its
+      // label (chen 2026-11-22: 有字）, no GlassContainer chrome any
+      // more — the pill is a transparent accent tint, not a solid
+      // matte slab. In the test host the off-iOS fallback renders.
+      for (final label in ['影视', '直播', '音乐', '设置']) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
+      final theme = HaoThemes.of(HaoThemeId.appleGlass)
           .light
-          .extension<HaoTheme>()!
-          .scaffoldBackground;
-      expect(shell.settings?.glassColor, page.withValues(alpha: 0.12));
-      expect(shell.settings?.frostOpacity, 0.55);
-      expect(shell.settings?.rimLight, 1.5);
+          .extension<HaoTheme>()!;
+      // Pill: one piece at the selected cell (index 1 of 4 in a
+      // 400pt viewport: left 104, width 92), accent tint.
+      final pill = tester.widget<Container>(
+        find.byKey(GlassTabBar.pillKey),
+      );
+      final pillDeco = pill.decoration as BoxDecoration;
+      expect(pillDeco.color, theme.accentSoft);
+      final pillTopLeft = tester.getTopLeft(find.byKey(GlassTabBar.pillKey));
+      expect(pillTopLeft.dx, 104);
+      // (64-56)/2 = 4, plus the 0.5 hairline top border.
+      expect(pillTopLeft.dy, 4.5);
+      // Selected tab label = accent, unselected = primary at 0.8.
+      expect(
+        tester.widget<Text>(find.text('直播')).style?.color,
+        theme.accent,
+      );
+      expect(
+        tester.widget<Text>(find.text('影视')).style?.color,
+        theme.textPrimary.withValues(alpha: 0.8),
+      );
+      await tester.tap(find.text('音乐'));
+      expect(tapped, 2);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('mini player bar uses chromeSettings', (tester) async {
@@ -289,8 +316,9 @@ void main() {
       // background — there is no bar widget to be opaque.
       expect(find.byType(AppBar), findsNothing);
       final title = tester.widget<Text>(find.text('设置'));
-      expect(title.style?.fontSize, 26);
-      expect(title.style?.fontWeight, FontWeight.w800);
+      expect(title.style?.fontSize, 34);
+      // Apple large title: 34pt bold (w700), not the old 26/w800.
+      expect(title.style?.fontWeight, FontWeight.w700);
       expect(
         title.style?.color,
         HaoThemes.of(HaoThemeId.appleGlass)

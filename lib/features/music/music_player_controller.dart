@@ -39,8 +39,11 @@ import '../../core/logging/app_log.dart';
 import '../../core/native/now_playing.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/storage/local_paths.dart';
+import '../../services/music/ab_loop.dart';
 import '../../services/music/bookmarks_store.dart';
 import '../../services/music/equalizer_store.dart';
+import '../../services/music/lyric_tools.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_api.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
@@ -49,6 +52,8 @@ import '../../services/music/music_resolvers.dart';
 import '../../services/music/music_store.dart';
 import '../../services/music/play_mode.dart';
 import '../../services/music/sleep_timer.dart';
+import '../../services/music/volume_fader.dart';
+import '../../services/music/zap.dart';
 import '../../widgets/hao_toast.dart';
 
 const Duration _crossfadeDuration = Duration(milliseconds: 2500);
@@ -100,10 +105,50 @@ class MusicPlayerController extends GetxController
   final Rx<Duration> duration = Duration.zero.obs;
   final Rx<AudioQuality> userQuality = AudioQuality.hires.obs;
   final Rx<AudioQuality> actualQuality = AudioQuality.hires.obs;
-  final RxDouble speed = 1.0.obs; // M-P0-2: 0.6..2.0, persisted
+  final RxDouble speed = 1.0.obs; // M-P0-2: 0.5..2.0, persisted
+  /// Speed presets offered in the `···` sheet (0.5–2x, pitch-corrected
+  /// — the native fork already pins every AVPlayerItem to
+  /// AVAudioTimePitchAlgorithmTimeDomain, UriAudioSource.m:95, so
+  /// changing speed never changes pitch; there is no Dart-side
+  /// toggle for it because just_audio exposes no such API).
+  static const List<double> speedPresets = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
   final RxString playMode = 'seq'.obs; // five modes, see play_mode.dart
   final RxList<LyricLine> lyrics = <LyricLine>[].obs;
   final RxBool lyricsFailed = false.obs;
+  /// Lyric offset in ms (±5000, persisted): shifts which line is
+  /// active, never the seek target (see LyricDisplay).
+  final RxInt lyricOffsetMs = 0.obs;
+
+  /// Show the translation line under the active lyric (NetEase
+  /// `tlyric` — already fetched, now toggleable). Default on.
+  final RxBool showLyricTranslation = true.obs;
+
+  /// Fade in/out on manual pause/resume/track-change (build 29).
+  /// Default on. Auto-advance keeps its own 2.5 s crossfade; the
+  /// sleep-timer stop keeps its own 1 s fade.
+  final RxBool fadeEnabled = true.obs;
+
+  /// A-B loop for the current track (build 29). Cleared on every
+  /// track change — a loop never survives to another song.
+  /// [abLoopVersion] bumps on every change so the sheet can Obx it.
+  final AbLoop abLoop = AbLoop();
+  final RxInt abLoopVersion = 0.obs;
+
+  /// Per-source queue memory (build 29): each playlist / album /
+  /// artist / daily list remembers its own position. [_currentSourceKey]
+  /// is the source the live queue belongs to ('' = ad-hoc queue,
+  /// e.g. from search — not remembered).
+  final MultiQueueStore queueMemory = MultiQueueStore();
+  var _currentSourceKey = '';
+
+  /// Zap 快速发现 (build 29): each song plays [ZapPool.previewSeconds]
+  /// then the controller cuts to the next song in the pool.
+  final RxBool zapActive = false.obs;
+  Timer? _zapTimer;
+
+  /// True while Zap itself is driving a playQueue/playIndex call:
+  /// those calls must not stop the Zap session they belong to.
+  var _zapInternal = false;
   /// Lyrics live BEHIND the cover (chen 2026-11-17): the cover box is
   /// two-sided — front = cover, back = lyrics. `true` = lyrics side
   /// showing, `false` = cover side. Default cover (lyrics are behind).
@@ -185,8 +230,47 @@ class MusicPlayerController extends GetxController
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _completedSub;
   Timer? _fadeTimer;
+
+  /// The sleep-timer fade-out's own timer. It MUST NOT share
+  /// [_fadeTimer] with the crossfade: the two fades own different
+  /// players and run in different directions — sharing one timer let
+  /// a crossfade cancel a sleep fade-out (and vice versa), so the
+  /// track kept sounding past the sleep deadline.
+  Timer? _sleepFadeTimer;
+
+  /// Generation counter for fade-in ramps: a fade-out (pause or
+  /// sleep stop) bumps it so a still-running fade-in ramp stops
+  /// writing rising volumes instead of fighting the fade-out.
+  var _fadeGen = 0;
   var _playGen = 0;
   var _disposed = false;
+
+  /// Early-crossfade trigger (one shot per track): the position
+  /// listener starts the next song's load when the current track is
+  /// inside the crossfade window and its URL is already prefetched.
+  /// Reset in [_loadCurrent].
+  var _earlyCrossfadeStarted = false;
+
+  /// User intents that arrived while a load was resolving (the old
+  /// song was still sounding): applied to the new song once it lands
+  /// (see [_applyPendingIntents]). Cleared at every [_loadCurrent]
+  /// start so a stale intent never leaks into a later song.
+  var _pendingPause = false;
+  Duration? _pendingSeek;
+
+  /// The user moved the position since this song opened (public
+  /// [seek] only — internal seeks never set it). The kill-saved
+  /// resume seek must not jump such a position back.
+  var _userSeekedSinceOpen = false;
+
+  /// Real-duration event that arrived during the open's own await
+  /// (see [onRealDuration]): drained once the load lands.
+  Duration? _pendingRealDuration;
+
+  /// True while an open call ([_openOn] / [_crossfadeTo]'s incoming
+  /// open) is in flight. A duration event in that window belongs to
+  /// the song being opened, not the old one.
+  var _openStarted = false;
 
   /// Gen of the load whose audio is currently open in [_active]
   /// (-1 = no load has opened yet). The error stream carries no URL
@@ -258,6 +342,15 @@ class MusicPlayerController extends GetxController
   /// Stamped with the gen (not a bool) so a NEWER load the user
   /// starts after the fire plays normally.
   var _sleepFiredGen = -1;
+
+  /// Wall-clock sleep timer fired, sticky until the user explicitly
+  /// plays something else (manual load / resume / quality change).
+  /// The gen flag above only covers a load that was already in
+  /// flight when the fire landed; a track that COMPLETES during the
+  /// 1 s fade-out starts a fresh auto-advance with a bumped gen, so
+  /// the gen flag cannot stop it — this flag can (see
+  /// [_onTrackCompleted]).
+  var _sleepFired = false;
 
   /// URL of the source opened for the current song. The trial retry
   /// compares a re-resolved URL against it: the same URL string is
@@ -405,6 +498,13 @@ class MusicPlayerController extends GetxController
     if (savedQueue.songs.isNotEmpty) {
       queue.assignAll(savedQueue.songs);
       currentIndex.value = savedQueue.index;
+      // A restored downloaded song shows its file's tier, not the
+      // requested tier (same rule as the local branch of _loadCurrent).
+      final restored = currentSong;
+      if (restored != null) {
+        actualQuality.value =
+            downloads.tierFor(restored) ?? userQuality.value;
+      }
     }
     // Two crossfade players (A/B, AVPlayer via just_audio). Only on
     // platforms with native audio — on Linux tests there is none, and
@@ -456,6 +556,21 @@ class MusicPlayerController extends GetxController
         HiveKeys.musicNormalizationStrength,
         1,
       ).clamp(0, 2);
+    } catch (_) {}
+    // Build-29 prefs (literal Hive keys — HiveKeys lives in core
+    // storage; see MultiQueueStore's header): fade on, lyric offset
+    // 0, translation shown. Hive may be uninitialised in unit tests
+    // — then the field defaults stand.
+    try {
+      fadeEnabled.value = HiveStore.getBool('hao_music_fade_enabled', true);
+      lyricOffsetMs.value =
+          HiveStore.getInt('hao_music_lyric_offset_ms', 0).clamp(-5000, 5000);
+      showLyricTranslation.value =
+          HiveStore.getBool('hao_music_lyric_show_translation', true);
+    } catch (_) {}
+    // Per-source queue memory (build 29): load once at startup.
+    try {
+      queueMemory.load();
     } catch (_) {}
     // Measured-loudness cache (1.1.6): the EQ tap writes it during
     // playback (see [noteMeasuredLoudness]); reading it back here
@@ -512,6 +627,19 @@ class MusicPlayerController extends GetxController
     _sleepTimer.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _fadeTimer?.cancel();
+    _sleepFadeTimer?.cancel();
+    _zapTimer?.cancel();
+    // Persist the per-source queue memory (build 29): the in-memory
+    // map is updated on every track change, the Hive write happens
+    // here and on source switches only — not per track.
+    if (_currentSourceKey.isNotEmpty && queue.isNotEmpty) {
+      queueMemory.remember(
+        _currentSourceKey,
+        queue.toList(),
+        currentIndex.value,
+      );
+    }
+    unawaited(queueMemory.save());
     unawaited(_finalizeListenSession());
     unawaited(_nowPlaying.clear());
     _nowPlaying.dispose();
@@ -643,7 +771,15 @@ class MusicPlayerController extends GetxController
     unawaited(_errorSub?.cancel());
     unawaited(_completedSub?.cancel());
     _posSub = player.stream.position.listen((p) {
-      if (identical(player, _active)) position.value = p;
+      if (identical(player, _active)) {
+        position.value = p;
+        _maybeStartEarlyCrossfade(p);
+        // A-B loop (build 29): at/past B, jump back to A. The seek
+        // is idempotent — a stale position event after the seek just
+        // seeks to A again, and the stream then reports A < B.
+        final target = abLoop.seekTarget(p);
+        if (target != null) unawaited(_active.seek(target));
+      }
     });
     _durSub = player.stream.duration.listen((d) {
       if (identical(player, _active)) {
@@ -685,23 +821,59 @@ class MusicPlayerController extends GetxController
     // gen -1 (trial retry) leaves the stamp alone — the retry opens
     // for the current load, whose gen is already stamped.
     if (gen >= 0) _activeGen = gen;
+    // A manual open is the user's explicit play (this also covers
+    // setQuality, which re-opens here without going through
+    // _loadCurrent): the fired sleep stop no longer owns the
+    // players — its fade must not pause the new song when it ends,
+    // and a later completion may advance again.
+    if (!auto) {
+      _sleepFadeTimer?.cancel();
+      _sleepFired = false;
+    }
     // Stamp the native EQ tap before the open creates its item
     // (see [_pushLoudnessTrackKey]): currentSong IS the song being
     // opened here — the alt branch replaced the queue slot before
     // calling, the trial retry is guarded to the same song, and a
     // candidate retry is the same song on another URL.
     _pushLoudnessTrackKey(currentSong?.identityKey ?? '');
-    // open() returns false only when the URL was refused before any
-    // native call, so no error will arrive on the error stream: fall
-    // back to the next candidate here, the same path the error stream
-    // uses for a native load failure.
-    if (!await player.open(url, play: true)) {
-      await _onPlayError(auto: auto, gen: gen);
-      return;
+    _openStarted = true;
+    try {
+      // open() returns false only when the URL was refused before any
+      // native call, so no error will arrive on the error stream: fall
+      // back to the next candidate here, the same path the error stream
+      // uses for a native load failure.
+      if (!await player.open(url, play: true)) {
+        await _onPlayError(auto: auto, gen: gen);
+        return;
+      }
+    } finally {
+      _openStarted = false;
     }
     final gain = normalizationGainFor(currentSong);
     _currentNormGain = gain;
-    await player.setVolume(gain);
+    // Fade-in (build 29): a manual open starts silent and ramps to
+    // the track's gain over ~600 ms instead of starting at full
+    // volume. The ramp runs in the background, gen-guarded: a newer
+    // load bumps [_playGen] and the stale ramp stops itself, so it
+    // can never fight the new song's volume. With fading off the old
+    // behaviour (immediate full gain) is kept exactly.
+    if (fadeEnabled.value && gain > 0) {
+      await player.setVolume(0);
+      final rampGen = gen >= 0 ? gen : _playGen;
+      final fadeGen = _fadeGen;
+      unawaited(
+        VolumeFader.ramp(
+          setVolume: player.setVolume,
+          from: 0,
+          to: gain,
+          duration: const Duration(milliseconds: 600),
+          isCancelled: () =>
+              rampGen != _playGen || _fadeGen != fadeGen || _disposed,
+        ),
+      );
+    } else {
+      await player.setVolume(gain);
+    }
     // Rate survives an open: re-apply the user's speed every time a
     // track (or a fallback candidate) is opened.
     await player.setRate(speed.value);
@@ -736,29 +908,69 @@ class MusicPlayerController extends GetxController
   /// Resume a loaded track that is paused (no-op when playing, or
   /// when the players do not exist yet — unit tests construct the
   /// controller without onInit). Only used on the same-song path.
+  /// The resume fades in (build 29 — see [_fadeInThenPlay]).
   Future<void> _resumeLoaded() async {
-    if (!isPlaying.value && _playersReady) await _active.play();
+    if (!isPlaying.value && _playersReady) await _fadeInThenPlay();
   }
 
   /// Replace the queue and play [index].
-  Future<void> playQueue(List<Song> songs, int index, {String label = ''}) async {
+  ///
+  /// [sourceKey] (build 29, QueueSource.*) names the source this
+  /// queue belongs to: leaving a remembered source saves its
+  /// position first. [resumeFromMemory] (only meaningful with a
+  /// [sourceKey]) resumes at the remembered index when the song
+  /// order still matches — the "播放全部" path. A row tap passes an
+  /// explicit index and always plays exactly that song.
+  Future<void> playQueue(
+    List<Song> songs,
+    int index, {
+    String label = '',
+    String sourceKey = '',
+    bool resumeFromMemory = false,
+  }) async {
     if (songs.isEmpty || index < 0 || index >= songs.length) return;
+    // Leaving a remembered source: save where we were, then persist
+    // the memory (the in-memory map is also updated on every track
+    // change — see [_persistQueue] — the Hive write happens here
+    // and on close only).
+    if (_currentSourceKey.isNotEmpty &&
+        _currentSourceKey != sourceKey &&
+        queue.isNotEmpty) {
+      queueMemory.remember(
+        _currentSourceKey,
+        queue.toList(),
+        currentIndex.value,
+      );
+      unawaited(queueMemory.save());
+    }
+    // A manual queue switch ends a Zap session (unless Zap itself
+    // is driving this call — see [_zapInternal]).
+    if (zapActive.value && !_zapInternal) stopZap();
+    var playIdx = index;
+    if (sourceKey.isNotEmpty) {
+      if (resumeFromMemory) {
+        playIdx = queueMemory.resumeIndexFor(sourceKey, songs) ?? index;
+      }
+      _currentSourceKey = sourceKey;
+    } else {
+      _currentSourceKey = '';
+    }
     // Same song already loaded (checked BEFORE the queue is
     // replaced — currentSong is derived from the old queue): do not
     // restart it. The queue still switches to the tapped list so
     // "play all" and up-next follow the list the user tapped, but
     // playback continues untouched.
-    if (_isLoadedCurrent(songs[index])) {
+    if (_isLoadedCurrent(songs[playIdx])) {
       queue.assignAll(songs);
       queueLabel.value = label;
-      currentIndex.value = index;
+      currentIndex.value = playIdx;
       _persistQueue();
       await _resumeLoaded();
       return;
     }
     queue.assignAll(songs);
     queueLabel.value = label;
-    await playIndex(index);
+    await playIndex(playIdx);
   }
 
   Future<void> playIndex(int index, {bool auto = false}) async {
@@ -779,8 +991,17 @@ class MusicPlayerController extends GetxController
   // -- queue reorder + play next (M-P0-4) -----------------------------------
 
   /// Persist the queue order + current index (the player playlist).
+  /// Also updates the per-source memory (build 29) in memory only —
+  /// the Hive write happens on source switch / close.
   void _persistQueue() {
     unawaited(MusicStore.saveQueue(queue.toList(), currentIndex.value));
+    if (_currentSourceKey.isNotEmpty && queue.isNotEmpty) {
+      queueMemory.remember(
+        _currentSourceKey,
+        queue.toList(),
+        currentIndex.value,
+      );
+    }
   }
 
   /// Move the queue item at [from] to [to] (final index). The current
@@ -857,10 +1078,35 @@ class MusicPlayerController extends GetxController
     return true;
   }
 
+  /// Pure resume-seek decision (unit-tested): apply the kill-saved
+  /// resume / bookmark position only when the user has not already
+  /// moved the position themselves since this song opened — a manual
+  /// seek in the first seconds must never be jumped back.
+  @visibleForTesting
+  static bool shouldApplyResumeSeek({
+    required bool userSeekedSinceOpen,
+    required Duration position,
+    required Duration total,
+    required int seekSec,
+    required bool fromBookmark,
+  }) {
+    if (userSeekedSinceOpen) return false;
+    final inRange = fromBookmark
+        ? total.inSeconds > seekSec
+        : total.inSeconds > 0 && total.inSeconds - seekSec > 10;
+    if (!inRange) return false;
+    return position < const Duration(seconds: 5);
+  }
+
   Future<void> _loadCurrent({bool auto = false}) async {
     final gen = ++_playGen;
     final song = currentSong;
     if (song == null) return;
+    // A-B loop is per-track (build 29): a new load clears it.
+    if (abLoop.hasA || abLoop.hasB) {
+      abLoop.clear();
+      abLoopVersion.value++;
+    }
     // This load owns the failure semantics from here on: a failure
     // during it is manual (user tap) or auto (advance) exactly as
     // [auto] says. A new load also clears a previous failure record
@@ -871,6 +1117,18 @@ class MusicPlayerController extends GetxController
     _trialRetries = 0;
     _trialExcluded.clear();
     _lastResolveVia = '';
+    // A new load drops the previous load's pending intents and
+    // per-track flags — a pause/seek from an earlier song must never
+    // leak into this one.
+    _earlyCrossfadeStarted = false;
+    _pendingPause = false;
+    _pendingSeek = null;
+    _pendingRealDuration = null;
+    _userSeekedSinceOpen = false;
+    // The badge shows the tier asked for until this song's real tier
+    // is known (see the assignment after the resolve): the previous
+    // song's tier must not linger through the resolve window.
+    actualQuality.value = userQuality.value;
     // P0-1: a MANUAL load does NOT pause the old song up front. The
     // resolve below can take 1–6 s, and pausing first silences the
     // queue for the whole wait (worst case ~8 s of silence on a cold
@@ -884,8 +1142,25 @@ class MusicPlayerController extends GetxController
     // by the gen/identity guards on the resolve result, not by the
     // up-front pause.) A stale fade timer is still cancelled on a
     // manual load so it cannot fight the new song's volume or pause
-    // the wrong player when it ends.
-    if (!auto) _fadeTimer?.cancel();
+    // the wrong player when it ends. The same goes for the sleep
+    // fade-out timer, and a manual load is the user's explicit play:
+    // the fired sleep stop no longer owns the players.
+    if (!auto) {
+      // A fade left the standby (the previous outgoing) sounding at
+      // a frozen mid-fade volume; with the timer gone nothing will
+      // ever stop it — pause it now. Only when a fade was actually
+      // running: an idle or preloaded-but-paused standby is not
+      // sounding, and pausing it anyway would double-pause it for
+      // callers that count (e.g. the sleep-timer landing check).
+      // Capture the flag BEFORE cancelling the timer.
+      final fadeWasActive = _fadeTimer?.isActive == true;
+      _fadeTimer?.cancel();
+      if (fadeWasActive && _playersReady) {
+        unawaited(_standby.pause());
+      }
+      _sleepFadeTimer?.cancel();
+      _sleepFired = false;
+    }
     // LX identity stamp (player.ts createGettingUrlId / setMusicUrl):
     // the URL this load resolves belongs to THIS song only. The gen
     // check below catches a newer load; the identity check catches a
@@ -910,8 +1185,11 @@ class MusicPlayerController extends GetxController
     _trialChecked = false;
     lyrics.clear();
     lyricsFailed.value = false;
-    position.value = Duration.zero;
-    duration.value = Duration.zero;
+    // NOTE: position/duration are NOT reset here. The old song is
+    // still sounding while this load resolves, so its progress stays
+    // on screen until the new song actually opens (reset just before
+    // the open below) — zeroing here showed the new title with a
+    // dead progress bar and -0:00 remaining for 1–6 s.
     // Local files have no remote lyrics — skip the API call entirely.
     if (!song.isLocal) unawaited(_loadLyrics(song));
 
@@ -942,7 +1220,11 @@ class MusicPlayerController extends GetxController
     if (localPath != null) {
       url = Uri.file(localPath).toString();
       candidates = [url];
-      quality = userQuality.value;
+      // The file IS the quality: a downloaded file plays at the tier
+      // it was saved at, never at the user's currently requested tier
+      // (see [MusicDownloadService.tierFor]). Imported files with no
+      // recorded tier fall back to the requested tier.
+      quality = downloads.tierFor(song) ?? userQuality.value;
       _lastResolveVia = '';
     } else {
       final cacheKey =
@@ -1035,6 +1317,11 @@ class MusicPlayerController extends GetxController
       _setResolving(false, gen);
       return;
     }
+    // The old song stops here, right before the open — and only now
+    // does the progress reset for the new song (see the note at the
+    // top of this load).
+    position.value = Duration.zero;
+    duration.value = Duration.zero;
     if (!auto && _playersReady) {
       await _active.pause();
     }
@@ -1049,6 +1336,14 @@ class MusicPlayerController extends GetxController
     } finally {
       _setResolving(false, gen);
     }
+    if (gen != _playGen || _disposed) return;
+    // A real-duration event that arrived during the open's own await
+    // was stashed (see [onRealDuration]): process it now that the
+    // load has landed.
+    _drainPendingRealDuration();
+    // Intents the user gave while this load was resolving (pause /
+    // seek aimed at the new song): apply them now that it is open.
+    await _applyPendingIntents(gen);
     if (gen != _playGen || _disposed) return;
     // The open landed in the active player (manual _openOn, or the
     // crossfade swap in _crossfadeTo): this song is the loaded one
@@ -1078,45 +1373,104 @@ class MusicPlayerController extends GetxController
             .timeout(const Duration(seconds: 5), onTimeout: () => Duration.zero)
             .then((total) async {
           if (gen != _playGen || _disposed) return;
-          // Only seek when the user has not already moved the
-          // position (a manual seek in the seconds before the
-          // duration arrived must not be jumped back).
-          final inRange = fromBookmark
-              ? total.inSeconds > seekSec
-              : total.inSeconds > 0 && total.inSeconds - seekSec > 10;
-          if (inRange && position.value < const Duration(seconds: 5)) {
+          if (shouldApplyResumeSeek(
+            userSeekedSinceOpen: _userSeekedSinceOpen,
+            position: position.value,
+            total: total,
+            seekSec: seekSec,
+            fromBookmark: fromBookmark,
+          )) {
             await _active.seek(Duration(seconds: seekSec));
           }
         }),
       );
     }
     _prefetchNext();
+    // Zap (build 29): every landed track gets a fresh 5 s preview
+    // window — the timer restarts here, not at session start, so a
+    // slow resolve does not eat the preview.
+    _scheduleZapTimer();
+  }
+
+  /// Process a real-duration event stashed during the open's own
+  /// await (see [onRealDuration]). Only called once the load has
+  /// landed and [isResolving] is false, so the event is judged
+  /// against the song now playing.
+  void _drainPendingRealDuration() {
+    final pending = _pendingRealDuration;
+    _pendingRealDuration = null;
+    if (pending != null) onRealDuration(pending);
+  }
+
+  /// Apply the pause / seek the user asked for while this load was
+  /// resolving. Runs right after the open lands (and after the
+  /// gen check, so a superseded load never pauses or seeks the
+  /// newer song). A pending seek also marks the position as
+  /// user-moved, so the resume seek below never jumps it back.
+  Future<void> _applyPendingIntents(int gen) async {
+    if (gen != _playGen || _disposed) return;
+    final seekTarget = _pendingSeek;
+    _pendingSeek = null;
+    final pausePending = _pendingPause;
+    _pendingPause = false;
+    if (seekTarget != null) {
+      _userSeekedSinceOpen = true;
+      position.value = seekTarget;
+      await _active.seek(seekTarget);
+    }
+    if (pausePending) {
+      await _active.pause();
+    }
   }
 
   Future<void> _crossfadeTo(String url, int gen) async {
     final outgoing = _active;
     final incoming = _standby;
     _fadeTimer?.cancel();
+    // The envelope multiplies the per-track normalisation gain:
+    // the incoming track fades up to ITS gain, the outgoing fades
+    // down from the volume it is really at (see _currentNormGain) —
+    // never from 1.0, or a normalised track would jump loud at the
+    // handover. With normalisation off both are 1.0, exactly the
+    // old behaviour.
+    final targetVol = normalizationGainFor(currentSong);
+    // The outgoing track already ended (the normal auto-advance path:
+    // completion fired before the load) — there is nothing to fade
+    // out of, so ramping the incoming up from 0 over 2.5 s would only
+    // swallow its intro. It starts at full volume instead (see the
+    // branch after the swap); the ramp only runs when the outgoing is
+    // still sounding (early crossfade).
+    final outgoingDone =
+        outgoing.processingState == ProcessingState.completed;
     // The standby may already hold this URL buffered from _prefetchNext:
     // reuse it instead of opening cold (the open would re-buffer from
     // scratch and the track change would stutter). A preloaded player
     // that has since gone idle still runs the idle check below.
-    if (!incoming.isPreloadedFor(url)) {
-      // Not preloaded: this open creates the item, so stamp its tap
-      // now (the preloaded path was already stamped by
-      // _prefetchNext at preload time).
-      _pushLoudnessTrackKey(currentSong?.identityKey ?? '');
-      // Refused URL: never touched native, so no error stream event
-      // will come — fall back on the still-active player instead of
-      // swapping in a player with no source.
-      if (!await incoming.open(url, play: false)) {
-        await _onPlayError(auto: true, gen: gen);
-        return;
+    _openStarted = true;
+    try {
+      if (!incoming.isPreloadedFor(url)) {
+        // Not preloaded: this open creates the item, so stamp its tap
+        // now (the preloaded path was already stamped by
+        // _prefetchNext at preload time).
+        _pushLoudnessTrackKey(currentSong?.identityKey ?? '');
+        // Refused URL: never touched native, so no error stream event
+        // will come — fall back on the still-active player instead of
+        // swapping in a player with no source.
+        if (!await incoming.open(url, play: false)) {
+          await _onPlayError(auto: true, gen: gen);
+          return;
+        }
       }
+      if (outgoingDone) {
+        await incoming.setVolume(targetVol);
+      } else {
+        await incoming.setVolume(0);
+      }
+      await incoming.setRate(speed.value);
+      await incoming.play();
+    } finally {
+      _openStarted = false;
     }
-    await incoming.setVolume(0);
-    await incoming.setRate(speed.value);
-    await incoming.play();
     // The incoming load/play may already have failed before _attach
     // subscribes to its error stream: just_audio's errorStream is a
     // PublishSubject (no replay — just_audio 0.10.6 line 142), and
@@ -1149,17 +1503,14 @@ class MusicPlayerController extends GetxController
     _attach(incoming);
     position.value = Duration.zero;
     duration.value = Duration.zero;
-    final start = DateTime.now();
-    const step = Duration(milliseconds: 100);
-    // The envelope multiplies the per-track normalisation gain:
-    // the incoming track fades up to ITS gain, the outgoing fades
-    // down from the volume it is really at (see _currentNormGain) —
-    // never from 1.0, or a normalised track would jump loud at the
-    // handover. With normalisation off both are 1.0, exactly the
-    // old behaviour.
-    final targetVol = normalizationGainFor(currentSong);
     final outgoingStartVol = _currentNormGain;
     _currentNormGain = targetVol;
+    if (outgoingDone) {
+      await outgoing.pause();
+      return;
+    }
+    final start = DateTime.now();
+    const step = Duration(milliseconds: 100);
     _fadeTimer = Timer.periodic(step, (timer) async {
       // A newer load owns the players now: stop touching them (no
       // volume fight, and never pause the newer song's player).
@@ -1202,11 +1553,16 @@ class MusicPlayerController extends GetxController
     // LX identity rule for async callbacks: a duration event that
     // arrives while a new song is still resolving belongs to the OLD
     // song (its item was still loading when the user switched) — never
-    // let it trigger trial handling for the new song. (Residual: a
-    // genuine trial duration that arrives during the open's own await
-    // is also skipped; the trial then plays out its 15 s and advances,
-    // the pre-v1.0.9 behaviour for that fast-load edge case.)
-    if (isResolving.value) return;
+    // let it trigger trial handling for the new song. The one
+    // exception is an event that arrives during the open's own await
+    // ([_openStarted]): the new item is already loading then, so the
+    // event is the NEW song's — stash it and drain it once the load
+    // lands (see [_drainPendingRealDuration]) instead of dropping it
+    // and letting a 15 s trial clip play out.
+    if (isResolving.value) {
+      if (_openStarted) _pendingRealDuration = actual;
+      return;
+    }
     final song = currentSong;
     if (song == null) return;
     _trialChecked = true;
@@ -1386,6 +1742,12 @@ class MusicPlayerController extends GetxController
             actualQuality.value = r.quality;
             _lastResolveVia = r.via;
             _openedUrl = r.url;
+            // The alt song is the song now playing: it belongs in
+            // Recent exactly like a directly resolved song (the main
+            // path records it in _loadCurrent; this branch never did).
+            unawaited(
+              MusicStore.addRecent(alt).catchError((_) {}),
+            );
             // The alt is a new URL for this slot: its real duration
             // gets its own trial check.
             _trialChecked = false;
@@ -1403,6 +1765,12 @@ class MusicPlayerController extends GetxController
             // newer load (gen bumped) or gives up (_loadFailed)).
             if (!_loadFailed && g == _playGen) {
               _loadedIdentityKey = alt.identityKey;
+            }
+            // Same post-open steps as the main path: stashed trial
+            // duration + pause/seek the user asked for mid-resolve.
+            if (g == _playGen) {
+              _drainPendingRealDuration();
+              await _applyPendingIntents(g);
             }
             return;
           }
@@ -1477,6 +1845,14 @@ class MusicPlayerController extends GetxController
   }
 
   void _onTrackCompleted() {
+    // A completion from the old player while a newer load is still
+    // resolving belongs to a song the user already left: ignore it
+    // entirely. Advancing here would skip the song the user tapped
+    // (the index already moved), replay the old song under
+    // single-loop, or stop under single-play — and the session
+    // finalise / resume-clear below would close the NEW song's
+    // just-begun session.
+    if (isResolving.value) return;
     final song = currentSong;
     if (song != null) {
       unawaited(MusicStore.clearResume(song.identityKey));
@@ -1489,6 +1865,17 @@ class MusicPlayerController extends GetxController
     // closed), so the single-loop replay and the next() path below —
     // which finalise again via _loadCurrent — stay correct.
     unawaited(_finalizeListenSession());
+    // Wall-clock sleep timer already fired: the track ended during
+    // the 1 s fade-out — stop here, do not auto-advance. The gen
+    // flag ([_pauseIfSleepFired]) cannot catch this: the advance
+    // bumps the gen, so the landing load would look like the user's
+    // explicit play and keep sounding past the deadline.
+    if (_sleepFired) {
+      _sleepTimer.cancel();
+      if (_playersReady) unawaited(_active.pause());
+      _syncSleepState();
+      return;
+    }
     // Sleep timer, 播完本首后停止 (1.1.6): the track ends here —
     // stop, do not advance or loop, and clear the timer. Checked
     // BEFORE single-loop: under 单曲循环 the track would otherwise
@@ -1541,6 +1928,31 @@ class MusicPlayerController extends GetxController
     _listenTracker.begin(song, DateTime.now());
     await _active.seek(Duration.zero);
     await _active.play();
+  }
+
+  /// Start the next song's load early so the crossfade overlaps the
+  /// current track's tail instead of starting after it ended. Only
+  /// fires once per track, only while playing, and only when the next
+  /// track's URL is already prefetched — a slow resolve would land
+  /// after the song ends anyway (and the completion path + the
+  /// ramp-skip in [_crossfadeTo] cover that), and starting a slow
+  /// load early would let a last-second seek-back still change the
+  /// song. Single-loop replays at completion instead.
+  void _maybeStartEarlyCrossfade(Duration pos) {
+    if (!isPlaying.value || isResolving.value) return;
+    if (_earlyCrossfadeStarted) return;
+    final total = duration.value;
+    if (total <= Duration.zero) return;
+    if (total - pos > _crossfadeDuration) return;
+    if (mode == PlayMode.singleLoop) return;
+    final n = _peekNextIndex(auto: true);
+    if (n < 0) return;
+    final nextSong = queue[n];
+    final key =
+        '${nextSong.songId}|${nextSong.platform.code}|${userQuality.value.code}';
+    if (_nextCache == null || _nextCache!.key != key) return;
+    _earlyCrossfadeStarted = true;
+    unawaited(next(auto: true));
   }
 
   void _prefetchNext() {
@@ -1617,15 +2029,22 @@ class MusicPlayerController extends GetxController
   /// Auto-advance and a manual tap differ for single loop / single
   /// play — see nextTrackIndex in play_mode.dart.
   ///
-  /// Deliberate divergence from [nextTrackIndex]: for a one-song
-  /// queue the pure function returns current (single loop replays),
-  /// but this method returns -1 — the failure path depends on -1
-  /// (never retry the same dead song), and single-loop replay is
-  /// handled separately in _onTrackCompleted via _replayCurrent.
+  /// A one-song queue in a looping mode (list loop / single loop /
+  /// shuffle) replays the only song instead of stopping. The failure
+  /// path still terminates: [_giveUpOnSong] stops the chain after 3
+  /// consecutive auto failures, so a dead single song is retried at
+  /// most twice before the chain stops.
   int _peekNextIndex({required bool auto}) {
     if (queue.length <= 1) {
       // A one-song queue: single loop replays on auto-advance (handled
-      // in _onTrackCompleted via _replayCurrent); anything else stops.
+      // in _onTrackCompleted via _replayCurrent); a looping mode
+      // replays the only song instead of stopping; anything else stops.
+      if (queue.length == 1 &&
+          (mode == PlayMode.listLoop ||
+              mode == PlayMode.singleLoop ||
+              mode == PlayMode.shuffle)) {
+        return 0;
+      }
       return -1;
     }
     return nextTrackIndex(
@@ -1637,7 +2056,15 @@ class MusicPlayerController extends GetxController
   }
 
   int _peekPrevIndex() {
-    if (queue.length <= 1) return -1;
+    if (queue.length <= 1) {
+      if (queue.length == 1 &&
+          (mode == PlayMode.listLoop ||
+              mode == PlayMode.singleLoop ||
+              mode == PlayMode.shuffle)) {
+        return 0;
+      }
+      return -1;
+    }
     return prevTrackIndex(mode, currentIndex.value, queue.length);
   }
 
@@ -1672,22 +2099,102 @@ class MusicPlayerController extends GetxController
 
   Future<void> togglePlayPause() async {
     if (isPlaying.value) {
-      await _active.pause();
+      // Pausing while a load is resolving must stick: the new song
+      // lands paused (see [_pendingPause]).
+      if (isResolving.value) _pendingPause = true;
+      await _fadeOutThenPause();
     } else {
+      _pendingPause = false;
       await _playCurrentOrResume();
     }
   }
 
+  /// Fade out (~400 ms) then pause; with fading off, or with no
+  /// players yet (unit tests), pause immediately. The volume is
+  /// restored to the track's sounding gain afterwards, so a manual
+  /// resume is not silent. A newer load (gen bumped mid-fade) stops
+  /// the fade touching the new song's player.
+  Future<void> _fadeOutThenPause() async {
+    if (!_playersReady) return;
+    // A crossfade in flight owns the standby (the fading outgoing):
+    // stop its ramp now, or it keeps writing volumes and sounding
+    // after the pause — and pause the standby with the active below,
+    // or its tail plays for up to 2.5 s after the user hit pause.
+    _fadeTimer?.cancel();
+    if (!fadeEnabled.value) {
+      // Pausing mid-fade would freeze the incoming at a mid-ramp
+      // volume: snap it to its target first so a later resume plays
+      // at full volume.
+      await _active.setVolume(_currentNormGain);
+      await _active.pause();
+      await _standby.pause();
+      return;
+    }
+    final gen = _playGen;
+    // Start from the volume it is really at, not the target gain:
+    // pausing during the 400 ms resume fade-in would otherwise jump
+    // to full before fading out. Bumping _fadeGen stops the
+    // still-running fade-in ramp fighting this fade-out.
+    final startVol = _active.volume.clamp(0.0, 1.0);
+    _fadeGen++;
+    await VolumeFader.ramp(
+      setVolume: _active.setVolume,
+      from: startVol,
+      to: 0,
+      duration: const Duration(milliseconds: 400),
+      isCancelled: () => gen != _playGen || _disposed,
+    );
+    if (gen != _playGen || _disposed) return;
+    await _active.pause();
+    await _standby.pause();
+    await _active.setVolume(startVol);
+  }
+
+  /// Fade a paused, loaded track back in (~400 ms) instead of
+  /// resuming at full volume (build 29 — the "恢复" half of fade
+  /// in/out; pause fades out, resume fades in). With fading off,
+  /// or with no players yet (unit tests), play immediately / no-op.
+  /// A newer load (gen bumped mid-fade) stops the ramp touching
+  /// the new song's player.
+  Future<void> _fadeInThenPlay() async {
+    if (!_playersReady) return;
+    if (!fadeEnabled.value || _currentNormGain <= 0) {
+      await _active.play();
+      return;
+    }
+    final gen = _playGen;
+    final fadeGen = _fadeGen;
+    await _active.setVolume(0);
+    await _active.play();
+    unawaited(
+      VolumeFader.ramp(
+        setVolume: _active.setVolume,
+        from: 0,
+        to: _currentNormGain,
+        duration: const Duration(milliseconds: 400),
+        isCancelled: () =>
+            gen != _playGen || _fadeGen != fadeGen || _disposed,
+      ),
+    );
+  }
+
   /// Play when a track is loaded; on a fresh launch (or after a
-  /// failed load) nothing is in the player yet, so a bare play() is
-  /// a no-op — AvMusicPlayer.play() returns early without a source —
-  /// and the tap does nothing (chen 2026-11-20: 刚进 app 点播放歌曲
+  /// failed load) nothing is in the player yet, so a bare play is a
+  /// no-op (build 29: [_fadeInThenPlay] returns early with no
+  /// players — the old bare `_active.play()` threw on the late
+  /// [_active] instead) and the tap does nothing (chen 2026-11-20: 刚进 app 点播放歌曲
   /// 不播放，要切到下一首歌才播放). Load the restored current song
   /// through the normal path instead. A load already in flight is
   /// left alone (it plays when it lands); a loaded-but-paused track
   /// still resumes without reloading.
   Future<void> _playCurrentOrResume() async {
     if (isPlaying.value) return;
+    // Manual resume after a sleep stop: the user chose to keep
+    // listening — the fired flag must not stop the next completion,
+    // and a sleep fade still running must not pause the resumed
+    // track when it ends.
+    _sleepFired = false;
+    _sleepFadeTimer?.cancel();
     if (_playersReady &&
         _loadedIdentityKey.isEmpty &&
         currentSong != null &&
@@ -1695,7 +2202,10 @@ class MusicPlayerController extends GetxController
       await playIndex(currentIndex.value);
       return;
     }
-    await _active.play();
+    // Loaded-but-paused: resume with a fade-in (build 29). With no
+    // players yet this is a no-op instead of touching the late
+    // [_active] (the old bare `_active.play()` threw here).
+    await _fadeInThenPlay();
   }
 
   /// Pause playback if currently playing; no-op when already paused.
@@ -1705,15 +2215,32 @@ class MusicPlayerController extends GetxController
   /// auto-resume: the user resumes music manually.
   Future<void> pause() async {
     if (!isPlaying.value) return;
-    await _active.pause();
+    // A pause during a resolve must stick past the landing.
+    if (isResolving.value) _pendingPause = true;
+    await _fadeOutThenPause();
   }
 
-  Future<void> seek(Duration pos) => _active.seek(pos);
+  /// Seek to [pos]. The position updates optimistically so the bar
+  /// does not jump back to the pre-drag position while the native
+  /// position stream catches up. During a resolve the seek belongs
+  /// to the song still loading: it is stored and applied once that
+  /// song opens instead of seeking the old song.
+  Future<void> seek(Duration pos) async {
+    _userSeekedSinceOpen = true;
+    position.value = pos;
+    if (isResolving.value) {
+      _pendingSeek = pos;
+      return;
+    }
+    await _active.seek(pos);
+  }
 
   // -- playback speed (M-P0-2) ------------------------------------------------
 
-  /// Clamp a speed to the supported range (slider 0.6–2.0).
-  static double clampSpeed(double v) => v.clamp(0.6, 2.0);
+  /// Clamp a speed to the supported range (slider 0.5–2.0, build 29 —
+  /// was 0.6–2.0; the native fork already pins every AVPlayerItem to
+  /// AVAudioTimePitchAlgorithmTimeDomain, so 0.5x stays pitch-correct).
+  static double clampSpeed(double v) => v.clamp(0.5, 2.0);
 
   /// Set the playback speed. Takes effect immediately on the audio
   /// rate (both players, so a crossfade partner keeps the same rate)
@@ -1744,6 +2271,121 @@ class MusicPlayerController extends GetxController
   /// Back-compat alias: the old two-mode toggle is now the five-mode cycle.
   Future<void> togglePlayMode() => cyclePlayMode();
 
+  // -- fade / A-B loop / lyric display / Zap (build 29) ---------------------
+
+  /// Turn fade in/out on/off (persisted; default on). Takes effect
+  /// from the next pause / open — the sounding track never jumps.
+  Future<void> setFadeEnabled(bool value) async {
+    fadeEnabled.value = value;
+    try {
+      await HiveStore.put('hao_music_fade_enabled', value);
+    } catch (_) {}
+  }
+
+  /// Set point A of the A-B loop at the current position.
+  void setAbPointA() {
+    abLoop.setA(position.value);
+    abLoopVersion.value++;
+  }
+
+  /// Set point B of the A-B loop at the current position. Ignored
+  /// without an A, or at/before A (see AbLoop).
+  void setAbPointB() {
+    abLoop.setB(position.value);
+    abLoopVersion.value++;
+  }
+
+  /// Clear the A-B loop.
+  void clearAbLoop() {
+    if (!abLoop.hasA && !abLoop.hasB) return;
+    abLoop.clear();
+    abLoopVersion.value++;
+  }
+
+  /// Set the lyric offset in ms (±5000, persisted).
+  Future<void> setLyricOffsetMs(int ms) async {
+    lyricOffsetMs.value = LyricDisplay.clampOffsetMs(ms);
+    try {
+      await HiveStore.put('hao_music_lyric_offset_ms', lyricOffsetMs.value);
+    } catch (_) {}
+  }
+
+  /// Show/hide the translation line under the active lyric
+  /// (persisted; default on).
+  Future<void> setShowLyricTranslation(bool value) async {
+    showLyricTranslation.value = value;
+    try {
+      await HiveStore.put('hao_music_lyric_show_translation', value);
+    } catch (_) {}
+  }
+
+  /// Start a Zap session over [pool] (already shuffled): play the
+  /// first song, then cut to the next one every 5 s until the pool
+  /// ends. Returns false when the pool is empty. A manual queue
+  /// switch (playQueue from another source) ends the session.
+  Future<bool> startZap(List<Song> pool) async {
+    if (pool.isEmpty) return false;
+    if (zapActive.value) stopZap();
+    _zapInternal = true;
+    try {
+      await playQueue(pool, 0, label: 'Zap 快速发现', sourceKey: QueueSource.zap);
+    } finally {
+      _zapInternal = false;
+    }
+    zapActive.value = true;
+    _scheduleZapTimer();
+    return true;
+  }
+
+  /// Start Zap from the local library (favourites + recent). Used
+  /// by the `···` sheet toggle. Returns false when there is nothing
+  /// to discover yet (no favourites, no recent plays).
+  Future<bool> startZapFromLibrary() async {
+    final pool = ZapPool.build(
+      favourites: MusicStore.getFavSongs(),
+      recent: MusicStore.getRecent(),
+      daily: const [],
+    );
+    return startZap(pool);
+  }
+
+  /// Stop the Zap session (the queue keeps playing as a normal
+  /// queue — stopping Zap never stops the music).
+  void stopZap() {
+    _zapTimer?.cancel();
+    _zapTimer = null;
+    zapActive.value = false;
+  }
+
+  /// (Re)start the 5 s preview timer after a track lands. A no-op
+  /// when Zap is not active.
+  void _scheduleZapTimer() {
+    _zapTimer?.cancel();
+    _zapTimer = null;
+    if (!zapActive.value || _disposed) return;
+    _zapTimer = Timer(
+      Duration(seconds: ZapPool.previewSeconds),
+      _zapAdvance,
+    );
+  }
+
+  /// Cut to the next song in the Zap pool, or end the session at
+  /// the pool's end (with a notice — the music keeps playing).
+  void _zapAdvance() {
+    if (!zapActive.value || _disposed) return;
+    if (queue.isEmpty || currentIndex.value + 1 >= queue.length) {
+      stopZap();
+      _notice('Zap 播完了，继续听当前队列');
+      return;
+    }
+    _zapInternal = true;
+    unawaited(
+      playIndex(currentIndex.value + 1).whenComplete(() {
+        _zapInternal = false;
+      }),
+    );
+  }
+
   // -- sleep timer (M-P0-3) -----------------------------------------------------
 
   /// Wall-clock timer fired: STOP playback and clear the timer. A
@@ -1757,6 +2399,12 @@ class MusicPlayerController extends GetxController
   /// ended, so there is nothing sounding to fade.
   void _onSleepTimerFired() {
     _sleepFiredGen = _playGen;
+    _sleepFired = true;
+    // The sleep stop owns the players now: a crossfade in progress
+    // must stop fading the incoming song IN — the sleep fade-out
+    // takes over from the volume it is really at (see
+    // [_fadeOutAndPause]).
+    _fadeTimer?.cancel();
     if (_playersReady) unawaited(_fadeOutAndPause());
     _syncSleepState();
   }
@@ -1767,14 +2415,22 @@ class MusicPlayerController extends GetxController
   /// user tapped another song mid-fade) stops the fade touching
   /// the new song's player. The standby is paused too: if the fire
   /// lands mid-crossfade the outgoing partner is still sounding.
+  /// Runs on its own [_sleepFadeTimer], never the shared [_fadeTimer]:
+  /// a crossfade starting after the fire must not cancel this fade,
+  /// and this fade must not cancel a crossfade's timer either — the
+  /// fire itself cancels the crossfade above, in [_onSleepTimerFired].
   Future<void> _fadeOutAndPause() async {
     final gen = _playGen;
     final player = _active;
-    final startVol = _currentNormGain;
-    _fadeTimer?.cancel();
+    // Start from the volume it is really at, not the target gain:
+    // mid-crossfade the incoming song is still fading in, and
+    // restarting from full jumps loud before fading out.
+    final startVol = player.volume.clamp(0.0, 1.0);
+    _fadeGen++;
+    _sleepFadeTimer?.cancel();
     final start = DateTime.now();
     const step = Duration(milliseconds: 100);
-    _fadeTimer = Timer.periodic(step, (timer) async {
+    _sleepFadeTimer = Timer.periodic(step, (timer) async {
       if (gen != _playGen || _disposed) {
         timer.cancel();
         return;
@@ -1894,6 +2550,14 @@ class MusicPlayerController extends GetxController
   /// track still goes through the normal [next] path.
   @visibleForTesting
   void simulateTrackCompletedForTest() => _onTrackCompleted();
+
+  /// Test seam: drive the position listener's logic without native
+  /// audio (the real position stream is silent on Linux test runs).
+  @visibleForTesting
+  void simulatePositionForTest(Duration p) {
+    position.value = p;
+    _maybeStartEarlyCrossfade(p);
+  }
 
   /// Test seam: run the real wall-clock fire path (1 s fade-out +
   /// pause) without waiting for a real countdown. The countdown
@@ -2100,10 +2764,12 @@ class MusicPlayerController extends GetxController
     final localPath = downloads.localPathFor(song);
     if (localPath != null) {
       // Downloaded song: the file IS the quality — no re-resolve,
-      // just re-open the local file at the new (nominal) tier.
+      // just re-open the local file. The badge stays at the file's
+      // recorded tier (see [MusicDownloadService.tierFor]), not the
+      // newly requested one.
       userQuality.value = q;
       await MusicStore.setQuality(q);
-      actualQuality.value = q;
+      actualQuality.value = downloads.tierFor(song) ?? q;
       _candidates = [Uri.file(localPath).toString()];
       _candidateIdx = 0;
       _playGen++;
@@ -2158,18 +2824,10 @@ class MusicPlayerController extends GetxController
   }
 
   /// Index of the lyric line for the current position (-1 = none yet).
+  /// The lyric offset shifts which line is active (see LyricDisplay);
+  /// tapping a line still seeks to its true timestamp.
   int lyricIndexFor(Duration pos) {
-    final lines = lyrics;
-    if (lines.isEmpty) return -1;
-    var idx = -1;
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].t <= pos.inMilliseconds / 1000) {
-        idx = i;
-      } else {
-        break;
-      }
-    }
-    return idx;
+    return LyricDisplay.lyricIndexFor(lyrics, pos, lyricOffsetMs.value);
   }
 
   static MusicPlayerController get instance => Get.find<MusicPlayerController>();

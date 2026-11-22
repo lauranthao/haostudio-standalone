@@ -18,7 +18,9 @@ import 'package:get/get.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/music/music_downloads.dart';
 import '../../services/music/music_models.dart';
+import '../../services/music/playback_cache.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/native_switch.dart';
 import '../settings/cache_service.dart';
 import 'music_player_controller.dart';
 import 'player_expand_route.dart';
@@ -51,6 +53,11 @@ class _DownloadsPageState extends State<DownloadsPage> {
   var _filter = _DownloadFilter.all;
   var _totalBytes = 0;
 
+  /// Playback-cache size (build 29) + its on/off state. Refreshed
+  /// with the downloads list; clearing re-reads both.
+  var _cacheBytes = 0;
+  var _cacheEnabled = true;
+
   MusicPlayerController get _player => MusicPlayerController.ensure();
   MusicDownloadService get _service => _player.downloads;
 
@@ -63,8 +70,19 @@ class _DownloadsPageState extends State<DownloadsPage> {
   Future<void> _refresh() async {
     await _service.refresh();
     final total = await _service.totalBytes();
+    final cacheBytes = await PlaybackCache.sizeBytes();
     if (!mounted) return;
-    setState(() => _totalBytes = total);
+    setState(() {
+      _totalBytes = total;
+      _cacheBytes = cacheBytes;
+      _cacheEnabled = PlaybackCache.enabled;
+    });
+  }
+
+  Future<void> _clearCache() async {
+    await PlaybackCache.clear();
+    if (!mounted) return;
+    setState(() => _cacheBytes = 0);
   }
 
   void _playSong(Song song, List<Song> songs) {
@@ -109,6 +127,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       selectedColor: theme.accentSoft,
                       side: BorderSide(color: theme.hairline),
                       labelStyle: TextStyle(
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: _filter == f
                             ? theme.accent
                             : theme.textSecondary,
@@ -120,6 +139,76 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     ),
                   ),
               ],
+            ),
+          ),
+          // Playback cache (build 29): auto-cached audio from
+          // streams already played (NOT whole-song downloads — play
+          // URLs expire, so no offline promise is made). Weak-network
+          // replays resume from the cached prefix. Cap 500 MB,
+          // oldest-first eviction.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                color: theme.textPrimary.withValues(alpha: 0.04),
+                border: Border.all(color: theme.hairline, width: 0.8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '播放缓存 · ${CacheService.formatBytes(_cacheBytes)}',
+                          style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      HaoNativeSwitch(
+                        value: _cacheEnabled,
+                        onChanged: (v) async {
+                          await PlaybackCache.setEnabled(v);
+                          if (!mounted) return;
+                          setState(() => _cacheEnabled = v);
+                        },
+                        activeColor: theme.accent,
+                        semanticsLabel: '播放缓存',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '已播内容自动缓存，弱网续播；上限 500 MB',
+                          style: TextStyle(
+                            color: theme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _cacheBytes == 0 ? null : _clearCache,
+                        child: Text(
+                          '清理',
+                          style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -222,6 +311,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       color: theme.accentSoft,
                       child: Icon(
                         Icons.music_note,
+                        shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textMuted,
                       ),
                     )
@@ -236,6 +326,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         color: theme.accentSoft,
                         child: Icon(
                           Icons.music_note,
+                          shadows: HaoTheme.legibilityShadows(context),
                           color: theme.textMuted,
                         ),
                       ),
@@ -285,11 +376,12 @@ class _DownloadsPageState extends State<DownloadsPage> {
               ),
             ),
             const SizedBox(width: 8),
-            _statusIcon(theme, row),
+            _statusIcon(context, theme, row),
             if (isDone)
               IconButton(
                 icon: Icon(
                   Icons.delete_outline,
+                  shadows: HaoTheme.legibilityShadows(context),
                   color: theme.textMuted,
                   size: 20,
                 ),
@@ -314,10 +406,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
-  Widget _statusIcon(HaoTheme theme, _DownloadRow row) {
+  Widget _statusIcon(BuildContext context, HaoTheme theme, _DownloadRow row) {
     switch (row.status) {
       case DownloadStatus.downloaded:
-        return Icon(Icons.check_circle, color: theme.accent, size: 22);
+        return Icon(
+          Icons.check_circle,
+          shadows: HaoTheme.legibilityShadows(context),
+          color: theme.accent,
+          size: 22,
+        );
       case DownloadStatus.downloading:
         return SizedBox(
           width: 44,
@@ -332,12 +429,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
       case DownloadStatus.failed:
         return Icon(
           Icons.error_outline,
+          shadows: HaoTheme.legibilityShadows(context),
           color: theme.textSecondary,
           size: 22,
         );
       case DownloadStatus.notDownloaded:
         return Icon(
           Icons.download,
+          shadows: HaoTheme.legibilityShadows(context),
           color: theme.textMuted,
           size: 22,
         );

@@ -136,7 +136,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.chat_bubble_outline,
+                        Icons.chat_bubble_outline, shadows: HaoTheme.legibilityShadows(context), 
                         size: 48,
                         color: theme.textMuted,
                       ),
@@ -223,7 +223,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                     width: 44,
                     height: 44,
                     color: theme.accentSoft,
-                    child: Icon(Icons.music_note, color: theme.textMuted),
+                    child: Icon(Icons.music_note, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted),
                   )
                 : Image(
                     image: MusicImageProvider(song.cover),
@@ -234,7 +234,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                       width: 44,
                       height: 44,
                       color: theme.accentSoft,
-                      child: Icon(Icons.music_note, color: theme.textMuted),
+                      child: Icon(Icons.music_note, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted),
                     ),
                   ),
           ),
@@ -344,7 +344,7 @@ class _SongCommentsPageState extends State<SongCommentsPage> {
                 Row(
                   children: [
                     Icon(
-                      Icons.thumb_up_outlined,
+                      Icons.thumb_up_outlined, shadows: HaoTheme.legibilityShadows(context), 
                       size: 14,
                       color: theme.textMuted,
                     ),

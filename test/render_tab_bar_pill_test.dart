@@ -1,23 +1,21 @@
-// Render test — GlassTabBar pill, Kumone restored 2026-11-21
-// (chen: Kumone那种，不要文字，不要影子）. NOT a regression test: it
-// writes golden PNGs (run with --update-goldens) of the real
-// GlassTabBar so the faint-tint pill can be eyeballed in all 4
+// Render test — Apple-native tab bar pill (build-29 adoption, chen
+// 2026-11-22: “都要原生效果”). NOT a regression test: it writes
+// golden PNGs (run with --update-goldens) of the real GlassTabBar
+// so the transparent tint pill + labels can be eyeballed in all 4
 // themes x light/dark.
 //
-// - rest: pill settled on 音乐 (index 2) — faint tint, icon-only,
-//   selected icon = theme accent.
+// - rest: pill settled on 音乐 (index 2) — transparent accent tint,
+//   icon + label, selected icon = theme accent.
 // - mid-slide: tap 设置 (scoped to the bar — an unscoped tap hit the
-//   music page's own 设置 row), shot 300ms into the spring (6x50ms
-//   pumps — a single big pump does not tick the spring in this
-//   harness) — the settle spring is still mid-flight, the pill
-//   between cells, same width, no stretch, no magnification.
+//   music page's own 设置 row), shot 300ms into the 600ms bouncy
+//   slide (6x50ms pumps) — the pill is still mid-flight, between
+//   cells, same width, no stretch, no magnification.
 // - settled: pill at rest on 设置 (index 3).
 // Light + dark. The list is scrolled to the bottom first, so song rows
 // sit behind the bar and the glass has something to refract (same
 // trick as render_music_home_test.dart).
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -179,7 +177,8 @@ void main() {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 6,
+              // Native bar sits on the bottom edge (not floating).
+              bottom: 0,
               child: DefaultTextStyle(
                 style: const TextStyle(fontFamily: 'NotoSansSC'),
                 child: const _BarHolder(),
@@ -208,40 +207,41 @@ void main() {
     );
   }
 
-  /// The tab-bar tab icon, scoped to the GlassTabBar: an unscoped
+  /// The tab-bar tab, scoped to the GlassTabBar: an unscoped
   /// find.text('设置') matches the music page's own 设置 row first, so
   /// the old mid-slide/settled tests tapped the page instead of the
   /// tab and their goldens were meaningless duplicates of rest-on-音乐
-  /// (both sha256 ad6c408f…). The bar is icon-only, so tabs are found
-  /// by icon, not label; each icon exists exactly once in the tree.
-  Finder barTab(IconData icon) => find.descendant(
+  /// (both sha256 ad6c408f…). The native bar shows labels, so tabs
+  /// are found by label text, scoped to the bar.
+  Finder barTab(String label) => find.descendant(
         of: find.byType(GlassTabBar),
-        matching: find.byIcon(icon),
+        matching: find.text(label),
       );
 
   /// At rest the pill is a plain Container with the pill key
-  /// (faint tint) — no lens GlassContainer, no resting-pill Opacity.
+  /// (transparent accent tint) — no lens GlassContainer, no
+  /// resting-pill Opacity.
   void expectPillAtRest(WidgetTester tester) {
-    expect(find.byKey(GlassTabBarState.pillKey), findsOneWidget);
+    expect(find.byKey(GlassTabBar.pillKey), findsOneWidget);
     expect(
-      tester.widget(find.byKey(GlassTabBarState.pillKey)) is Container,
+      tester.widget(find.byKey(GlassTabBar.pillKey)) is Container,
       isTrue,
     );
   }
 
   /// Mid-flight the pill sits between the rest positions of 音乐
   /// (index 2) and 设置 (index 3): the 780x1688 @2.0 harness is
-  /// 390pt logical wide -> content 358, cellW 89.5, pill 81.5 wide;
-  /// rest left global 199 (音乐） / 288.5 (设置）. Same width
-  /// throughout — no stretch. The upper bound allows the
-  /// underdamped spring's ~1% overshoot past the target.
+  /// 390pt logical wide -> full-width bar, cellW 97.5, pill 89.5
+  /// wide; rest left global 199 (音乐） / 296.5 (设置）. Same width
+  /// throughout — no stretch. The upper bound allows the elastic
+  /// curve's small overshoot past the target.
   void expectPillMidSlide(WidgetTester tester) {
     final left =
-        tester.getTopLeft(find.byKey(GlassTabBarState.pillKey)).dx;
-    expect(left, inInclusiveRange(199.0, 292.0));
+        tester.getTopLeft(find.byKey(GlassTabBar.pillKey)).dx;
+    expect(left, inInclusiveRange(199.0, 300.0));
     expect(
-      tester.getSize(find.byKey(GlassTabBarState.pillKey)).width,
-      closeTo(81.5, 1.0),
+      tester.getSize(find.byKey(GlassTabBar.pillKey)).width,
+      closeTo(89.5, 1.0),
     );
   }
 
@@ -327,15 +327,12 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab(CupertinoIcons.settings));
-    // The tap-triggered spring starts in a post-frame callback, so
-    // it needs a starter pump before the clock advance (same as
-    // glass_tab_bar_test.dart: "a tap-triggered spring needs two
-    // pumps to start"). Advance in 50ms steps, not one big pump: a
-    // single pump(300ms) does not tick the spring in this harness
-    // (the pill stays put), while repeated small pumps advance it.
-    // After 300ms the 350ms settle spring is still mid-flight, the
-    // pill between cells at full width.
+    await tester.tap(barTab('设置'));
+    // Advance in 50ms steps, not one big pump: a single pump(300ms)
+    // does not tick the animation in this harness (the pill stays
+    // put), while repeated small pumps advance it. After 300ms the
+    // 600ms bouncy slide is still mid-flight, the pill between cells
+    // at full width.
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
@@ -343,7 +340,7 @@ void main() {
     expectPillMidSlide(tester);
     await shoot(tester, _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
         'pill_mid_light');
-    // Drain the pill spring before the test ends.
+    // Drain the pill slide before the test ends.
     await tester.pump(const Duration(seconds: 1));
   });
 
@@ -352,7 +349,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab(CupertinoIcons.settings));
+    await tester.tap(barTab('设置'));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
@@ -368,17 +365,17 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light),
     );
-    await tester.tap(barTab(CupertinoIcons.settings));
-    // Same starter pump + small steps as mid-slide: a single big
-    // pump does not tick the spring in this harness (the pill stays
-    // on 音乐 and the golden would be a meaningless rest duplicate).
-    // Then pumpAndSettle to drain the spring.
+    await tester.tap(barTab('设置'));
+    // Same small steps as mid-slide: a single big pump does not
+    // tick the animation in this harness (the pill stays on 音乐 and
+    // the golden would be a meaningless rest duplicate). Then
+    // pumpAndSettle to drain the animation.
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.pumpAndSettle();
-    // Settled: the spring is done and the tab has actually
+    // Settled: the slide is done and the tab has actually
     // switched to 设置.
     expectPillAtRest(tester);
     expect(
@@ -404,7 +401,7 @@ void main() {
       tester,
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark),
     );
-    await tester.tap(barTab(CupertinoIcons.settings));
+    await tester.tap(barTab('设置'));
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));

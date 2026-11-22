@@ -121,8 +121,11 @@ int nextTrackIndex(
 }
 
 /// Previous-track index. Manual only (there is no auto-previous).
-/// Shuffle picks a random other track; every other mode steps back one
-/// and wraps at the start (established in-app behaviour).
+/// Shuffle picks a random other track. Loop modes wrap at the start;
+/// sequential and single-play stop at the first track — mirroring
+/// [nextTrackIndex], where they stop at the last track instead of
+/// wrapping (a wrap on prev but a stop on next read as a broken
+/// next button at the end of the queue).
 int prevTrackIndex(
   PlayMode mode,
   int current,
@@ -139,5 +142,13 @@ int prevTrackIndex(
     }
     return n;
   }
-  return (current - 1 + length) % length;
+  switch (mode) {
+    case PlayMode.sequential:
+    case PlayMode.single:
+      return current == 0 ? -1 : current - 1;
+    case PlayMode.listLoop:
+    case PlayMode.singleLoop:
+    case PlayMode.shuffle:
+      return (current - 1 + length) % length;
+  }
 }

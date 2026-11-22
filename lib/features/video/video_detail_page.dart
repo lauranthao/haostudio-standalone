@@ -36,17 +36,20 @@
 
 import '../../core/theme/hao_radius.dart';
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/player/vod_features.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
 import '../../services/video/cms_client.dart';
 import '../../services/video/douban_parsers.dart';
 import '../../services/video/douban_service.dart';
 import '../../services/video/poster_patch_service.dart';
+import '../../widgets/glass_dialog.dart';
 import 'missing_episode_chips.dart';
 import 'native_video_player_page.dart';
 import 'skip_intro_dialog.dart';
@@ -180,6 +183,19 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
   bool _watched = false;
   bool _epsExpanded = false;
   bool _synExpanded = false;
+  // I-影视 item 5 (防剧透): prefs read once in initState; reveal
+  // flags are per-detail (reset in _applyDetail).
+  bool _spoilerHideSynopsis = false;
+  bool _spoilerBlurUnwatched = false;
+  bool _synRevealed = false;
+  bool _coverRevealed = false;
+  // I-影视 item 4 (元数据手动纠错): the source values before any
+  // override, so "恢复默认" can put them back (Douban enrichment
+  // mutates the same meta object afterwards, so the pristine
+  // values live here, not on the meta).
+  String _origTitle = '';
+  String _origYear = '';
+  String _origPoster = '';
   bool _fadedIn = false;
   bool _autoResumeDone = false;
 
@@ -191,6 +207,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     super.initState();
     _detailSourceId = widget.sourceId;
     _detailVodId = widget.vodId;
+    _spoilerHideSynopsis = vodSpoilerHideSynopsis();
+    _spoilerBlurUnwatched = vodSpoilerBlurUnwatched();
     // 0.35 s page fade-in (fix 4; respects reduced motion via the
     // framework's animation disable — no animation then).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -273,6 +291,18 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
             resume?.lineIdx ?? hist?.lineIdx ?? 0,
             resume?.epIdx ?? hist?.epIdx ?? 0,
           );
+    // I-影视 item 4: manual metadata correction — capture the
+    // pristine source values first, then apply the local override
+    // in place BEFORE the first paint (it wins over the CMS
+    // values; _enrichDouban below re-applies it after the Douban
+    // merge, so it wins there too).
+    _origTitle = detail.meta.name;
+    _origYear = detail.meta.year;
+    _origPoster = detail.meta.pic;
+    applyMetadataOverrideInPlace(
+      detail.meta,
+      metadataOverrideFor(sourceId, vodId),
+    );
     setState(() {
       _detail = detail;
       _detailSourceId = sourceId;
@@ -287,6 +317,8 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
       _watched = hist != null;
       _epsExpanded = false;
       _isFav = VideoHistoryStore.isFav(favItem);
+      _synRevealed = false;
+      _coverRevealed = false;
     });
     // Douban enrichment AFTER the CMS render — never blocks it.
     unawaited(_enrichDouban(detail));
@@ -320,12 +352,26 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
         setState(() {
           detail.meta.pic = patched;
         });
+        // I-影视 item 4: a user-corrected poster still wins over
+        // the patched one.
+        applyMetadataOverrideInPlace(
+          detail.meta,
+          metadataOverrideFor(_detailSourceId, _detailVodId),
+        );
+        if (mounted) setState(() {});
       }
       return;
     }
     setState(() {
       mergeDoubanIntoMeta(detail.meta, dd);
     });
+    // I-影视 item 4: re-apply after the Douban merge — a manual
+    // correction wins over Douban too (title / year / poster).
+    applyMetadataOverrideInPlace(
+      detail.meta,
+      metadataOverrideFor(_detailSourceId, _detailVodId),
+    );
+    if (mounted) setState(() {});
   }
 
   /// Start (or restart) the missing-episode union scan for [base]:
@@ -532,6 +578,144 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     );
   }
 
+  /// Manual metadata correction (I-影视 item 4): title / year /
+  /// poster, local override only. An empty field keeps the source
+  /// value (never blanks it). "恢复默认" clears the override and
+  /// restores the pristine source values (Douban poster when the
+  /// enrichment already landed, else the CMS poster). Douban stays
+  /// the only metadata source — no TMDB anywhere.
+  Future<void> _showMetadataCorrection() async {
+    final d = _detail;
+    if (d == null) return;
+    final theme = HaoTheme.of(context);
+    final titleCtrl = TextEditingController(text: d.meta.name);
+    final yearCtrl = TextEditingController(text: d.meta.year);
+    final posterCtrl = TextEditingController(text: d.meta.pic);
+    final saved = await showGlassDialog<bool>(
+      context,
+      builder: (ctx) {
+        Widget field(
+          TextEditingController ctrl,
+          String label,
+          String hint,
+        ) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: theme.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                // iOS 原生输入框 (chen 铁律：新增界面一律 Cupertino，
+                // 不用 Material TextField)。
+                CupertinoTextField(
+                  controller: ctrl,
+                  style: TextStyle(color: theme.textPrimary),
+                  placeholder: hint,
+                  placeholderStyle: TextStyle(color: theme.textMuted),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.surface,
+                    border: Border.all(color: theme.hairline),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '纠错',
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '只改本地显示，不改片源；留空保持原值。',
+              style: TextStyle(color: theme.textSecondary, fontSize: 13),
+            ),
+            field(titleCtrl, '标题', d.meta.name),
+            field(yearCtrl, '年份', d.meta.year),
+            field(posterCtrl, '海报链接', d.meta.pic),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  // iOS 原生按钮 (chen 铁律：不用 Material
+                  // OutlinedButton / FilledButton)。
+                  child: CupertinoButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: const Text('恢复默认'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: CupertinoButton.filled(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    if (saved == null || !mounted) return;
+    final detail = _detail;
+    if (detail == null) return;
+    // Empty field = "no correction for this field" = restore the
+    // source value (not "keep whatever the last correction set":
+    // clearing a corrected title must put the original back).
+    // The recompute below runs for both 保存 and 恢复默认 — the
+    // only difference is which override was persisted.
+    final override = saved
+        ? VodMetadataOverride(
+            title: titleCtrl.text.trim().isEmpty
+                ? null
+                : titleCtrl.text.trim(),
+            year: yearCtrl.text.trim().isEmpty
+                ? null
+                : yearCtrl.text.trim(),
+            poster: posterCtrl.text.trim().isEmpty
+                ? null
+                : posterCtrl.text.trim(),
+          )
+        : const VodMetadataOverride();
+    await saveMetadataOverride(
+      source: _detailSourceId,
+      vodId: _detailVodId,
+      override: override,
+    );
+    if (!mounted) return;
+    setState(() {
+      detail.meta.name = override.title ?? _origTitle;
+      detail.meta.year = override.year ?? _origYear;
+      final doubanPoster = detail.meta.douban?.poster ?? '';
+      detail.meta.pic = override.poster ??
+          (doubanPoster.isNotEmpty ? doubanPoster : _origPoster);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
@@ -576,14 +760,49 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
               // No centre play button anywhere on the cover, and no
               // episode pill on it either — the big play button below
               // already names the episode.
-              _CoverHero(pic: m.pic),
+              // I-影视 item 5: spoiler blur — an unwatched title's
+              // cover is blurred until tapped (watched titles are
+              // never blurred; episode cards carry no stills, so
+              // the cover is the only thumbnail that exists).
+              if (_spoilerBlurUnwatched && !_watched && !_coverRevealed)
+                Stack(
+                  children: [
+                    ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(
+                        sigmaX: 18,
+                        sigmaY: 18,
+                      ),
+                      child: _CoverHero(pic: m.pic),
+                    ),
+                    Positioned.fill(
+                      child: Center(
+                        // iOS 原生按钮 (chen 铁律：不用 Material
+                        // FilledButton)。
+                        child: CupertinoButton.filled(
+                          onPressed: () =>
+                              setState(() => _coverRevealed = true),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.visibility),
+                              SizedBox(width: 6),
+                              Text('点按查看海报'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                _CoverHero(pic: m.pic),
               // --- Big blue play button below the cover ---
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.play_arrow),
+                    icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                     label: Text(
                       _playButtonLabel,
                       style: const TextStyle(
@@ -698,6 +917,15 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                           active: _isFav,
                           tooltip: '收藏',
                           onTap: _toggleFav,
+                        ),
+                        const SizedBox(width: 12),
+                        // I-影视 item 4: manual metadata correction
+                        // (title / year / poster, local only).
+                        _CircleAction(
+                          icon: Icons.edit,
+                          active: false,
+                          tooltip: '纠错',
+                          onTap: () => unawaited(_showMetadataCorrection()),
                         ),
                       ],
                     ),
@@ -850,7 +1078,44 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
                   ),
                 ),
               // --- Synopsis ---
-              if (m.plainContent.isNotEmpty) ...[
+              // I-影视 item 5: spoiler hide — the synopsis is
+              // replaced by a placeholder until the user taps to
+              // reveal it (per detail load; the reveal never
+              // persists — the next visit hides it again).
+              if (m.plainContent.isNotEmpty &&
+                  _spoilerHideSynopsis &&
+                  !_synRevealed) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.visibility_off,
+                        size: 18,
+                        color: theme.textMuted,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '简介已隐藏（防剧透）',
+                          style: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
+                            color: theme.textSecondary,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      // iOS 原生按钮 (chen 铁律：不用 Material TextButton)。
+                      CupertinoButton(
+                        onPressed: () =>
+                            setState(() => _synRevealed = true),
+                        padding: EdgeInsets.zero,
+                        child: const Text('查看简介'),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (m.plainContent.isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                   child: Column(
@@ -1021,7 +1286,7 @@ class _CoverHero extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
+                icon: Icon(CupertinoIcons.back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -1336,8 +1601,8 @@ class _DetailSkeleton extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
+                          icon: Icon(
+                            Icons.arrow_back, shadows: HaoTheme.legibilityShadows(context), 
                             color: Colors.white,
                           ),
                           onPressed: () => Navigator.of(context).pop(),
@@ -1417,7 +1682,7 @@ class _ErrorCard extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,

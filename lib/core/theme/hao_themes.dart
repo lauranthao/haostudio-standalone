@@ -304,6 +304,21 @@ ThemeData _buildThemeData({
 }) {
   // Red is reserved for the LIVE badge / recording dot only.
   const liveRed = Color(0xFFE5484D);
+  // b29-A legibility: text on glass or bare wallpaper loses its
+  // backing as glassIntensity fades (the glass fill / blur / border /
+  // shadow all scale to zero). Every theme text style therefore
+  // carries the same intensity-scaled shadow as
+  // HaoTheme.legibilityShadows: [] at 1.0 (today's look
+  // byte-identical), full strength at 0%. Explicit call-site
+  // TextStyles merge over the ambient DefaultTextStyle (Text.build:
+  // defaultTextStyle.style.merge(style)), so the shadow survives
+  // unless the call site sets shadows itself. Only brightness
+  // decides the colour (light: white halo; dark: black shadow),
+  // never the theme.
+  final legibility = HaoTheme.legibilityShadowsFor(
+    isDark: brightness == Brightness.dark,
+    intensity: glassIntensity,
+  );
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: accent,
@@ -332,6 +347,7 @@ ThemeData _buildThemeData({
         fontSize: 17,
         fontWeight: FontWeight.w700,
         color: textPrimary,
+        shadows: legibility,
       ),
     ),
     cardTheme: CardThemeData(
@@ -363,12 +379,14 @@ ThemeData _buildThemeData({
         fontWeight: FontWeight.w600,
         color: textPrimary,
         height: 1.35,
+        shadows: legibility,
       ),
       subtitleTextStyle: TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w400,
         color: textSecondary,
         height: 1.45,
+        shadows: legibility,
       ),
       iconColor: textSecondary,
     ),
@@ -395,6 +413,7 @@ ThemeData _buildThemeData({
         color: colorScheme.onPrimary,
         fontSize: 12,
         fontWeight: FontWeight.w600,
+        shadows: legibility,
       ),
       trackHeight: 4,
       // N-12: iOS thumb is 28pt across (radius 14); the old 20pt
@@ -410,6 +429,7 @@ ThemeData _buildThemeData({
         fontSize: 13,
         fontWeight: FontWeight.w600,
         color: textSecondary,
+        shadows: legibility,
       ),
       side: BorderSide(color: hairline),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
@@ -424,18 +444,31 @@ ThemeData _buildThemeData({
         fontSize: 17,
         fontWeight: FontWeight.w700,
         color: textPrimary,
+        shadows: legibility,
       ),
       contentTextStyle: TextStyle(
         fontSize: 14,
         color: textSecondary,
         height: 1.55,
+        shadows: legibility,
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled)
-              ? textMuted.withValues(alpha: 0.25)
+              // b29-A buttons: the old disabled fill (textMuted 0.25
+              // over the scaffold) is 1.4-1.5:1 against the onPrimary
+              // label in 6 of 8 combos — the label vanishes (e.g. the
+              // 音源管理 '验证中…' button while a source validates).
+              // Opaque composite of textPrimary 0.55 over the
+              // scaffold: 3.5-5.9:1 in all 8 combos, and opaque so a
+              // bright wallpaper behind it cannot wash it out either.
+              // The label colour itself is untouched (still onPrimary).
+              ? Color.alphaBlend(
+                  textPrimary.withValues(alpha: 0.55),
+                  scaffoldBackground,
+                )
               : accent,
         ),
         foregroundColor: WidgetStateProperty.all(colorScheme.onPrimary),
@@ -446,7 +479,11 @@ ThemeData _buildThemeData({
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(HaoRadius.large)),
         ),
         textStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            shadows: legibility,
+          ),
         ),
       ),
     ),
@@ -454,7 +491,11 @@ ThemeData _buildThemeData({
       style: ButtonStyle(
         foregroundColor: WidgetStateProperty.all(accent),
         textStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            shadows: legibility,
+          ),
         ),
         padding: WidgetStateProperty.all(
           const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -476,8 +517,16 @@ ThemeData _buildThemeData({
         borderRadius: BorderRadius.circular(HaoRadius.large),
         borderSide: BorderSide(color: accent, width: 1.5),
       ),
-      hintStyle: TextStyle(color: textMuted, fontSize: 14),
-      labelStyle: TextStyle(color: textSecondary, fontSize: 14),
+      hintStyle: TextStyle(
+        color: textMuted,
+        fontSize: 14,
+        shadows: legibility,
+      ),
+      labelStyle: TextStyle(
+        color: textSecondary,
+        fontSize: 14,
+        shadows: legibility,
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     ),
     radioTheme: RadioThemeData(
@@ -487,15 +536,15 @@ ThemeData _buildThemeData({
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: accent),
     textTheme: TextTheme(
-      bodyLarge: TextStyle(color: textPrimary),
-      bodyMedium: TextStyle(color: textPrimary),
-      bodySmall: TextStyle(color: textSecondary),
-      titleLarge: TextStyle(color: textPrimary),
-      titleMedium: TextStyle(color: textPrimary),
-      titleSmall: TextStyle(color: textSecondary),
-      labelLarge: TextStyle(color: textPrimary),
-      labelMedium: TextStyle(color: textSecondary),
-      labelSmall: TextStyle(color: textMuted),
+      bodyLarge: TextStyle(color: textPrimary, shadows: legibility),
+      bodyMedium: TextStyle(color: textPrimary, shadows: legibility),
+      bodySmall: TextStyle(color: textSecondary, shadows: legibility),
+      titleLarge: TextStyle(color: textPrimary, shadows: legibility),
+      titleMedium: TextStyle(color: textPrimary, shadows: legibility),
+      titleSmall: TextStyle(color: textSecondary, shadows: legibility),
+      labelLarge: TextStyle(color: textPrimary, shadows: legibility),
+      labelMedium: TextStyle(color: textSecondary, shadows: legibility),
+      labelSmall: TextStyle(color: textMuted, shadows: legibility),
     ),
     iconTheme: IconThemeData(color: textPrimary),
     extensions: <ThemeExtension<dynamic>>[

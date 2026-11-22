@@ -20,6 +20,7 @@ import '../../core/theme/hao_themes.dart';
 import '../../core/theme/glass.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
+import '../../services/music/year_review.dart';
 import 'music_player_controller.dart';
 import 'player_expand_route.dart';
 import 'widgets/mini_player_bar.dart';
@@ -74,14 +75,30 @@ class _ListenReportPageState extends State<ListenReportPage> {
     );
   }
 
+  /// 年度回顾 (build 29): this year's totals + monthly bars + top
+  /// songs/artists, from the same listen log. The live in-progress
+  /// session merges in exactly like [_report].
+  YearReview get _yearReview {
+    final live = _player.liveListenEvent;
+    final log = MusicStore.getListenLog();
+    return YearReview.compute(
+      live == null ? log : [live, ...log],
+      DateTime.now().year,
+    );
+  }
+
   /// The empty state is about the SELECTED range: "本周还没有听歌记录"
   /// when this week is empty even if other ranges have plays.
-  String get _emptyText => listenReportEmptyText(_range);
+  String get _emptyText => _range == 'year'
+      ? '今年还没有听歌记录'
+      : listenReportEmptyText(_range);
 
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    final report = _report;
+    final isYear = _range == 'year';
+    final report = isYear ? null : _report;
+    final yearReview = isYear ? _yearReview : null;
     // Favourites read once per build, not per top-song row:
     // getFavIds() parses the whole favourites JSON on every call.
     final favIds = MusicStore.getFavIds();
@@ -101,6 +118,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
                 ('week', '本周'),
                 ('month', '本月'),
                 ('all', '全部'),
+                ('year', '年度'),
               ])
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -110,6 +128,7 @@ class _ListenReportPageState extends State<ListenReportPage> {
                     selectedColor: theme.accentSoft,
                     side: BorderSide(color: theme.hairline),
                     labelStyle: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
                       color: _range == value
                           ? theme.accent
                           : theme.textSecondary,
@@ -123,7 +142,9 @@ class _ListenReportPageState extends State<ListenReportPage> {
             ],
           ),
           const SizedBox(height: 16),
-          if (report.totalPlays == 0)
+          if (isYear)
+            _yearBody(theme, yearReview!, favIds)
+          else if (report!.totalPlays == 0)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 48),
@@ -168,6 +189,101 @@ class _ListenReportPageState extends State<ListenReportPage> {
           ],
         ],
       ),
+    );
+  }
+
+  /// 年度回顾 body (build 29): year totals + 12 monthly bars + top
+  /// songs / artists of the year. Empty year → the empty state.
+  Widget _yearBody(HaoTheme theme, YearReview year, Set<String> favIds) {
+    if (year.totalPlays == 0) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48),
+          child: Text(
+            _emptyText,
+            style: TextStyle(color: theme.textMuted),
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _stat(theme, '${year.totalPlays}', '播放次数'),
+            const SizedBox(width: 12),
+            _stat(theme, year.totalTimeText, '总时长'),
+            const SizedBox(width: 12),
+            _stat(theme, '${year.daysListened}', '听歌天数'),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _sectionTitle(theme, '${year.year}年 · 每月播放'),
+        SizedBox(
+          height: 120,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var i = 0; i < 12; i++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          height: year.monthlyPlays[i] > 0
+                              ? (96 *
+                                      year.monthlyPlays[i] /
+                                      year.monthlyPlays.fold<int>(
+                                        1,
+                                        (m, x) => x > m ? x : m,
+                                      ))
+                                  .clamp(6.0, 96.0)
+                              : 2,
+                          decoration: BoxDecoration(
+                            color: year.monthlyPlays[i] > 0
+                                ? theme.accent
+                                : theme.accentSoft,
+                            borderRadius:
+                                BorderRadius.circular(HaoRadius.badge),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: 12,
+                          child: Text(
+                            '${i + 1}月',
+                            style: TextStyle(
+                              color: theme.textMuted,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        _sectionTitle(theme, '年度常听歌曲'),
+        for (var i = 0; i < year.topSongs.length; i++)
+          _topSongRow(theme, year.topSongs, i, favIds),
+        const SizedBox(height: 24),
+        if (year.topArtists.isNotEmpty) ...[
+          _sectionTitle(theme, '年度常听歌手'),
+          for (var i = 0; i < year.topArtists.length; i++)
+            _rankRow(
+              theme,
+              i,
+              year.topArtists[i].artist,
+              '${year.topArtists[i].plays}次',
+            ),
+        ],
+      ],
     );
   }
 

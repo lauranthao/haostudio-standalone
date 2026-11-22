@@ -22,6 +22,7 @@ import '../../core/theme/haptics.dart';
 import '../../core/theme/glass.dart';
 import '../../services/clipboard_service.dart';
 import '../../services/music/music_api.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_quality.dart';
 import '../../services/music/music_store.dart';
@@ -132,7 +133,18 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (_songs.isEmpty) return;
     final songs = List<Song>.of(_songs);
     if (shuffle) songs.shuffle();
-    unawaited(_player.playQueue(songs, 0, label: widget.albumName));
+    unawaited(
+      _player.playQueue(
+        songs,
+        0,
+        label: widget.albumName,
+        sourceKey: QueueSource.album(
+          widget.albumName,
+          _detail?.artist ?? '',
+        ),
+        resumeFromMemory: true,
+      ),
+    );
     unawaited(openPlayerPage<void>(context));
   }
 
@@ -363,7 +375,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         const SizedBox(width: 24),
         ElevatedButton.icon(
           onPressed: () => _playAll(),
-          icon: const Icon(Icons.play_arrow, size: 22),
+          icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  size: 22),
           label: const Text(
             '播放',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
@@ -411,7 +423,16 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       song: song,
       isFav: favIds.contains(song.identityKey),
       onPlay: () {
-        unawaited(_player.playQueue(_songs, index));
+        unawaited(
+          _player.playQueue(
+            _songs,
+            index,
+            sourceKey: QueueSource.album(
+              widget.albumName,
+              _detail?.artist ?? '',
+            ),
+          ),
+        );
         unawaited(openPlayerPage<void>(context));
       },
       onToggleFav: () async {

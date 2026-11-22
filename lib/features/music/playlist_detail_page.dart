@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/hao_themes.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../services/music/multi_queue_store.dart';
 import '../../services/music/music_models.dart';
 import '../../services/music/music_store.dart';
 import 'artist_detail_page.dart';
@@ -132,7 +133,15 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
   void _playAll() {
     final tracks = _list?.tracks ?? [];
     if (tracks.isEmpty) return;
-    unawaited(_player.playQueue(tracks, 0, label: _list!.name));
+    unawaited(
+      _player.playQueue(
+        tracks,
+        0,
+        label: _list!.name,
+        sourceKey: QueueSource.playlist(_list!.id),
+        resumeFromMemory: true,
+      ),
+    );
     unawaited(openPlayerPage<void>(context));
   }
 
@@ -180,7 +189,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                 const Spacer(),
                 ElevatedButton.icon(
                   onPressed: list.tracks.isEmpty ? null : _playAll,
-                  icon: const Icon(Icons.play_arrow),
+                  icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                   label: const Text('播放全部'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: theme.accent,
@@ -238,7 +247,12 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                           isFav: favIds.contains(song.identityKey),
                           onPlay: () {
                             unawaited(
-                              _player.playQueue(list.tracks, i),
+                              _player.playQueue(
+                                list.tracks,
+                                i,
+                                sourceKey:
+                                    QueueSource.playlist(list.id),
+                              ),
                             );
                             unawaited(openPlayerPage<void>(context));
                           },

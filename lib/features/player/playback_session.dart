@@ -121,6 +121,14 @@ class PlaybackSession {
   bool _stallNoticed = false;
   bool _disposed = false;
 
+  /// Dialogue boost (I-影视 item 3, VOD only): remembered so a
+  /// ladder backend swap re-applies it to the new backend, like
+  /// [_rate]. Implemented by MpvBackend (K 组, build 29:
+  /// volume-max=300 + centre-channel fold); other backends no-op.
+  bool _dialogueBoost = false;
+
+  bool get dialogueBoost => _dialogueBoost;
+
   /// Audio-only mode (live background playback): the video track is
   /// off while the app is backgrounded. Remembered so a ladder
   /// backend swap re-applies it to the new backend, like [_rate].
@@ -713,6 +721,11 @@ class PlaybackSession {
         await next.setAudioOnly(true);
       } catch (_) {}
     }
+    // Same for dialogue boost: a swap must not silently reset it.
+    // Best-effort — a backend without the capability no-ops.
+    if (_dialogueBoost && next is DialogueBoostCapableBackend) {
+      unawaited(next.setDialogueBoost(true).catchError((_) {}));
+    }
     _attachBackend(next);
     // A ladder swap must not reset a user-chosen speed (episode
     // auto-advance opens a fresh backend per episode).
@@ -968,6 +981,47 @@ class PlaybackSession {
   Future<void> setVolume(double volume) => _backend?.setVolume(volume) ?? Future.value();
 
   double get rate => _rate;
+
+  /// Dialogue boost (I-影视 item 3, VOD only): remembered and
+  /// re-applied after a ladder backend swap, like [_rate]. Only a
+  /// [DialogueBoostCapableBackend] (mpv, K 组 build 29) hears it —
+  /// other backends no-op, and the choice is still remembered so
+  /// a later capable swap picks it up. The caller (VOD page only)
+  /// guards with shouldApplyDialogueBoost; live never calls this.
+  Future<void> setDialogueBoost(bool enabled) async {
+    _dialogueBoost = enabled;
+    final backend = _backend;
+    if (backend is! DialogueBoostCapableBackend) return;
+    try {
+      await backend.setDialogueBoost(enabled);
+    } catch (_) {}
+  }
+
+  /// Whether the ACTIVE backend can enter system Picture-in-Picture
+  /// right now (AVPlayer only — MPV/IJK have no AVFoundation
+  /// playback underneath). The VOD 更多 menu shows its PiP entry
+  /// only when this is true, so there is never a dead PiP button.
+  /// Re-read on every use: the ladder can swap the backend
+  /// mid-playback, so a cached value would go stale.
+  bool get supportsPictureInPicture =>
+      _backend is PictureInPictureCapableBackend;
+
+  /// Enter system Picture-in-Picture on the active backend (K 组,
+  /// build 29). True only when the backend implements
+  /// [PictureInPictureCapableBackend] (AVPlayer) and PiP started;
+  /// MPV/IJK return false — no AVFoundation playback underneath,
+  /// so no Dart-side change can wire them. VOD + live both use
+  /// this entry point; the caller (live tools sheet / VOD 更多
+  /// menu) decides when to offer it.
+  Future<bool> enterPictureInPicture() async {
+    final backend = _backend;
+    if (backend is! PictureInPictureCapableBackend) return false;
+    try {
+      return await backend.enterPictureInPicture();
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Audio-only mode for live background playback (Pure Live
   /// `setAudioOnly`): the video track is disabled so a suspended

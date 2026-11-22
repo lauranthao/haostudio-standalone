@@ -136,6 +136,49 @@ abstract class TrackCapableBackend extends PlayerBackend {
   Stream<List<String>> get subtitleStream;
 }
 
+/// Optional capability: backends that can boost dialogue (I-影视
+/// item 3, VOD only). Follows the TrackCapableBackend pattern: a
+/// separate interface EXTENDING PlayerBackend so `backend is
+/// DialogueBoostCapableBackend` narrows.
+///
+/// The effect is mpv `volume-max=300` (raise the volume ceiling so
+/// gain can exceed 100%) + a centre-channel enhancement — both
+/// implemented by [MpvBackend.setDialogueBoost] (K 组, build 29).
+/// PlaybackSession.setDialogueBoost remembers the switch and
+/// forwards it only to a capable backend.
+abstract class DialogueBoostCapableBackend extends PlayerBackend {
+  /// Enable/disable dialogue boost: volume up to 300% + centre
+  /// channel enhancement. VOD only; the session never calls it
+  /// for live.
+  Future<void> setDialogueBoost(bool enabled);
+}
+
+/// Optional capability: backends that can enter iOS system
+/// Picture-in-Picture (K 组, build 29). Same pattern as
+/// [TrackCapableBackend]/[DialogueBoostCapableBackend]: a separate
+/// interface EXTENDING [PlayerBackend] so `is` narrows. A method on
+/// [PlayerBackend] itself would break every `implements
+/// PlayerBackend` fake (~30 test fakes) at compile time; the
+/// capability interface breaks none.
+///
+/// Only AVPlayer (BetterPlayer) implements this: BetterPlayer 1.4.1
+/// ships `enablePictureInPicture(GlobalKey)` over
+/// AVPictureInPictureController on iOS. MPV (media_kit/libmpv) and
+/// IJK (fijkplayer) expose no PiP API and decode with ffmpeg, not
+/// AVFoundation — there is no AVPlayerLayer for the system PiP
+/// controller to attach to, so no Dart-side change can wire them
+/// (see live_pip_support.dart). They keep the default no-op by
+/// simply not implementing this interface, and the session reports
+/// false for them.
+abstract class PictureInPictureCapableBackend extends PlayerBackend {
+  /// Enter system PiP. True when PiP actually started, false when
+  /// unsupported / not ready (backend not opened, PiP unsupported
+  /// on this device, video view not built yet). VOD + live both
+  /// use the session entry point; the backend decides nothing
+  /// about content type.
+  Future<bool> enterPictureInPicture();
+}
+
 abstract class PlayerBackend {
   PlayerEngine get engine;
 

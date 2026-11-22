@@ -52,9 +52,17 @@ import 'widgets/music_image.dart';
 import 'widgets/play_queue_panel.dart';
 import 'widgets/quality_sheet.dart';
 import 'widgets/track_more_sheet.dart';
+import '../../widgets/native_music_transport.dart';
 
 class MusicPlayerPage extends StatefulWidget {
-  const MusicPlayerPage({super.key});
+  const MusicPlayerPage({super.key, this.nativeMusicTransport = false});
+
+  /// False (default) = the Flutter transport row. True + iOS = the
+  /// SwiftUI transport (needs MusicTransportPlugin registered AND
+  /// Codemagic-verified — no Xcode on the VM, so the flag stays
+  /// false until the plugin compiles there). Same convention as the
+  /// VOD page's nativeVodControls flag.
+  final bool nativeMusicTransport;
 
   @override
   State<MusicPlayerPage> createState() => _MusicPlayerPageState();
@@ -615,7 +623,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           shape: BoxShape.circle,
         ),
         child: Icon(
-          icon,
+          icon, shadows: HaoTheme.legibilityShadows(context), 
           size: 14,
           color: Colors.white.withValues(alpha: 0.85),
         ),
@@ -719,6 +727,12 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
 
   /// Faint text shadow under lyric text: with no background box, this
   /// is what keeps white lyrics readable over a bright blurred cover.
+  /// Legibility shadow for every white glyph on this page (title,
+  /// artist, badge, times, transport, icons): the 1.1.6 glass
+  /// legibility fix never reached this sheet — its white text and
+  /// icons had no shadow at all, so a light cover could hide them.
+  /// Same shadow the lyrics already used; this page does not follow
+  /// the glass-intensity slider, so the strength is fixed.
   static const _lyricShadow = Shadow(
     color: Color.fromRGBO(0, 0, 0, 0.45),
     offset: Offset(0, 1),
@@ -820,7 +834,10 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                           ),
                           // Translation under the focused line only
                           // (Beans `LyricsSection`): smaller, dimmer.
+                          // Build 29: hidden when the user turned the
+                          // translation switch off in the `···` sheet.
                           if (current &&
+                              _c.showLyricTranslation.value &&
                               translation != null &&
                               translation.isNotEmpty)
                             Padding(
@@ -861,7 +878,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
       height: size,
       color: Colors.white.withValues(alpha: 0.06),
       child: Icon(
-        Icons.music_note,
+        Icons.music_note, shadows: HaoTheme.legibilityShadows(context), 
         color: Colors.white.withValues(alpha: 0.3),
         size: 48,
       ),
@@ -934,6 +951,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
               color: Colors.white,
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
+              shadows: [_lyricShadow],
             ),
           ),
         ),
@@ -964,6 +982,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                   color: Colors.white,
                   fontSize: 21,
                   fontWeight: FontWeight.w700,
+                  shadows: [_lyricShadow],
                 ),
               ),
               const SizedBox(height: 5),
@@ -975,6 +994,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.65),
                   fontSize: 13.5,
+                  shadows: [_lyricShadow],
                 ),
               ),
             ],
@@ -1020,7 +1040,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         width: 44,
         height: 44,
         child: Icon(
-          icon,
+          icon, shadows: HaoTheme.legibilityShadows(context), 
           size: 21,
           weight: 500,
           color: active
@@ -1095,6 +1115,14 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.25),
                                 borderRadius: BorderRadius.circular(HaoRadius.badge),
+                                // Lifts the thin bar off a light cover.
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color.fromRGBO(0, 0, 0, 0.35),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
                               ),
                             ),
                             Container(
@@ -1159,6 +1187,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                     color: Colors.white.withValues(alpha: 0.55),
                     fontSize: 10.5,
                     fontFeatures: const [FontFeature.tabularFigures()],
+                    shadows: [_lyricShadow],
                   ),
                 );
               }),
@@ -1183,6 +1212,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
                     color: Colors.white.withValues(alpha: 0.55),
                     fontSize: 10.5,
                     fontFeatures: const [FontFeature.tabularFigures()],
+                    shadows: [_lyricShadow],
                   ),
                 );
               }),
@@ -1235,8 +1265,13 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
   /// tune → top bar only (PL-P1-6), shuffle → the `···` sheet's
   /// play-mode row (PL-P0-1; the queue panel header mode button is
   /// untouched). Only the surface changed; playback logic is intact.
+  ///
+  /// build-29 adoption: the Row below is the Flutter fallback. On
+  /// iOS with [MusicPlayerPage.nativeMusicTransport] true (after
+  /// Codemagic verifies the plugin), the same three buttons render
+  /// as SwiftUI via [NativeMusicTransport] instead.
   Widget _transportRow() {
-    return Row(
+    final fallback = Row(
       children: [
         Expanded(
           child: SizedBox(
@@ -1309,6 +1344,24 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
         ),
       ],
     );
+    return Obx(
+      () => NativeMusicTransport(
+        playing: _c.isPlaying.value,
+        nativeEnabled: widget.nativeMusicTransport,
+        onAction: (action) {
+          HaoHaptics.tap();
+          switch (action) {
+            case MusicTransportAction.prev:
+              _c.prev();
+            case MusicTransportAction.playPause:
+              _c.togglePlayPause();
+            case MusicTransportAction.next:
+              _c.next();
+          }
+        },
+        fallback: fallback,
+      ),
+    );
   }
 
   /// One bare white triangle (Kumone compact transport): no circle,
@@ -1328,7 +1381,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Icon(
-        icon,
+        icon, shadows: HaoTheme.legibilityShadows(context), 
         size: size,
         weight: bold ? 700 : 600,
         color: Colors.white,
@@ -1418,7 +1471,7 @@ class _MusicPlayerPageState extends State<MusicPlayerPage>
           shape: BoxShape.circle,
         ),
         child: Icon(
-          icon,
+          icon, shadows: HaoTheme.legibilityShadows(context), 
           size: 17,
           color: active
               ? _activeOnDark(theme.accent)

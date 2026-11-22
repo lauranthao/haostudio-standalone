@@ -45,6 +45,7 @@ class DownloadedSong {
     required this.filePath,
     required this.sizeBytes,
     required this.downloadedAt,
+    this.quality = AudioQuality.hires,
   });
 
   factory DownloadedSong.fromJson(Map<String, dynamic> j) {
@@ -55,6 +56,10 @@ class DownloadedSong {
       filePath: j['filePath']?.toString() ?? '',
       sizeBytes: (j['sizeBytes'] as num?)?.toInt() ?? 0,
       downloadedAt: (j['downloadedAt'] as num?)?.toInt() ?? 0,
+      // Pre-tier entries have no field: hires is the safe default —
+      // never over-claim Master for a file whose tier was not
+      // recorded.
+      quality: AudioQualityX.fromCode(j['quality']?.toString()),
     );
   }
 
@@ -63,6 +68,7 @@ class DownloadedSong {
         'filePath': filePath,
         'sizeBytes': sizeBytes,
         'downloadedAt': downloadedAt,
+        'quality': quality.code,
       };
 
   /// Identity key, same as Song.identityKey (`platform|songId`).
@@ -75,6 +81,12 @@ class DownloadedSong {
   final String filePath;
   final int sizeBytes;
   final int downloadedAt;
+
+  /// Tier the file was actually resolved at (the resolver's real
+  /// tier, not the requested one — a downgrade is recorded as the
+  /// downgrade). The badge shows this, never the user's current
+  /// requested tier.
+  final AudioQuality quality;
 }
 
 /// Audio extensions we accept from a resolved URL path.
@@ -259,6 +271,17 @@ class MusicDownloadService {
     return _resolveStored(entry.first.filePath);
   }
 
+  /// The tier the downloaded file was saved at, or null when the
+  /// song is not downloaded. The file IS the quality — the badge
+  /// must show this, never the user's requested tier.
+  AudioQuality? tierFor(Song song) {
+    final entry = _readIndex().where(
+      (e) => e.key == song.identityKey,
+    );
+    if (entry.isEmpty) return null;
+    return entry.first.quality;
+  }
+
   /// Rebuild an index entry for a file found on disk with no index
   /// entry (its index was destroyed by the 1.1.1 prune). The file
   /// name carries the identity (`<platform>_<songId>.<ext>`); the
@@ -428,7 +451,7 @@ class MusicDownloadService {
       }
       // await (not bare return) so a failure inside the download is
       // caught by the catch below instead of escaping to the caller.
-      return await downloadFromUrl(song, r.url);
+      return await downloadFromUrl(song, r.url, quality: r.quality);
     } catch (_) {
       status[song.identityKey] = DownloadStatus.failed;
       return false;
@@ -439,16 +462,26 @@ class MusicDownloadService {
   /// the resolver: point [url] at a local server. A second call for
   /// the same song while one is in flight shares the first download
   /// instead of writing the same tmp file twice (see [_inFlight]).
-  Future<bool> downloadFromUrl(Song song, String url) {
+  /// [quality] is the tier the URL was resolved at (recorded on the
+  /// index entry so the badge can show the file's real tier).
+  Future<bool> downloadFromUrl(
+    Song song,
+    String url, {
+    AudioQuality quality = AudioQuality.hires,
+  }) {
     final key = song.identityKey;
     final existing = _inFlight[key];
     if (existing != null) return existing;
-    final fut = _downloadFromUrlInner(song, url);
+    final fut = _downloadFromUrlInner(song, url, quality: quality);
     _inFlight[key] = fut;
     return fut.whenComplete(() => _inFlight.remove(key));
   }
 
-  Future<bool> _downloadFromUrlInner(Song song, String url) async {
+  Future<bool> _downloadFromUrlInner(
+    Song song,
+    String url, {
+    AudioQuality quality = AudioQuality.hires,
+  }) async {
     final key = song.identityKey;
     if (localPathFor(song) != null) {
       status[key] = DownloadStatus.downloaded;
@@ -497,6 +530,7 @@ class MusicDownloadService {
           filePath: LocalPaths.storedName(kMusicDownloadsSubdir, fileName),
           sizeBytes: size,
           downloadedAt: DateTime.now().millisecondsSinceEpoch,
+          quality: quality,
         ),
       );
       await _writeIndex(entries);

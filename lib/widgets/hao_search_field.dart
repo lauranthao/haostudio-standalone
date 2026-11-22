@@ -122,7 +122,7 @@ class _HaoSearchFieldState extends State<HaoSearchField> {
                     // up, or the field would show two search icons.
                     if (!showCentredPlaceholder) ...[
                       Icon(
-                        CupertinoIcons.search,
+                        CupertinoIcons.search, shadows: HaoTheme.legibilityShadows(context), 
                         size: 16,
                         color: theme.textMuted,
                       ),
@@ -145,6 +145,7 @@ class _HaoSearchFieldState extends State<HaoSearchField> {
                               ? ''
                               : widget.hintText,
                           hintStyle: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: theme.textMuted,
                             fontSize: 17,
                           ),
@@ -161,7 +162,7 @@ class _HaoSearchFieldState extends State<HaoSearchField> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Icon(
-                            CupertinoIcons.clear_circled_solid,
+                            CupertinoIcons.clear_circled_solid, shadows: HaoTheme.legibilityShadows(context), 
                             size: 18,
                             color: theme.textMuted,
                           ),
@@ -177,7 +178,7 @@ class _HaoSearchFieldState extends State<HaoSearchField> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          CupertinoIcons.search,
+                          CupertinoIcons.search, shadows: HaoTheme.legibilityShadows(context), 
                           size: 16,
                           color: theme.textMuted,
                         ),

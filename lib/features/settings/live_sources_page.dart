@@ -7,8 +7,8 @@
 
 import 'package:flutter/material.dart';
 import '../../widgets/hao_toast.dart';
+import '../../widgets/native_switch.dart';
 
-import '../../core/theme/hao_themes.dart';
 import '../../widgets/settings_ui.dart';
 import '../../shared/platforms/sites.dart';
 import 'source_stores.dart';
@@ -41,7 +41,6 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('直播源管理')),
       body: ListView(
@@ -52,17 +51,10 @@ class _LiveSourcesPageState extends State<LiveSourcesPage> {
               ...Sites.supportedSiteIds.map((id) {
                 final site = Sites.of(id);
                 final on = _enabled.contains(id);
-                return SwitchListTile(
-                  title: Text(
-                    site.name,
-                    style: TextStyle(color: theme.textPrimary),
-                  ),
-                  subtitle: Text(
-                    id,
-                    style: TextStyle(color: theme.textSecondary),
-                  ),
+                return HaoSwitchRow(
+                  title: site.name,
+                  subtitle: id,
                   value: on,
-                  activeThumbColor: theme.accent,
                   onChanged: (v) => _toggle(id, v),
                 );
               }),

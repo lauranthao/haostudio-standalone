@@ -1,26 +1,29 @@
-// Settings page: six flat groups + About at the bottom (build 28).
+// Settings page: six collapsible groups + About at the bottom
+// (build 29 B组, chen 2026-11-22 “设置里面要可以收放啊”).
 //
-// - No collapsible sections any more: the engine radios and the music
-//   playback panel are always visible (the old `engineSectionExpanded`
-//   / `playbackSectionExpanded` Hive keys are gone — D12).
+// - Every group header taps to collapse/expand (Cupertino chevron_down,
+//   AnimatedSize body); state persists per group in Hive
+//   (`settingsSectionExpanded_<id>`, bool, default true = all
+//   expanded). The old `engineSectionExpanded` /
+//   `playbackSectionExpanded` Hive keys are gone — D12.
 // - The 关于 section (版本 / 检查更新 / 启动时自动检查更新) is the
 //   last section on the page, after every other settings group;
 //   日志 and 缓存管理 live in the 数据 group above it.
 
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/settings/app_log_page.dart';
 import 'package:standalone/features/settings/settings_tab_page.dart';
+import 'package:standalone/widgets/native_switch.dart';
 
 void main() {
   late Directory hiveDir;
@@ -57,10 +60,34 @@ void main() {
     Get.reset();
   });
 
+  /// Build 29 B组: one Hive key per group, bool, default true.
+  const sectionKeys = [
+    'settingsSectionExpanded_appearance',
+    'settingsSectionExpanded_music',
+    'settingsSectionExpanded_video',
+    'settingsSectionExpanded_sources',
+    'settingsSectionExpanded_data',
+    'settingsSectionExpanded_about',
+  ];
+
+  Future<void> clearSectionStates() async {
+    for (final key in sectionKeys) {
+      await HiveStore.box.delete(key);
+    }
+  }
+
+  /// Tap a group header (the big title text) and settle the
+  /// AnimatedSize + chevron rotation.
+  Future<void> tapSectionHeader(WidgetTester tester, String title) async {
+    await tester.tap(find.text(title));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pumpPage(WidgetTester tester) async {
-    // Tall viewport so the whole ListView lays out at once. The flat
-    // page (build 28) is longer than the old collapsed one; the
-    // 1.1.6 VOD/music rows add ~530px more.
+    // Tall viewport so the whole ListView lays out at once. The
+    // collapsible page (build 29) is as tall as the flat build-28
+    // one when every group is expanded; the 1.1.6 VOD/music rows
+    // add ~530px more than the old collapsed page.
     tester.view.physicalSize = const Size(800, 4200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
@@ -76,7 +103,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// The GlassSwitch inside the row titled [title] (Beans switch
+  /// The HaoNativeSwitch inside the row titled [title] (Beans switch
   /// rows render title + trailing switch in one Row).
   Finder rowSwitch(String title) {
     final row = find
@@ -87,7 +114,7 @@ void main() {
         .last;
     return find.descendant(
       of: row,
-      matching: find.byType(GlassSwitch),
+      matching: find.byType(HaoNativeSwitch),
     );
   }
 
@@ -107,30 +134,53 @@ void main() {
         ),
       );
 
-  testWidgets('engine radios are always visible, tap switches engine',
+  testWidgets('engine rows are visible by default, tap switches engine',
       (tester) async {
     await HiveStore.box.delete(HiveKeys.videoPlayerKey);
+    await clearSectionStates();
     await pumpPage(tester);
 
-    // Flat (build 28): no collapse header, all three radios visible.
+    // Build 29: groups are collapsible, but all expanded by default —
+    // all three engine rows visible with no tap. The header chevron is a
+    // Cupertino chevron_down (one per group), not a Material arrow.
     expect(find.text('播放器引擎'), findsNothing);
     expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
     expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
-    expect(find.byType(RadioListTile<String>), findsNWidgets(3));
+    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(6));
+    // G-设置 (Wave 2): iOS settings-style rows with a trailing
+    // checkmark — no Material RadioListTile left on the page.
+    expect(find.byType(RadioListTile<String>), findsNothing);
+    expect(find.byIcon(CupertinoIcons.checkmark), findsOneWidget);
     expect(find.text('MPV'), findsOneWidget);
     expect(find.text('IJK'), findsOneWidget);
     expect(find.text('AVPlayer'), findsOneWidget);
     // AVPlayer row keeps its FLV warning subtitle (E8).
     expect(find.text('AVPlayer 不能播 FLV，失败时自动换内核'), findsOneWidget);
 
-    // Tapping a radio persists the engine key.
+    // Tapping a row persists the engine key and moves the checkmark.
     await tester.tap(find.text('IJK'));
     await tester.pumpAndSettle();
     expect(HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv'), 'ijk');
+    expect(find.byIcon(CupertinoIcons.checkmark), findsOneWidget);
+    // The check sits on the IJK row now, not the MPV row.
+    final ijkRow = find
+        .ancestor(
+          of: find.text('IJK'),
+          matching: find.byType(Row),
+        )
+        .first;
+    expect(
+      find.descendant(
+        of: ijkRow,
+        matching: find.byIcon(CupertinoIcons.checkmark),
+      ),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('six flat groups in order, old group names gone',
+  testWidgets('six groups in order, old group names gone',
       (tester) async {
+    await clearSectionStates();
     await pumpPage(tester);
 
     final tops = [
@@ -145,6 +195,211 @@ void main() {
     expect(find.text('播放器引擎'), findsNothing);
     expect(find.text('备份与数据'), findsNothing);
     expect(find.text('播放与缓存'), findsNothing);
+  });
+
+  testWidgets('all six groups are expanded by default',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    // One representative row per group, all visible with no tap.
+    expect(find.text('壁纸'), findsOneWidget);
+    expect(find.text('音量归一化'), findsOneWidget);
+    expect(find.text('Anime4K 超分'), findsOneWidget);
+    expect(find.text('音源管理'), findsOneWidget);
+    expect(find.text('导出备份'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+    // Six headers, six chevrons.
+    expect(find.byIcon(CupertinoIcons.chevron_down), findsNWidgets(6));
+  });
+
+  testWidgets('tapping a group header collapses it and persists',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    expect(find.text('Anime4K 超分'), findsOneWidget);
+    await tapSectionHeader(tester, '影视播放');
+    expect(find.text('Anime4K 超分'), findsNothing);
+    expect(
+        HiveStore.getBool('settingsSectionExpanded_video', true), isFalse);
+
+    // The header stays put (no dead end): tapping it again re-opens.
+    expect(find.text('影视播放'), findsOneWidget);
+    await tapSectionHeader(tester, '影视播放');
+    expect(find.text('Anime4K 超分'), findsOneWidget);
+    expect(
+        HiveStore.getBool('settingsSectionExpanded_video', true), isTrue);
+  });
+
+  testWidgets('collapsed state survives a restart (fresh pump)',
+      (tester) async {
+    await HiveStore.box.put('settingsSectionExpanded_video', false);
+    await pumpPage(tester);
+
+    expect(find.text('Anime4K 超分'), findsNothing);
+    // Other groups are untouched by the persisted collapse.
+    expect(find.text('壁纸'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+
+    // A fresh page State (restart) re-reads Hive: still collapsed.
+    await pumpPage(tester);
+    expect(find.text('Anime4K 超分'), findsNothing);
+    expect(find.text('壁纸'), findsOneWidget);
+  });
+
+  testWidgets('collapsing one group leaves the others untouched',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    await tapSectionHeader(tester, '数据');
+    expect(find.text('导出备份'), findsNothing);
+    expect(find.text('导入备份'), findsNothing);
+    expect(find.text('缓存管理'), findsNothing);
+    expect(find.text('日志'), findsNothing);
+    // Neighbours stay open.
+    expect(find.text('直播源管理'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
+  });
+
+  testWidgets('collapsing then expanding every group restores all rows',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    const groups = ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'];
+    for (final group in groups) {
+      await tapSectionHeader(tester, group);
+    }
+    expect(find.text('壁纸'), findsNothing);
+    expect(find.text('音量归一化'), findsNothing);
+    expect(find.text('Anime4K 超分'), findsNothing);
+    expect(find.text('音源管理'), findsNothing);
+    expect(find.text('导出备份'), findsNothing);
+    expect(find.text('版本'), findsNothing);
+
+    for (final group in groups) {
+      await tapSectionHeader(tester, group);
+    }
+    expect(find.text('壁纸'), findsOneWidget);
+    expect(find.text('音量归一化'), findsOneWidget);
+    expect(find.text('Anime4K 超分'), findsOneWidget);
+    expect(find.text('音源管理'), findsOneWidget);
+    expect(find.text('导出备份'), findsOneWidget);
+    expect(find.text('版本'), findsOneWidget);
+  });
+
+  testWidgets('chevron points down when expanded, right when collapsed',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    // One AnimatedRotation per group header, in page order
+    // (appearance, music, video, sources, data, about); expanded
+    // = 0 turns, so chevron_down points down.
+    final rotations = find.byType(AnimatedRotation);
+    expect(rotations, findsNWidgets(6));
+    for (var i = 0; i < 6; i++) {
+      expect(tester.widget<AnimatedRotation>(rotations.at(i)).turns, 0);
+    }
+
+    // Collapse 数据 (index 4): only its chevron rotates -0.25 turns
+    // (chevron_down turns to point right); the other five stay down.
+    await tapSectionHeader(tester, '数据');
+    for (var i = 0; i < 6; i++) {
+      expect(
+        tester.widget<AnimatedRotation>(rotations.at(i)).turns,
+        i == 4 ? -0.25 : 0,
+      );
+    }
+  });
+
+  testWidgets('toggling every group persists all six Hive keys',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    const groups = ['外观', '音乐播放', '影视播放', '源管理', '数据', '关于'];
+    for (final group in groups) {
+      await tapSectionHeader(tester, group);
+    }
+    for (final key in sectionKeys) {
+      expect(HiveStore.getBool(key, true), isFalse);
+    }
+    for (final group in groups) {
+      await tapSectionHeader(tester, group);
+    }
+    for (final key in sectionKeys) {
+      expect(HiveStore.getBool(key, true), isTrue);
+    }
+  });
+
+  testWidgets('every row of every group is present when all expanded',
+      (tester) async {
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    // 外观: 4 theme chips + 3 mode segments + 7 rows. 恢复默认字体
+    // only exists when a custom font is installed, so it is not
+    // asserted here.
+    const appearance = [
+      '苹果毛玻璃',
+      '暗夜鎏金',
+      '清新薄荷',
+      '极夜冰蓝',
+      '浅色',
+      '深色',
+      '跟随系统',
+      '壁纸',
+      '壁纸管理',
+      '自定义强调色',
+      '背景色',
+      '液态玻璃强度',
+      '自定义字体',
+    ];
+    // 音乐播放: panel rows + loudness row.
+    const music = [
+      '与其他音频同时播放',
+      '启动时自动播放上次歌曲',
+      '播放音质',
+      '触感反馈',
+      '均衡器',
+      '第三方音源',
+      '音量归一化',
+    ];
+    // 影视播放: 3 engine radios + 12 rows.
+    const video = [
+      'MPV',
+      'IJK',
+      'AVPlayer',
+      '自动连播下一集',
+      '视频画面比例',
+      'Anime4K 超分',
+      '插帧',
+      'SDR 转 HDR',
+      '杜比视界 Profile 8 降级 HDR',
+      '跳过片头片尾',
+      '字幕字号',
+      '字幕颜色',
+      '字幕位置',
+      '低内存模式',
+      '弹幕设置',
+    ];
+    const sources = ['音源管理', '影视源管理', '直播源管理'];
+    const data = ['导出备份', '导入备份', '缓存管理', '日志'];
+    const about = ['版本', '检查更新', '启动时自动检查更新'];
+    for (final title in [
+      ...appearance,
+      ...music,
+      ...video,
+      ...sources,
+      ...data,
+      ...about,
+    ]) {
+      expect(find.text(title), findsOneWidget, reason: title);
+    }
   });
 
   testWidgets('about section is the last section on the page',
@@ -231,10 +486,10 @@ void main() {
         .last;
     final autoSwitch = find.descendant(
       of: row,
-      matching: find.byType(GlassSwitch),
+      matching: find.byType(HaoNativeSwitch),
     );
     expect(autoSwitch, findsOneWidget);
-    expect(tester.widget<GlassSwitch>(autoSwitch).value, isTrue);
+    expect(tester.widget<HaoNativeSwitch>(autoSwitch).value, isTrue);
     await tester.tap(autoSwitch);
     await tester.pumpAndSettle();
     expect(HiveStore.getBool(HiveKeys.autoUpdateCheck, true), isFalse);
@@ -265,10 +520,10 @@ void main() {
         .last;
     final srSwitch = find.descendant(
       of: row,
-      matching: find.byType(GlassSwitch),
+      matching: find.byType(HaoNativeSwitch),
     );
     expect(srSwitch, findsOneWidget);
-    expect(tester.widget<GlassSwitch>(srSwitch).value, isFalse);
+    expect(tester.widget<HaoNativeSwitch>(srSwitch).value, isFalse);
     await tester.tap(srSwitch);
     await tester.pumpAndSettle();
     expect(HiveStore.getBool(HiveKeys.vodSuperResolution, false), isTrue);
@@ -288,11 +543,11 @@ void main() {
     expect(find.text('SDR 转 HDR'), findsOneWidget);
     expect(find.text('杜比视界 Profile 8 降级 HDR'), findsOneWidget);
     // DV P8 has no subtitle (title only).
-    expect(tester.widget<GlassSwitch>(rowSwitch('插帧')).value, isFalse);
-    expect(tester.widget<GlassSwitch>(rowSwitch('SDR 转 HDR')).value,
+    expect(tester.widget<HaoNativeSwitch>(rowSwitch('插帧')).value, isFalse);
+    expect(tester.widget<HaoNativeSwitch>(rowSwitch('SDR 转 HDR')).value,
         isFalse);
     expect(
-        tester.widget<GlassSwitch>(rowSwitch('杜比视界 Profile 8 降级 HDR'))
+        tester.widget<HaoNativeSwitch>(rowSwitch('杜比视界 Profile 8 降级 HDR'))
             .value,
         isTrue);
 
@@ -336,7 +591,7 @@ void main() {
     await HiveStore.box.delete(HiveKeys.vodSdrToHdr);
     await pumpPage(tester);
 
-    expect(tester.widget<GlassSwitch>(rowSwitch('插帧')).value, isTrue);
+    expect(tester.widget<HaoNativeSwitch>(rowSwitch('插帧')).value, isTrue);
     expect(greyLock('插帧'), findsNothing);
     expect(greyLock('Anime4K 超分'), findsOneWidget);
     expect(greyLock('SDR 转 HDR'), findsOneWidget);
@@ -375,6 +630,30 @@ void main() {
         HiveStore.getString(HiveKeys.vodSkipIntroMode, 'off'), 'off');
   });
 
+  /// The thumb centre of a CupertinoSlider (Flutter's slider only
+  /// takes pointer events near the thumb — hitTestSelf in
+  /// cupertino/slider.dart: |(dx - thumbCenter)| < radius + padding
+  /// — so a drag must start ON the thumb, not the widget centre.
+  /// Padding 8 / thumb radius 14 are that file's _kPadding and
+  /// CupertinoThumbPainter.radius; the normalised value maps the
+  /// widget's min..max onto the track.
+  Offset sliderThumb(WidgetTester tester, Finder sliderFinder) {
+    final slider = tester.widget<CupertinoSlider>(sliderFinder);
+    final topLeft = tester.getTopLeft(sliderFinder);
+    final size = tester.getSize(sliderFinder);
+    final normalized =
+        (slider.value - slider.min) / (slider.max - slider.min);
+    const padding = 8.0;
+    const radius = 14.0;
+    return Offset(
+      topLeft.dx +
+          padding +
+          radius +
+          normalized * (size.width - 2 * (padding + radius)),
+      topLeft.dy + size.height / 2,
+    );
+  }
+
   testWidgets('subtitle delay slider defaults 0s, drag persists a positive offset',
       (tester) async {
     await HiveStore.box.delete(HiveKeys.vodSubtitleDelay);
@@ -388,21 +667,87 @@ void main() {
           matching: find.byType(Column),
         )
         .first;
+    // G-设置 (Wave 2): iOS CupertinoSlider — no Material Slider
+    // left on the page; same -10..10 range, 200 divisions.
+    expect(find.descendant(of: card, matching: find.byType(Slider)),
+        findsNothing);
     final slider = find.descendant(
       of: card,
-      matching: find.byType(Slider),
+      matching: find.byType(CupertinoSlider),
     );
     expect(slider, findsOneWidget);
-    final sliderWidget = tester.widget<Slider>(slider);
+    final sliderWidget = tester.widget<CupertinoSlider>(slider);
     expect(sliderWidget.min, -10);
     expect(sliderWidget.max, 10);
     expect(sliderWidget.divisions, 200);
 
-    await tester.drag(slider, const Offset(120, 0));
+    await tester.dragFrom(sliderThumb(tester, slider), const Offset(120, 0));
     await tester.pumpAndSettle();
     final stored = HiveStore.getDouble(HiveKeys.vodSubtitleDelay, 0.0);
     expect(stored, greaterThan(0));
     expect(find.textContaining('+'), findsOneWidget);
+  });
+
+  testWidgets('theme segmented control taps switch theme, same Hive key',
+      (tester) async {
+    await HiveStore.box.delete('haoThemeId');
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    // G-设置 (Wave 2): the four theme names are segments of one
+    // CupertinoSlidingSegmentedControl — no Material ChoiceChip left.
+    expect(find.byType(ChoiceChip), findsNothing);
+    final segmented =
+        find.byType(CupertinoSlidingSegmentedControl<HaoThemeId>);
+    expect(segmented, findsOneWidget);
+    expect(
+      tester
+          .widget<CupertinoSlidingSegmentedControl<HaoThemeId>>(segmented)
+          .groupValue,
+      HaoThemeId.appleGlass,
+    );
+
+    await tester.tap(find.text('暗夜鎏金'));
+    await tester.pumpAndSettle();
+    expect(Get.find<ThemeController>().themeId.value, HaoThemeId.darkGold);
+    expect(HiveStore.box.get('haoThemeId'), 'darkGold');
+  });
+
+  testWidgets('glass intensity slider drag previews, release persists',
+      (tester) async {
+    await HiveStore.box.delete('haoGlassIntensity');
+    await clearSectionStates();
+    await pumpPage(tester);
+
+    expect(find.text('液态玻璃强度'), findsOneWidget);
+    expect(find.text('100%'), findsOneWidget);
+    final card = find
+        .ancestor(
+          of: find.text('液态玻璃强度'),
+          matching: find.byType(Column),
+        )
+        .first;
+    final slider = find.descendant(
+      of: card,
+      matching: find.byType(CupertinoSlider),
+    );
+    expect(slider, findsOneWidget);
+    expect(tester.widget<CupertinoSlider>(slider).value, 1.0);
+
+    // Drag left from the thumb: the live preview moves the value,
+    // Hive is only written once on release (onChangeEnd) — same
+    // key as before. (The % label is NOT asserted here: in the real
+    // app the root Obx rebuilds the page on every preview tick, but
+    // this test's GetMaterialApp has no root Obx, so the label does
+    // not refresh mid-drag — the controller value + Hive write are
+    // the contract.)
+    await tester.dragFrom(
+        sliderThumb(tester, slider), const Offset(-120, 0));
+    await tester.pumpAndSettle();
+    final controller = Get.find<ThemeController>();
+    expect(controller.glassIntensity.value, lessThan(1.0));
+    expect(HiveStore.box.get('haoGlassIntensity'),
+        controller.glassIntensity.value);
   });
 
   testWidgets('volume normalisation switch defaults off and persists',
@@ -411,7 +756,7 @@ void main() {
     await pumpPage(tester);
 
     expect(find.text('音量归一化'), findsOneWidget);
-    expect(tester.widget<GlassSwitch>(rowSwitch('音量归一化')).value,
+    expect(tester.widget<HaoNativeSwitch>(rowSwitch('音量归一化')).value,
         isFalse);
     await tapRowSwitch(tester, '音量归一化');
     expect(HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false),
@@ -515,7 +860,7 @@ void main() {
         .last;
     final hapticsSwitch = find.descendant(
       of: row,
-      matching: find.byType(GlassSwitch),
+      matching: find.byType(HaoNativeSwitch),
     );
     expect(hapticsSwitch, findsOneWidget);
     await tester.tap(hapticsSwitch);

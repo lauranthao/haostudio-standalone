@@ -193,8 +193,56 @@ class PlayQueuePanel extends StatelessWidget {
                         itemBuilder: (ctx, i) {
                           final song = queue[i];
                           final isCurrent = i == controller.currentIndex.value;
-                          return HaoPressable(
+                          // 按专辑分组队列 (build 29): the queue is
+                          // shown grouped by consecutive album runs —
+                          // a header names the album + its run length,
+                          // tapping it plays the group's first song.
+                          // The header rides inside the song's item,
+                          // so reorder still moves one row at a time
+                          // and the run boundaries recompute after.
+                          final album = song.album.trim();
+                          final showHeader = album.isNotEmpty &&
+                              (i == 0 ||
+                                  queue[i - 1].album.trim() != album);
+                          var runLength = 0;
+                          if (showHeader) {
+                            for (var j = i; j < queue.length; j++) {
+                              if (queue[j].album.trim() != album) break;
+                              runLength++;
+                            }
+                          }
+                          return Column(
                             key: ValueKey(rowKeys[i]),
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (showHeader)
+                                GestureDetector(
+                                  onTap: () {
+                                    onClose();
+                                    unawaited(controller.playIndex(i));
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      12,
+                                      12,
+                                      2,
+                                    ),
+                                    child: Text(
+                                      '$album · $runLength 首',
+                                      style: TextStyle(
+                                        shadows: HaoTheme.legibilityShadows(
+                                          context,
+                                        ),
+                                        color: theme.textSecondary,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              HaoPressable(
                             onTap: () {
                               onClose();
                               unawaited(controller.playIndex(i));
@@ -329,6 +377,8 @@ class PlayQueuePanel extends StatelessWidget {
                                 ],
                               ),
                             ),
+                            ),
+                            ],
                           );
                         },
                       );

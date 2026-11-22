@@ -1,17 +1,25 @@
-// Emby server config + store (build 28).
+// Emby server config + store (build 28; account auth + connect-page
+// fields added build 29, C group).
 //
-// One Emby server, configured by the user in Settings → 影视源管理.
-// Credentials live ONLY in the local Hive box `app_settings` under
-// [HiveKeys.embyConfig] ('hao_emby_config') as a JSON string — never
-// in logs, never in toString(), never in any share/report text.
-// Resetting the CMS source list never touches this key (independent
-// key, see VideoSourcesStore.resetToDefaults).
+// One Emby server, configured by the user in Settings → 影视源管理 →
+// Emby 连接页. Credentials live ONLY in the local Hive box
+// `app_settings` under [HiveKeys.embyConfig] ('hao_emby_config') as a
+// JSON string — never in logs, never in toString(), never in any
+// share/report text. Resetting the CMS source list never touches
+// this key (independent key, see VideoSourcesStore.resetToDefaults).
 //
-// Auth is API key only (X-Emby-Token header). Username/password token
-// exchange (POST /Users/AuthenticateByName) is a documented fallback
-// in emby_client.dart — no UI for it, no password is ever stored.
+// Auth, two modes (build 29):
+// - Username + password (primary): POST /Users/AuthenticateByName
+//   exchanges the password for an AccessToken + User Id; the token
+//   is stored, the PASSWORD IS NEVER STORED.
+// - API key (fallback, in 高级设置): the old X-Emby-Token key.
+// Whichever credential is present is sent as `X-Emby-Token` on API
+// calls and as `api_key` on the stream URL (Emby accepts a user
+// token in both places, same as an API key). A config is
+// "configured" when it has an address AND either credential.
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import '../../core/storage/hive_store.dart';
 
@@ -28,10 +36,14 @@ enum VideoTabMode {
       raw == 'emby' ? VideoTabMode.emby : VideoTabMode.cms;
 }
 
-/// One Emby server, as the user typed it in Settings.
+/// One Emby server, as the user typed it in the Emby connect page.
 ///
 /// Field names ARE the Hive JSON key names — do not rename (persisted
-/// data has no migration).
+/// data has no migration). Build-29 fields default when an old
+/// (build-28) JSON has no such key: a legacy `baseUrl` + `apiKey`
+/// config loads unchanged and the connect page splits its baseUrl
+/// into host / port / path / scheme for editing (see
+/// [EmbyServerAddress.parse]).
 class EmbyServerConfig {
   const EmbyServerConfig({
     required this.baseUrl,
@@ -40,6 +52,18 @@ class EmbyServerConfig {
     this.enabled = true,
     this.movieLibraryId,
     this.tvLibraryId,
+    this.name = 'Emby',
+    this.note = '',
+    this.username = '',
+    this.accessToken = '',
+    this.deviceId = '',
+    this.serverName = '',
+    this.serverVersion = '',
+    this.reportProgress = true,
+    this.strmDirect = false,
+    this.fallbackUrls = const [],
+    this.reminderDays = 0,
+    this.lastPlayedAtMs,
   });
 
   factory EmbyServerConfig.fromJson(Map<String, dynamic> json) =>
@@ -50,6 +74,22 @@ class EmbyServerConfig {
         enabled: json['enabled'] as bool? ?? true,
         movieLibraryId: json['movieLibraryId'] as String?,
         tvLibraryId: json['tvLibraryId'] as String?,
+        name: (json['name'] as String?) ?? 'Emby',
+        note: (json['note'] as String?) ?? '',
+        username: (json['username'] as String?) ?? '',
+        accessToken: (json['accessToken'] as String?) ?? '',
+        deviceId: (json['deviceId'] as String?) ?? '',
+        serverName: (json['serverName'] as String?) ?? '',
+        serverVersion: (json['serverVersion'] as String?) ?? '',
+        reportProgress: json['reportProgress'] as bool? ?? true,
+        strmDirect: json['strmDirect'] as bool? ?? false,
+        fallbackUrls: (json['fallbackUrls'] as List<dynamic>?)
+                ?.map((u) => u.toString())
+                .where((u) => u.trim().isNotEmpty)
+                .toList() ??
+            const [],
+        reminderDays: (json['reminderDays'] as num?)?.toInt() ?? 0,
+        lastPlayedAtMs: (json['lastPlayedAtMs'] as num?)?.toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -59,19 +99,37 @@ class EmbyServerConfig {
         'enabled': enabled,
         'movieLibraryId': movieLibraryId,
         'tvLibraryId': tvLibraryId,
+        'name': name,
+        'note': note,
+        'username': username,
+        'accessToken': accessToken,
+        'deviceId': deviceId,
+        'serverName': serverName,
+        'serverVersion': serverVersion,
+        'reportProgress': reportProgress,
+        'strmDirect': strmDirect,
+        'fallbackUrls': fallbackUrls,
+        'reminderDays': reminderDays,
+        'lastPlayedAtMs': lastPlayedAtMs,
       };
 
   /// Server address as typed (trailing slash is stripped by the
   /// client when building URLs; the stored value is left alone).
+  /// The connect page builds this from host / port / path / scheme
+  /// ([EmbyServerAddress.compose]); a legacy value is parsed back
+  /// by [EmbyServerAddress.parse] for editing.
   final String baseUrl;
 
-  /// API key. Only ever read by [EmbyClient] (header / stream URL)
-  /// and the Settings text-field controller. Never logged.
+  /// API key (fallback credential, 高级设置). Only ever read by
+  /// [EmbyClient] (header / stream URL) and the connect page's
+  /// text-field controller. Never logged.
   final String apiKey;
 
   /// Emby user id. The user never types this: it is filled in by
-  /// probe (GET /Users) — single user auto-taken, multi-user picked
-  /// in Settings. Empty until the first successful probe.
+  /// probe (GET /Users, key mode — single user auto-taken,
+  /// multi-user picked on the connect page) or by account login
+  /// (POST /Users/AuthenticateByName). Empty until the first
+  /// successful probe / login.
   final String userId;
 
   /// Master switch: off = the Emby page shows the disabled empty
@@ -82,10 +140,98 @@ class EmbyServerConfig {
   final String? movieLibraryId;
   final String? tvLibraryId;
 
-  /// Both fields filled in. A config that fails this is "not
-  /// configured" — the Emby tab shows the unconfigured empty state.
+  /// Display name for this server (connect page 名称， default
+  /// 'Emby'). Shown on the video-sources entry row.
+  final String name;
+
+  /// Free note (connect page 备注， e.g. expiry / whose account).
+  /// Display only — never sent to the server.
+  final String note;
+
+  /// Emby account name for password login. Stored (it is the
+  /// login name, not a secret); the PASSWORD is never stored —
+  /// only the [accessToken] it was exchanged for.
+  final String username;
+
+  /// User token from POST /Users/AuthenticateByName. Empty when
+  /// the server was connected with an API key instead. Never
+  /// logged, never in toString() (no toString override on this
+  /// class, on purpose).
+  final String accessToken;
+
+  /// Stable per-install device id sent as DeviceId on
+  /// AuthenticateByName, so each login does not register a new
+  /// device on the server. Random hex, generated once by the
+  /// connect page ([EmbyServerConfig.newDeviceId]) and then kept.
+  final String deviceId;
+
+  /// Server identity from the last successful probe / login
+  /// (System/Info). Display only — shown on the entry row.
+  final String serverName;
+  final String serverVersion;
+
+  /// 数据上报 (default on): sync playback progress / played state
+  /// to the server for 继续观看 and 已看标记. When off,
+  /// [EmbyClient] skips every automatic playback report
+  /// (start / progress / stopped / mark played) — no request is
+  /// sent. Explicit user actions (favorite / like) are NOT gated:
+  /// tapping them is the user asking the server to record it.
+  final bool reportProgress;
+
+  /// STRM 直连 (default off): when on, an item whose MediaSource
+  /// path is a remote http(s) URL (a .strm target) plays from
+  /// that URL directly; when off — or when the path is a local
+  /// server path — playback always goes through the server's
+  /// stream endpoint, which works on nearly every server.
+  final bool strmDirect;
+
+  /// 备用线路: alternate server addresses (full base URLs),
+  /// added by hand on the connect page. The probe tries them in
+  /// order when the main address fails, and reports which one
+  /// answered ([EmbyProbeResult.workingBaseUrl]). Data calls
+  /// still use [baseUrl] — automatic failover during browsing is
+  /// NOT wired in this version (needs the tab page, out of scope
+  /// for the connect-page group).
+  final List<String> fallbackUrls;
+
+  /// 未播放提醒 threshold in days (0 = 关闭； 3 / 7 / 14 / 30).
+  /// Only the threshold is stored here — see [EmbyReminder]:
+  /// firing a reminder needs a notification channel + an
+  /// app-start check, neither of which exists in this version.
+  final int reminderDays;
+
+  /// Last time anything was played on this server (epoch ms).
+  /// Written by whoever reports playback; read by
+  /// [EmbyReminder.shouldRemind]. Null = never recorded.
+  final int? lastPlayedAtMs;
+
+  /// The credential actually sent on API calls and the stream URL:
+  /// the account token when logged in, else the API key.
+  String get authToken => accessToken.isNotEmpty ? accessToken : apiKey;
+
+  /// True when the login came from username + password (a user
+  /// token is stored), as opposed to an API key. Decides the 401
+  /// wording ("用户名或密码不对" vs "密钥不对").
+  bool get usesPasswordAuth => accessToken.isNotEmpty;
+
+  /// Stable random device id (32 hex chars from a secure RNG).
+  /// No uuid dependency — dart:math is enough for an opaque id.
+  static String newDeviceId() {
+    final rand = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
+    final buf = StringBuffer();
+    for (final b in bytes) {
+      buf.write(b.toRadixString(16).padLeft(2, '0'));
+    }
+    return buf.toString();
+  }
+
+  /// Configured = an address AND at least one credential (account
+  /// token or API key). A legacy key-only config still qualifies;
+  /// an address with neither does not.
   bool get isConfigured =>
-      baseUrl.trim().isNotEmpty && apiKey.trim().isNotEmpty;
+      baseUrl.trim().isNotEmpty &&
+      (accessToken.trim().isNotEmpty || apiKey.trim().isNotEmpty);
 
   EmbyServerConfig copyWith({
     String? baseUrl,
@@ -94,6 +240,18 @@ class EmbyServerConfig {
     bool? enabled,
     String? movieLibraryId,
     String? tvLibraryId,
+    String? name,
+    String? note,
+    String? username,
+    String? accessToken,
+    String? deviceId,
+    String? serverName,
+    String? serverVersion,
+    bool? reportProgress,
+    bool? strmDirect,
+    List<String>? fallbackUrls,
+    int? reminderDays,
+    int? lastPlayedAtMs,
   }) =>
       EmbyServerConfig(
         baseUrl: baseUrl ?? this.baseUrl,
@@ -102,10 +260,189 @@ class EmbyServerConfig {
         enabled: enabled ?? this.enabled,
         movieLibraryId: movieLibraryId ?? this.movieLibraryId,
         tvLibraryId: tvLibraryId ?? this.tvLibraryId,
+        name: name ?? this.name,
+        note: note ?? this.note,
+        username: username ?? this.username,
+        accessToken: accessToken ?? this.accessToken,
+        deviceId: deviceId ?? this.deviceId,
+        serverName: serverName ?? this.serverName,
+        serverVersion: serverVersion ?? this.serverVersion,
+        reportProgress: reportProgress ?? this.reportProgress,
+        strmDirect: strmDirect ?? this.strmDirect,
+        fallbackUrls: fallbackUrls ?? this.fallbackUrls,
+        reminderDays: reminderDays ?? this.reminderDays,
+        lastPlayedAtMs: lastPlayedAtMs ?? this.lastPlayedAtMs,
       );
 
   // Deliberately NO toString override: the default prints no fields,
   // so the key can never leak through a debug print of the config.
+}
+
+/// Server address split into the connect page's fields.
+///
+/// [parse] accepts a full URL (`https://host:8096/emby`), a bare
+/// host (`192.168.1.10`), or host + port (`host:8096`) — the legacy
+/// `baseUrl` and anything the user pastes. [compose] builds the
+/// stored `baseUrl` back (port always explicit, so the stored shape
+/// stays `scheme://host:port[/path]`, like build 28).
+class EmbyServerAddress {
+  const EmbyServerAddress({
+    required this.useHttps,
+    required this.host,
+    required this.port,
+    required this.path,
+  });
+
+  factory EmbyServerAddress.parse(String raw) {
+    var text = raw.trim();
+    // Tolerate a pasted URL with a trailing slash / whitespace.
+    while (text.endsWith('/')) {
+      text = text.substring(0, text.length - 1);
+    }
+    if (text.isEmpty) {
+      return const EmbyServerAddress(
+        useHttps: false,
+        host: '',
+        port: 8096,
+        path: '',
+      );
+    }
+    if (text.contains('://')) {
+      final uri = Uri.tryParse(text);
+      if (uri != null && uri.host.isNotEmpty) {
+        final https = uri.scheme == 'https';
+        var path = uri.path;
+        while (path.endsWith('/')) {
+          path = path.substring(0, path.length - 1);
+        }
+        return EmbyServerAddress(
+          useHttps: https,
+          host: uri.host,
+          port: uri.hasPort ? uri.port : (https ? 443 : 8096),
+          path: path == '/' ? '' : path,
+        );
+      }
+      // Unparseable despite a scheme: treat the whole thing as a
+      // host so nothing the user typed is silently dropped.
+      return EmbyServerAddress(
+        useHttps: text.startsWith('https://'),
+        host: text,
+        port: 8096,
+        path: '',
+      );
+    }
+    // Bare host, optionally host:port and /path.
+    var path = '';
+    var hostPort = text;
+    final slash = text.indexOf('/');
+    if (slash >= 0) {
+      hostPort = text.substring(0, slash);
+      path = text.substring(slash);
+      while (path.endsWith('/')) {
+        path = path.substring(0, path.length - 1);
+      }
+    }
+    var host = hostPort;
+    var port = 8096;
+    final colon = hostPort.lastIndexOf(':');
+    if (colon > 0) {
+      final parsed = int.tryParse(hostPort.substring(colon + 1));
+      if (parsed != null && parsed > 0 && parsed <= 65535) {
+        host = hostPort.substring(0, colon);
+        port = parsed;
+      }
+    }
+    return EmbyServerAddress(
+      useHttps: false,
+      host: host,
+      port: port,
+      path: path,
+    );
+  }
+
+  /// Build `scheme://host:port[/path]`. Empty host => '' (the page
+  /// treats that as "not filled in" and keeps the button disabled).
+  static String compose({
+    required bool useHttps,
+    required String host,
+    required int port,
+    required String path,
+  }) {
+    final h = host.trim();
+    if (h.isEmpty) return '';
+    var p = path.trim();
+    while (p.endsWith('/')) {
+      p = p.substring(0, p.length - 1);
+    }
+    if (p.isNotEmpty && !p.startsWith('/')) p = '/$p';
+    return '${useHttps ? 'https' : 'http'}://$h:$port$p';
+  }
+
+  final bool useHttps;
+  final String host;
+
+  /// 1..65535; 8096 when the user left it blank or typed junk.
+  final int port;
+
+  /// '' or '/emby' (leading slash, no trailing slash).
+  final String path;
+
+  String get baseUrl =>
+      compose(useHttps: useHttps, host: host, port: port, path: path);
+}
+
+/// Outcome of [EmbyClient.authenticateByName]: ok + the token and
+/// user id to store, or a human-readable failure (same tiers as the
+/// probe — the connect page shows [errorMessage] as-is).
+class EmbyAuthResult {
+  const EmbyAuthResult({
+    required this.ok,
+    this.accessToken = '',
+    this.userId = '',
+    this.userName = '',
+    this.errorKind,
+    this.errorMessage = '',
+  });
+
+  final bool ok;
+
+  /// User token to store (never the password — the password is
+  /// only ever sent in the AuthenticateByName body, once).
+  final String accessToken;
+  final String userId;
+  final String userName;
+  final EmbyErrorKind? errorKind;
+
+  /// Human message for the failure tier ('' when ok).
+  final String errorMessage;
+}
+
+/// 未播放提醒: pure threshold check. The threshold ([EmbyServerConfig.
+/// reminderDays], 0 = off) and the last-played stamp are stored in
+/// the config; this only decides "is it due". FIRING a reminder is
+/// deliberately not here: the app has no notification channel and
+/// no app-start check that could fire one, so a due reminder has
+/// nowhere to go in this version — the connect page stores the
+/// threshold and the decision is testable, but nothing notifies
+/// yet (see the C-group report).
+class EmbyReminder {
+  EmbyReminder._();
+
+  static const List<int> options = <int>[0, 3, 7, 14, 30];
+
+  static String label(int days) => days <= 0 ? '关闭' : '$days 天';
+
+  static bool shouldRemind({
+    required int? lastPlayedAtMs,
+    required int thresholdDays,
+    required DateTime now,
+  }) {
+    if (thresholdDays <= 0) return false;
+    if (lastPlayedAtMs == null) return false;
+    final last =
+        DateTime.fromMillisecondsSinceEpoch(lastPlayedAtMs);
+    return now.difference(last).inDays >= thresholdDays;
+  }
 }
 
 /// Fault-tolerant read/write of the Emby config (same pattern as
@@ -164,6 +501,7 @@ class EmbyStreamFacts {
     this.height,
     this.bitRate,
     this.size,
+    this.sourcePath,
   });
 
   /// Parse the first media source of an item detail document.
@@ -257,6 +595,13 @@ class EmbyStreamFacts {
       // server is still unverified — never a guessed default).
       bitRate: (video?['BitRate'] as num?)?.toInt(),
       size: (source['Size'] as num?)?.toInt(),
+      // Build 29 (STRM 直连): the MediaSource's own path. For a
+      // .strm item this is usually a local server path
+      // ('/media/movie.strm') — the client only ever plays it
+      // directly when it is a remote http(s) URL (see
+      // EmbyClient.streamUrl); anything else falls back to the
+      // server stream endpoint.
+      sourcePath: source['Path'] as String?,
     );
   }
 
@@ -289,6 +634,12 @@ class EmbyStreamFacts {
 
   /// File size in bytes (Emby `MediaSources[].Size`). Display only.
   final int? size;
+
+  /// The MediaSource's own path (`MediaSources[].Path`), e.g. a
+  /// local server path or, for a .strm item served from a remote
+  /// URL, that URL. Read by [EmbyClient.streamUrl] for STRM 直连
+  /// only — never a kernel signal, never logged.
+  final String? sourcePath;
 
   bool get isEmpty =>
       container == null &&
@@ -372,6 +723,7 @@ class EmbyProbeResult {
     this.users = const [],
     this.errorKind,
     this.errorMessage = '',
+    this.workingBaseUrl = '',
   });
 
   final bool ok;
@@ -386,6 +738,12 @@ class EmbyProbeResult {
 
   /// Human message for the failure tier ('' when ok).
   final String errorMessage;
+
+  /// The base URL that actually answered (main address or one of
+  /// the 备用线路). '' when nothing answered. Lets the connect page
+  /// tell the user "主线路不通，备用线路 X 可连通" and offer to
+  /// switch the main address to it.
+  final String workingBaseUrl;
 }
 
 /// Failure tiers for Emby requests. The message wording is fixed here

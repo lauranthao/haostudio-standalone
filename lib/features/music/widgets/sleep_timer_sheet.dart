@@ -97,7 +97,7 @@ class _SleepTimerSheetContentState extends State<_SleepTimerSheetContent> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Obx(() {
                   final remaining = _controller.sleepRemaining.value;
                   final title = remaining != null
@@ -170,7 +170,7 @@ class _SleepTimerSheetContentState extends State<_SleepTimerSheetContent> {
                 ),
               ),
               SizedBox(
-                height: 160,
+                height: 128,
                 child: CupertinoPicker.builder(
                   scrollController: _pickerController,
                   itemExtent: 32,
@@ -274,7 +274,7 @@ class _TrackCountStepper extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
-          icon,
+          icon, shadows: HaoTheme.legibilityShadows(context), 
           size: 18,
           color: enabled ? theme.textPrimary : theme.textMuted,
         ),
@@ -296,7 +296,7 @@ class _CancelRow extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           '取消',
           textAlign: TextAlign.center,
@@ -340,7 +340,7 @@ class _SleepRow extends StatelessWidget {
         onTap();
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? theme.accentSoft : Colors.transparent,
           borderRadius: BorderRadius.circular(HaoRadius.large),

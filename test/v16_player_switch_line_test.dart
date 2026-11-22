@@ -209,21 +209,39 @@ void main() {
     await tester.pump();
   }
 
-  ChoiceChip chip(WidgetTester tester, String label) =>
-      tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label));
+  /// Whether the line pill for [label] is selected: the selected pill
+  /// is the one carrying the white check (H build 29: the player's
+  /// ChoiceChip was replaced by the opaque _LinePill — same tap target,
+  /// same _switchLine; the pill type itself is private to the page).
+  bool pillSelected(WidgetTester tester, String label) {
+    final pill = find.ancestor(
+      of: find.text(label),
+      matching: find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration as BoxDecoration).color != null,
+      ),
+    );
+    expect(pill, findsOneWidget, reason: label);
+    return find
+        .descendant(of: pill, matching: find.byIcon(Icons.check))
+        .evaluate()
+        .isNotEmpty;
+  }
 
   group('_switchLine fail-back', () {
     testWidgets('dead line: stays on line 1 + toast, no failure card',
         (tester) async {
       await pumpPlayer(tester, failUrls: {line2Url});
       expect(session.currentUrl, line1Url);
-      expect(chip(tester, '线路1').selected, isTrue);
+      expect(pillSelected(tester, '线路1'), isTrue);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '线路2'));
+      await tester.tap(find.text('线路2'));
       await settle(tester);
 
-      expect(chip(tester, '线路1').selected, isTrue);
-      expect(chip(tester, '线路2').selected, isFalse);
+      expect(pillSelected(tester, '线路1'), isTrue);
+      expect(pillSelected(tester, '线路2'), isFalse);
       expect(session.currentUrl, line1Url);
       expect(
         find.text('该线路暂时打不开，已留在当前线路'),
@@ -236,10 +254,10 @@ void main() {
       await pumpPlayer(tester);
       expect(session.currentUrl, line1Url);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '线路2'));
+      await tester.tap(find.text('线路2'));
       await settle(tester);
 
-      expect(chip(tester, '线路2').selected, isTrue);
+      expect(pillSelected(tester, '线路2'), isTrue);
       expect(session.currentUrl, line2Url);
       expect(
         find.text('该线路暂时打不开，已留在当前线路'),

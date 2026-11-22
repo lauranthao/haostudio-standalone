@@ -30,6 +30,7 @@ import '../../../../core/theme/hao_themes.dart';
 import '../../../../core/theme/glass.dart';
 import '../../../../features/video/widgets/referer_image.dart';
 import '../../live_follow_store.dart';
+import '../../live_metrics.dart';
 import '../../live_status.dart';
 import 'live_room_links.dart';
 
@@ -298,7 +299,8 @@ class _RoomDetailSheetState extends State<_RoomDetailSheet> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '${room.watching} 人在看',
+                    // Build-29 item 6: labelled by metric kind.
+                    metricLabelFor(room.platform, room.watching),
                     style: TextStyle(
                       shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,

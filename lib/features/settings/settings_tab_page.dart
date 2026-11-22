@@ -8,11 +8,15 @@
 // - every row its own glass card (Beans `GlassCard` radius 18,
 //   row padding h14 v13; icon 14 in a 28-wide frame, title 15,
 //   subtitle 11, chevron 11 semibold)
-// - flat sections (build 28): six groups (外观 / 音乐播放 / 影视播放 /
-//   源管理 / 数据 / 关于), all rows visible — the old expandable
-//   播放设置 / 播放器引擎 headers are gone; the music panel keeps the
-//   Beans glass panel (radius 22, padding 16, rows spaced 14,
-//   dividers muted 0.15)
+// - collapsible sections (build 29 B组, chen 2026-11-22 “设置里面要可以
+//   收放啊”): six groups (外观 / 音乐播放 / 影视播放 / 源管理 / 数据 /
+//   关于), each with a tappable header — Cupertino chevron_down that
+//   rotates down (expanded) / right (collapsed) with a spring
+//   (easeOutBack), body animated by AnimatedSize. Expanded state is
+//   persisted per group in Hive (bool, default true = all expanded);
+//   the old expandable 播放设置 / 播放器引擎 headers are gone; the
+//   music panel keeps the Beans glass panel (radius 22, padding 16,
+//   rows spaced 14, dividers muted 0.15)
 // - quality chips (Beans `playbackQualitySection` / third-party
 //   quality chips): height 31, h padding 12, font 12, selected fill
 //   accent 0.14 + stroke accent 0.42 (0.8pt) + checkmark 9 bold,
@@ -55,14 +59,16 @@
 import '../../core/theme/hao_radius.dart';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
+import 'package:glassy_ui_ios/glassy_ui_ios.dart' as glassy;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
+import '../../widgets/native_switch.dart';
 import 'package:get/get.dart';
 import '../../widgets/hao_toast.dart';
+import '../../widgets/hao_inset_grouped.dart';
 import '../../widgets/hao_segmented_control.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -71,12 +77,12 @@ import '../../core/logging/app_log.dart';
 import '../../core/player/kernel/mpv_properties.dart';
 import '../../core/player/kernel/player_engine.dart';
 import '../../core/player/kernel/video_fit.dart';
+import '../../core/player/vod_features.dart';
 import '../../core/storage/hive_store.dart';
 import '../../core/storage/local_paths.dart';
 import '../../core/theme/appearance_store.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_themes.dart';
-import '../../core/theme/liquid_glass_theme.dart';
 import '../../core/theme/haptics.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../services/custom_font_service.dart';
@@ -84,7 +90,6 @@ import '../../services/music/lx_script_engine.dart';
 import '../../services/music/lx_script_store.dart';
 import '../../services/music/music_quality.dart';
 import '../../services/music/music_store.dart';
-import '../../widgets/settings_ui.dart';
 import '../../services/backup_service.dart';
 import '../../services/update_service.dart';
 import 'accent_color_sheet.dart';
@@ -100,6 +105,7 @@ import 'danmaku_settings_page.dart';
 import 'live_sources_page.dart';
 import 'music_sources_page.dart';
 import 'update_dialog.dart';
+import 'video_categories_page.dart';
 import 'video_sources_page.dart';
 import 'wallpaper_page.dart';
 
@@ -145,6 +151,16 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _vodSubtitleFontSize;
   late String _vodSubtitleColor;
   late String _vodSubtitlePosition;
+  // I-影视 (build 29): one Hive key each, defaults all off/neutral
+  // (see HiveKeys + vod_features.dart). Double-tap step (int,
+  // default 10 s); dialogue boost (bool, default off — backend cap
+  // pending K 组); spoiler hide-synopsis + blur-unwatched (bool,
+  // default off); pure-audio default (bool, default off).
+  late int _vodDoubleTapSeekSeconds;
+  late bool _vodDialogueBoost;
+  late bool _vodSpoilerHideSynopsis;
+  late bool _vodSpoilerBlurUnwatched;
+  late bool _vodAudioOnly;
   // 1.1.6 music row: loudness normalisation (default off).
   // Strength (0..2, default 1) is handled inside the player by
   // the music group — no row here.
@@ -160,6 +176,21 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   late String _bgHex;
   late String _fontName;
   final _updateService = UpdateService();
+
+  // Build 29 B组: 每组收起/展开状态. Hive key 在本文件内定义——HiveKeys
+  // 在 hive_store.dart, 本组不碰那个文件, 所以不用往 HiveKeys 里加 key.
+  // bool, 默认 true(全部展开); 备份导入后也要重读(见 _importBackup).
+  static const _sectionIds = [
+    'appearance',
+    'music',
+    'video',
+    'sources',
+    'data',
+    'about',
+  ];
+  static String _sectionExpandedKey(String id) =>
+      'settingsSectionExpanded_$id';
+  late Map<String, bool> _sectionExpanded;
 
   MusicPlayerController get _player => MusicPlayerController.ensure();
 
@@ -196,12 +227,37 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     if (!_subPositionOrder.contains(_vodSubtitlePosition)) {
       _vodSubtitlePosition = 'bottom';
     }
+    _vodDoubleTapSeekSeconds = vodDoubleTapSeekSeconds();
+    _vodDialogueBoost = vodDialogueBoostEnabled();
+    _vodSpoilerHideSynopsis = vodSpoilerHideSynopsis();
+    _vodSpoilerBlurUnwatched = vodSpoilerBlurUnwatched();
+    _vodAudioOnly = vodAudioOnlyDefault();
     _musicNormalizationEnabled =
         HiveStore.getBool(HiveKeys.musicNormalizationEnabled, false);
     _hapticsOn = HaoHaptics.enabled;
     _quality = MusicStore.quality;
     _loadSourceCount();
     _loadAppearance();
+    _sectionExpanded = {
+      for (final id in _sectionIds)
+        id: HiveStore.getBool(_sectionExpandedKey(id), true),
+    };
+  }
+
+  /// Build 29 B组: 点组头收起/展开. 乐观翻 UI 再写 Hive, 和壁纸/背景色
+  /// 开关同一写法: 写失败翻回旧值并 toast, 不留 UI 与持久值不一致.
+  Future<void> _toggleSection(String id) async {
+    HaoHaptics.select();
+    final previous = _sectionExpanded[id] ?? true;
+    final next = !previous;
+    setState(() => _sectionExpanded[id] = next);
+    try {
+      await HiveStore.put(_sectionExpandedKey(id), next);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sectionExpanded[id] = previous);
+      HaoToast.show('设置失败', message: '展开状态保存失败，请重试');
+    }
   }
 
   /// Read the appearance state (wallpaper / background colour /
@@ -283,16 +339,24 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   @override
   Widget build(BuildContext context) {
+    // No themeController here (build 29 B组): the rows moved into
+    // _appearanceRows/_videoRows, which re-derive theme + controller
+    // themselves; build() only needs `theme` for the 设置 title.
     final theme = HaoTheme.of(context);
-    final themeController = Get.find<ThemeController>();
     return Obx(() => Scaffold(
       // No AppBar (chen 2026-11-21, screenshot): the title is a big
-      // bold header at the top-left of the list (26 w800), like his
-      // 我的片库 screenshot — not a small top-bar title. The title
-      // carries the status-bar inset itself (MediaQuery), so the
-      // page needs no AppBar and no SafeArea.
+      // bold header at the top-left of the list, like his 我的片库
+      // screenshot — not a small top-bar title. Apple Large Title:
+      // 34 bold (build-29 typography, was 26 w800 — 26 is not an
+      // Apple text style). The title carries the status-bar inset
+      // itself (MediaQuery), so the page needs no AppBar and no
+      // SafeArea.
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+        // Bottom padding 34, not 40 (build 29 B组): the last section
+        // carries 6px breathing room inside its clip (see
+        // _CollapsibleSection), so 34 + 6 keeps the total page height
+        // — and every scroll offset — exactly as before.
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 34),
         children: [
           Padding(
             padding: EdgeInsets.only(
@@ -303,211 +367,301 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               '设置',
               style: TextStyle(
                 color: theme.textPrimary,
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
                 shadows: HaoTheme.legibilityShadows(context),
               ),
             ),
           ),
-          const _SectionTitle('外观'),
-          HaoGlassCard(
-            quality: GlassCardQuality.standard,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Obx(
-                  () => Wrap(
-                    spacing: 8,
-                    children: HaoThemeId.values.map((id) {
-                      final selected = themeController.themeId.value == id;
-                      return ChoiceChip(
-                        label: Text(HaoThemes.names[id]!),
-                        selected: selected,
-                        selectedColor: theme.accentSoft,
-                        labelStyle: TextStyle(
-                          color: selected ? theme.accent : theme.textSecondary,
-                          shadows: HaoTheme.legibilityShadows(context),
+          _CollapsibleSection(
+            title: '外观',
+            expanded: _sectionExpanded['appearance'] ?? true,
+            onToggle: () => _toggleSection('appearance'),
+            children: _appearanceRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '音乐播放',
+            expanded: _sectionExpanded['music'] ?? true,
+            onToggle: () => _toggleSection('music'),
+            children: _musicRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '影视播放',
+            expanded: _sectionExpanded['video'] ?? true,
+            onToggle: () => _toggleSection('video'),
+            children: _videoRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '源管理',
+            expanded: _sectionExpanded['sources'] ?? true,
+            onToggle: () => _toggleSection('sources'),
+            children: _sourcesRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '数据',
+            expanded: _sectionExpanded['data'] ?? true,
+            onToggle: () => _toggleSection('data'),
+            children: _dataRows(context),
+          ),
+          const SizedBox(height: 14),
+          _CollapsibleSection(
+            title: '关于',
+            expanded: _sectionExpanded['about'] ?? true,
+            onToggle: () => _toggleSection('about'),
+            children: _aboutRows(context),
+          ),
+        ],
+      ),
+    ));
+  }
+
+  /// Build 29 B组: “外观”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _appearanceRows(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final themeController = Get.find<ThemeController>();
+    return [
+      HaoInsetGroupedSection(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // G-设置 (build 29 Wave 2): iOS 原生分段选择
+            // (CupertinoSlidingSegmentedControl) — the old
+            // Material ChoiceChip row is gone. Same Hive key
+            // (ThemeController.setTheme), same four themes; the
+            // thumb is the accent wash, like HaoSegmentedControl
+            // below (ThemeMode).
+            Obx(
+              () => CupertinoSlidingSegmentedControl<HaoThemeId>(
+                groupValue: themeController.themeId.value,
+                backgroundColor:
+                    theme.textMuted.withValues(alpha: 0.18),
+                thumbColor: theme.accentSoft,
+                onValueChanged: (id) {
+                  if (id == null) return;
+                  HaoHaptics.select();
+                  themeController.setTheme(id, box: HiveStore.box);
+                },
+                children: {
+                  for (final id in HaoThemeId.values)
+                    id: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        HaoThemes.names[id]!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              themeController.themeId.value == id
+                                  ? theme.accent
+                                  : theme.textSecondary,
+                          shadows:
+                              HaoTheme.legibilityShadows(context),
                         ),
-                        onSelected: (_) {
-                          HaoHaptics.select();
-                          themeController.setTheme(id, box: HiveStore.box);
-                        },
-                      );
-                    }).toList(),
+                      ),
+                    ),
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(
+              () => HaoSegmentedControl<ThemeMode>(
+                segments: const [
+                  HaoSegment(value: ThemeMode.light, label: '浅色'),
+                  HaoSegment(value: ThemeMode.dark, label: '深色'),
+                  HaoSegment(value: ThemeMode.system, label: '跟随系统'),
+                ],
+                value: themeController.themeMode.value,
+                // No explicit HaoHaptics.select() here: the control
+                // fires it on every segment tap (N-13).
+                onChanged: (mode) =>
+                    themeController.setMode(mode, box: HiveStore.box),
+              ),
+            ),
+          ],
+        ),
+      ),
+      _BeansSwitchRow(
+        icon: Icons.wallpaper,
+        title: '壁纸',
+        value: _wallpaperOn,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          // G-P2-2: optimistic flip — the thumb moves on this
+          // frame; the Hive write lands in the background. The
+          // store swallows write errors (AppearanceStore catches
+          // them), so a failed write surfaces as "the value
+          // didn't stick": _loadAppearance() re-reads the
+          // persisted value and flips the thumb back, and we
+          // tell the user. The catch only covers errors thrown
+          // outside the store.
+          final previous = _wallpaperOn;
+          setState(() => _wallpaperOn = value);
+          try {
+            await AppearanceController.ensure().setWallpaperEnabled(value);
+            if (!mounted) return;
+            setState(() => _loadAppearance());
+            if (_wallpaperOn != value) {
+              HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
+            }
+          } catch (_) {
+            if (!mounted) return;
+            setState(() => _wallpaperOn = previous);
+            HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
+          }
+        },
+      ),
+      _BeansRow(
+        icon: Icons.photo_library,
+        title: '壁纸管理',
+        onTap: () async {
+          await Get.to(() => const WallpaperPage());
+          setState(() => _loadAppearance());
+        },
+      ),
+      // Tab-bar selected colour (icon + label): the ring shows
+      // the current colour live; tapping opens the colour sheet.
+      // The colour controls only the tab-bar selected state.
+      _BeansRow(
+        icon: Icons.colorize,
+        title: '自定义强调色',
+        trailing: const AccentRingButton(),
+        onTap: () => showAccentColorSheet(context),
+      ),
+      _BeansSwitchRow(
+        icon: Icons.format_paint,
+        title: '背景色',
+        value: _bgOn,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          // G-P2-2: optimistic flip, same as the wallpaper
+          // switch above — thumb first, Hive write behind it;
+          // a write that didn't stick (the store swallows the
+          // error) flips the thumb back via _loadAppearance()
+          // and gets a snackbar.
+          final previous = _bgOn;
+          setState(() => _bgOn = value);
+          try {
+            await AppearanceController.ensure().setBackgroundEnabled(value);
+            if (!mounted) return;
+            setState(() => _loadAppearance());
+            if (_bgOn != value) {
+              HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
+            }
+          } catch (_) {
+            if (!mounted) return;
+            setState(() => _bgOn = previous);
+            HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
+          }
+        },
+      ),
+      // Background swatches stay mounted (build 28 D5): when the
+      // background switch is off the card is greyed out and
+      // untappable instead of disappearing, so toggling the
+      // switch never jumps the layout height. Same treatment
+      // while wallpaper is on — wallpaper beats the background
+      // colour, shown by disabling, not by a sentence (clean
+      // pass 2026-11-19).
+      Opacity(
+        opacity: (!_bgOn || _wallpaperOn) ? 0.4 : 1,
+        child: IgnorePointer(
+          ignoring: !_bgOn || _wallpaperOn,
+          child: _BackgroundSwatches(
+            selectedHex: _bgHex,
+            onSelect: (hex) async {
+              HaoHaptics.select();
+              await AppearanceController.ensure().setBackgroundColor(hex);
+              setState(() => _loadAppearance());
+            },
+            onReset: () async {
+              HaoHaptics.select();
+              await AppearanceController.ensure().clearBackgroundColor();
+              setState(() => _loadAppearance());
+            },
+          ),
+        ),
+      ),
+      // Liquid-glass intensity (chen 2026-11-21): whole-app
+      // frosted-glass strength, 0% = clear, 100% = today's
+      // glass. The slider previews live — the theme rebuilds
+      // on every tick (ThemeController.glassIntensity); Hive is
+      // written once when the drag ends, not per tick (G-P2-3).
+      HaoInsetGroupedSection(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Icon(
+                    Icons.blur_on,
+                    size: 14,
+                    color: theme.accent,
+                    shadows: HaoTheme.legibilityShadows(context),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Obx(
-                  () => HaoSegmentedControl<ThemeMode>(
-                    segments: const [
-                      HaoSegment(value: ThemeMode.light, label: '浅色'),
-                      HaoSegment(value: ThemeMode.dark, label: '深色'),
-                      HaoSegment(value: ThemeMode.system, label: '跟随系统'),
-                    ],
-                    value: themeController.themeMode.value,
-                    // No explicit HaoHaptics.select() here: the control
-                    // fires it on every segment tap (N-13).
-                    onChanged: (mode) =>
-                        themeController.setMode(mode, box: HiveStore.box),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '液态玻璃强度',
+                    style: TextStyle(
+                      fontSize: 15,
+                      shadows: HaoTheme.legibilityShadows(context),
+                    ),
+                  ),
+                ),
+                Text(
+                  '${(themeController.glassIntensity.value * 100).round()}%',
+                  style: TextStyle(
+                    color: theme.textSecondary,
+                    fontSize: 14,
+                    shadows: HaoTheme.legibilityShadows(context),
                   ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          _BeansSwitchRow(
-            icon: Icons.wallpaper,
-            title: '壁纸',
-            value: _wallpaperOn,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              // G-P2-2: optimistic flip — the thumb moves on this
-              // frame; the Hive write lands in the background. The
-              // store swallows write errors (AppearanceStore catches
-              // them), so a failed write surfaces as "the value
-              // didn't stick": _loadAppearance() re-reads the
-              // persisted value and flips the thumb back, and we
-              // tell the user. The catch only covers errors thrown
-              // outside the store.
-              final previous = _wallpaperOn;
-              setState(() => _wallpaperOn = value);
-              try {
-                await AppearanceController.ensure().setWallpaperEnabled(value);
-                if (!mounted) return;
-                setState(() => _loadAppearance());
-                if (_wallpaperOn != value) {
-                  HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
-                }
-              } catch (_) {
-                if (!mounted) return;
-                setState(() => _wallpaperOn = previous);
-                HaoToast.show('设置失败', message:  '壁纸开关保存失败，请重试');
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.photo_library,
-            title: '壁纸管理',
-            onTap: () async {
-              await Get.to(() => const WallpaperPage());
-              setState(() => _loadAppearance());
-            },
-          ),
-          const SizedBox(height: 12),
-          // Tab-bar selected colour (icon + label): the ring shows
-          // the current colour live; tapping opens the colour sheet.
-          // The colour controls only the tab-bar selected state.
-          _BeansRow(
-            icon: Icons.colorize,
-            title: '自定义强调色',
-            trailing: const AccentRingButton(),
-            onTap: () => showAccentColorSheet(context),
-          ),
-          const SizedBox(height: 12),
-          _BeansSwitchRow(
-            icon: Icons.format_paint,
-            title: '背景色',
-            value: _bgOn,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              // G-P2-2: optimistic flip, same as the wallpaper
-              // switch above — thumb first, Hive write behind it;
-              // a write that didn't stick (the store swallows the
-              // error) flips the thumb back via _loadAppearance()
-              // and gets a snackbar.
-              final previous = _bgOn;
-              setState(() => _bgOn = value);
-              try {
-                await AppearanceController.ensure().setBackgroundEnabled(value);
-                if (!mounted) return;
-                setState(() => _loadAppearance());
-                if (_bgOn != value) {
-                  HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
-                }
-              } catch (_) {
-                if (!mounted) return;
-                setState(() => _bgOn = previous);
-                HaoToast.show('设置失败', message:  '背景色开关保存失败，请重试');
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          // Background swatches stay mounted (build 28 D5): when the
-          // background switch is off the card is greyed out and
-          // untappable instead of disappearing, so toggling the
-          // switch never jumps the layout height. Same treatment
-          // while wallpaper is on — wallpaper beats the background
-          // colour, shown by disabling, not by a sentence (clean
-          // pass 2026-11-19).
-          Opacity(
-            opacity: (!_bgOn || _wallpaperOn) ? 0.4 : 1,
-            child: IgnorePointer(
-              ignoring: !_bgOn || _wallpaperOn,
-              child: _BackgroundSwatches(
-                selectedHex: _bgHex,
-                onSelect: (hex) async {
-                  HaoHaptics.select();
-                  await AppearanceController.ensure().setBackgroundColor(hex);
-                  setState(() => _loadAppearance());
+            // build-29 adoption: the real iOS UISlider via glassy
+            // (GlassSlider) — same wiring as the CupertinoSlider
+            // below it, which stays as the off-iOS fallback.
+            // G-设置 (build 29 Wave 2): drag previews in memory,
+            // Hive is written once on release; thumb stays iOS
+            // white, track is the theme accent (N-12's 28pt iOS
+            // thumb, kept). Full-width SizedBox: a CupertinoSlider
+            // in a start-aligned Column sizes to its 176px
+            // intrinsic width (the Material Slider stretched) — on
+            // a phone that reads as a narrow stub, not a slider.
+            SizedBox(
+              width: double.infinity,
+              child: glassy.GlassSlider(
+                value: themeController.glassIntensity.value,
+                style: glassy.NativeStyle(tintColor: theme.accent),
+                // G-P2-3: dragging only previews in memory (the
+                // theme rebuilds live per tick); Hive is written
+                // once when the drag ends, so a drag no longer
+                // pays a Hive put per tick.
+                onChanged: (v) =>
+                    themeController.setGlassIntensityPreview(v),
+                onChangeEnd: (v) {
+                  themeController.setGlassIntensity(
+                    v,
+                    box: HiveStore.box,
+                  );
+                  // N-13: light tap on release, click at either end.
+                  HaoHaptics.sliderEnd(v, 0, 1);
                 },
-                onReset: () async {
-                  HaoHaptics.select();
-                  await AppearanceController.ensure().clearBackgroundColor();
-                  setState(() => _loadAppearance());
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Liquid-glass intensity (chen 2026-11-21): whole-app
-          // frosted-glass strength, 0% = clear, 100% = today's
-          // glass. The slider previews live — the theme rebuilds
-          // on every tick (ThemeController.glassIntensity); Hive is
-          // written once when the drag ends, not per tick (G-P2-3).
-          HaoGlassCard(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 28,
-                      child: Icon(
-                        Icons.blur_on,
-                        size: 14,
-                        color: theme.accent,
-                        shadows: HaoTheme.legibilityShadows(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '液态玻璃强度',
-                        style: TextStyle(
-                          fontSize: 15,
-                          shadows: HaoTheme.legibilityShadows(context),
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${(themeController.glassIntensity.value * 100).round()}%',
-                      style: TextStyle(
-                        color: theme.textSecondary,
-                        fontSize: 14,
-                        shadows: HaoTheme.legibilityShadows(context),
-                      ),
-                    ),
-                  ],
-                ),
-                Slider(
+                fallback: CupertinoSlider(
                   value: themeController.glassIntensity.value,
-                  // G-P2-3: dragging only previews in memory (the
-                  // theme rebuilds live per tick); Hive is written
-                  // once when the drag ends, so a drag no longer
-                  // pays a Hive put per tick.
+                  activeColor: theme.accent,
                   onChanged: (v) =>
                       themeController.setGlassIntensityPreview(v),
                   onChangeEnd: (v) {
@@ -515,274 +669,419 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                       v,
                       box: HiveStore.box,
                     );
-                    // N-13: light tap on release, click at either end.
                     HaoHaptics.sliderEnd(v, 0, 1);
                   },
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.font_download,
-            title: '自定义字体',
-            subtitle: _fontName.isEmpty ? '未安装' : '已安装：$_fontName',
-            onTap: () => _importFont(context),
-          ),
-          if (_fontName.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _BeansRow(
-              icon: Icons.restore,
-              title: '恢复默认字体',
-              onTap: () => _resetFont(context),
-            ),
-          ],
-          const SizedBox(height: 20),
-          const _SectionTitle('音乐播放'),
-          AnimatedBuilder(
-            animation: EqualizerStore.ensure(),
-            builder: (context, _) => _PlaybackPanel(
-              mixWithOthers: _mixWithOthers,
-              onMixChanged: (value) async {
-                HaoHaptics.select();
-                await HiveStore.put(HiveKeys.audioMixWithOthers, value);
-                setState(() => _mixWithOthers = value);
-                await AvMusicPlayer.applyMixWithOthers(value);
-              },
-              autoResume: _autoResume,
-              onAutoResumeChanged: (value) async {
-                HaoHaptics.select();
-                await HiveStore.put(HiveKeys.autoResumeLastPlayback, value);
-                setState(() => _autoResume = value);
-              },
-              quality: _quality,
-              onQualityChanged: (q) async {
-                HaoHaptics.select();
-                await MusicStore.setQuality(q);
-                _player.userQuality.value = q;
-                setState(() => _quality = q);
-              },
-              hapticsOn: _hapticsOn,
-              onHapticsChanged: (value) async {
-                await HaoHaptics.setEnabled(value);
-                setState(() => _hapticsOn = value);
-                if (value) HaoHaptics.tap();
-              },
-              sourceCount: _sourceCount,
-              equalizerEnabled: EqualizerStore.ensure().enabled,
-              onOpenEqualizer: () async {
-                HaoHaptics.tap();
-                await Get.to(() => const EqualizerPage());
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: loudness normalisation (default off, no
-          // subtitle). Strength lives in the player, not here.
-          _BeansSwitchRow(
-            icon: Icons.volume_up,
-            title: '音量归一化',
-            value: _musicNormalizationEnabled,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              await HiveStore.put(HiveKeys.musicNormalizationEnabled, value);
-              setState(() => _musicNormalizationEnabled = value);
-            },
-          ),
-          const SizedBox(height: 20),
-          const _SectionTitle('影视播放'),
-          HaoGlassCard(
-            quality: GlassCardQuality.standard,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: RadioGroup<String>(
-              groupValue: _engineKey,
-              onChanged: (value) async {
-                if (value == null) return;
-                HaoHaptics.select();
-                await HiveStore.put(HiveKeys.videoPlayerKey, value);
-                setState(() => _engineKey = value);
-              },
-              child: Column(
-                children: PlayerEngine.values.map((engine) {
-                  return RadioListTile<String>(
-                    title: Text(
-                      engine.displayName,
-                      style: TextStyle(
-                        color: theme.textPrimary,
-                        shadows: HaoTheme.legibilityShadows(context),
-                      ),
-                    ),
-                    subtitle: engine == PlayerEngine.exo
-                        ? Text(
-                            'AVPlayer 不能播 FLV，失败时自动换内核',
-                            style: TextStyle(
-                              shadows: HaoTheme.legibilityShadows(context),
-                            ),
-                          )
-                        : null,
-                    value: engine.key,
-                    activeColor: theme.accent,
-                  );
-                }).toList(),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          _BeansSwitchRow(
-            icon: Icons.skip_next,
-            title: '自动连播下一集',
-            value: _autoNext,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              await VideoPlaybackSettings.setAutoNext(value);
-              setState(() => _autoNext = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          // VOD picture fit (PiliPlus VideoFitType + Kazumi
-          // PlayerAspectRatio): tap cycles 自动 -> 拉伸 -> 裁剪.
-          // VOD only — live always renders contain.
-          _BeansRow(
-            icon: Icons.aspect_ratio,
-            title: '视频画面比例',
-            subtitle: '当前：${_videoFit.label}',
-            onTap: () async {
-              HaoHaptics.select();
-              final next = _videoFit.next;
-              await VideoPlaybackSettings.setVideoFit(next);
-              setState(() => _videoFit = next);
-            },
-          ),
-          const SizedBox(height: 12),
-          // Anime4K super-resolution (build 28 J): VOD only — the
-          // switch gates the VOD path; live playback never reads it.
-          // Effective only on the MPV engine, from the next open
-          // (next episode / line or engine switch re-opens the
-          // player); toggling mid-playback does nothing until then.
-          // 1.1.6 trio: mutually exclusive with interpolation and
-          // SDR→HDR in display only (see _mpvFxRow) — the stored
-          // value of a greyed-out row is never cleared.
-          _mpvFxRow(
-            locked: _vodInterpolation || _vodSdrToHdr,
-            child: _BeansSwitchRow(
-              icon: Icons.auto_awesome,
-              title: 'Anime4K 超分',
-              subtitle: '仅 MPV，下次播放生效',
-              value: _vodSuperResolution,
-              onChanged: (value) async {
+          ],
+        ),
+      ),
+      _BeansRow(
+        icon: Icons.font_download,
+        title: '自定义字体',
+        subtitle: _fontName.isEmpty ? '未安装' : '已安装：$_fontName',
+        onTap: () => _importFont(context),
+      ),
+      if (_fontName.isNotEmpty) ...[
+        _BeansRow(
+          icon: Icons.restore,
+          title: '恢复默认字体',
+          onTap: () => _resetFont(context),
+        ),
+      ],
+    ];
+  }
+
+  /// Build 29 B组: “音乐播放”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _musicRows(BuildContext context) {
+    return [
+      AnimatedBuilder(
+        animation: EqualizerStore.ensure(),
+        builder: (context, _) => _PlaybackPanel(
+          mixWithOthers: _mixWithOthers,
+          onMixChanged: (value) async {
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.audioMixWithOthers, value);
+            setState(() => _mixWithOthers = value);
+            await AvMusicPlayer.applyMixWithOthers(value);
+          },
+          autoResume: _autoResume,
+          onAutoResumeChanged: (value) async {
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.autoResumeLastPlayback, value);
+            setState(() => _autoResume = value);
+          },
+          quality: _quality,
+          onQualityChanged: (q) async {
+            HaoHaptics.select();
+            await MusicStore.setQuality(q);
+            _player.userQuality.value = q;
+            setState(() => _quality = q);
+          },
+          hapticsOn: _hapticsOn,
+          onHapticsChanged: (value) async {
+            await HaoHaptics.setEnabled(value);
+            setState(() => _hapticsOn = value);
+            if (value) HaoHaptics.tap();
+          },
+          sourceCount: _sourceCount,
+          equalizerEnabled: EqualizerStore.ensure().enabled,
+          onOpenEqualizer: () async {
+            HaoHaptics.tap();
+            await Get.to(() => const EqualizerPage());
+          },
+        ),
+      ),
+      // 1.1.6: loudness normalisation (default off). The loudness
+      // is measured by the EQ tap, so with EQ off there is
+      // nothing to measure — the switch alone does nothing until
+      // EQ is on. The toggle is pushed to the live controller
+      // (it only reads Hive in onInit, so a Hive-only write
+      // would not take effect until restart).
+      _BeansSwitchRow(
+        icon: Icons.volume_up,
+        title: '音量归一化',
+        subtitle: '需开启均衡器才能测量响度',
+        value: _musicNormalizationEnabled,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.musicNormalizationEnabled, value);
+          setState(() => _musicNormalizationEnabled = value);
+          try {
+            await _player.setNormalizationEnabled(value);
+          } catch (_) {}
+        },
+      ),
+    ];
+  }
+
+  /// Build 29 B组: “影视播放”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _videoRows(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return [
+      // G-设置 (build 29 Wave 2): iOS 设置式单选 — plain rows
+      // with a trailing checkmark (CupertinoIcons.checkmark) instead
+      // of Material RadioListTile. Same Hive key (videoPlayerKey),
+      // same tap-to-persist wiring.
+      HaoInsetGroupedSection(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: PlayerEngine.values.map((engine) {
+            final selected = _engineKey == engine.key;
+            return HaoPressable(
+              onTap: () async {
+                if (selected) return;
                 HaoHaptics.select();
-                await HiveStore.put(HiveKeys.vodSuperResolution, value);
-                setState(() => _vodSuperResolution = value);
+                await HiveStore.put(HiveKeys.videoPlayerKey, engine.key);
+                if (mounted) setState(() => _engineKey = engine.key);
               },
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: VOD frame interpolation (MPV only, next open).
-          _mpvFxRow(
-            locked: _vodSuperResolution || _vodSdrToHdr,
-            child: _BeansSwitchRow(
-              icon: Icons.animation,
-              title: '插帧',
-              subtitle: '仅 MPV，下次播放生效',
-              value: _vodInterpolation,
-              onChanged: (value) async {
-                HaoHaptics.select();
-                await HiveStore.put(HiveKeys.vodInterpolation, value);
-                setState(() => _vodInterpolation = value);
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: VOD SDR→HDR (MPV only, next open).
-          _mpvFxRow(
-            locked: _vodSuperResolution || _vodInterpolation,
-            child: _BeansSwitchRow(
-              icon: Icons.hdr_on,
-              title: 'SDR 转 HDR',
-              subtitle: '仅 MPV，下次播放生效',
-              value: _vodSdrToHdr,
-              onChanged: (value) async {
-                HaoHaptics.select();
-                await HiveStore.put(HiveKeys.vodSdrToHdr, value);
-                setState(() => _vodSdrToHdr = value);
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: DV Profile 8 downgrade-to-HDR. Default ON —
-          // unlike the trio above. Not part of the exclusion.
-          _BeansSwitchRow(
-            icon: Icons.high_quality,
-            title: '杜比视界 Profile 8 降级 HDR',
-            value: _vodDvP8Downgrade,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              await HiveStore.put(HiveKeys.vodDvP8Downgrade, value);
-              setState(() => _vodDvP8Downgrade = value);
-            },
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: skip intro/outro — tap cycles 关 -> 手动 ->
-          // 自动延时 3 秒 -> 自动立即 (same cycle-row pattern as
-          // 视频画面比例 / 低内存模式 above).
-          _BeansRow(
-            icon: Icons.fast_forward,
-            title: '跳过片头片尾',
-            subtitle: '当前：${_skipIntroLabels[_vodSkipIntroMode] ?? '关'}',
-            onTap: () async {
-              HaoHaptics.select();
-              final i = _skipIntroOrder.indexOf(_vodSkipIntroMode);
-              final next =
-                  _skipIntroOrder[(i < 0 ? 0 : i + 1) % _skipIntroOrder.length];
-              await HiveStore.put(HiveKeys.vodSkipIntroMode, next);
-              setState(() => _vodSkipIntroMode = next);
-            },
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: VOD subtitle time offset (±10s, 0.1s step).
-          // Same card shape as the 液态玻璃强度 slider above:
-          // drag previews in memory, Hive is written on release.
-          HaoGlassCard(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+              borderRadius: BorderRadius.circular(HaoRadius.large),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                child: Row(
                   children: [
-                    SizedBox(
-                      width: 28,
-                      child: Icon(
-                        Icons.subtitles,
-                        size: 14,
-                        color: theme.accent,
-                        shadows: HaoTheme.legibilityShadows(context),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        '字幕时间偏移',
-                        style: TextStyle(
-                          fontSize: 15,
-                          shadows: HaoTheme.legibilityShadows(context),
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            engine.displayName,
+                            style: TextStyle(
+                              color: theme.textPrimary,
+                              fontSize: 15,
+                              shadows:
+                                  HaoTheme.legibilityShadows(context),
+                            ),
+                          ),
+                          if (engine == PlayerEngine.exo) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'AVPlayer 不能播 FLV，失败时自动换内核',
+                              style: TextStyle(
+                                color: theme.textSecondary,
+                                fontSize: 12,
+                                shadows: HaoTheme.legibilityShadows(
+                                    context),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    Text(
-                      _formatSubtitleDelay(_vodSubtitleDelay),
-                      style: TextStyle(
-                        color: theme.textSecondary,
-                        fontSize: 14,
+                    if (selected)
+                      Icon(
+                        CupertinoIcons.checkmark,
+                        color: theme.accent,
+                        size: 20,
                         shadows: HaoTheme.legibilityShadows(context),
                       ),
-                    ),
                   ],
                 ),
-                Slider(
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+      _BeansSwitchRow(
+        icon: Icons.skip_next,
+        title: '自动连播下一集',
+        value: _autoNext,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await VideoPlaybackSettings.setAutoNext(value);
+          setState(() => _autoNext = value);
+        },
+      ),
+      // I-影视 item 1: double-tap seek step (VOD only — live has
+      // no seek). Tap cycles 5 → 10 → 15 → 30 → 60 s; default 10 s.
+      // The rate itself is already remembered (vodPlaybackRate);
+      // this row only owns the step.
+      _BeansRow(
+        icon: Icons.touch_app,
+        title: '双击快进秒数',
+        subtitle: '当前：$_vodDoubleTapSeekSeconds 秒',
+        onTap: () async {
+          HaoHaptics.select();
+          final next = nextDoubleTapSeekSeconds(_vodDoubleTapSeekSeconds);
+          await HiveStore.put(HiveKeys.vodDoubleTapSeekSeconds, next);
+          setState(() => _vodDoubleTapSeekSeconds = next);
+        },
+      ),
+      // I-影视 item 3: dialogue boost — volume up to 300% +
+      // centre-channel enhancement. Backend landed (K 组, build 29):
+      // MpvBackend sets volume-max=300 + the centre fold-in
+      // (stereo passes through unchanged — verified with ffmpeg;
+      // coefficients 待真机验证).
+      _BeansSwitchRow(
+        icon: Icons.record_voice_over,
+        title: '对白增强',
+        subtitle: '音量最高 300%、中置声道 · 仅 MPV',
+        value: _vodDialogueBoost,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.vodDialogueBoost, value);
+          setState(() => _vodDialogueBoost = value);
+        },
+      ),
+      // I-影视 item 5: spoiler protection on the detail page.
+      // Both default off — the synopsis/poster stay visible until
+      // the user opts in.
+      _BeansSwitchRow(
+        icon: Icons.visibility_off,
+        title: '防剧透：隐藏简介',
+        subtitle: '详情页简介默认隐藏，点按查看',
+        value: _vodSpoilerHideSynopsis,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.vodSpoilerHideSynopsis, value);
+          setState(() => _vodSpoilerHideSynopsis = value);
+        },
+      ),
+      _BeansSwitchRow(
+        icon: Icons.blur_on,
+        title: '防剧透：模糊未看海报',
+        subtitle: '未看过的影片海报模糊显示，点按查看',
+        value: _vodSpoilerBlurUnwatched,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.vodSpoilerBlurUnwatched, value);
+          setState(() => _vodSpoilerBlurUnwatched = value);
+        },
+      ),
+      // I-影视 item 9: pure-audio default (same key the player
+      // toggle writes — one key, two writers, no second state).
+      _BeansSwitchRow(
+        icon: Icons.headphones,
+        title: '纯音频后台播放',
+        subtitle: '只听声音，后台继续播',
+        value: _vodAudioOnly,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.vodAudioOnly, value);
+          setState(() => _vodAudioOnly = value);
+        },
+      ),
+      // I-影视 item 10: category show/hide/reorder editor.
+      _BeansRow(
+        icon: Icons.sort,
+        title: '影视分类排序',
+        subtitle: '显示 / 隐藏 / 拖动排序',
+        onTap: () => Get.to(() => const VideoCategoriesPage()),
+      ),
+      // VOD picture fit (PiliPlus VideoFitType + Kazumi
+      // PlayerAspectRatio): tap cycles 自动 -> 拉伸 -> 裁剪.
+      // VOD only — live always renders contain.
+      _BeansRow(
+        icon: Icons.aspect_ratio,
+        title: '视频画面比例',
+        subtitle: '当前：${_videoFit.label}',
+        onTap: () async {
+          HaoHaptics.select();
+          final next = _videoFit.next;
+          await VideoPlaybackSettings.setVideoFit(next);
+          setState(() => _videoFit = next);
+        },
+      ),
+      // Anime4K super-resolution (build 28 J): VOD only — the
+      // switch gates the VOD path; live playback never reads it.
+      // Effective only on the MPV engine, from the next open
+      // (next episode / line or engine switch re-opens the
+      // player); toggling mid-playback does nothing until then.
+      // 1.1.6 trio: mutually exclusive with interpolation and
+      // SDR→HDR in display only (see _mpvFxRow) — the stored
+      // value of a greyed-out row is never cleared.
+      _mpvFxRow(
+        locked: _vodInterpolation || _vodSdrToHdr,
+        child: _BeansSwitchRow(
+          icon: Icons.auto_awesome,
+          title: 'Anime4K 超分',
+          subtitle: '仅 MPV，下次播放生效',
+          value: _vodSuperResolution,
+          onChanged: (value) async {
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.vodSuperResolution, value);
+            setState(() => _vodSuperResolution = value);
+          },
+        ),
+      ),
+      // 1.1.6: VOD frame interpolation (MPV only, next open).
+      _mpvFxRow(
+        locked: _vodSuperResolution || _vodSdrToHdr,
+        child: _BeansSwitchRow(
+          icon: Icons.animation,
+          title: '插帧',
+          subtitle: '仅 MPV，下次播放生效',
+          value: _vodInterpolation,
+          onChanged: (value) async {
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.vodInterpolation, value);
+            setState(() => _vodInterpolation = value);
+          },
+        ),
+      ),
+      // 1.1.6: VOD SDR→HDR (MPV only, next open).
+      _mpvFxRow(
+        locked: _vodSuperResolution || _vodInterpolation,
+        child: _BeansSwitchRow(
+          icon: Icons.hdr_on,
+          title: 'SDR 转 HDR',
+          subtitle: '仅 MPV，下次播放生效',
+          value: _vodSdrToHdr,
+          onChanged: (value) async {
+            HaoHaptics.select();
+            await HiveStore.put(HiveKeys.vodSdrToHdr, value);
+            setState(() => _vodSdrToHdr = value);
+          },
+        ),
+      ),
+      // 1.1.6: DV Profile 8 downgrade-to-HDR. Default ON —
+      // unlike the trio above. Not part of the exclusion.
+      _BeansSwitchRow(
+        icon: Icons.high_quality,
+        title: '杜比视界 Profile 8 降级 HDR',
+        value: _vodDvP8Downgrade,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.vodDvP8Downgrade, value);
+          setState(() => _vodDvP8Downgrade = value);
+        },
+      ),
+      // 1.1.6: skip intro/outro — tap cycles 关 -> 手动 ->
+      // 自动延时 3 秒 -> 自动立即 (same cycle-row pattern as
+      // 视频画面比例 / 低内存模式 above).
+      _BeansRow(
+        icon: Icons.fast_forward,
+        title: '跳过片头片尾',
+        subtitle: '当前：${_skipIntroLabels[_vodSkipIntroMode] ?? '关'}',
+        onTap: () async {
+          HaoHaptics.select();
+          final i = _skipIntroOrder.indexOf(_vodSkipIntroMode);
+          final next =
+              _skipIntroOrder[(i < 0 ? 0 : i + 1) % _skipIntroOrder.length];
+          await HiveStore.put(HiveKeys.vodSkipIntroMode, next);
+          setState(() => _vodSkipIntroMode = next);
+        },
+      ),
+      // 1.1.6: VOD subtitle time offset (±10s, 0.1s step).
+      // Same card shape as the 液态玻璃强度 slider above:
+      // drag previews in memory, Hive is written on release.
+      HaoInsetGroupedSection(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Icon(
+                    Icons.subtitles,
+                    size: 14,
+                    color: theme.accent,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '字幕时间偏移',
+                    style: TextStyle(
+                      fontSize: 15,
+                      shadows: HaoTheme.legibilityShadows(context),
+                    ),
+                  ),
+                ),
+                Text(
+                  _formatSubtitleDelay(_vodSubtitleDelay),
+                  style: TextStyle(
+                    color: theme.textSecondary,
+                    fontSize: 14,
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+              ],
+            ),
+            // build-29 adoption: the real iOS UISlider via glassy
+            // (GlassSlider) — same wiring as the CupertinoSlider
+            // below it, which stays as the off-iOS fallback.
+            // G-设置 (build 29 Wave 2): drag previews in memory
+            // (0.1s steps), Hive is written once on release.
+            // Full-width SizedBox: see the glass slider above — a
+            // bare CupertinoSlider in this Column is 176px wide.
+            SizedBox(
+              width: double.infinity,
+              child: glassy.GlassSlider(
+                value: _vodSubtitleDelay.clamp(-10.0, 10.0),
+                min: -10,
+                max: 10,
+                divisions: 200,
+                style: glassy.NativeStyle(tintColor: theme.accent),
+                onChanged: (v) => setState(
+                  () => _vodSubtitleDelay =
+                      double.parse(v.toStringAsFixed(1)),
+                ),
+                onChangeEnd: (v) async {
+                  final rounded = double.parse(v.toStringAsFixed(1));
+                  await HiveStore.put(HiveKeys.vodSubtitleDelay, rounded);
+                  if (mounted) {
+                    setState(() => _vodSubtitleDelay = rounded);
+                  }
+                  // N-13: light tap on release, click at either end.
+                  HaoHaptics.sliderEnd(v, -10, 10);
+                },
+                fallback: CupertinoSlider(
                   value: _vodSubtitleDelay.clamp(-10.0, 10.0),
                   min: -10,
                   max: 10,
                   divisions: 200,
+                  activeColor: theme.accent,
                   onChanged: (v) => setState(
                     () => _vodSubtitleDelay =
                         double.parse(v.toStringAsFixed(1)),
@@ -793,162 +1092,164 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                     if (mounted) {
                       setState(() => _vodSubtitleDelay = rounded);
                     }
-                    // N-13: light tap on release, click at either end.
                     HaoHaptics.sliderEnd(v, -10, 10);
                   },
                 ),
-              ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          // 1.1.6: VOD subtitle appearance (MPV only, three tiers
-          // each). Tap cycles to the next tier; applies at the next
-          // open, same as the subtitle delay row above (the player
-          // reads the persisted tiers once at open).
-          _BeansRow(
-            icon: Icons.format_size,
-            title: '字幕字号',
-            subtitle:
-                '当前：${_subFontSizeLabels[_vodSubtitleFontSize] ?? '标准'}',
-            onTap: () async {
-              HaoHaptics.select();
-              final i = _subFontSizeOrder.indexOf(_vodSubtitleFontSize);
-              final next = _subFontSizeOrder[
-                  (i < 0 ? 0 : i + 1) % _subFontSizeOrder.length];
-              await HiveStore.put(HiveKeys.vodSubtitleFontSize, next);
-              if (mounted) setState(() => _vodSubtitleFontSize = next);
-              HaoToast.show('提示', message: '下次打开生效');
-            },
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.palette_outlined,
-            title: '字幕颜色',
-            subtitle: '当前：${_subColorLabels[_vodSubtitleColor] ?? '白色'}',
-            onTap: () async {
-              HaoHaptics.select();
-              final i = _subColorOrder.indexOf(_vodSubtitleColor);
-              final next =
-                  _subColorOrder[(i < 0 ? 0 : i + 1) % _subColorOrder.length];
-              await HiveStore.put(HiveKeys.vodSubtitleColor, next);
-              if (mounted) setState(() => _vodSubtitleColor = next);
-              HaoToast.show('提示', message: '下次打开生效');
-            },
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.vertical_align_center,
-            title: '字幕位置',
-            subtitle:
-                '当前：${_subPositionLabels[_vodSubtitlePosition] ?? '底部'}',
-            onTap: () async {
-              HaoHaptics.select();
-              final i = _subPositionOrder.indexOf(_vodSubtitlePosition);
-              final next = _subPositionOrder[
-                  (i < 0 ? 0 : i + 1) % _subPositionOrder.length];
-              await HiveStore.put(HiveKeys.vodSubtitlePosition, next);
-              if (mounted) setState(() => _vodSubtitlePosition = next);
-              HaoToast.show('提示', message: '下次打开生效');
-            },
-          ),
-          const SizedBox(height: 12),
-          // Low-memory mode (Kazumi): tap cycles 自动 -> 始终开启 ->
-          // 始终关闭. Applies at the next open (mpv properties are set
-          // in open()); the subtitle states the effective state now,
-          // and the toast below says so once, at the moment the user
-          // changes it (build 28 D9 — no permanent hint row).
-          _BeansRow(
-            icon: Icons.data_saver_on,
-            title: '低内存模式',
-            subtitle: _lowMemoryMode.statusDescription(),
-            onTap: () async {
-              HaoHaptics.select();
-              final next = _lowMemoryMode.next;
-              await LowMemoryMode.save(next);
-              setState(() => _lowMemoryMode = next);
-              HaoToast.show('提示', message:  '下次打开生效');
-            },
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.chat_bubble_outline,
-            title: '弹幕设置',
-            onTap: () => Get.to(() => const DanmakuSettingsPage()),
-          ),
-          const SizedBox(height: 20),
-          const _SectionTitle('源管理'),
-          _BeansRow(
-            icon: Icons.music_note,
-            title: '音源管理',
-            onTap: () => Get.to(() => const MusicSourcesPage()),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.movie,
-            title: '影视源管理',
-            onTap: () => Get.to(() => const VideoSourcesPage()),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.live_tv,
-            title: '直播源管理',
-            onTap: () => Get.to(() => const LiveSourcesPage()),
-          ),
-          const SizedBox(height: 20),
-          const _SectionTitle('数据'),
-          _BeansRow(
-            icon: Icons.upload,
-            title: '导出备份',
-            onTap: () => _exportBackup(context),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.download,
-            title: '导入备份',
-            onTap: () => _importBackup(context),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.cleaning_services,
-            title: '缓存管理',
-            onTap: () => Get.to(() => const CacheSettingsPage()),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.article_outlined,
-            title: '日志',
-            onTap: () => Get.to(() => const AppLogPage()),
-          ),
-          const SizedBox(height: 20),
-          const _SectionTitle('关于'),
-          _BeansRow(
-            icon: Icons.info_outline,
-            title: '版本',
-            subtitle: '$kAppVersion (build $kAppBuild)',
-            onTap: () => Get.to(() => const ChangelogPage()),
-          ),
-          const SizedBox(height: 12),
-          _BeansRow(
-            icon: Icons.system_update,
-            title: '检查更新',
-            onTap: () => _checkUpdate(context),
-          ),
-          const SizedBox(height: 12),
-          // Build 28: gates only the automatic check at startup;
-          // the manual 检查更新 row above is never gated.
-          _BeansSwitchRow(
-            icon: Icons.autorenew,
-            title: '启动时自动检查更新',
-            value: _autoUpdateCheck,
-            onChanged: (value) async {
-              HaoHaptics.select();
-              await HiveStore.put(HiveKeys.autoUpdateCheck, value);
-              setState(() => _autoUpdateCheck = value);
-            },
-          ),
-        ],
+          ],
+        ),
       ),
-    ));
+      // 1.1.6: VOD subtitle appearance (MPV only, three tiers
+      // each). Tap cycles to the next tier; applies at the next
+      // open, same as the subtitle delay row above (the player
+      // reads the persisted tiers once at open).
+      _BeansRow(
+        icon: Icons.format_size,
+        title: '字幕字号',
+        subtitle:
+            '当前：${_subFontSizeLabels[_vodSubtitleFontSize] ?? '标准'}',
+        onTap: () async {
+          HaoHaptics.select();
+          final i = _subFontSizeOrder.indexOf(_vodSubtitleFontSize);
+          final next = _subFontSizeOrder[
+              (i < 0 ? 0 : i + 1) % _subFontSizeOrder.length];
+          await HiveStore.put(HiveKeys.vodSubtitleFontSize, next);
+          if (mounted) setState(() => _vodSubtitleFontSize = next);
+          HaoToast.show('提示', message: '下次打开生效');
+        },
+      ),
+      _BeansRow(
+        icon: Icons.palette_outlined,
+        title: '字幕颜色',
+        subtitle: '当前：${_subColorLabels[_vodSubtitleColor] ?? '白色'}',
+        onTap: () async {
+          HaoHaptics.select();
+          final i = _subColorOrder.indexOf(_vodSubtitleColor);
+          final next =
+              _subColorOrder[(i < 0 ? 0 : i + 1) % _subColorOrder.length];
+          await HiveStore.put(HiveKeys.vodSubtitleColor, next);
+          if (mounted) setState(() => _vodSubtitleColor = next);
+          HaoToast.show('提示', message: '下次打开生效');
+        },
+      ),
+      _BeansRow(
+        icon: Icons.vertical_align_center,
+        title: '字幕位置',
+        subtitle:
+            '当前：${_subPositionLabels[_vodSubtitlePosition] ?? '底部'}',
+        onTap: () async {
+          HaoHaptics.select();
+          final i = _subPositionOrder.indexOf(_vodSubtitlePosition);
+          final next = _subPositionOrder[
+              (i < 0 ? 0 : i + 1) % _subPositionOrder.length];
+          await HiveStore.put(HiveKeys.vodSubtitlePosition, next);
+          if (mounted) setState(() => _vodSubtitlePosition = next);
+          HaoToast.show('提示', message: '下次打开生效');
+        },
+      ),
+      // Low-memory mode (Kazumi): tap cycles 自动 -> 始终开启 ->
+      // 始终关闭. Applies at the next open (mpv properties are set
+      // in open()); the subtitle states the effective state now,
+      // and the toast below says so once, at the moment the user
+      // changes it (build 28 D9 — no permanent hint row).
+      _BeansRow(
+        icon: Icons.data_saver_on,
+        title: '低内存模式',
+        subtitle: _lowMemoryMode.statusDescription(),
+        onTap: () async {
+          HaoHaptics.select();
+          final next = _lowMemoryMode.next;
+          await LowMemoryMode.save(next);
+          setState(() => _lowMemoryMode = next);
+          HaoToast.show('提示', message:  '下次打开生效');
+        },
+      ),
+      _BeansRow(
+        icon: Icons.chat_bubble_outline,
+        title: '弹幕设置',
+        onTap: () => Get.to(() => const DanmakuSettingsPage()),
+      ),
+    ];
+  }
+
+  /// Build 29 B组: “源管理”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _sourcesRows(BuildContext context) {
+    return [
+      _BeansRow(
+        icon: Icons.music_note,
+        title: '音源管理',
+        onTap: () => Get.to(() => const MusicSourcesPage()),
+      ),
+      _BeansRow(
+        icon: Icons.movie,
+        title: '影视源管理',
+        onTap: () => Get.to(() => const VideoSourcesPage()),
+      ),
+      _BeansRow(
+        icon: Icons.live_tv,
+        title: '直播源管理',
+        onTap: () => Get.to(() => const LiveSourcesPage()),
+      ),
+    ];
+  }
+
+  /// Build 29 B组: “数据”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _dataRows(BuildContext context) {
+    return [
+      _BeansRow(
+        icon: Icons.upload,
+        title: '导出备份',
+        onTap: () => _exportBackup(context),
+      ),
+      _BeansRow(
+        icon: Icons.download,
+        title: '导入备份',
+        onTap: () => _importBackup(context),
+      ),
+      _BeansRow(
+        icon: Icons.cleaning_services,
+        title: '缓存管理',
+        onTap: () => Get.to(() => const CacheSettingsPage()),
+      ),
+      _BeansRow(
+        icon: Icons.article_outlined,
+        title: '日志',
+        onTap: () => Get.to(() => const AppLogPage()),
+      ),
+    ];
+  }
+
+  /// Build 29 B组: “关于”组的行(原 build() 平铺内容, 一字未改;
+  /// 组内 12px 间隔由 _CollapsibleSection 统一加).
+  List<Widget> _aboutRows(BuildContext context) {
+    return [
+      _BeansRow(
+        icon: Icons.info_outline,
+        title: '版本',
+        subtitle: '$kAppVersion (build $kAppBuild)',
+        onTap: () => Get.to(() => const ChangelogPage()),
+      ),
+      _BeansRow(
+        icon: Icons.system_update,
+        title: '检查更新',
+        onTap: () => _checkUpdate(context),
+      ),
+      // Build 28: gates only the automatic check at startup;
+      // the manual 检查更新 row above is never gated.
+      _BeansSwitchRow(
+        icon: Icons.autorenew,
+        title: '启动时自动检查更新',
+        value: _autoUpdateCheck,
+        onChanged: (value) async {
+          HaoHaptics.select();
+          await HiveStore.put(HiveKeys.autoUpdateCheck, value);
+          setState(() => _autoUpdateCheck = value);
+        },
+      ),
+    ];
   }
 
   /// Import a custom font (stage 2 item 7, Beans `FontManager`):
@@ -1117,6 +1418,10 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           // and re-read the local toggles.
           Get.find<ThemeController>().loadFromBox(HiveStore.box);
           setState(() {
+            _sectionExpanded = {
+              for (final id in _sectionIds)
+                id: HiveStore.getBool(_sectionExpandedKey(id), true),
+            };
             _engineKey = HiveStore.getString(HiveKeys.videoPlayerKey, 'mpv');
             _autoNext = VideoPlaybackSettings.autoNext;
             _mixWithOthers =
@@ -1177,7 +1482,6 @@ class _BackgroundSwatches extends StatelessWidget {
       pressedScale: 0.98,
       child: GlassCard(
         radius: 18,
-        quality: GlassCardQuality.standard,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1238,6 +1542,96 @@ class _BackgroundSwatches extends StatelessWidget {
   }
 }
 
+/// Build 29 B组: 一个可收放的设置组. 组头复用 [_SectionTitle](Beans
+/// `SectionHeader` 21 w600), 右边是 Cupertino chevron_down: 展开时朝下,
+/// 收起时转 90° 朝右(AnimatedRotation + easeOutBack 弹簧); 点组头任何
+/// 位置都切换(HaoPressable, 和行一样的按压变暗). 收起后组头仍在、点按即
+/// 开, 不留死路; 内容由 AnimatedSize + ClipRect 做 300ms 收放,
+/// 收起时行全部卸载(Offstage 不留, 开关等原生视图随之释放, 再展开重建).
+class _CollapsibleSection extends StatelessWidget {
+  const _CollapsibleSection({
+    required this.title,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final String title;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: HaoPressable(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(HaoRadius.panel),
+            child: Row(
+              children: [
+                Expanded(child: _SectionTitle(title)),
+                AnimatedRotation(
+                  turns: expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: Icon(
+                    CupertinoIcons.chevron_down,
+                    size: 16,
+                    color: theme.textMuted.withValues(alpha: 0.8),
+                    shadows: HaoTheme.legibilityShadows(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ..._withGaps(children),
+                      // 6px breathing room inside the clip: the last
+                      // card's drop shadow / backdrop blur reaches
+                      // ~3px below the card; without this the ClipRect
+                      // (and AnimatedSize's own clip) cuts the shadow
+                      // exactly at the card edge and the bottom 3px
+                      // render 1-4 units off in light mode (golden
+                      // diff, invisible to the eye but real). The
+                      // inter-section gap below is 14 instead of 20,
+                      // so last-row-to-next-header stays 20 in total.
+                      const SizedBox(height: 6),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 组内行之间 12px, 和原来平铺时的行间距一致.
+  static List<Widget> _withGaps(List<Widget> rows) {
+    final out = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) out.add(const SizedBox(height: 12));
+      out.add(rows[i]);
+    }
+    return out;
+  }
+}
+
 /// Big section title (Beans `SectionHeader`, Components.swift:649:
 /// title 21 bold). "大标题分段" — one per settings group.
 class _SectionTitle extends StatelessWidget {
@@ -1252,8 +1646,10 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: TextStyle(
+          // Title 2 22 semibold (was 21 w600 — 21 is not an Apple
+          // text style; Title 2 is 22, Title 3 is 20).
           color: HaoTheme.of(context).textPrimary,
-          fontSize: 21,
+          fontSize: 22,
           fontWeight: FontWeight.w600,
           shadows: HaoTheme.legibilityShadows(context),
         ),
@@ -1359,15 +1755,10 @@ class _BeansRow extends StatelessWidget {
 }
 
 /// A Beans settings switch row: same card as [_BeansRow] with a
-/// GlassSwitch trailing (Beans `.toggleStyle(.switch).tint(accent)` —
-/// the theme switch already tints with the accent).
-///
-/// SKILL.md Rule 2 note: GlassSwitch's glass is transient (only the
-/// thumb turns to glass while it is touched/dragged; at rest it looks
-/// flat), so it is the library's sanctioned switch inside cards. The
-/// rule prefers it in `solid` cards and outside `glass` cards, but
-/// ours are glass cards (stage-1 Beans rows) and the nesting is
-/// momentary, not a persistent double-refraction surface.
+/// [HaoNativeSwitch] trailing (Beans `.toggleStyle(.switch).tint(accent)`
+/// — the real iOS UISwitch, build 29 E group; the old library
+/// GlassSwitch is gone, so there is exactly one switch component
+/// app-wide and its thumb can never again be the track colour).
 class _BeansSwitchRow extends StatelessWidget {
   const _BeansSwitchRow({
     required this.icon,
@@ -1389,16 +1780,11 @@ class _BeansSwitchRow extends StatelessWidget {
       icon: icon,
       title: title,
       subtitle: subtitle,
-      trailing: GlassSwitch(
+      trailing: HaoNativeSwitch(
         value: value,
-        // N-8: iOS size 51x31 (was the library default 58x26).
-        width: 51,
-        height: 31,
         onChanged: onChanged,
         activeColor: HaoTheme.of(context).accent,
-        // Intensity-scaled optics (chen 2026-11-21).
-        settings: HaoLiquidGlass.ios27Settings(context),
-        enableHaptics: HaoHaptics.enabled,
+        semanticsLabel: title,
       ),
     );
   }
@@ -1634,16 +2020,11 @@ class _PanelSwitch extends StatelessWidget {
             ),
           ),
         ),
-        GlassSwitch(
+        HaoNativeSwitch(
           value: value,
-          // N-8: iOS size 51x31 (was the library default 58x26).
-          width: 51,
-          height: 31,
           onChanged: onChanged,
           activeColor: theme.accent,
-          // Intensity-scaled optics (chen 2026-11-21).
-          settings: HaoLiquidGlass.ios27Settings(context),
-          enableHaptics: HaoHaptics.enabled,
+          semanticsLabel: title,
         ),
       ],
     );

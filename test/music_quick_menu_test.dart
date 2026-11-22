@@ -178,12 +178,16 @@ void main() {
       expect(y('歌曲信息'), lessThan(y('列表')));
       expect(y('列表'), lessThan(y('播放列表')));
       // Every item still present (regrouping moved, never removed).
-      // The play-mode row shows the current mode's label, not the
-      // words '播放模式'.
+      // The six adjustment blocks (speed / A-B / lyric offset /
+      // translation / fade / Zap) moved one tap deeper into the
+      // 播放设置 sub-sheet (build-29 regression fix: the `···` sheet
+      // overflowed past one screen); the 播放 section keeps one
+      // 播放设置 row that opens them. The play-mode row shows the
+      // current mode's label, not the words '播放模式'.
       for (final item in [
         '下一首播放',
         c.mode.label,
-        '倍速',
+        '播放设置',
         '歌曲信息',
         '评论',
         '播放列表',
@@ -193,6 +197,34 @@ void main() {
       ]) {
         expect(find.text(item), findsOneWidget, reason: item);
       }
+      // The adjustment blocks live in the sub-sheet now.
+      await tester.tap(find.text('播放设置'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      for (final item in [
+        '倍速',
+        'A-B 循环',
+        '歌词偏移',
+        '歌词翻译',
+        '淡入淡出',
+        'Zap 快速发现',
+      ]) {
+        expect(find.text(item), findsOneWidget, reason: item);
+      }
+      // Back to the more sheet (the sub-sheet's 取消 is the topmost).
+      // Two time-advancing pumps: the pop animation only ticks on
+      // the second one, and the sub-sheet's title stays in the tree
+      // until it finishes. On this file's default 600 pt viewport
+      // the sub-sheet scrolls, so bring its 取消 row into view first.
+      await tester.ensureVisible(find.text('取消').last);
+      await tester.pump();
+      await tester.tap(find.text('取消').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump();
+      expect(find.text('播放设置'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

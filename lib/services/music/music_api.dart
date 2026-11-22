@@ -2952,7 +2952,11 @@ class MusicApi {
                 ),
               )
               .where((l) => l.text.isNotEmpty)
-              .toList();
+              .toList()
+            // The LRC path sorts after parsing; this one never did —
+            // an out-of-order server list misaligned highlight and
+            // tap-to-seek. Sort by time the same way.
+            ..sort((a, b) => a.t.compareTo(b.t));
         default:
           return [];
       }

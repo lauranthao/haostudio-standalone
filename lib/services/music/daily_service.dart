@@ -113,6 +113,17 @@ class DailyService {
     return (tracks: list, cold: cold);
   }
 
+  /// 今日一 Pick (build 29): one deterministic song of the day from
+  /// the daily list — same song all day, a different one tomorrow
+  /// (seeded on 'pick-YYYY-MM-DD', a different seed from the daily
+  /// shuffle, so the pick is not just the list's first song).
+  /// Returns null when the daily list is empty.
+  static Song? pickOfDay(List<Song> dailyTracks, {DateTime? now}) {
+    if (dailyTracks.isEmpty) return null;
+    final rng = SeededRandom('pick-${dayKeyOf(now ?? DateTime.now())}');
+    return dailyTracks[(rng.nextDouble() * dailyTracks.length).floor()];
+  }
+
   Future<List<Song>> _discover(
     List<String> artists,
     Set<String> heard,

@@ -15,7 +15,7 @@ import 'player_backend.dart';
 import 'player_engine.dart';
 import 'video_fit.dart';
 
-class AvPlayerBackend implements PlayerBackend {
+class AvPlayerBackend implements PlayerBackend, PictureInPictureCapableBackend {
   AvPlayerBackend();
 
   BetterPlayerController? _controller;
@@ -38,11 +38,20 @@ class AvPlayerBackend implements PlayerBackend {
   @override
   PlayerEngine get engine => PlayerEngine.exo;
 
+  /// GlobalKey of the BetterPlayer widget — PiP needs it (the
+  /// controller's enablePictureInPicture reads the RenderBox for
+  /// the PiP rect on iOS). BetterPlayer never sets this itself:
+  /// the controller's betterPlayerGlobalKey stays null unless the
+  /// app sets it (verified against better_player_plus 1.4.1 — no
+  /// call to setBetterPlayerGlobalKey anywhere in the package), so
+  /// this backend owns the key and hands it to the widget.
+  final GlobalKey _videoKey = GlobalKey();
+
   @override
   Widget buildVideoWidget() {
     final controller = _controller;
     if (controller == null) return const SizedBox.shrink();
-    return BetterPlayer(controller: controller);
+    return BetterPlayer(key: _videoKey, controller: controller);
   }
 
   @override
@@ -176,6 +185,32 @@ class AvPlayerBackend implements PlayerBackend {
 
   @override
   Future<void> setRate(double rate) async => _controller?.setSpeed(rate);
+
+  /// System PiP (K 组, build 29): AVPlayer is the only engine that
+  /// can do it — BetterPlayer 1.4.1 ships enablePictureInPicture
+  /// over AVPictureInPictureController on iOS. False when not
+  /// opened / PiP unsupported on this device / the video view has
+  /// no RenderBox yet (buildVideoWidget never built). MPV/IJK
+  /// cannot do system PiP at all (no AVFoundation playback
+  /// underneath) and do not implement this interface.
+  @override
+  Future<bool> enterPictureInPicture() async {
+    final controller = _controller;
+    if (_disposed || !_opened || controller == null) return false;
+    try {
+      // Keep the controller's own key in sync (its built-in
+      // controls read it; ours is the same key).
+      controller.setBetterPlayerGlobalKey(_videoKey);
+      if (!await controller.isPictureInPictureSupported()) return false;
+      final renderBox =
+          _videoKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null) return false;
+      await controller.enablePictureInPicture(_videoKey);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   // Audio-only is MPV-only (see PlayerBackend.setAudioOnly): AVPlayer
   // keeps the interface default no-op.

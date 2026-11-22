@@ -1,9 +1,9 @@
 // HaoSegmentedControl — iOS UISegmentedControl (N-9).
 //
-// Replaces the 6 Material SegmentedButtons: the selected segment is
-// a rounded pill that SLIDES to the tapped segment on the settle
-// spring (HaoSettleSpringCurve, same spring as the player expand),
-// instead of the background colour just flipping. Segment labels
+// build-29 adoption: the real `UISegmentedControl` via glassy_ui_ios
+// `GlassSegmentedControl` on iOS; the previous Flutter sliding-pill
+// control below is the off-iOS fallback (same labels, same haptic,
+// same colours), so the 6 call sites change nothing. Segment labels
 // are 13pt Semibold; selected label is the theme accent, the rest
 // secondary. Tapping a segment fires HaoHaptics.select() (N-13 —
 // the control owns the haptic, so no call site can forget it).
@@ -12,6 +12,7 @@
 // purple anywhere; the pill is the accent wash, never red.
 
 import 'package:flutter/material.dart';
+import 'package:glassy_ui_ios/glassy_ui_ios.dart' as glassy;
 
 import '../core/theme/hao_radius.dart';
 import '../core/theme/hao_settle_spring.dart';
@@ -32,6 +33,50 @@ class HaoSegmentedControl<T> extends StatelessWidget {
     required this.value,
     required this.onChanged,
   }) : assert(segments.length > 1, 'need at least 2 segments');
+
+  final List<HaoSegment<T>> segments;
+  final T value;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    var selectedIndex = segments.indexWhere((s) => s.value == value);
+    if (selectedIndex < 0) selectedIndex = 0;
+    return glassy.GlassSegmentedControl(
+      items: [
+        for (final segment in segments)
+          glassy.NativeItem(title: segment.label),
+      ],
+      selectedIndex: selectedIndex,
+      // Native path only: the fallback below owns its own haptic +
+      // onChanged, and glassy renders the fallback (not this
+      // callback) off-iOS, so this never double-fires.
+      onChanged: (i) {
+        if (segments[i].value != value) {
+          HaoHaptics.select();
+          onChanged(segments[i].value);
+        }
+      },
+      fallback: _FallbackSegmentedControl(
+        segments: segments,
+        value: value,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+/// Pre-adoption Flutter control: the selected segment is a rounded
+/// pill that SLIDES to the tapped segment on the settle spring
+/// (HaoSettleSpringCurve, same spring as the player expand), instead
+/// of the background colour just flipping. Now the off-iOS fallback
+/// only — iOS renders the native UISegmentedControl above.
+class _FallbackSegmentedControl<T> extends StatelessWidget {
+  const _FallbackSegmentedControl({
+    required this.segments,
+    required this.value,
+    required this.onChanged,
+  });
 
   final List<HaoSegment<T>> segments;
   final T value;
@@ -90,6 +135,13 @@ class HaoSegmentedControl<T> extends StatelessWidget {
                           child: Text(
                             segment.label,
                             style: TextStyle(
+                              // b29-A buttons: the segmented labels sit
+                              // on a transparent capsule over glass /
+                              // wallpaper, so they carry the legibility
+                              // shadow explicitly (the theme ambient
+                              // merge would cover them too — this makes
+                              // the control self-sufficient).
+                              shadows: HaoTheme.legibilityShadows(context),
                               color: segment.value == value
                                   ? theme.accent
                                   : theme.textSecondary,

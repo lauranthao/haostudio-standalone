@@ -40,6 +40,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/storage/hive_store.dart';
+import 'autoeq_presets.dart';
 
 /// One user-saved custom preset (Beans `BeansEqualizerCustomPreset`).
 class EqualizerCustomPreset {
@@ -155,6 +156,13 @@ class EqualizerStore extends ChangeNotifier {
   double preampGain = 0;
   List<EqualizerCustomPreset> customPresets = [];
 
+  /// The AutoEq headphone preset currently applied, if any (build
+  /// 29). A hand-tuned band or a built-in preset clears it — the
+  /// gains are the truth, this name is only the label. Persisted
+  /// under a literal key (HiveKeys lives in core storage; see
+  /// MultiQueueStore's header).
+  String? selectedAutoEqName;
+
   /// Display name of the current preset (custom name wins, then
   /// 自定义 for hand-tuned gains, then the built-in name — Beans
   /// presetCard menu label).
@@ -228,6 +236,11 @@ class EqualizerStore extends ChangeNotifier {
         !customPresets.any((p) => p.name == selectedCustomPresetName)) {
       selectedCustomPresetName = null;
     }
+    // AutoEq selection (build 29): only a preset that still exists
+    // in the library survives a restart.
+    final storedAutoEq = HiveStore.getString('hao_eq_autoeq_name', '');
+    selectedAutoEqName =
+        autoEqPresetById(storedAutoEq.isEmpty ? null : storedAutoEq)?.name;
   }
 
   static List<EqualizerCustomPreset> _decodeCustomPresets(String json) {
@@ -263,6 +276,16 @@ class EqualizerStore extends ChangeNotifier {
       HiveKeys.equalizerCustomPresets,
       jsonEncode(customPresets.map((p) => p.toJson()).toList()),
     );
+    var autoEqId = '';
+    if (selectedAutoEqName != null) {
+      for (final p in kAutoEqPresets) {
+        if (p.name == selectedAutoEqName) {
+          autoEqId = p.id;
+          break;
+        }
+      }
+    }
+    await HiveStore.put('hao_eq_autoeq_name', autoEqId);
   }
 
   /// Push the current settings to the native tap engine. Returns true
@@ -346,6 +369,7 @@ class EqualizerStore extends ChangeNotifier {
     bandGains = updated;
     _custom = true;
     selectedCustomPresetName = null;
+    selectedAutoEqName = null;
     await _commit();
   }
 
@@ -356,6 +380,7 @@ class EqualizerStore extends ChangeNotifier {
     preampGain = normalized;
     _custom = true;
     selectedCustomPresetName = null;
+    selectedAutoEqName = null;
     await _commit();
   }
 
@@ -366,6 +391,21 @@ class EqualizerStore extends ChangeNotifier {
     selectedCustomPresetName = null;
     preampGain = 0;
     _custom = false;
+    selectedAutoEqName = null;
+    await _commit();
+  }
+
+  /// Apply an AutoEq headphone preset (build 29): the library's
+  /// 10-band gains through the same native channel as any preset,
+  /// preamp reset to 0. The gains are the truth afterwards — the
+  /// name is only the label, and any later hand-tune clears it.
+  Future<void> applyAutoEqPreset(AutoEqPreset preset) async {
+    bandGains = normalizeGains(preset.gains);
+    selectedPreset = EqualizerPreset.flat;
+    selectedCustomPresetName = null;
+    preampGain = 0;
+    _custom = true;
+    selectedAutoEqName = preset.name;
     await _commit();
   }
 
@@ -376,6 +416,7 @@ class EqualizerStore extends ChangeNotifier {
     selectedCustomPresetName = preset.name;
     preampGain = normalizeGain(preset.preamp);
     _custom = true;
+    selectedAutoEqName = null;
     await _commit();
   }
 

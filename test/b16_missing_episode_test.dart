@@ -324,6 +324,11 @@ void main() {
       expect(find.text('第3集'), findsOneWidget);
 
       await tester.tap(find.text('第3集'));
+      // Build 29 (K): the top bar is fixed — the seven secondary
+      // buttons moved into a 更多 CupertinoActionSheet, so the bar
+      // is back + title + danmaku + episodes + more (~216 px) and
+      // fits the 390 px portrait width. No rotation needed: the
+      // player now genuinely renders in portrait.
       await tester.pump();
       await tester.pump();
 

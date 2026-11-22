@@ -90,9 +90,12 @@ class CollapsibleSection extends StatelessWidget {
                           style:
                               (titleStyle ??
                                       TextStyle(
+                                        // Title 3 20 semibold (was 18
+                                        // w800 — 18 is not an Apple
+                                        // text style; Title 3 is 20).
                                         color: theme.textPrimary,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
                                       ))
                                   .copyWith(
                                     shadows:

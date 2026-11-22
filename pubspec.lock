@@ -318,6 +318,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.7.3"
+  glassy_ui_ios:
+    dependency: "direct main"
+    description:
+      name: glassy_ui_ios
+      sha256: "3d1b621d9a40ce97b015e34f28b1399baa959bc48d0d9ee23b0ed0648eacc094"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.1"
   glob:
     dependency: transitive
     description:

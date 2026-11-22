@@ -1,4 +1,4 @@
-// Apple CMS video sources — 18 defaults.
+// Apple CMS video sources — 19 defaults.
 //
 // Port of sources.js `DEFAULT_VIDEO` (which itself reuses the web
 // app.js `DIRECT_VIDEO_SEEDS`, same real ids). `sort` ascending =
@@ -37,7 +37,9 @@ import 'video_models.dart';
 /// header note on the three sources). The merge upgrades a stored
 /// http twin to its https twin in place (same id, sort and enabled —
 /// a user's reorder / toggle is never touched by the upgrade).
-const int kVideoSourcesRevision = 3;
+/// 4 = +电影天堂资源 (dyttzy, verified 2026-11-22: ?ac=videolist
+/// returns 200, code 1, total 85263, play URLs present).
+const int kVideoSourcesRevision = 4;
 
 /// UA for CMS video + Douban search-page fallback (must be verbatim —
 /// several upstreams key behaviour off it).
@@ -51,7 +53,7 @@ const String kDirectMusicUa =
     'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 '
     'Mobile/15E148 Safari/604.1';
 
-/// The 18 default CMS sources, in shipped order (already sort order).
+/// The 19 default CMS sources, in shipped order (already sort order).
 const List<VideoSource> kDefaultVideoSources = [
   VideoSource(
     id: 12,
@@ -202,6 +204,17 @@ const List<VideoSource> kDefaultVideoSources = [
     kind: 'search',
     enabled: true,
     sort: 24,
+  ),
+  // 2026-11-22: added per chen (tvbox-desktop CMS list); verified live:
+  // ?ac=videolist returns 200, code 1, total 85263, play URLs present.
+  // Measured 2.26s, so placed last per the file's speed convention.
+  VideoSource(
+    id: 19,
+    name: '电影天堂资源',
+    apiUrl: 'https://caiji.dyttzyapi.com/api.php/provide/vod',
+    kind: 'play',
+    enabled: true,
+    sort: 25,
   ),
 ];
 

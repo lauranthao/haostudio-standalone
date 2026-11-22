@@ -431,12 +431,14 @@ class MusicStore {
         clampSleepCustomMinutes(minutes),
       );
 
-  // ---- Playback speed (M-P0-2): 0.6..2.0, default 1.0 ----
+  // ---- Playback speed (M-P0-2): 0.5..2.0, default 1.0 (build 29:
+  // was 0.6..2.0; pitch stays correct — the native fork pins every
+  // AVPlayerItem to AVAudioTimePitchAlgorithmTimeDomain).
   static double get speed =>
-      HiveStore.getDouble(HiveKeys.musicSpeed, 1.0).clamp(0.6, 2.0);
+      HiveStore.getDouble(HiveKeys.musicSpeed, 1.0).clamp(0.5, 2.0);
 
   static Future<void> setSpeed(double v) =>
-      HiveStore.put(HiveKeys.musicSpeed, v.clamp(0.6, 2.0));
+      HiveStore.put(HiveKeys.musicSpeed, v.clamp(0.5, 2.0));
 
   // ---- Play queue (M-P0-4): the player playlist + current index,
   // persisted so a reorder / play-next survives app restarts. ----

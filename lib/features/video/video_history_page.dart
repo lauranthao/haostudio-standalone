@@ -61,7 +61,7 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
         actions: [
           if (history.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.delete_outline),
+              icon: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),),
               tooltip: '清空历史记录',
               onPressed: _confirmClear,
             ),
@@ -73,7 +73,7 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    Icons.history,
+                    Icons.history, shadows: HaoTheme.legibilityShadows(context), 
                     size: 48,
                     color: theme.textMuted,
                   ),
@@ -167,7 +167,7 @@ class _HistoryRow extends StatelessWidget {
                         )
                       else
                         Icon(
-                          Icons.movie,
+                          Icons.movie, shadows: HaoTheme.legibilityShadows(context), 
                           color: theme.textMuted,
                           size: 28,
                         ),
@@ -227,7 +227,7 @@ class _HistoryRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Icon(
-              Icons.play_circle_outline,
+              Icons.play_circle_outline, shadows: HaoTheme.legibilityShadows(context), 
               color: theme.accent,
               size: 28,
             ),

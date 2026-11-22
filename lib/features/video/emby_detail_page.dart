@@ -331,6 +331,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
         source: d.source,
         vodId: d.vodId,
         meta: d.meta,
+        mediaType: d.mediaType,
         lines: lines,
       );
     });
@@ -602,7 +603,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.play_arrow),
+                    icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                     label: Text(
                       _playButtonLabel,
                       style: const TextStyle(
@@ -738,6 +739,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                                 : theme.hairline,
                           ),
                           labelStyle: TextStyle(
+                            shadows: HaoTheme.legibilityShadows(context),
                             color: selected
                                 ? theme.accent
                                 : theme.textSecondary,
@@ -931,7 +933,7 @@ class _CoverHero extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                icon: const Icon(CupertinoIcons.back, color: Colors.white),
+                icon: Icon(CupertinoIcons.back, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -952,7 +954,7 @@ class _CoverFallback extends StatelessWidget {
     return ColoredBox(
       color: theme.surfaceStrong,
       child: Center(
-        child: Icon(Icons.movie, color: theme.textMuted, size: 64),
+        child: Icon(Icons.movie, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted, size: 64),
       ),
     );
   }
@@ -1054,7 +1056,7 @@ class _MetaLine extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.star, color: theme.accent, size: 16),
+              Icon(Icons.star, shadows: HaoTheme.legibilityShadows(context),  color: theme.accent, size: 16),
               const SizedBox(width: 2),
               Text(
                 meta.score,
@@ -1106,7 +1108,7 @@ class _CircleAction extends StatelessWidget {
           color: active ? theme.accentSoft : Colors.transparent,
         ),
         child: Icon(
-          icon,
+          icon, shadows: HaoTheme.legibilityShadows(context), 
           color: active ? theme.accent : theme.textSecondary,
         ),
       ),
@@ -1234,7 +1236,7 @@ class _ErrorCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: theme.textMuted),
+            Icon(Icons.cloud_off, shadows: HaoTheme.legibilityShadows(context),  size: 48, color: theme.textMuted),
             const SizedBox(height: 16),
             Text(
               '加载失败',
@@ -1253,7 +1255,7 @@ class _ErrorCard extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
+              icon: Icon(Icons.refresh, shadows: HaoTheme.legibilityShadows(context),),
               label: const Text('重试'),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,

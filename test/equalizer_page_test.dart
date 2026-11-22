@@ -13,12 +13,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
-import 'package:liquid_glass_widgets/liquid_glass_widgets.dart'
-    hide GlassCard, GlassShadow;
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/theme_controller.dart';
 import 'package:standalone/features/music/equalizer_page.dart';
+import 'package:standalone/widgets/native_switch.dart';
 import 'package:standalone/services/music/equalizer_store.dart';
 
 void main() {
@@ -148,7 +147,7 @@ void main() {
 
     final store = EqualizerStore.ensure();
     expect(store.enabled, isFalse);
-    await tester.tap(find.byType(GlassSwitch));
+    await tester.tap(find.byType(HaoNativeSwitch));
     await tester.pumpAndSettle();
     expect(store.enabled, isTrue);
     expect(HiveStore.getBool(HiveKeys.equalizerEnabled, false), isTrue);

@@ -132,7 +132,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _import,
-                    icon: const Icon(Icons.add, size: 18),
+                    icon: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),  size: 18),
                     label: const Text('导入音频文件'),
                   ),
                 ],

@@ -1,0 +1,709 @@
+{
+ "$metadata": {
+  "format": "W3C Design Tokens Community Group (DTCG) draft",
+  "name": "HAo Studio design tokens",
+  "note": "build-29 adoption: generated files ARE the app two-end fact source (HaoTokens). $value is the LIGHT value; $extensions.hao.dark is the DARK value for the same token. surface/hairline/accent-soft use 8-digit #RRGGBBAA (alpha last). accent-soft is derived in code as accent.withValues(alpha: 0.14) — hao_themes.dart:504. VOID (chen 2026-11-22): color.theme.*.tab-pill + motion.settle-spring.* are Kumone bottom-bar values — frozen history only, never wire into the tab bar.",
+  "source": "lib/core/theme/hao_themes.dart, hao_radius.dart, hao_settle_spring.dart, widgets/app_shell.dart (spike clone, base c512e99)"
+ },
+ "blur": {
+  "glass-blur-sigma": {
+   "$description": "Backdrop blur sigma for frosted glass, all themes, both modes (hao_themes.dart).",
+   "$type": "dimension",
+   "$value": 24
+  }
+ },
+ "color": {
+  "$type": "color",
+  "live-red": {
+   "$description": "The ONLY red in the app: LIVE badge + recording dot. Same in light and dark (hao_themes.dart:306).",
+   "$value": "#E5484D"
+  },
+  "theme": {
+   "apple-glass": {
+    "accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#76767A"
+      }
+     },
+     "$value": "#000000"
+    },
+    "accent-soft": {
+     "$description": "Derived: accent at 14% alpha.",
+     "$extensions": {
+      "hao": {
+       "dark": "#76767A24"
+      }
+     },
+     "$value": "#00000024"
+    },
+    "hairline": {
+     "$description": "Black 8% light / white 12% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF1F"
+      }
+     },
+     "$value": "#00000014"
+    },
+    "on-accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "scaffold": {
+     "$extensions": {
+      "hao": {
+       "dark": "#000000"
+      }
+     },
+     "$value": "#F2F2F7"
+    },
+    "surface": {
+     "$description": "White at 55% light / 10% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF1A"
+      }
+     },
+     "$value": "#FFFFFF8C"
+    },
+    "surface-solid": {
+     "$extensions": {
+      "hao": {
+       "dark": "#1C1C1E"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "surface-strong": {
+     "$description": "White at 68% light / 16% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF29"
+      }
+     },
+     "$value": "#FFFFFFAD"
+    },
+    "tab-pill": {
+     "$extensions": {
+      "hao": {
+       "dark": "#3A3A3C"
+      }
+     },
+     "$value": "#E4E4E4"
+    },
+    "text-muted": {
+     "$extensions": {
+      "hao": {
+       "dark": "#98989D"
+      }
+     },
+     "$value": "#6B6B70"
+    },
+    "text-primary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#F5F5F7"
+      }
+     },
+     "$value": "#1C1C1E"
+    },
+    "text-secondary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#D1D1D6"
+      }
+     },
+     "$value": "#3A3A3C"
+    }
+   },
+   "dark-gold": {
+    "accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#D4AF37"
+      }
+     },
+     "$value": "#9A7B1E"
+    },
+    "accent-soft": {
+     "$description": "Derived: accent at 14% alpha.",
+     "$extensions": {
+      "hao": {
+       "dark": "#D4AF3724"
+      }
+     },
+     "$value": "#9A7B1E24"
+    },
+    "hairline": {
+     "$description": "Accent 18% light / 22% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#D4AF3738"
+      }
+     },
+     "$value": "#9A7B1E2E"
+    },
+    "on-accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "scaffold": {
+     "$extensions": {
+      "hao": {
+       "dark": "#0D0B08"
+      }
+     },
+     "$value": "#FAF6EC"
+    },
+    "surface": {
+     "$description": "White at 55% light / 8% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF14"
+      }
+     },
+     "$value": "#FFFFFF8C"
+    },
+    "surface-solid": {
+     "$extensions": {
+      "hao": {
+       "dark": "#1D1A14"
+      }
+     },
+     "$value": "#FFFDF5"
+    },
+    "surface-strong": {
+     "$description": "White at 68% light / 14% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF24"
+      }
+     },
+     "$value": "#FFFFFFAD"
+    },
+    "tab-pill": {
+     "$extensions": {
+      "hao": {
+       "dark": "#3A3A3C"
+      }
+     },
+     "$value": "#E4E4E4"
+    },
+    "text-muted": {
+     "$extensions": {
+      "hao": {
+       "dark": "#9A8B6B"
+      }
+     },
+     "$value": "#7A6C4E"
+    },
+    "text-primary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#F5EDD6"
+      }
+     },
+     "$value": "#2A2113"
+    },
+    "text-secondary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#D8C9A3"
+      }
+     },
+     "$value": "#5C4F33"
+    }
+   },
+   "fresh-mint": {
+    "accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#4DD0C4"
+      }
+     },
+     "$value": "#00897B"
+    },
+    "accent-soft": {
+     "$description": "Derived: accent at 14% alpha.",
+     "$extensions": {
+      "hao": {
+       "dark": "#4DD0C424"
+      }
+     },
+     "$value": "#00897B24"
+    },
+    "hairline": {
+     "$description": "Accent 14% light / white 12% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF1F"
+      }
+     },
+     "$value": "#00897B24"
+    },
+    "on-accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "scaffold": {
+     "$extensions": {
+      "hao": {
+       "dark": "#07110F"
+      }
+     },
+     "$value": "#EFFAF6"
+    },
+    "surface": {
+     "$description": "White at 55% light / 9% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF17"
+      }
+     },
+     "$value": "#FFFFFF8C"
+    },
+    "surface-solid": {
+     "$extensions": {
+      "hao": {
+       "dark": "#122622"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "surface-strong": {
+     "$description": "White at 68% light / 15% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF26"
+      }
+     },
+     "$value": "#FFFFFFAD"
+    },
+    "tab-pill": {
+     "$extensions": {
+      "hao": {
+       "dark": "#3A3A3C"
+      }
+     },
+     "$value": "#E4E4E4"
+    },
+    "text-muted": {
+     "$extensions": {
+      "hao": {
+       "dark": "#7FA39B"
+      }
+     },
+     "$value": "#58746D"
+    },
+    "text-primary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#E6F7F3"
+      }
+     },
+     "$value": "#122E29"
+    },
+    "text-secondary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#B9D9D2"
+      }
+     },
+     "$value": "#3D5A54"
+    }
+   },
+   "polar-ice": {
+    "accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#76767A"
+      }
+     },
+     "$value": "#000000"
+    },
+    "accent-soft": {
+     "$description": "Derived: accent at 14% alpha.",
+     "$extensions": {
+      "hao": {
+       "dark": "#76767A24"
+      }
+     },
+     "$value": "#00000024"
+    },
+    "hairline": {
+     "$description": "Black 14% light / white 20% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF33"
+      }
+     },
+     "$value": "#00000024"
+    },
+    "on-accent": {
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "scaffold": {
+     "$extensions": {
+      "hao": {
+       "dark": "#050B12"
+      }
+     },
+     "$value": "#EEF6FB"
+    },
+    "surface": {
+     "$description": "White at 55% light / 8% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF14"
+      }
+     },
+     "$value": "#FFFFFF8C"
+    },
+    "surface-solid": {
+     "$extensions": {
+      "hao": {
+       "dark": "#0E1E2E"
+      }
+     },
+     "$value": "#FFFFFF"
+    },
+    "surface-strong": {
+     "$description": "White at 68% light / 14% dark.",
+     "$extensions": {
+      "hao": {
+       "dark": "#FFFFFF24"
+      }
+     },
+     "$value": "#FFFFFFAD"
+    },
+    "tab-pill": {
+     "$extensions": {
+      "hao": {
+       "dark": "#3A3A3C"
+      }
+     },
+     "$value": "#E4E4E4"
+    },
+    "text-muted": {
+     "$extensions": {
+      "hao": {
+       "dark": "#7D9BB0"
+      }
+     },
+     "$value": "#4F6E84"
+    },
+    "text-primary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#E8F4FC"
+      }
+     },
+     "$value": "#0F2436"
+    },
+    "text-secondary": {
+     "$extensions": {
+      "hao": {
+       "dark": "#B4D2E6"
+      }
+     },
+     "$value": "#3A5568"
+    }
+   }
+  }
+ },
+ "font": {
+  "app-bar-title": {
+   "size": {
+    "$type": "dimension",
+    "$value": 17
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.29
+   }
+  },
+  "chip-label": {
+   "size": {
+    "$type": "dimension",
+    "$value": 13
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   }
+  },
+  "dialog-content": {
+   "size": {
+    "$type": "dimension",
+    "$value": 15
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 400
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.33
+   }
+  },
+  "dialog-title": {
+   "size": {
+    "$type": "dimension",
+    "$value": 17
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.29
+   }
+  },
+  "filled-button-label": {
+   "size": {
+    "$type": "dimension",
+    "$value": 16
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   }
+  },
+  "list-tile-subtitle": {
+   "size": {
+    "$type": "dimension",
+    "$value": 13
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 400
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.38
+   }
+  },
+  "list-tile-title": {
+   "size": {
+    "$type": "dimension",
+    "$value": 17
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.29
+   }
+  },
+  "slider-value-indicator": {
+   "size": {
+    "$type": "dimension",
+    "$value": 12
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   }
+  },
+  "text-button-label": {
+   "size": {
+    "$type": "dimension",
+    "$value": 15
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   }
+  },
+  "section-title": {
+   "size": {
+    "$type": "dimension",
+    "$value": 13
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 400
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.38
+   }
+  },
+  "large-title": {
+   "size": {
+    "$type": "dimension",
+    "$value": 34
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 700
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.21
+   }
+  },
+  "title-3": {
+   "size": {
+    "$type": "dimension",
+    "$value": 20
+   },
+   "weight": {
+    "$type": "number",
+    "$value": 600
+   },
+   "line-height": {
+    "$type": "number",
+    "$value": 1.25
+   }
+  }
+ },
+ "motion": {
+  "settle-spring": {
+   "$description": "Kumone settle spring (hao_settle_spring.dart; GlassTabBar.swift:36 — spring(response: 0.35, dampingFraction: 0.82)). Underdamped, ~1% overshoot. Normalised at 0.4s so transform(1) is exactly 1.",
+   "damping": {
+    "$type": "number",
+    "$value": 29.441
+   },
+   "damping-fraction": {
+    "$type": "number",
+    "$value": 0.82
+   },
+   "mass": {
+    "$type": "number",
+    "$value": 1.0
+   },
+   "normalize-at": {
+    "$type": "number",
+    "$value": 0.4
+   },
+   "response": {
+    "$type": "number",
+    "$value": 0.35
+   },
+   "stiffness": {
+    "$type": "number",
+    "$value": 322.273
+   }
+  }
+ },
+ "opacity": {
+  "glass-intensity-default": {
+   "$description": "Runtime user setting (Settings → 外观 slider), 0..1. Tokens carry the 1.0 values; intensity scales optics, never layout.",
+   "$type": "number",
+   "$value": 1.0
+  }
+ },
+ "radius": {
+  "$type": "dimension",
+  "badge": {
+   "$description": "Badge / tiny chips (hao_radius.dart).",
+   "$value": 4
+  },
+  "large": {
+   "$description": "Large cards, list rows; chip + filled-button shape.",
+   "$value": 12
+  },
+  "panel": {
+   "$description": "Panels, cards, floating bars; GlassCard default.",
+   "$value": 20
+  },
+  "sheet": {
+   "$description": "Bottom sheets — iOS card-sheet radius (D-7, was 24).",
+   "$value": 14
+  },
+  "small": {
+   "$description": "Small controls, compact covers.",
+   "$value": 6
+  },
+  "standard": {
+   "$description": "Standard rows, buttons, small cards.",
+   "$value": 8
+  }
+ },
+ "slider": {
+  "thumb-radius": {
+   "$description": "iOS thumb is 28pt across (N-12).",
+   "$type": "dimension",
+   "$value": 14
+  },
+  "track-height": {
+   "$type": "dimension",
+   "$value": 4
+  }
+ },
+ "spacing": {
+  "$type": "dimension",
+  "chip-padding-horizontal": {
+   "$value": 12
+  },
+  "chip-padding-vertical": {
+   "$value": 8
+  },
+  "divider-space": {
+   "$value": 1
+  },
+  "divider-thickness": {
+   "$value": 1
+  },
+  "filled-button-padding-horizontal": {
+   "$value": 20
+  },
+  "filled-button-padding-vertical": {
+   "$value": 13
+  },
+  "tab-bar-bottom-margin": {
+   "$value": 6
+  },
+  "tab-bar-clearance": {
+   "$description": "PageView bottom padding: 64 + 6 + 12 (Kumone tabBarClearance).",
+   "$value": 82
+  },
+  "tab-bar-content-height": {
+   "$description": "Kumone tab bar content height (app_shell.dart).",
+   "$value": 56
+  },
+  "tab-bar-drag-threshold": {
+   "$description": "Horizontal drag under 8pt does not start a pill drag.",
+   "$value": 8
+  },
+  "tab-bar-inset": {
+   "$description": "Kumone tab bar inset; 56 + 4 = 64 total.",
+   "$value": 4
+  },
+  "tab-bar-total-height": {
+   "$value": 64
+  },
+  "text-button-padding-horizontal": {
+   "$value": 12
+  },
+  "text-button-padding-vertical": {
+   "$value": 8
+  }
+ }
+}

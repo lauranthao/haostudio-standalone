@@ -35,6 +35,33 @@ Future<void> _loadCjkFont() async {
   ).readAsBytes();
   iconLoader.addFont(Future.value(ByteData.view(iconBytes.buffer)));
   await iconLoader.load();
+
+  // CupertinoIcons (build 29 B组: 组头 chevron_down). Without this
+  // the chevron renders as tofu in the golden. The pub-cache path
+  // is versioned, so glob for the installed cupertino_icons-* dir.
+  final home = Platform.environment['HOME'] ?? '';
+  final cupertinoDirs = Directory('$home/.pub-cache/hosted/pub.dev')
+      .listSync()
+      .whereType<Directory>()
+      .where((d) => d.path.split('/').last.startsWith('cupertino_icons-'))
+      .toList()
+    ..sort((a, b) => b.path.compareTo(a.path));
+  if (cupertinoDirs.isEmpty) {
+    throw StateError('cupertino_icons package not found in pub cache');
+  }
+  final cupertinoBytes = await File(
+    '${cupertinoDirs.first.path}/assets/CupertinoIcons.ttf',
+  ).readAsBytes();
+  // Package icons resolve as 'packages/<package>/<family>' (the
+  // Icon widget prefixes fontPackage), so the loader must register
+  // the qualified name — a bare 'CupertinoIcons' loads but never
+  // matches, and the chevron renders as a tofu box.
+  final cupertinoLoader =
+      FontLoader('packages/cupertino_icons/CupertinoIcons');
+  cupertinoLoader.addFont(
+    Future.value(ByteData.view(cupertinoBytes.buffer)),
+  );
+  await cupertinoLoader.load();
 }
 
 ThemeData _cjkTheme(ThemeData base) {

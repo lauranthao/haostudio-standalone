@@ -55,3 +55,9 @@ app.*.map.json
 
 # Transient golden-failure images written by flutter test runs.
 test/failures/
+
+# Design-token toolchain deps (Style Dictionary).
+tokens/node_modules/
+
+# Flutter ephemeral build outputs (plugin symlinks, generated registrants).
+**/flutter/ephemeral/

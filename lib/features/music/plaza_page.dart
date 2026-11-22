@@ -607,7 +607,7 @@ class _PlazaDetailPageState extends State<PlazaDetailPage> {
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: _playAll,
-                              icon: const Icon(Icons.play_arrow),
+                              icon: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),),
                               label: const Text('播放全部'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: theme.accent,

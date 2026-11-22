@@ -183,7 +183,14 @@ void main() {
       await tester.tap(find.text('王者荣耀'));
       await settle(tester);
       await tester.pump();
-      expect(searched, ['huya:王者荣耀']);
+      // Progressive fan-out: one query searches every enabled platform.
+      expect(searched, [
+        'bilibili:王者荣耀',
+        'douyu:王者荣耀',
+        'huya:王者荣耀',
+        'douyin:王者荣耀',
+        'kuaishou:王者荣耀',
+      ]);
       expect(find.text('王者荣耀直播'), findsOneWidget);
       // The searched term is saved again (dedup keeps one row).
       expect(LiveHistoryStore.getSearchHistory(), ['王者荣耀']);
@@ -233,9 +240,11 @@ void main() {
       var calls = 0;
       await pumpPage(
         tester,
+        // The whole first round (all 5 platforms) fails; the retry
+        // round succeeds. Error state needs ALL platforms failed.
         searchFn: (_, _) async {
           calls++;
-          if (calls == 1) throw Exception('boom');
+          if (calls <= 5) throw Exception('boom');
           return [_room(roomId: '9', title: '重试后有了')];
         },
       );
@@ -246,12 +255,18 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, '重试'));
       await settle(tester);
       await tester.pump();
-      expect(calls, 2);
+      expect(calls, 10);
       expect(find.text('重试后有了'), findsOneWidget);
     });
 
-    testWidgets('switching platform re-runs the query there',
+    testWidgets('platform chips filter merged results without re-running',
         (tester) async {
+      // Tall viewport: all 5 merged rows must be built at once, or
+      // ListView.builder leaves the 5th below the fold unbuilt.
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final calls = <String>[];
       await pumpPage(
         tester,
@@ -262,11 +277,26 @@ void main() {
         },
       );
       await submit(tester, '英雄联盟');
-      expect(calls, ['huya:英雄联盟']);
-      await tester.tap(find.text('斗鱼'));
-      await settle(tester);
+      // One fan-out round: all 5 platforms searched once.
+      expect(calls, [
+        'bilibili:英雄联盟',
+        'douyu:英雄联盟',
+        'huya:英雄联盟',
+        'douyin:英雄联盟',
+        'kuaishou:英雄联盟',
+      ]);
+      // Initial filter is huya: only that platform's room shows.
+      expect(find.text('间'), findsOneWidget);
+      // 全部 shows all 5 merged rooms; no re-run.
+      await tester.tap(find.text('全部'));
       await tester.pump();
-      expect(calls, ['huya:英雄联盟', 'douyu:英雄联盟']);
+      expect(calls.length, 5);
+      expect(find.text('间'), findsNWidgets(5));
+      // 斗鱼 filters to that platform only; still no re-run.
+      await tester.tap(find.text('斗鱼'));
+      await tester.pump();
+      expect(calls.length, 5);
+      expect(find.text('间'), findsOneWidget);
     });
 
     testWidgets('stale first search cannot overwrite the new query',

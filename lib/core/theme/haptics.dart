@@ -8,10 +8,17 @@
 // Flutter mapping (same four entry points, same gate, same default):
 // - tap()     -> HapticFeedback.lightImpact()   (Beans tap = light)
 // - medium()  -> HapticFeedback.mediumImpact() (Beans medium)
-// - success() -> HapticFeedback.heavyImpact()  (Beans = notification
-//   success; Flutter has no notification API — heavyImpact is the
-//   closest distinct signal, and it is only used for completed
-//   actions, exactly where Beans calls success())
+// - success() -> UINotificationFeedbackGenerator (.success) on iOS
+//   via `HaoHapticsPlugin` (channel `com.haostudio.standalone/haptics`);
+//   HapticFeedback.heavyImpact() is the fallback when the channel is
+//   missing (unit tests, non-iOS, or a build from before the plugin
+//   landed) — the closest distinct signal, and it is only used for
+//   completed actions, exactly where Beans calls success()
+// - warning() -> UINotificationFeedbackGenerator (.warning), fallback
+//   mediumImpact — new in build 29 (iOS notification haptics were
+//   missing entirely: Flutter has no notification API)
+// - error()   -> UINotificationFeedbackGenerator (.error), fallback
+//   heavyImpact — new in build 29, same reason
 // - select()  -> HapticFeedback.selectionClick() (Beans selection)
 //
 // EVERY haptic call in the app goes through here — never call
@@ -60,8 +67,20 @@ class HaoHaptics {
   static void medium() => _fire(HapticFeedback.mediumImpact);
 
   /// Completed action — search finished with results, import done
-  /// (Beans `success()`).
-  static void success() => _fire(HapticFeedback.heavyImpact);
+  /// (Beans `success()`). Native notification haptic on iOS, with the
+  /// old heavy-impact fallback when the plugin channel is missing.
+  static void success() =>
+      _notifyOrFallback('success', HapticFeedback.heavyImpact);
+
+  /// Blocked / failed-soft action (Beans notification warning).
+  /// Native notification haptic on iOS, medium-impact fallback.
+  static void warning() =>
+      _notifyOrFallback('warning', HapticFeedback.mediumImpact);
+
+  /// Failed action (Beans notification error). Native notification
+  /// haptic on iOS, heavy-impact fallback.
+  static void error() =>
+      _notifyOrFallback('error', HapticFeedback.heavyImpact);
 
   /// Selection change — tab switch, chip pick, drag crossing a tab
   /// (Beans `select()`).
@@ -80,5 +99,24 @@ class HaoHaptics {
   static void _fire(Future<void> Function() call) {
     if (!enabled) return;
     unawaited(call().catchError((_) {}));
+  }
+
+  /// Native notification channel (HaoHapticsPlugin). A missing plugin
+  /// (unit tests, non-iOS) completes the invoke with
+  /// MissingPluginException — the fallback impact fires instead, so
+  /// callers never need to know which path ran.
+  static const MethodChannel _notificationChannel =
+      MethodChannel('com.haostudio.standalone/haptics');
+
+  static void _notifyOrFallback(
+    String type,
+    Future<void> Function() fallback,
+  ) {
+    if (!enabled) return;
+    unawaited(
+      _notificationChannel
+          .invokeMethod<void>('notification', {'type': type})
+          .catchError((_) => fallback().catchError((_) {})),
+    );
   }
 }

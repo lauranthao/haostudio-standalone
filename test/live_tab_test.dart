@@ -519,8 +519,10 @@ void main() {
 
       expect(find.text('直播间 1'), findsOneWidget);
       expect(find.text('主播 1'), findsOneWidget);
-      expect(find.text('1.2万'), findsOneWidget);
-      expect(find.text('500'), findsOneWidget);
+      // Item 6 (build 29): the pill names its metric kind — the
+      // fake platform is unknown, so it shows 观看, never 在线.
+      expect(find.text('观看 1.2万'), findsOneWidget);
+      expect(find.text('观看 500'), findsOneWidget);
       // Only the live room carries the badge.
       expect(find.text('LIVE'), findsOneWidget);
       // Platform chips for the Big-5 are present.

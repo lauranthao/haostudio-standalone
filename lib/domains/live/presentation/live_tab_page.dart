@@ -25,10 +25,14 @@ import '../../../features/video/widgets/referer_image.dart';
 import '../../../shared/platforms/sites.dart';
 import '../live_follow_store.dart';
 import '../live_history_store.dart';
+import '../live_metrics.dart';
 import 'live_follows_page.dart';
 import 'live_history_page.dart';
+import 'live_link_sheet.dart';
 import 'live_search_page.dart';
 import 'live_tab_controller.dart';
+import 'playback/live_multiview_page.dart';
+import 'playback/live_recording_center_page.dart';
 import 'playback/live_room_page.dart';
 
 class LiveTabPage extends StatefulWidget {
@@ -130,6 +134,41 @@ class _LiveTabPageState extends State<LiveTabPage> {
                         () => LiveSearchPage(
                           initialPlatform: _controller.platform,
                         ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link),
+                      tooltip: '粘贴链接进房',
+                      onPressed: () => showLiveLinkSheet(
+                        context: context,
+                        onOpenRoom: (room) => Get.to(
+                          () => LiveRoomPage(
+                            room: room,
+                            playlist: _controller.rooms,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.grid_view),
+                      tooltip: '多画面同看',
+                      onPressed: () => Get.to(
+                        () => LiveMultiViewPage(
+                          rooms: _controller.rooms,
+                          onOpenSingle: (room) => Get.to(
+                            () => LiveRoomPage(
+                              room: room,
+                              playlist: _controller.rooms,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.video_library_outlined),
+                      tooltip: '录制中心',
+                      onPressed: () => Get.to(
+                        () => const LiveRecordingCenterPage(),
                       ),
                     ),
                     IconButton(
@@ -500,14 +539,17 @@ class _RoomCardState extends State<_RoomCard> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            Icons.visibility_outlined,
+                          Icon(
+                            Icons.visibility_outlined, shadows: HaoTheme.legibilityShadows(context), 
                             color: Colors.white,
                             size: 12,
                           ),
                           const SizedBox(width: 3),
                           Text(
-                            formatWatching(room.watching),
+                            // Build-29 item 6: labelled by metric
+                            // kind (在线 / 热度 / 观看), never a bare
+                            // number pretending to be 在线人数.
+                            metricLabelFor(room.platform, room.watching),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
@@ -580,7 +622,7 @@ class _RoomCardState extends State<_RoomCard> {
                   minHeight: 32,
                 ),
                 icon: Icon(
-                  followed ? Icons.favorite : Icons.favorite_border,
+                  followed ? Icons.favorite : Icons.favorite_border, shadows: HaoTheme.legibilityShadows(context), 
                   color: followed ? theme.accent : Colors.white,
                   size: 20,
                 ),
@@ -610,7 +652,7 @@ class _MissingCover extends StatelessWidget {
       color: theme.surfaceSolid,
       child: Center(
         child: Icon(
-          Icons.live_tv_outlined,
+          Icons.live_tv_outlined, shadows: HaoTheme.legibilityShadows(context), 
           color: theme.textMuted,
           size: 32,
         ),

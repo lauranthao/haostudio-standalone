@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 
+import '../../core/theme/hao_themes.dart';
 import '../../core/theme/screen_capture.dart';
 
 class AccentDropperPage extends StatelessWidget {
@@ -101,7 +102,7 @@ class _RoundButton extends StatelessWidget {
               width: 1,
             ),
           ),
-          child: Icon(icon, size: 20, color: Colors.white),
+          child: Icon(icon, shadows: HaoTheme.legibilityShadows(context),  size: 20, color: Colors.white),
         ),
       ),
     );

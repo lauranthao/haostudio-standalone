@@ -63,7 +63,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('confirm dialog: centred text, stacked full-width actions',
+  testWidgets('confirm dialog: native side-by-side actions',
       (tester) async {
     var result = false;
     await pumpHome(
@@ -76,27 +76,21 @@ void main() {
         );
       },
     );
-    // Title + content centred (iOS alert), not left-aligned.
-    final title = tester.widget<Text>(find.text('删除歌单'));
-    expect(title.textAlign, TextAlign.center);
-    final content = tester.widget<Text>(find.text('确定删除这个歌单吗？'));
-    expect(content.textAlign, TextAlign.center);
-    // Actions stacked vertically: 确定 above 取消, both wide.
+    // NativeDialog.alert: UIAlertController on iOS lays the two
+    // actions side by side (confirm left, cancel right) — the old
+    // glass version stacked them full-width. The test host renders
+    // the Material AlertDialog fallback, which keeps the same order
+    // and row; centering is the native side's job (the fallback
+    // title carries no textAlign), so only the layout is asserted.
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('删除歌单'), findsOneWidget);
+    expect(find.text('确定删除这个歌单吗？'), findsOneWidget);
     final confirmTop = tester.getTopLeft(find.text('确定')).dy;
     final cancelTop = tester.getTopLeft(find.text('取消')).dy;
-    expect(confirmTop, lessThan(cancelTop));
-    // Full-width: measure the buttons, not the labels (a Text is
-    // only as wide as its glyphs).
-    final confirmButton = find.ancestor(
-      of: find.text('确定'),
-      matching: find.byType(TextButton),
-    );
-    final cancelButton = find.ancestor(
-      of: find.text('取消'),
-      matching: find.byType(TextButton),
-    );
-    expect(tester.getSize(confirmButton).width, greaterThan(300));
-    expect(tester.getSize(cancelButton).width, greaterThan(300));
+    expect(confirmTop, closeTo(cancelTop, 1.0));
+    final confirmLeft = tester.getTopLeft(find.text('确定')).dx;
+    final cancelLeft = tester.getTopLeft(find.text('取消')).dx;
+    expect(confirmLeft, lessThan(cancelLeft));
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(result, isTrue);

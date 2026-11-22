@@ -35,7 +35,10 @@ import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/player/playback_session.dart';
 import 'package:standalone/features/video/native_video_player_page.dart';
+import 'package:standalone/features/video/video_history_store.dart';
 import 'package:standalone/features/video/video_models.dart';
+
+import 'helpers/hive_test_setup.dart';
 
 VideoDetail _detail() => VideoDetail(
       source: 12,
@@ -46,6 +49,7 @@ VideoDetail _detail() => VideoDetail(
           name: '线路1',
           episodes: const [
             PlayEpisode(name: '第1集', url: 'https://example.com/ep1.mp4'),
+            PlayEpisode(name: '第2集', url: 'https://example.com/ep2.mp4'),
           ],
         ),
       ],
@@ -65,6 +69,8 @@ class _FakeBackend implements PlayerBackend {
   PlayerEngine get engine => PlayerEngine.mediaKit;
 
   void emitDuration(Duration duration) => _duration.add(duration);
+
+  void emitCompleted() => _completed.add(null);
 
   @override
   Widget buildVideoWidget() =>
@@ -190,6 +196,13 @@ void main() {
   Future<void> unmountPlayer(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    // Drain the page's fire-and-forget Hive writes (history record
+    // on open, progress save on dispose) inside the body, before
+    // the fake zone is discarded — a write left pending stalls
+    // hive_ce's queue and the NEXT test's first Hive write hangs
+    // (see helpers/hive_test_setup.dart). Same pattern as
+    // b29_vod_player_features_test.dart.
+    await drainHiveWrites(tester);
   }
 
   // Controls visible = back arrow + fullscreen-exit present.
@@ -281,6 +294,136 @@ void main() {
       controlsVisible(tester),
       isTrue,
       reason: 'drag cancels the hide timer; controls must stay up',
+    );
+    expect(find.byType(Slider), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+    expect(backend.seeks, isNotEmpty, reason: 'release seeks');
+    await unmountPlayer(tester);
+  });
+
+  // K (build 29) — the bottom control bar must not vanish when the
+  // user USES it. Repro: the page-level GestureDetector wraps the
+  // whole Stack (bars included), so a tap on any control also runs
+  // _onSurfaceTap, which schedules the 300 ms hide timer — and that
+  // timer is never cancelled by a bar interaction or by
+  // _armHideTimer, so it hides the bars unconditionally, including
+  // right after pausing (when the 5 s playing-only auto-hide offers
+  // no re-show). chen: "控制播放的那个直接看不到".
+  testWidgets('tapping the pause button does not hide the controls',
+      (tester) async {
+    await pumpPlayer(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(controlsVisible(tester), isTrue, reason: 'start visible');
+    expect(find.byIcon(Icons.pause), findsOneWidget, reason: 'playing');
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      controlsVisible(tester),
+      isTrue,
+      reason: 'pausing must not hide the bar the user just tapped',
+    );
+    await unmountPlayer(tester);
+  });
+
+  testWidgets('tapping a top-bar button does not hide the controls',
+      (tester) async {
+    await pumpPlayer(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(controlsVisible(tester), isTrue, reason: 'start visible');
+    // Build 29 (K): auto-next lives in the 更多 menu now — open
+    // the menu (two 500 ms pumps for its entrance), then tap the
+    // action. The menu tap is a control interaction, not a surface
+    // tap, so the bars must stay up.
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('自动连播：开'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      controlsVisible(tester),
+      isTrue,
+      reason: 'a top-bar tap is a control interaction, not a surface tap',
+    );
+    // Restore the toggle: the flip persists to Hive (shared by every
+    // test in this file) and the auto-advance test below needs it ON.
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('自动连播：关'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(controlsVisible(tester), isTrue);
+    await unmountPlayer(tester);
+  });
+
+  testWidgets('single tap on the video surface still hides the controls',
+      (tester) async {
+    await pumpPlayer(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(controlsVisible(tester), isTrue, reason: 'start visible');
+    await tester.tapAt(const Offset(400, 300));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      controlsVisible(tester),
+      isFalse,
+      reason: 'surface tap toggles the bars off (existing behaviour)',
+    );
+    await unmountPlayer(tester);
+  });
+
+  testWidgets('episode auto-advance re-shows the controls',
+      (tester) async {
+    // Explicit: an earlier test in this file flips the persisted
+    // auto-next toggle; the advance below needs it ON.
+    await tester.runAsync(
+      () => VideoPlaybackSettings.setAutoNext(true),
+    );
+    await pumpPlayer(tester);
+    await tester.pump(const Duration(seconds: 6));
+    expect(controlsVisible(tester), isFalse, reason: 'timer hid controls');
+    backend.emitCompleted();
+    await tester.pump();
+    // The auto-advance chain is async end-to-end (session status ->
+    // _onEpisodeEnded -> _openCurrent -> Hive history record): drain
+    // the Hive queue the same way the page's other tests do, or the
+    // record never lands and the re-show setState never runs.
+    await drainHiveWrites(tester);
+    await tester.pump();
+    expect(
+      controlsVisible(tester),
+      isTrue,
+      reason: 'a new episode starts with its controls visible',
+    );
+    await unmountPlayer(tester);
+  });
+
+  testWidgets('Slider drag survives a surface tap 300 ms earlier',
+      (tester) async {
+    await pumpPlayer(tester);
+    backend.emitDuration(const Duration(minutes: 45));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    expect(find.byType(Slider), findsOneWidget);
+    expect(controlsVisible(tester), isTrue);
+
+    // A surface tap schedules the 300 ms hide; the user then grabs
+    // the Slider before it fires. The Slider wins the gesture
+    // arena, so the outer drag handlers (which cancel the timer)
+    // never run — the Slider's own onChangeStart must cancel it,
+    // or the bar unmounts mid-drag and the seek is swallowed.
+    await tester.tapAt(const Offset(400, 300));
+    final center = tester.getCenter(find.byType(Slider));
+    final gesture = await tester.startGesture(center);
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveBy(const Offset(100, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      controlsVisible(tester),
+      isTrue,
+      reason: 'the pending single-tap hide must not fire mid-drag',
     );
     expect(find.byType(Slider), findsOneWidget);
     await gesture.up();

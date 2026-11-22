@@ -127,7 +127,7 @@ class _Section extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Icon(
-                  Icons.add_circle,
+                  Icons.add_circle, shadows: HaoTheme.legibilityShadows(context), 
                   size: 18,
                   color: theme.accent,
                 ),

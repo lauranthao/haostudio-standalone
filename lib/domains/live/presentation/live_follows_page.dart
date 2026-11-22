@@ -28,8 +28,12 @@ import '../../../core/theme/hao_themes.dart';
 import '../../../core/theme/haptics.dart';
 import '../../../core/theme/glass.dart';
 import '../../../features/video/widgets/referer_image.dart';
+import '../../../widgets/native_switch.dart';
 import '../../../shared/platforms/live_site.dart';
+import '../live_follow_refresh.dart';
 import '../live_follow_store.dart';
+import '../live_follow_visibility.dart';
+import '../live_metrics.dart';
 import '../live_status.dart';
 import 'live_status_badge.dart';
 import 'playback/live_room_page.dart';
@@ -57,39 +61,67 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
 
   /// Null = 全部 platforms; otherwise a platform id.
   String? _platformFilter;
+
+  /// Null = 全部分组; '' = 未分组; otherwise a group name.
+  String? _groupFilter;
   Map<String, LiveStatus> _statuses = const {};
   Map<String, int> _watching = const {};
-  bool _refreshing = false;
-  bool _hasRefreshed = false;
-  int _failedCount = 0;
+
+  // Build-29 item 1: the refresh state machine — unknown preview
+  // at start, one round at a time, one snapshot per round, failure
+  // cooldown (auto triggers dropped, manual pull bypasses it).
+  late final LiveFollowRefreshController<({LiveStatus status, int watching})>
+  _refreshCtl;
 
   @override
   void initState() {
     super.initState();
+    _refreshCtl =
+        LiveFollowRefreshController<({LiveStatus status, int watching})>(
+          fetch: () async {
+            final follows = LiveFollowStore.getAll();
+            final statuses = await refreshRoomStatusesWithWatching(
+              follows.map((f) => f.toRoom()).toList(),
+              siteOf: widget.siteOf,
+            );
+            return (
+              statuses,
+              statuses.values
+                  .where((v) => v.status == LiveStatus.unknown)
+                  .length,
+            );
+          },
+        );
     _refresh();
   }
 
-  Future<void> _refresh() async {
-    if (_refreshing) return;
-    setState(() => _refreshing = true);
-    final follows = LiveFollowStore.getAll();
-    final statuses = await refreshRoomStatusesWithWatching(
-      follows.map((f) => f.toRoom()).toList(),
-      siteOf: widget.siteOf,
-    );
-    if (!mounted) return;
+  /// Run a refresh round through the state machine. Returns false
+  /// when the trigger was dropped (a round already running, or an
+  /// automatic trigger inside the failure cooldown). Manual
+  /// pull-to-refresh passes [manual] = true and always runs.
+  Future<void> _refresh({bool manual = false}) async {
+    final future = _refreshCtl.tryStartRound(manual: manual);
+    // The controller flips to refreshing synchronously inside
+    // tryStartRound — show the spinner even before the fetch lands.
+    if (mounted) setState(() {});
+    final started = await future;
+    if (!started || !mounted) return;
+    final snapshot = _refreshCtl.snapshot;
+    if (snapshot == null) return;
     setState(() {
-      _statuses = statuses.map((k, v) => MapEntry(k, v.status));
-      _watching = statuses.map((k, v) => MapEntry(k, v.watching));
-      _refreshing = false;
-      _hasRefreshed = true;
-      _failedCount = _statuses.values
-          .where((s) => s == LiveStatus.unknown)
-          .length;
+      _statuses = snapshot.values.map((k, v) => MapEntry(k, v.status));
+      _watching = snapshot.values.map((k, v) => MapEntry(k, v.watching));
     });
   }
 
-  /// Tapping a tab re-refreshes (Pure Live behaviour).
+  bool get _refreshing => _refreshCtl.isRefreshing;
+  bool get _hasRefreshed =>
+      _refreshCtl.phase != FollowRefreshPhase.unknown;
+  int get _failedCount => _refreshCtl.snapshot?.failedCount ?? 0;
+
+  /// Tapping a tab re-refreshes (Pure Live behaviour) — through the
+  /// state machine, so a tap inside the failure cooldown is dropped
+  /// instead of hammering the adapters.
   Future<void> _selectTab(_FollowTab tab) async {
     setState(() => _tab = tab);
     await _refresh();
@@ -98,7 +130,13 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
   LiveStatus _statusOf(LiveFollow follow) =>
       _statuses[follow.identityKey] ?? LiveStatus.unknown;
 
-  List<LiveFollow> get _allFollows => LiveFollowStore.getAll();
+  /// Visible follows: hidden platforms (item 11a) are excluded
+  /// without deleting anything.
+  List<LiveFollow> get _allFollows => LiveFollowVisibility.visibleFollows(
+    LiveFollowStore.getAll(),
+    LiveFollowVisibility.hiddenPlatforms(),
+    platformOf: (f) => f.platform,
+  );
 
   List<LiveFollow> get _liveFollows => _allFollows
       .where((f) => _statusOf(f) == LiveStatus.live)
@@ -110,9 +148,16 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
 
   List<LiveFollow> get _visible {
     final base = _tab == _FollowTab.live ? _liveFollows : _notLiveFollows;
+    var list = base;
     final filter = _platformFilter;
-    if (filter == null) return base;
-    return base.where((f) => f.platform == filter).toList();
+    if (filter != null) {
+      list = list.where((f) => f.platform == filter).toList();
+    }
+    final group = _groupFilter;
+    if (group != null) {
+      list = list.where((f) => f.group == group).toList();
+    }
+    return list;
   }
 
   void _openFollow(LiveFollow follow) {
@@ -131,9 +176,182 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     Navigator.of(context).pop();
   }
 
+  /// Build-29 item 7: unfollow removes the row locally ONLY — it
+  /// never triggers a full status refresh (no adapter calls, no
+  /// spinner, the other cards' statuses are untouched).
   Future<void> _unfollow(LiveFollow follow) async {
     await LiveFollowStore.remove(follow.platform, follow.roomId);
     if (mounted) setState(() {});
+  }
+
+  /// Build-29 item 5: assign [follow] to a group (or 未分组). The
+  /// sheet lists existing groups + a new-group field; picking one
+  /// only rewrites that follow's group, nothing else.
+  Future<void> _showGroupSheet(LiveFollow follow) async {
+    final groups = LiveFollowStore.groups();
+    final controller = TextEditingController();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final theme = HaoTheme.of(sheetContext);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.surfaceSolid,
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(20),
+            ),
+          ),
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 8,
+            bottom:
+                MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '移到分组',
+                style: TextStyle(
+                  shadows: HaoTheme.legibilityShadows(sheetContext),
+                  color: theme.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                title: Text(
+                  '未分组',
+                  style: TextStyle(color: theme.textPrimary),
+                ),
+                trailing: follow.group.isEmpty
+                    ? Icon(shadows: HaoTheme.legibilityShadows(context), Icons.check, color: theme.accent)
+                    : null,
+                onTap: () => Navigator.of(sheetContext).pop(''),
+              ),
+              for (final g in groups)
+                ListTile(
+                  title: Text(
+                    g,
+                    style: TextStyle(color: theme.textPrimary),
+                  ),
+                  trailing: follow.group == g
+                      ? Icon(shadows: HaoTheme.legibilityShadows(context), Icons.check, color: theme.accent)
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(g),
+                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(
+                  hintText: '新建分组…',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (v) => Navigator.of(sheetContext).pop(v),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () =>
+                      Navigator.of(sheetContext).pop(controller.text),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.accent,
+                    foregroundColor: Theme.of(
+                      sheetContext,
+                    ).colorScheme.onPrimary,
+                  ),
+                  child: const Text('确定'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked == null) return;
+    final group = picked.trim();
+    if (group == follow.group) return;
+    await LiveFollowStore.setGroup(follow.platform, follow.roomId, group);
+    if (mounted) setState(() {});
+  }
+
+  /// Build-29 item 11a: per-platform show/hide for the follow list.
+  /// Hiding never deletes follows and never touches the global
+  /// live-source enablement in Settings.
+  Future<void> _showVisibilitySheet() async {
+    final platforms = LiveFollowStore.followedPlatforms();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final theme = HaoTheme.of(context);
+          final hidden = LiveFollowVisibility.hiddenPlatforms();
+          return Container(
+            decoration: BoxDecoration(
+              color: theme.surfaceSolid,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text(
+                    '关注按平台显示',
+                    style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                      color: theme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    '隐藏的平台不在关注列表显示，关注本身不会被删除',
+                    style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                      color: theme.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                for (final p in platforms)
+                  HaoSwitchRow(
+                    title: platformName(p),
+                    value: !hidden.contains(p),
+                    onChanged: (show) async {
+                      await LiveFollowVisibility.setHidden(p, !show);
+                      setSheetState(() {});
+                      if (mounted) setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -144,9 +362,18 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
     final notLiveCount = _notLiveFollows.length;
     final visible = _visible;
     final platforms = LiveFollowStore.followedPlatforms();
+    final groups = LiveFollowStore.groups();
+    final hiddenCount = LiveFollowVisibility.hiddenPlatforms().length;
     return Scaffold(
       appBar: AppBar(
         title: Text('我的关注', style: TextStyle(shadows: HaoTheme.legibilityShadows(context))),
+        actions: [
+          IconButton(
+            icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.visibility_off_outlined),
+            tooltip: '按平台显示',
+            onPressed: _showVisibilitySheet,
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -203,6 +430,59 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                 ],
               ),
             ),
+          // Build-29 item 5: group filter chips (全部 / 未分组 / 各组).
+          // Long-press a card to move that follow into a group.
+          if (groups.isNotEmpty)
+            SizedBox(
+              height: 48,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                children: [
+                  _PlatformChip(
+                    label: '全部分组',
+                    selected: _groupFilter == null,
+                    onTap: () => setState(() => _groupFilter = null),
+                  ),
+                  _PlatformChip(
+                    label:
+                        '未分组 (${follows.where((f) => f.group.isEmpty).length})',
+                    selected: _groupFilter == '',
+                    onTap: () => setState(() => _groupFilter = ''),
+                  ),
+                  for (final group in groups)
+                    _PlatformChip(
+                      label:
+                          '$group (${follows.where((f) => f.group == group).length})',
+                      selected: _groupFilter == group,
+                      onTap: () => setState(() => _groupFilter = group),
+                    ),
+                ],
+              ),
+            ),
+          if (hiddenCount > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(
+                    shadows: HaoTheme.legibilityShadows(context),
+                    Icons.visibility_off_outlined,
+                    size: 14,
+                    color: theme.textMuted,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '已隐藏 $hiddenCount 个平台的关注',
+                    style: TextStyle(
+                      shadows: HaoTheme.legibilityShadows(context),
+                      color: theme.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_failedCount > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -248,7 +528,9 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                         : CustomScrollView(
                             slivers: [
                               CupertinoSliverRefreshControl(
-                                onRefresh: _refresh,
+                                // Manual pull bypasses the failure
+                                // cooldown (item 1).
+                                onRefresh: () => _refresh(manual: true),
                               ),
                               SliverPadding(
                                 padding: const EdgeInsets.all(12),
@@ -269,6 +551,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
                                   watching: _watching[follow.identityKey] ?? 0,
                                   onTap: () => _openFollow(follow),
                                   onUnfollow: () => _unfollow(follow),
+                                  onGroup: () => _showGroupSheet(follow),
                                 );
                                     },
                                     childCount: visible.length,
@@ -451,7 +734,8 @@ class _EmptyState extends StatelessWidget {
 /// One follow card — the live tab's room-card style (full-bleed cover,
 /// LIVE badge top-left, title + anchor over a bottom scrim) with an
 /// unfollow heart top-right. Tapping the card opens the room; tapping
-/// the heart unfollows without opening it.
+/// the heart unfollows without opening it; long-press moves the
+/// follow into a group (item 5).
 class _FollowCard extends StatelessWidget {
   const _FollowCard({
     required this.follow,
@@ -459,6 +743,7 @@ class _FollowCard extends StatelessWidget {
     this.watching = 0,
     required this.onTap,
     required this.onUnfollow,
+    required this.onGroup,
   });
 
   final LiveFollow follow;
@@ -470,10 +755,15 @@ class _FollowCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onUnfollow;
 
+  /// Long-press: open the group picker for this follow.
+  final VoidCallback onGroup;
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return Stack(
+    return GestureDetector(
+      onLongPress: onGroup,
+      child: Stack(
       fit: StackFit.expand,
       children: [
         HaoPressable(
@@ -511,7 +801,7 @@ class _FollowCard extends StatelessWidget {
                 else
                   Center(
                     child: Icon(
-                      Icons.live_tv_outlined,
+                      Icons.live_tv_outlined, shadows: HaoTheme.legibilityShadows(context), 
                       color: theme.textMuted,
                       size: 32,
                     ),
@@ -558,14 +848,17 @@ class _FollowCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            Icons.visibility_outlined,
+                          Icon(
+                            Icons.visibility_outlined, shadows: HaoTheme.legibilityShadows(context), 
                             color: Colors.white,
                             size: 12,
                           ),
                           const SizedBox(width: 3),
                           Text(
-                            _formatWatching(watching),
+                            // Build-29 item 6: labelled by metric
+                            // kind (在线 / 热度 / 观看), never a bare
+                            // number pretending to be 在线人数.
+                            metricLabelFor(follow.platform, watching),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
@@ -601,7 +894,7 @@ class _FollowCard extends StatelessWidget {
                       if (follow.title.isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          '${follow.nick} · ${platformName(follow.platform)}',
+                          '${follow.nick} · ${platformName(follow.platform)}${follow.group.isEmpty ? '' : ' · ${follow.group}'}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -635,8 +928,8 @@ class _FollowCard extends StatelessWidget {
                   minWidth: 32,
                   minHeight: 32,
                 ),
-                icon: const Icon(
-                  Icons.favorite,
+                icon: Icon(
+                  Icons.favorite, shadows: HaoTheme.legibilityShadows(context), 
                   color: Colors.white,
                   size: 20,
                 ),
@@ -647,16 +940,7 @@ class _FollowCard extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
-}
-
-/// Watching count: 12345 -> "1.2万", smaller counts as-is.
-/// Local copy of the live tab's formatWatching — the tab page imports
-/// this file, so importing it back would be a cycle.
-String _formatWatching(int watching) {
-  if (watching >= 10000) {
-    return '${(watching / 10000).toStringAsFixed(1)}万';
-  }
-  return '$watching';
 }

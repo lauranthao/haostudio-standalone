@@ -55,6 +55,8 @@ class _NoLoadController extends MusicPlayerController {
     List<Song> songs,
     int index, {
     String label = '',
+    String sourceKey = '',
+    bool resumeFromMemory = false,
   }) async {
     playQueueCalls.add((songs, index));
     queue.assignAll(songs);
