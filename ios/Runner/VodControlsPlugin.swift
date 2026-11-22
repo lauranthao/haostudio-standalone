@@ -154,7 +154,7 @@ final class VodControlsPlugin: NSObject, FlutterPlugin {
             name: "com.haostudio.standalone/vod_controls",
             binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: commandChannel)
-        registrar.registerViewFactory(
+        registrar.register(
             VodControlsFactory(plugin: instance),
             withId: "com.haostudio.standalone/vod_controls")
     }

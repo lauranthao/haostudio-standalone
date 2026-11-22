@@ -112,7 +112,7 @@ final class MusicTransportPlugin: NSObject, FlutterPlugin {
             name: "com.haostudio.standalone/music_transport",
             binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: commandChannel)
-        registrar.registerViewFactory(
+        registrar.register(
             MusicTransportFactory(plugin: instance),
             withId: "com.haostudio.standalone/music_transport")
     }

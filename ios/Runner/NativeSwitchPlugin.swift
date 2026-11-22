@@ -41,7 +41,7 @@ final class NativeSwitchPlugin: NSObject, FlutterPlugin {
             name: "com.haostudio.standalone/native_switch",
             binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: commandChannel)
-        registrar.registerViewFactory(
+        registrar.register(
             NativeSwitchFactory(plugin: instance),
             withId: "com.haostudio.standalone/native_switch")
     }
