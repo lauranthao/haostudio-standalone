@@ -2,12 +2,12 @@
 //
 // - The 5-tier chain and the master parameter mappings.
 // - The Master honesty gate in [extraQuality]: only resolvers with a
-//   verified real Master path (ikun direct, zddyr, xinghai, lx:*
-//   scripts) may claim Master; every other resolver caps at hires.
+//   verified real Master path (zddyr, xinghai) may claim Master;
+//   every other resolver caps at hires.
 // - Resolver behaviour with a fake Dio (no network): zddyr master
-//   returns a genuine master URL; ikun direct returns master; a
-//   320k-level answer at the master tier does NOT satisfy it — the
-//   loop downgrades to hires instead of mislabelling.
+//   returns a genuine master URL; a 320k-level answer at the master
+//   tier does NOT satisfy it — the loop downgrades to hires instead
+//   of mislabelling. (2026-11-23: ikun direct deleted — API dead.)
 // - [lxQualityForScript] picks the right quality string per script.
 //
 // Note: the live zddyr/xinghai master responses were verified by curl
@@ -101,10 +101,8 @@ void main() {
 
   group('extraQuality master gate', () {
     test('verified master paths may claim master', () {
-      expect(
-        extraQuality('ikun', AudioQuality.master, 'wy'),
-        AudioQuality.master,
-      );
+      // (2026-11-23: 'ikun' removed — direct ikun API dead,
+      // resolver deleted — so only zddyr / xinghai remain.)
       expect(
         extraQuality('zddyr', AudioQuality.master, 'wy'),
         AudioQuality.master,
@@ -123,10 +121,6 @@ void main() {
       // reportedTierFor and the resolver-level test in
       // b27_music_fixes_test.dart.
       expect(
-        extraQuality('lx:ikun', AudioQuality.master, 'wy'),
-        AudioQuality.hires,
-      );
-      expect(
         extraQuality('lx:suyin', AudioQuality.master, 'tx'),
         AudioQuality.hires,
       );
@@ -135,9 +129,6 @@ void main() {
     test('every other resolver caps at hires at the master tier', () {
       for (final key in [
         'gd',
-        'yutang',
-        'kangqi',
-        'qjqq',
         'oiapi_kw',
         'tang',
         'zddyr_kw',
@@ -173,7 +164,7 @@ void main() {
       // that tier. Labelling it 320k made the resolver loop hunt for
       // a better URL it already had, and mis-set the quality badge.
       expect(
-        extraQuality('lx:ikun', AudioQuality.hires, 'wy'),
+        extraQuality('lx:fish', AudioQuality.hires, 'wy'),
         AudioQuality.hires,
       );
       expect(
@@ -395,13 +386,14 @@ void main() {
       expect(r.via, '星海');
     });
 
-    test('ikun direct resolver is disabled: never requested (2026-11-19)', () async {
+    test('ikun direct resolver is deleted: not listed, never requested (2026-11-23)', () async {
       // api.ikunshare.com is dead (curl-verified 2026-11-19, logcat
-      // Failed host lookup) — the ikun resolver is disabled, so even
-      // with a fake ikun API answering, it must never be asked and
-      // the resolve returns null here (every other resolver 404s in
-      // this fake dio). Master still comes from zddyr/xinghai when
-      // they answer (see the test above).
+      // Failed host lookup; re-verified dead 2026-11-23) — the ikun
+      // resolver was DELETED, so even with a fake ikun API answering,
+      // it must never be asked and the resolve returns null here
+      // (every other resolver 404s in this fake dio). Master still
+      // comes from zddyr/xinghai when they answer (see the test
+      // above).
       final log = <String>[];
       final dio = buildFakeDio(
         log: log,
@@ -435,6 +427,10 @@ void main() {
       expect(r, isNull);
       expect(
         log.any((u) => u.contains('api.ikunshare.com')),
+        isFalse,
+      );
+      expect(
+        resolvers.listResolvers().any((e) => e.key == 'ikun'),
         isFalse,
       );
     });

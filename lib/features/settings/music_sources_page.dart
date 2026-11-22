@@ -7,8 +7,8 @@
 // effect on the next song search (SongSearchService reads
 // [MusicSourcesStore]); at least one platform must stay enabled.
 //
-// Script sources: the bundled LX 歌一刀 scripts (ikun / 新澜 / 溯音 /
-// 落雪) plus user-added custom scripts. Each script runs in its own JS
+// Script sources: the bundled LX 歌一刀 scripts (溯音 / 杰翔 / fish
+// / …) plus user-added custom scripts. Each script runs in its own JS
 // runtime and is registered with ONLY the capabilities it declares
 // (see LxScriptEngine). A toggle takes effect on the next play-URL
 // resolve / search; scripts are additive, so turning them all off is

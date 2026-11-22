@@ -14,7 +14,7 @@
 // 快车 (dead or redirect), 樱花 2.19s, 闪电 6.75s, U酷 2.98s,
 // 索尼 1.91s, 茅台 3.72s, 天涯 1.77s, 星夜 2.95s, 看看 1.91s,
 // 1080 (Cloudflare challenge). Only 非凡主站 was fast enough to add.
-// 量子 is shipped OFF (kind still play, enabled=false); 暴风/非凡 are
+// 量子 is shipped OFF (kind still play, enabled=false); 非凡 is
 // kind=search (search only, play URLs not trusted).
 //
 // Bump [kVideoSourcesRevision] whenever this list changes (new source
@@ -39,7 +39,9 @@ import 'video_models.dart';
 /// a user's reorder / toggle is never touched by the upgrade).
 /// 4 = +电影天堂资源 (dyttzy, verified 2026-11-22: ?ac=videolist
 /// returns 200, code 1, total 85263, play URLs present).
-const int kVideoSourcesRevision = 4;
+/// 5 = −暴风资源 (deleted 2026-11-23: API answers but play files
+/// 404 on two titles / two CDN hosts — found but never plays).
+const int kVideoSourcesRevision = 5;
 
 /// UA for CMS video + Douban search-page fallback (must be verbatim —
 /// several upstreams key behaviour off it).
@@ -197,14 +199,6 @@ const List<VideoSource> kDefaultVideoSources = [
     enabled: false,
     sort: 23,
   ),
-  VideoSource(
-    id: 5,
-    name: '暴风资源',
-    apiUrl: 'https://bfzyapi.com/api.php/provide/vod/',
-    kind: 'search',
-    enabled: true,
-    sort: 24,
-  ),
   // 2026-11-22: added per chen (tvbox-desktop CMS list); verified live:
   // ?ac=videolist returns 200, code 1, total 85263, play URLs present.
   // Measured 2.26s, so placed last per the file's speed convention.
@@ -217,6 +211,13 @@ const List<VideoSource> kDefaultVideoSources = [
     sort: 25,
   ),
 ];
+
+// NOTE 2026-11-23: 暴风资源 (id 5, bfzyapi.com) DELETED — its API
+// still answers search/detail (code 1), but its play files are gone:
+// the m3u8 for two different titles on two different CDN hosts
+// (s3.bfllvip.com, s2.bfllvip.com) both returned 404, so titles
+// from this source can be found but never play. 17 enabled sources
+// remain; no replacement needed.
 
 /// Enabled defaults, sorted by `sort` (the `getVideoSources()` shape).
 List<VideoSource> defaultEnabledVideoSources() {

@@ -11,11 +11,9 @@
 //    "quality":"master", "quality_requested":"master",
 //    "quality_fallback":false, br 4.27M (vs hires control br 694782,
 //    quality "flac"). Same result via the xinghai (token) path.
-//  - ikun's own API (api.ikunshare.com) is DEAD from this VM
-//    (curl 52 Empty reply, http+https, several songIds; python
-//    RemoteDisconnected; control hosts work through the same proxy),
-//    so the ikun direct resolver exists but is unproven — chen's
-//    phone test must confirm whether it works. The master tier does
+//  - ikun's own API (api.ikunshare.com) is DEAD — re-verified
+//    2026-11-23 (curl 000, both songs) — and the ikun script +
+//    resolver were DELETED the same day, so the master tier does
 //    NOT depend on it: zddyr/xinghai already serve master.
 //  - huibq (lxmusicapi.onrender.com) returns 503 "Service Suspended"
 //    as of 2026-11-16 — the order-1 resolver is down (pre-existing,
@@ -218,11 +216,12 @@ String? lxQualityForScript(AudioQuality q, List<String> available) {
 /// Undeclared resolvers count as 320k.
 ///
 /// Master gate: only resolvers with a verified real Master path may
-/// claim Master — 'ikun' (direct ikun API, quality=master), 'zddyr'
-/// and 'xinghai' (LX APIs). Every other resolver caps at hires: its
-/// best output at the master tier is a hires-level stream, and the
-/// resolver loop drops non-master candidates at that tier, so these
-/// never surface as Master.
+/// claim Master — 'zddyr' and 'xinghai' (LX APIs). Every other
+/// resolver caps at hires: its best output at the master tier is a
+/// hires-level stream, and the resolver loop drops non-master
+/// candidates at that tier, so these never surface as Master.
+/// (2026-11-23: 'ikun' removed — direct ikun API dead, resolver
+/// deleted.)
 ///
 /// LX scripts ('lx:*') are capped at hires here too (M-P0-1): a
 /// script that returns a bare URL string carries NO tier signal, so
@@ -244,7 +243,6 @@ String? lxQualityForScript(AudioQuality q, List<String> available) {
 AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
   if (q == AudioQuality.master) {
     switch (key) {
-      case 'ikun':
       case 'zddyr':
       case 'xinghai':
         return AudioQuality.master;
@@ -263,9 +261,6 @@ AudioQuality extraQuality(String key, AudioQuality q, String platformCode) {
   if (key.startsWith('lx:')) return q;
   switch (key) {
     case 'gd':
-    case 'yutang':
-    case 'kangqi':
-    case 'qjqq':
     case 'zddyr':
     case 'oiapi_kw':
     case 'tang':

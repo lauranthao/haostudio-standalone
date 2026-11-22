@@ -13,16 +13,17 @@
 // and these tests run for real (chen's phone test is the final
 // confirmation).
 // - prelude: bare `lx` alias, EVENT_NAMES, utils.buffer round-trips.
-// - all 20 scripts load and send `inited` with exactly the capabilities
+// - all 17 scripts load and send `inited` with exactly the capabilities
 //   they declare (no more, no less).
-// - ikun musicUrl end to end (master tier) via fake ikun API.
+//   (2026-11-23: ikun / luoxue / xinlan deleted — dead hosts /
+//   key-gated — so 17 remain.)
 // - 溯音 search end to end (kw) via fake oiapi Kuwo.
 // - 溯音 QQ musicUrl returns null without a key (its embedded shared
 //   key was sanitised to '' — no key ships in the app).
 // - custom-script URL flow: valid script loads, bad script fails and
 //   is not saved.
-// - ikun's checkUpdate (which uses bare `lx.EVENT_NAMES`) delivers an
-//   updateAlert — proving the bare alias works.
+// - hyw's checkUpdate delivers an updateAlert — proving the
+//   update-check path works.
 //
 // The engine is constructed per test with a fake Dio; Hive is NOT
 // initialised in these tests, so script toggles / custom-script
@@ -72,23 +73,16 @@ send(EVENT_NAMES.inited, { status: true, sources: { wy: { name: 'wy', type: 'mus
 
 /// Fake HTTP answers for every host the 4 scripts + tests touch.
 Map<String, dynamic> _respond(String url) {
-  // ikun update check (fires at load) — returns an update payload so
-  // the bare-`lx` path is exercised.
-  if (url.contains('api.ikunshare.com/script/lxmusic')) {
+  // hyw update check (fires at load) — returns an update payload so
+  // the update-check path is exercised.
+  if (url.contains('103.79.184.97/api/releases')) {
     return {
       'status': 200,
       'body':
-          '{"code":200,"data":{"updateMsg":"v23 available","updateUrl":"https://example.com/ikun.js"}}',
+          '{"code":200,"data":{"version":"v9.9.9","url":"https://example.com/hyw.js","updateLog":"v9.9.9 available"}}',
     };
   }
-  // ikun music URL.
-  if (url.contains('api.ikunshare.com/url')) {
-    return {
-      'status': 200,
-      'body': '{"code":200,"url":"https://cdn.example.com/master.flac"}',
-    };
-  }
-  // 新澜 / 落雪 update checks — fail quietly.
+  // Other scripts' update checks — fail quietly.
   if (url.contains('checkUpdate=')) {
     return {'status': 404, 'body': '{"code":404}'};
   }
@@ -325,33 +319,10 @@ void main() {
 
     tearDown(() => engine.dispose());
 
-    test('all twenty load with exactly their declared capabilities', () {
-      expect(engine.scripts.length, 20);
+    test('all seventeen load with exactly their declared capabilities', () {
+      expect(engine.scripts.length, 17);
       for (final s in engine.scripts) {
         expect(s.loaded, isTrue, reason: '${s.id}: ${s.error}');
-      }
-
-      final ikun = engine.script('ikun')!;
-      expect(ikun.version, isNotEmpty);
-      expect(
-        ikun.sources.map((s) => s.platform).toSet(),
-        {'wy', 'kw', 'git'},
-      );
-      final ikunWy = ikun.sourceFor('wy')!;
-      expect(ikunWy.actions, ['musicUrl']);
-      expect(
-        ikunWy.qualities,
-        containsAll(['128k', '320k', 'flac', 'hires', 'master']),
-      );
-
-      final xinlan = engine.script('xinlan')!;
-      expect(
-        xinlan.sources.map((s) => s.platform).toSet(),
-        {'kw', 'mg', 'kg', 'tx', 'wy'},
-      );
-      for (final s in xinlan.sources) {
-        expect(s.actions, ['musicUrl']);
-        expect(s.qualities, ['128k', '320k']);
       }
 
       final suyin = engine.script('suyin')!;
@@ -364,15 +335,6 @@ void main() {
       expect(suyin.sourceFor('kw')!.actions, ['musicUrl', 'search']);
       expect(suyin.sourceFor('mg')!.actions, ['musicUrl', 'search']);
       expect(suyin.sourceFor('wy')!.actions, ['musicUrl']);
-
-      final luoxue = engine.script('luoxue')!;
-      // 'local' is filtered out — not a music platform.
-      expect(
-        luoxue.sources.map((s) => s.platform).toSet(),
-        {'tx', 'wy'},
-      );
-      expect(luoxue.sourceFor('wy')!.actions, ['musicUrl']);
-      expect(luoxue.sourceFor('wy')!.qualities, contains('master'));
 
       // Verified live 2026-11-17 via the Node LX harness (real prelude
       // + real HTTP): both declare the same 5 platforms, musicUrl only.
@@ -430,7 +392,7 @@ void main() {
       );
 
       final helloworld = engine.script('helloworld')!;
-      // 'local' is filtered out like luoxue's.
+      // 'local' is filtered out — not a music platform.
       expect(
         helloworld.sources.map((s) => s.platform).toSet(),
         {'kw', 'kg', 'tx', 'wy', 'mg'},
@@ -571,7 +533,6 @@ void main() {
       expect(
         masterJobs.map((j) => j.key).toSet(),
         {
-          'lx:luoxue',
           'lx:helloworld',
           'lx:aya',
           'lx:yuningxi',
@@ -585,12 +546,11 @@ void main() {
         AudioQuality.hires,
         song,
       );
-      // Every script except xinlan (128k/320k only) serves hires on wy.
+      // Every remaining script serves hires on wy.
       expect(
         hiresJobs.map((j) => j.key).toSet(),
         {
           'lx:suyin',
-          'lx:luoxue',
           'lx:fish',
           'lx:jiexiang',
           'lx:hyw',
@@ -617,9 +577,7 @@ void main() {
       expect(
         q320Jobs.map((j) => j.key).toSet(),
         {
-          'lx:xinlan',
           'lx:suyin',
-          'lx:luoxue',
           'lx:fish',
           'lx:jiexiang',
           'lx:hyw',
@@ -650,41 +608,15 @@ void main() {
       );
     });
 
-    test('ikun musicUrl end to end (master tier)', () async {
-      final song = Song(
-        songId: '1851244158',
-        title: 'Test',
-        platform: MusicPlatform.wy,
-      );
-      final url = await engine.getMusicUrl(
-        scriptId: 'ikun',
-        platform: 'wy',
-        song: song,
-        quality: AudioQuality.master,
-      );
-      expect(url, 'https://cdn.example.com/master.flac');
-      // The script built the exact ikun request.
-      expect(
-        log.any(
-          (u) =>
-              u.contains('api.ikunshare.com/url') &&
-              u.contains('source=wy') &&
-              u.contains('songId=1851244158') &&
-              u.contains('quality=master'),
-        ),
-        isTrue,
-      );
-    });
-
-    test('ikun checkUpdate uses bare lx and delivers updateAlert', () async {
+    test('hyw checkUpdate delivers updateAlert', () async {
       // checkUpdate is pumped after load; give it a moment.
       for (var i = 0; i < 20; i++) {
-        if (engine.lastUpdateAlert('ikun') != null) break;
+        if (engine.lastUpdateAlert('hyw') != null) break;
         await Future.delayed(const Duration(milliseconds: 100));
       }
-      final alert = engine.lastUpdateAlert('ikun');
+      final alert = engine.lastUpdateAlert('hyw');
       expect(alert, isNotNull);
-      expect(alert!['log'], 'v23 available');
+      expect(alert!['log'], 'v9.9.9 available');
     });
 
     test('suyin wy musicUrl end to end', () async {
@@ -742,7 +674,7 @@ void main() {
     test('unknown action throws a readable script error', () async {
       await expectLater(
         engine.requestAction(
-          scriptId: 'ikun',
+          scriptId: 'suyin',
           action: 'bogus',
           source: 'wy',
           info: const {},

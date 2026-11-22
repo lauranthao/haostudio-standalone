@@ -2,12 +2,12 @@
 //
 // Proves, after the 2026-11-19 curl verification (all three http
 // hosts answer real CMS requests over https):
-// - all 19 default sources are https (no http default left);
+// - all 18 default sources are https (no http default left);
 // - the plain-http helper used by the settings page to warn before
 //   adding a user-typed http source;
 // - the rev-3 merge upgrades a stored http twin to its https twin IN
 //   PLACE: same id, the user's sort and enabled toggle untouched, no
-//   duplicate source appended, and the revision stored as 4.
+//   duplicate source appended, and the revision stored as 5.
 
 import 'dart:convert';
 import 'dart:io';
@@ -21,8 +21,8 @@ import 'package:standalone/features/video/video_history_store.dart';
 import 'package:standalone/features/video/video_models.dart';
 
 void main() {
-  test('all 19 default sources are https', () {
-    expect(kDefaultVideoSources.length, 19);
+  test('all 18 default sources are https', () {
+    expect(kDefaultVideoSources.length, 18);
     for (final s in kDefaultVideoSources) {
       expect(
         s.apiUrl.startsWith('https://'),
@@ -42,7 +42,7 @@ void main() {
       kDefaultVideoSources.firstWhere((s) => s.name == '非凡主站').apiUrl,
       'https://cj.ffzyapi.com/api.php/provide/vod',
     );
-    expect(kVideoSourcesRevision, 4);
+    expect(kVideoSourcesRevision, 5);
   });
 
   test('isPlainHttpVideoSourceUrl', () {
@@ -127,7 +127,7 @@ void main() {
           ),
         ]);
         final list = VideoSourcesStore.getAll();
-        expect(list.length, 19);
+        expect(list.length, 18);
         // No http apiUrl survives, and no source appears twice.
         expect(list.any((s) => s.apiUrl.startsWith('http://')), isFalse);
         expect(list.map((s) => s.apiUrl).toSet().length, list.length);
@@ -143,7 +143,7 @@ void main() {
         final jisu = list.firstWhere((s) => s.name == '极速资源');
         expect(jisu.sort, 10);
         await Future<void>.delayed(const Duration(milliseconds: 100));
-        expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 4);
+        expect(HiveStore.box.get(HiveKeys.videoSourcesRevision), 5);
       },
     );
   });
