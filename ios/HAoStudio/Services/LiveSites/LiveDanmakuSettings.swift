@@ -11,13 +11,58 @@
 //
 // Count note: the brief says 14 items; the Flutter page as shipped
 // (build 31) actually carries 19 scalar settings plus the
-// per-platform switch map and the block list (the block list lives
-// in its own `DanmakuBlockStore`, not in this struct). All 19 are
-// ported rather than silently dropping five.
+// per-platform switch map and the block list. All 19 are ported
+// rather than silently dropping five, and the block list rides in
+// this struct too (merged at S4: the C leg's sheet and list view
+// both read it off `settings`, so one settings object owns one
+// persistence path — the Flutter `DanmakuBlockStore` is the same
+// list, key `hao_dm_block`).
 //
 // Swift 5.0: Foundation only, no async/await, no `any`.
 
 import Foundation
+
+/// One blocked keyword / username (Flutter `DanmakuBlockEntry`:
+/// `{id, text, kind}` with kind 'word' | 'user'). Decodes both the
+/// Flutter shape (`kind`) and the plain shape (`isUser`) so a stored
+/// value from either side loads; encodes the Flutter shape, so S1's
+/// migrated `hao_dm_block` file keeps round-tripping.
+struct LiveDanmakuBlockEntry: Identifiable, Equatable, Codable {
+    let id: String
+    let text: String
+    let isUser: Bool
+
+    init(id: String, text: String, isUser: Bool) {
+        self.id = id
+        self.text = text
+        self.isUser = isUser
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case text
+        case kind
+        case isUser
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        text = (try? container.decode(String.self, forKey: .text)) ?? ""
+        if let kind = try? container.decode(String.self, forKey: .kind) {
+            isUser = kind == "user"
+        } else {
+            isUser = (try? container.decode(Bool.self, forKey: .isUser)) ?? false
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+        try container.encode(isUser ? "user" : "word", forKey: .kind)
+    }
+}
 
 /// Danmaku display + filtering settings. Every numeric field
 /// clamps into its Flutter range on init and on dictionary load;
@@ -45,6 +90,8 @@ struct LiveDanmakuSettings {
     static let keyBlockLong = "hao_danmaku_block_long"
     static let keyBlockLongLength = "hao_danmaku_block_long_len"
     static let keyDouyuBotFilter = "hao_danmaku_douyu_bot"
+    /// Block list key (Flutter `HiveKeys.danmakuBlockList`).
+    static let keyBlockedEntries = "hao_dm_block"
 
     /// The VOD ("影视弹幕") key inside the enabled map. Unlike the
     /// live platforms it defaults to OFF (opt-in): VOD danmaku comes
@@ -158,6 +205,12 @@ struct LiveDanmakuSettings {
     /// Douyu only.
     var douyuBotFilter: Bool
 
+    /// Blocked keywords / usernames. Persisted with the rest of
+    /// the settings (collection file `hao_dm_block`, Flutter shape
+    /// `{id, text, kind}`) — the sheet edits it, the list view
+    /// filters on it.
+    var blockedEntries: [LiveDanmakuBlockEntry]
+
     // MARK: - Defaults
 
     static let `default` = LiveDanmakuSettings()
@@ -181,7 +234,8 @@ struct LiveDanmakuSettings {
         blockEmoteOnly: Bool = false,
         blockLong: Bool = false,
         blockLongLength: Int = defaultBlockLongLength,
-        douyuBotFilter: Bool = false
+        douyuBotFilter: Bool = false,
+        blockedEntries: [LiveDanmakuBlockEntry] = []
     ) {
         self.enabled = enabled
         self.fontSize = LiveDanmakuSettings.clamp(fontSize, min: LiveDanmakuSettings.minFontSize, max: LiveDanmakuSettings.maxFontSize)
@@ -202,6 +256,7 @@ struct LiveDanmakuSettings {
         self.blockLong = blockLong
         self.blockLongLength = LiveDanmakuSettings.clamp(blockLongLength, min: LiveDanmakuSettings.minBlockLongLength, max: LiveDanmakuSettings.maxBlockLongLength)
         self.douyuBotFilter = douyuBotFilter
+        self.blockedEntries = blockedEntries
     }
 
     // MARK: - Derived
@@ -275,8 +330,39 @@ struct LiveDanmakuSettings {
             blockEmoteOnly: LiveDanmakuSettings.boolValue(dictionary[LiveDanmakuSettings.keyBlockEmoteOnly]) ?? false,
             blockLong: LiveDanmakuSettings.boolValue(dictionary[LiveDanmakuSettings.keyBlockLong]) ?? false,
             blockLongLength: LiveDanmakuSettings.intValue(dictionary[LiveDanmakuSettings.keyBlockLongLength]) ?? LiveDanmakuSettings.defaultBlockLongLength,
-            douyuBotFilter: LiveDanmakuSettings.boolValue(dictionary[LiveDanmakuSettings.keyDouyuBotFilter]) ?? false
+            douyuBotFilter: LiveDanmakuSettings.boolValue(dictionary[LiveDanmakuSettings.keyDouyuBotFilter]) ?? false,
+            blockedEntries: LiveDanmakuSettings.blockedEntries(from: dictionary[LiveDanmakuSettings.keyBlockedEntries])
         )
+    }
+
+    /// Parse a stored block list: an array of entry dicts (the
+    /// `dictionary()` shape), or a JSON string of such an array
+    /// (the Flutter `DanmakuBlockStore` shape). Anything else is
+    /// an empty list, never a throw.
+    static func blockedEntries(from value: Any?) -> [LiveDanmakuBlockEntry] {
+        if let list = value as? [[String: Any]] {
+            return decodeBlockEntries(list)
+        }
+        if let jsonString = value as? String,
+           let data = jsonString.data(using: .utf8),
+           let decoded = try? JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+            return decodeBlockEntries(decoded)
+        }
+        return []
+    }
+
+    private static func decodeBlockEntries(_ list: [[String: Any]]) -> [LiveDanmakuBlockEntry] {
+        return list.compactMap { dict in
+            guard let text = dict["text"] as? String, !text.isEmpty else { return nil }
+            let id = dict["id"] as? String ?? ""
+            let isUser: Bool
+            if let kind = dict["kind"] as? String {
+                isUser = kind == "user"
+            } else {
+                isUser = dict["isUser"] as? Bool ?? false
+            }
+            return LiveDanmakuBlockEntry(id: id, text: text, isUser: isUser)
+        }
     }
 
     /// Store as a dictionary under the Flutter Hive keys.
@@ -301,7 +387,87 @@ struct LiveDanmakuSettings {
         dict[LiveDanmakuSettings.keyBlockLong] = blockLong
         dict[LiveDanmakuSettings.keyBlockLongLength] = blockLongLength
         dict[LiveDanmakuSettings.keyDouyuBotFilter] = douyuBotFilter
+        dict[LiveDanmakuSettings.keyBlockedEntries] = blockedEntries.map { entry in
+            ["id": entry.id, "text": entry.text, "kind": entry.isUser ? "user" : "word"]
+        }
         return dict
+    }
+
+    // MARK: - Persistence (S1 destinations)
+
+    /// Load from the S1-migrated stores: scalars from UserDefaults
+    /// under their `hao_danmaku_*` keys, the enabled map from the
+    /// `hao_danmaku_enabled` collection file, the block list from
+    /// the `hao_dm_block` collection file. Missing values fall back
+    /// to defaults — a fresh install has nothing stored yet.
+    static func load(defaults: UserDefaults = .standard) -> LiveDanmakuSettings {
+        let enabled: [String: Bool] = LocalStore.loadCollection(named: keyEnabled, default: [:])
+        return LiveDanmakuSettings(
+            enabled: enabled,
+            fontSize: (defaults.object(forKey: keyFontSize) as? Double) ?? defaultFontSize,
+            opacity: (defaults.object(forKey: keyOpacity) as? Double) ?? defaultOpacity,
+            area: (defaults.object(forKey: keyArea) as? String) ?? "full",
+            stroke: (defaults.object(forKey: keyStroke) as? Bool) ?? defaultStroke,
+            strokeWidth: (defaults.object(forKey: keyStrokeWidth) as? Double) ?? defaultStrokeWidth,
+            speed: (defaults.object(forKey: keySpeed) as? Double) ?? defaultSpeed,
+            maxCount: (defaults.object(forKey: keyMaxCount) as? Int) ?? defaultMaxCount,
+            colorMode: (defaults.object(forKey: keyColorMode) as? String) ?? "uniform",
+            occlusionAvoidance: (defaults.object(forKey: keyOcclusionAvoidance) as? Bool) ?? false,
+            listStyle: (defaults.object(forKey: keyListStyle) as? String) ?? "compact",
+            listSpacing: (defaults.object(forKey: keyListSpacing) as? String) ?? "standard",
+            showUsernames: (defaults.object(forKey: keyShowUsernames) as? Bool) ?? true,
+            similarityEnabled: (defaults.object(forKey: keySimilarityEnabled) as? Bool) ?? true,
+            similarityThreshold: (defaults.object(forKey: keySimilarityThreshold) as? Int) ?? defaultSimilarityThreshold,
+            blockEmoteOnly: (defaults.object(forKey: keyBlockEmoteOnly) as? Bool) ?? false,
+            blockLong: (defaults.object(forKey: keyBlockLong) as? Bool) ?? false,
+            blockLongLength: (defaults.object(forKey: keyBlockLongLength) as? Int) ?? defaultBlockLongLength,
+            douyuBotFilter: (defaults.object(forKey: keyDouyuBotFilter) as? Bool) ?? false,
+            blockedEntries: loadBlockedEntries()
+        )
+    }
+
+    /// Persist to the same stores `load()` reads. The sheet calls
+    /// this after every edit; the room page calls it when the
+    /// per-platform toggle flips.
+    func persist(defaults: UserDefaults = .standard) {
+        LocalStore.saveCollection(named: Self.keyEnabled, value: enabled)
+        LocalStore.saveCollection(named: Self.keyBlockedEntries, value: blockedEntries)
+        defaults.set(fontSize, forKey: Self.keyFontSize)
+        defaults.set(opacity, forKey: Self.keyOpacity)
+        defaults.set(area, forKey: Self.keyArea)
+        defaults.set(stroke, forKey: Self.keyStroke)
+        defaults.set(strokeWidth, forKey: Self.keyStrokeWidth)
+        defaults.set(speed, forKey: Self.keySpeed)
+        defaults.set(maxCount, forKey: Self.keyMaxCount)
+        defaults.set(colorMode, forKey: Self.keyColorMode)
+        defaults.set(occlusionAvoidance, forKey: Self.keyOcclusionAvoidance)
+        defaults.set(listStyle, forKey: Self.keyListStyle)
+        defaults.set(listSpacing, forKey: Self.keyListSpacing)
+        defaults.set(showUsernames, forKey: Self.keyShowUsernames)
+        defaults.set(similarityEnabled, forKey: Self.keySimilarityEnabled)
+        defaults.set(similarityThreshold, forKey: Self.keySimilarityThreshold)
+        defaults.set(blockEmoteOnly, forKey: Self.keyBlockEmoteOnly)
+        defaults.set(blockLong, forKey: Self.keyBlockLong)
+        defaults.set(blockLongLength, forKey: Self.keyBlockLongLength)
+        defaults.set(douyuBotFilter, forKey: Self.keyDouyuBotFilter)
+    }
+
+    /// Block list from the `hao_dm_block` collection file. Tolerates
+    /// both shapes: a decoded array (written by `persist`) and a
+    /// JSON string of an array (Flutter stored the list as one JSON
+    /// string, and S1 migrates that string verbatim).
+    private static func loadBlockedEntries() -> [LiveDanmakuBlockEntry] {
+        let url = LocalStore.collectionURL(named: keyBlockedEntries)
+        guard let data = try? Data(contentsOf: url) else { return [] }
+        if let entries = try? JSONDecoder().decode([LiveDanmakuBlockEntry].self, from: data) {
+            return entries
+        }
+        guard let jsonString = try? JSONDecoder().decode(String.self, from: data),
+              let inner = jsonString.data(using: .utf8),
+              let entries = try? JSONDecoder().decode([LiveDanmakuBlockEntry].self, from: inner) else {
+            return []
+        }
+        return entries
     }
 
     // MARK: - Tolerant readers

@@ -99,6 +99,56 @@ final class LivePlayerViewModel: ObservableObject {
         if messages.count > 200 { messages.removeFirst(messages.count - 200) }
     }
 
+    /// Receive-only danmaku transport for the current room (B leg).
+    /// Started by the room page after playback begins, stopped
+    /// when the room closes (or when switching rooms — start stops
+    /// the old transport first). The room page never owns a
+    /// transport directly: this view model owns it, so the
+    /// background-queue transport callbacks can be forwarded to
+    /// `appendDanmaku` on the main queue.
+    private var danmakuTransport: LiveDanmakuTransport?
+
+    func startDanmaku(room: LiveRoom, resolver: LiveSiteResolver) {
+        stopDanmaku()
+        if let data = room.danmakuData, !data.isEmpty {
+            startTransport(with: data, resolver: resolver)
+            return
+        }
+        // The card room usually has no transport credentials yet:
+        // `roomInfo` supplies them (and a fresh watching count).
+        resolver.roomInfo(roomId: room.roomId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let fullRoom: LiveRoom
+                switch result {
+                case .success(let info):
+                    fullRoom = info
+                case .failure:
+                    fullRoom = room
+                }
+                self.watching = fullRoom.onlineCount
+                guard let data = fullRoom.danmakuData, !data.isEmpty else { return }
+                self.startTransport(with: data, resolver: resolver)
+            }
+        }
+    }
+
+    func stopDanmaku() {
+        danmakuTransport?.stop()
+        danmakuTransport = nil
+    }
+
+    private func startTransport(with data: [String: Any], resolver: LiveSiteResolver) {
+        let transport = resolver.makeDanmakuTransport()
+        transport.onMessage = { [weak self] message in
+            DispatchQueue.main.async {
+                self?.appendDanmaku(message)
+            }
+        }
+        danmakuTransport = transport
+        transport.start(danmakuData: data)
+    }
+
     // Own UI state.
     /// Controls overlay visible. Auto-hides 3 s after the last
     /// interaction while playing.

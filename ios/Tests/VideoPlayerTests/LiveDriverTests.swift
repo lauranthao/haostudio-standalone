@@ -30,14 +30,40 @@ import XCTest
 
 /// Controllable stand-in for LiveSiteResolver. Resolutions are a
 /// queue: each resolve pops the next entry.
+/// No-op transport stand-in (driver tests never start danmaku).
+final class LiveDriverFakeTransport: LiveDanmakuTransport {
+    var isConnected: Bool { false }
+    var onMessage: ((DanmakuMessage) -> Void)?
+    var onReady: (() -> Void)?
+    var onClose: (() -> Void)?
+    var onReconnect: (() -> Void)?
+
+    func start(danmakuData: [String: Any]) {}
+    func heartbeat() {}
+    func stop() {}
+}
+
 final class LiveDriverFakeResolver: LiveSiteResolver {
+    var platform: LivePlatform { .huya }
     var resolutionsToReturn: [LivePlayUrlResolution?] = []
     var resolveCount = 0
 
-    func resolve(roomId: String, completion: @escaping (LivePlayUrlResolution?) -> Void) {
+    func roomInfo(roomId: String, completion: @escaping (Result<LiveRoom, Error>) -> Void) {
+        completion(.failure(LiveError.unsupported("test fake has no room info")))
+    }
+
+    func resolve(roomId: String, quality: LiveQuality?, completion: @escaping (Result<LivePlayUrlResolution, Error>) -> Void) {
         resolveCount += 1
         let resolution = resolutionsToReturn.isEmpty ? nil : resolutionsToReturn.removeFirst()
-        completion(resolution)
+        if let resolution = resolution {
+            completion(.success(resolution))
+        } else {
+            completion(.failure(LiveError.emptyResponse))
+        }
+    }
+
+    func makeDanmakuTransport() -> LiveDanmakuTransport {
+        LiveDriverFakeTransport()
     }
 }
 
@@ -81,14 +107,14 @@ final class HangingLiveBackend: VideoPlayerBackend {
 
 final class LiveDriverTests: XCTestCase {
     private func makeRoom() -> LiveRoom {
-        return LiveRoom(roomId: "123", platform: "huya", title: "测试直播间", streamer: "主播", onlineCount: 100, coverURL: nil, isLive: true)
+        return LiveRoom(roomId: "123", platform: .huya, title: "测试直播间", streamer: "主播", onlineCount: 100, isLive: true)
     }
 
     private func makeResolution(urls: [URL], quality: LiveQuality? = nil) -> LivePlayUrlResolution {
         let lines = urls.enumerated().map { index, url in
-            LiveLine(name: "线路\(index + 1)", urls: [url])
+            LiveLine(name: "线路\(index + 1)", urls: [url.absoluteString])
         }
-        return LivePlayUrlResolution(lines: lines, formats: [], qualities: [], quality: quality, issuedAt: nil, refreshAt: nil, invalidAt: nil)
+        return LivePlayUrlResolution(lines: lines, formats: [], qualities: [], quality: quality, refreshAt: nil, invalidAt: nil)
     }
 
     private func makeDriver(factory: FakeBackendFactory, resolver: LiveDriverFakeResolver) -> LiveDriver {

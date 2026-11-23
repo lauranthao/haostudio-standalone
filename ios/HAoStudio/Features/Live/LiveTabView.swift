@@ -89,7 +89,7 @@ final class LiveTabViewModel: ObservableObject {
         guard let gateway = gateway, !isLoading else { return }
         isLoading = true
         loadFailed = false
-        let platformId = platform.id
+        let platformId = platform.rawValue
         let area = selectedArea
         gateway.fetchRecommended(platform: platformId, area: area, page: 0) { [weak self] result in
             guard let self = self else { return }
@@ -109,7 +109,7 @@ final class LiveTabViewModel: ObservableObject {
         loadingMore = true
         loadMoreFailed = false
         let nextPage = page + 1
-        let platformId = platform.id
+        let platformId = platform.rawValue
         let area = selectedArea
         gateway.fetchRecommended(platform: platformId, area: area, page: nextPage) { [weak self] result in
             guard let self = self else { return }
@@ -129,7 +129,7 @@ final class LiveTabViewModel: ObservableObject {
             categories = []
             return
         }
-        let platformId = platform.id
+        let platformId = platform.rawValue
         gateway.fetchCategories(platform: platformId) { [weak self] names in
             self?.categories = names
         }
@@ -210,8 +210,8 @@ struct LiveTabView: View {
     /// navigate with the current list as the switch playlist.
     private func openRoom(_ room: LiveRoom, playlist: [LiveRoom]) {
         LiveLibraryStore.recordHistory(
-            platform: room.platform, roomId: room.roomId,
-            title: room.title, nick: room.nick, cover: room.cover)
+            platform: room.platform.rawValue, roomId: room.roomId,
+            title: room.title, nick: room.streamer, cover: room.cover)
         viewModel.reload()
         path.append(.room(room, playlist))
     }
@@ -221,7 +221,7 @@ struct LiveTabView: View {
     private var platformRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(LivePlatform.all) { platform in
+                ForEach(LivePlatform.allCases) { platform in
                     Button(action: { viewModel.selectPlatform(platform) }) {
                         Text(platform.displayName)
                             .font(.system(size: 14, weight: .medium))
@@ -568,17 +568,17 @@ struct LiveHistoryCard: View {
 extension LiveFollowedRoom {
     func toRoom() -> LiveRoom {
         LiveRoom(
-            roomId: roomId, platform: platform, title: title,
-            cover: cover, nick: nick, avatar: "", watching: 0,
-            liveStatus: false, link: "")
+            roomId: roomId, platform: LivePlatform(rawValue: platform) ?? .bilibili,
+            title: title, streamer: nick, avatar: "", cover: cover,
+            onlineCount: 0, isLive: false, link: "")
     }
 }
 
 extension LiveHistoryEntry {
     func toRoom() -> LiveRoom {
         LiveRoom(
-            roomId: roomId, platform: platform, title: title,
-            cover: cover, nick: nick, avatar: "", watching: 0,
-            liveStatus: false, link: "")
+            roomId: roomId, platform: LivePlatform(rawValue: platform) ?? .bilibili,
+            title: title, streamer: nick, avatar: "", cover: cover,
+            onlineCount: 0, isLive: false, link: "")
     }
 }

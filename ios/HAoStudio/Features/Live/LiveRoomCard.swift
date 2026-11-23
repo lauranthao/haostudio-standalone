@@ -27,13 +27,13 @@ struct LiveRoomCard: View {
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(room.nick.isEmpty ? room.platform : room.nick)
+                    Text(room.streamer.isEmpty ? room.platform.displayName : room.streamer)
                         .font(.system(size: 12))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                     Spacer()
-                    if !liveWatchingText(room.watching).isEmpty {
-                        Text(liveWatchingText(room.watching))
+                    if !liveWatchingText(room.onlineCount).isEmpty {
+                        Text(liveWatchingText(room.onlineCount))
                             .font(.system(size: 12))
                             .foregroundStyle(theme.textMuted)
                             .lineLimit(1)
@@ -51,7 +51,7 @@ struct LiveRoomCard: View {
                 .frame(maxWidth: .infinity)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            if room.liveStatus {
+            if room.isLive {
                 Text("LIVE")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
@@ -110,7 +110,7 @@ struct LiveRoomRow: View {
                         .foregroundStyle(theme.textPrimary)
                         .lineLimit(1)
                     HStack(spacing: 6) {
-                        if room.liveStatus {
+                        if room.isLive {
                             Text("LIVE")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
@@ -118,13 +118,13 @@ struct LiveRoomRow: View {
                                 .padding(.vertical, 2)
                                 .background(theme.liveRed, in: Capsule())
                         }
-                        Text(room.nick.isEmpty ? room.platform : room.nick)
+                        Text(room.streamer.isEmpty ? room.platform.displayName : room.streamer)
                             .font(.system(size: 13))
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(1)
                     }
-                    if !liveWatchingText(room.watching).isEmpty {
-                        Text("\(liveWatchingText(room.watching)) 人在看")
+                    if !liveWatchingText(room.onlineCount).isEmpty {
+                        Text("\(liveWatchingText(room.onlineCount)) 人在看")
                             .font(.system(size: 12))
                             .foregroundStyle(theme.textMuted)
                             .lineLimit(1)

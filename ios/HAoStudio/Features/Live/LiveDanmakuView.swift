@@ -41,14 +41,14 @@ enum LiveDanmakuFilter {
         recentTexts: [String]
     ) -> Bool {
         if settings.blockedEntries.contains(where: { entry in
-            entry.isUser ? entry.text == message.userName : message.message.contains(entry.text)
+            entry.isUser ? entry.text == message.userName : message.text.contains(entry.text)
         }) {
             return false
         }
-        if settings.blockEmoteOnly && isEmoteOnly(message.message) {
+        if settings.blockEmoteOnly && isEmoteOnly(message.text) {
             return false
         }
-        if settings.blockLong && message.message.count > settings.blockLongLength {
+        if settings.blockLong && message.text.count > settings.blockLongLength {
             return false
         }
         if settings.douyuBotFilter && message.suspectedAutomated {
@@ -57,7 +57,7 @@ enum LiveDanmakuFilter {
         if settings.similarityEnabled {
             let threshold = Double(settings.similarityThreshold) / 100
             for recent in recentTexts {
-                if similarity(message.message, recent) >= threshold {
+                if similarity(message.text, recent) >= threshold {
                     return false
                 }
             }
@@ -263,7 +263,7 @@ struct LiveDanmakuListView: View {
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
             }
-            Text(message.message)
+            Text(message.text)
                 .font(.system(size: CGFloat(settings.fontSize)))
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
@@ -288,7 +288,7 @@ struct LiveDanmakuListView: View {
                 message: message, settings: settings, recentTexts: recentTexts
             ) else { continue }
             shown.append(message)
-            recentTexts.insert(message.message, at: 0)
+            recentTexts.insert(message.text, at: 0)
             recentTexts = Array(recentTexts.prefix(20))
         }
     }
@@ -313,7 +313,7 @@ private struct LiveFlyingRow: View {
                 Text(message.userName)
                     .font(.system(size: CGFloat(settings.fontSize), weight: .semibold))
             }
-            Text(message.message)
+            Text(message.text)
                 .font(.system(size: CGFloat(settings.fontSize)))
         }
         .foregroundStyle(.white)
@@ -352,7 +352,7 @@ struct LiveDanmakuOverlayView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(flying) { item in
                     LiveFlyingRow(
-                        message: item.message,
+                        message: item.text,
                         settings: settings,
                         containerWidth: geometry.size.width
                     )
@@ -391,7 +391,7 @@ struct LiveDanmakuOverlayView: View {
             let item = LiveFlyingItem(message: message, lane: nextLane)
             nextLane = (nextLane + 1) % LiveDanmakuOverlayView.laneCount
             flying.append(item)
-            recentTexts.insert(message.message, at: 0)
+            recentTexts.insert(message.text, at: 0)
             recentTexts = Array(recentTexts.prefix(20))
             let itemId = item.id
             DispatchQueue.main.asyncAfter(deadline: .now() + LiveDanmakuOverlayView.scrollDuration) {

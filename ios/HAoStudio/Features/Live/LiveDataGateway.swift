@@ -29,25 +29,14 @@
 
 import Foundation
 
-/// One live platform. Only these five — the other 29 Pure Live
-/// platforms are never added (chen 2026-11-16, seam contract).
-struct LivePlatform: Equatable, Identifiable {
-    let id: String
-    let displayName: String
-
-    static let bilibili = LivePlatform(id: "bilibili", displayName: "哔哩哔哩")
-    static let douyu = LivePlatform(id: "douyu", displayName: "斗鱼")
-    static let huya = LivePlatform(id: "huya", displayName: "虎牙")
-    static let douyin = LivePlatform(id: "douyin", displayName: "抖音")
-    static let kuaishou = LivePlatform(id: "kuaishou", displayName: "快手")
-
-    /// The five platforms, in tab order (Flutter _PlatformRow).
-    static let all: [LivePlatform] = [.bilibili, .douyu, .huya, .douyin, .kuaishou]
-
-    static func platform(for id: String) -> LivePlatform? {
-        all.first { $0.id == id }
-    }
-}
+/// One live platform — B leg's `LivePlatform` enum
+/// (`Services/LiveSites/LiveModels.swift`, canonical): raw values
+/// are the player-kernel ids (`bili` / `douyu` / `huya` /
+/// `douyin` / `ks`); `flutterSiteId` is the Flutter site id used
+/// for the danmaku enabled-map keys. Only these five — the other
+/// 29 Pure Live platforms are never added (chen 2026-11-16).
+/// (The C leg's own `LivePlatform` struct was deleted at merge:
+/// one type, one file.)
 
 /// One page of rooms from a list endpoint. `hasMore` is false
 /// when the last page returned fewer rooms than the page size, or

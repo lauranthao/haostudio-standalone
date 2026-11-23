@@ -161,6 +161,27 @@
 		000000000000000000000127 /* VodGestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* VodGestures.swift */; };
 		000000000000000000000129 /* VodPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000128 /* VodPlayerViewModel.swift */; };
 		00000000000000000000012B /* VodSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* VodSettingsSheet.swift */; };
+		00000000000000000000015D /* BilibiliDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000148 /* BilibiliDanmaku.swift */; };
+		00000000000000000000015E /* BilibiliSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000149 /* BilibiliSite.swift */; };
+		00000000000000000000015F /* BilibiliWbi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014A /* BilibiliWbi.swift */; };
+		000000000000000000000160 /* DouyinDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014B /* DouyinDanmaku.swift */; };
+		000000000000000000000161 /* DouyinSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014C /* DouyinSite.swift */; };
+		000000000000000000000162 /* DouyuDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014D /* DouyuDanmaku.swift */; };
+		000000000000000000000163 /* DouyuSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014E /* DouyuSite.swift */; };
+		000000000000000000000164 /* HuyaAntiCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000014F /* HuyaAntiCode.swift */; };
+		000000000000000000000165 /* HuyaDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000150 /* HuyaDanmaku.swift */; };
+		000000000000000000000166 /* HuyaSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000151 /* HuyaSite.swift */; };
+		000000000000000000000167 /* HuyaTarsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000152 /* HuyaTarsTypes.swift */; };
+		000000000000000000000168 /* HuyaWup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000153 /* HuyaWup.swift */; };
+		000000000000000000000169 /* KuaishouDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000154 /* KuaishouDanmaku.swift */; };
+		00000000000000000000016A /* KuaishouSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000155 /* KuaishouSite.swift */; };
+		00000000000000000000016B /* LiveDanmakuSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000156 /* LiveDanmakuSettings.swift */; };
+		00000000000000000000016C /* LiveDanmakuSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000157 /* LiveDanmakuSocket.swift */; };
+		00000000000000000000016D /* LiveHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000158 /* LiveHTTP.swift */; };
+		00000000000000000000016E /* LiveInflate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000159 /* LiveInflate.swift */; };
+		00000000000000000000016F /* LiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015A /* LiveModels.swift */; };
+		000000000000000000000170 /* TarsCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015B /* TarsCodec.swift */; };
+		000000000000000000000171 /* TarsUniPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015C /* TarsUniPacket.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -303,6 +324,27 @@
 		000000000000000000000126 /* VodGestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodGestures.swift; sourceTree = "<group>"; };
 		000000000000000000000128 /* VodPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodPlayerViewModel.swift; sourceTree = "<group>"; };
 		00000000000000000000012A /* VodSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodSettingsSheet.swift; sourceTree = "<group>"; };
+		000000000000000000000148 /* BilibiliDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilibiliDanmaku.swift; sourceTree = "<group>"; };
+		000000000000000000000149 /* BilibiliSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilibiliSite.swift; sourceTree = "<group>"; };
+		00000000000000000000014A /* BilibiliWbi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilibiliWbi.swift; sourceTree = "<group>"; };
+		00000000000000000000014B /* DouyinDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouyinDanmaku.swift; sourceTree = "<group>"; };
+		00000000000000000000014C /* DouyinSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouyinSite.swift; sourceTree = "<group>"; };
+		00000000000000000000014D /* DouyuDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouyuDanmaku.swift; sourceTree = "<group>"; };
+		00000000000000000000014E /* DouyuSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouyuSite.swift; sourceTree = "<group>"; };
+		00000000000000000000014F /* HuyaAntiCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuyaAntiCode.swift; sourceTree = "<group>"; };
+		000000000000000000000150 /* HuyaDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuyaDanmaku.swift; sourceTree = "<group>"; };
+		000000000000000000000151 /* HuyaSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuyaSite.swift; sourceTree = "<group>"; };
+		000000000000000000000152 /* HuyaTarsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuyaTarsTypes.swift; sourceTree = "<group>"; };
+		000000000000000000000153 /* HuyaWup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuyaWup.swift; sourceTree = "<group>"; };
+		000000000000000000000154 /* KuaishouDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KuaishouDanmaku.swift; sourceTree = "<group>"; };
+		000000000000000000000155 /* KuaishouSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KuaishouSite.swift; sourceTree = "<group>"; };
+		000000000000000000000156 /* LiveDanmakuSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDanmakuSettings.swift; sourceTree = "<group>"; };
+		000000000000000000000157 /* LiveDanmakuSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDanmakuSocket.swift; sourceTree = "<group>"; };
+		000000000000000000000158 /* LiveHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHTTP.swift; sourceTree = "<group>"; };
+		000000000000000000000159 /* LiveInflate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveInflate.swift; sourceTree = "<group>"; };
+		00000000000000000000015A /* LiveModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModels.swift; sourceTree = "<group>"; };
+		00000000000000000000015B /* TarsCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TarsCodec.swift; sourceTree = "<group>"; };
+		00000000000000000000015C /* TarsUniPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TarsUniPacket.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -391,10 +433,34 @@
 		00000000000000000000006E /* Services */ = {isa = PBXGroup; children = (
 				00000000000000000000012D /* DownloadEngine */,
 				00000000000000000000006F /* LXEngine */,
+				000000000000000000000147 /* LiveSites */,
 				000000000000000000000072 /* MusicAPI */,
 				000000000000000000000071 /* MusicResolvers */,
 				0000000000000000000000E5 /* Video */,
 			); path = Services; sourceTree = "<group>"; };
+		000000000000000000000147 /* LiveSites */ = {isa = PBXGroup; children = (
+				000000000000000000000148 /* BilibiliDanmaku.swift */,
+				000000000000000000000149 /* BilibiliSite.swift */,
+				00000000000000000000014A /* BilibiliWbi.swift */,
+				00000000000000000000014B /* DouyinDanmaku.swift */,
+				00000000000000000000014C /* DouyinSite.swift */,
+				00000000000000000000014D /* DouyuDanmaku.swift */,
+				00000000000000000000014E /* DouyuSite.swift */,
+				00000000000000000000014F /* HuyaAntiCode.swift */,
+				000000000000000000000150 /* HuyaDanmaku.swift */,
+				000000000000000000000151 /* HuyaSite.swift */,
+				000000000000000000000152 /* HuyaTarsTypes.swift */,
+				000000000000000000000153 /* HuyaWup.swift */,
+				000000000000000000000154 /* KuaishouDanmaku.swift */,
+				000000000000000000000155 /* KuaishouSite.swift */,
+				000000000000000000000156 /* LiveDanmakuSettings.swift */,
+				000000000000000000000157 /* LiveDanmakuSocket.swift */,
+				000000000000000000000158 /* LiveHTTP.swift */,
+				000000000000000000000159 /* LiveInflate.swift */,
+				00000000000000000000015A /* LiveModels.swift */,
+				00000000000000000000015B /* TarsCodec.swift */,
+				00000000000000000000015C /* TarsUniPacket.swift */,
+			); path = LiveSites; sourceTree = "<group>"; };
 		00000000000000000000006F /* LXEngine */ = {isa = PBXGroup; children = (
 				000000000000000000000078 /* LXEngine.swift */,
 				00000000000000000000007A /* LXModels.swift */,
@@ -697,6 +763,27 @@
 				000000000000000000000127 /* VodGestures.swift in Sources */,
 				000000000000000000000129 /* VodPlayerViewModel.swift in Sources */,
 				00000000000000000000012B /* VodSettingsSheet.swift in Sources */,
+				00000000000000000000015D /* BilibiliDanmaku.swift in Sources */,
+				00000000000000000000015E /* BilibiliSite.swift in Sources */,
+				00000000000000000000015F /* BilibiliWbi.swift in Sources */,
+				000000000000000000000160 /* DouyinDanmaku.swift in Sources */,
+				000000000000000000000161 /* DouyinSite.swift in Sources */,
+				000000000000000000000162 /* DouyuDanmaku.swift in Sources */,
+				000000000000000000000163 /* DouyuSite.swift in Sources */,
+				000000000000000000000164 /* HuyaAntiCode.swift in Sources */,
+				000000000000000000000165 /* HuyaDanmaku.swift in Sources */,
+				000000000000000000000166 /* HuyaSite.swift in Sources */,
+				000000000000000000000167 /* HuyaTarsTypes.swift in Sources */,
+				000000000000000000000168 /* HuyaWup.swift in Sources */,
+				000000000000000000000169 /* KuaishouDanmaku.swift in Sources */,
+				00000000000000000000016A /* KuaishouSite.swift in Sources */,
+				00000000000000000000016B /* LiveDanmakuSettings.swift in Sources */,
+				00000000000000000000016C /* LiveDanmakuSocket.swift in Sources */,
+				00000000000000000000016D /* LiveHTTP.swift in Sources */,
+				00000000000000000000016E /* LiveInflate.swift in Sources */,
+				00000000000000000000016F /* LiveModels.swift in Sources */,
+				000000000000000000000170 /* TarsCodec.swift in Sources */,
+				000000000000000000000171 /* TarsUniPacket.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

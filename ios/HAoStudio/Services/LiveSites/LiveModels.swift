@@ -25,12 +25,15 @@ import Foundation
 /// platforms; they live on `flutterSiteId` and are used ONLY for
 /// the danmaku settings enabled-map keys, which S1 migrates
 /// verbatim from the Flutter Hive box.
-enum LivePlatform: String, CaseIterable {
+enum LivePlatform: String, CaseIterable, Identifiable {
     case bilibili = "bili"
     case douyu = "douyu"
     case huya = "huya"
     case douyin = "douyin"
     case kuaishou = "ks"
+
+    /// ForEach identity: the kernel id (unique per case).
+    var id: String { rawValue }
 
     /// Flutter site id (`lib/shared/platforms/sites.dart`).
     /// Danmaku-settings keys only — never for player headers.
@@ -132,12 +135,36 @@ struct LiveRoom {
     }
 }
 
+// MARK: - Room identity (merge: A + C legs need this)
+
+/// Identity equality for rooms: two rooms are the same room when
+/// they share platform + room id. Deliberately NOT a full-field
+/// comparison — a room re-fetched from the platform (fresh title /
+/// watching count) is still the same room. Lives in this file
+/// because the S3 rule is that Hashable/Equatable belong in the
+/// file that declares the type, never in an extension elsewhere —
+/// and this IS that file. The C leg needs it twice: `LiveRoomPage`
+/// is Equatable (its `rooms` must compare) and `LiveDestination`
+/// is Hashable (it carries a room + playlist).
+extension LiveRoom: Equatable {
+    static func == (lhs: LiveRoom, rhs: LiveRoom) -> Bool {
+        lhs.roomId == rhs.roomId && lhs.platform == rhs.platform
+    }
+}
+
+extension LiveRoom: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(roomId)
+        hasher.combine(platform)
+    }
+}
+
 // MARK: - Qualities / lines / resolution
 
 /// One CDN line: a name and the playable stream addresses on it.
 /// A line with no urls is an unfilled placeholder (the quality was
 /// advertised but its line was not resolved yet).
-struct LiveLine {
+struct LiveLine: Equatable {
     var name: String
     var urls: [String]
     var format: String
@@ -152,13 +179,13 @@ struct LiveLine {
 /// One quality tier (画质档位): its lines, best first. `sort` orders
 /// qualities descending (higher = better); each platform fills it
 /// from the server's own ranking, never invented.
-struct LiveQuality {
+struct LiveQuality: Equatable {
     var id: String
     var name: String
     var sort: Int
     var lines: [LiveLine]
 
-    init(id: String, name: String, sort: Int, lines: [LiveLine] = []) {
+    init(id: String, name: String, sort: Int = 0, lines: [LiveLine] = []) {
         self.id = id
         self.name = name
         self.sort = sort

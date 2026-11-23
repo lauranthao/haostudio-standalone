@@ -126,4 +126,29 @@ final class LiveDanmakuSettingsTests: XCTestCase {
         let small = LiveDanmakuSettings(maxCount: 20)
         XCTAssertEqual(small.flyingMaxVisibleCount, 20)
     }
+
+    func testBlockedEntriesDictionaryRoundTrip() {
+        let settings = LiveDanmakuSettings(blockedEntries: [
+            LiveDanmakuBlockEntry(id: "1", text: "spam", isUser: false),
+            LiveDanmakuBlockEntry(id: "2", text: "bot-name", isUser: true)
+        ])
+        let restored = LiveDanmakuSettings(dictionary: settings.dictionary())
+        XCTAssertEqual(restored.blockedEntries.count, 2)
+        XCTAssertEqual(restored.blockedEntries[0].text, "spam")
+        XCTAssertFalse(restored.blockedEntries[0].isUser)
+        XCTAssertTrue(restored.blockedEntries[1].isUser)
+    }
+
+    func testBlockedEntriesAcceptsJsonStringAndIsUserForm() {
+        let fromJsonString = LiveDanmakuSettings(dictionary: [
+            LiveDanmakuSettings.keyBlockedEntries: "[{\"id\":\"1\",\"text\":\"spam\",\"kind\":\"word\"}]"
+        ])
+        XCTAssertEqual(fromJsonString.blockedEntries.count, 1)
+        XCTAssertFalse(fromJsonString.blockedEntries[0].isUser)
+        let fromIsUser = LiveDanmakuSettings(dictionary: [
+            LiveDanmakuSettings.keyBlockedEntries: [["id": "2", "text": "bot", "isUser": true]]
+        ])
+        XCTAssertEqual(fromIsUser.blockedEntries.count, 1)
+        XCTAssertTrue(fromIsUser.blockedEntries[0].isUser)
+    }
 }

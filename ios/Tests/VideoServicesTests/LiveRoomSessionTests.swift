@@ -34,37 +34,73 @@ import XCTest
 /// queue: each resolve pops the next entry, so a test can say
 /// "first resolve returns the room, the re-parse returns a
 /// mismatched quality".
+/// No-op transport stand-in (session tests never start danmaku).
+final class FakeDanmakuTransport: LiveDanmakuTransport {
+    var isConnected: Bool { false }
+    var onMessage: ((DanmakuMessage) -> Void)?
+    var onReady: (() -> Void)?
+    var onClose: (() -> Void)?
+    var onReconnect: (() -> Void)?
+
+    func start(danmakuData: [String: Any]) {}
+    func heartbeat() {}
+    func stop() {}
+}
+
 final class FakeLiveSiteResolver: LiveSiteResolver {
+    var platform: LivePlatform { .huya }
     var resolutionsToReturn: [LivePlayUrlResolution?] = []
     var resolveCount = 0
     var receivedRoomIds: [String] = []
+    var receivedQualities: [LiveQuality?] = []
 
-    func resolve(roomId: String, completion: @escaping (LivePlayUrlResolution?) -> Void) {
+    func roomInfo(roomId: String, completion: @escaping (Result<LiveRoom, Error>) -> Void) {
+        completion(.failure(LiveError.unsupported("test fake has no room info")))
+    }
+
+    func resolve(roomId: String, quality: LiveQuality?, completion: @escaping (Result<LivePlayUrlResolution, Error>) -> Void) {
         resolveCount += 1
         receivedRoomIds.append(roomId)
+        receivedQualities.append(quality)
         let resolution = resolutionsToReturn.isEmpty ? nil : resolutionsToReturn.removeFirst()
-        completion(resolution)
+        if let resolution = resolution {
+            completion(.success(resolution))
+        } else {
+            completion(.failure(LiveError.emptyResponse))
+        }
+    }
+
+    func makeDanmakuTransport() -> LiveDanmakuTransport {
+        FakeDanmakuTransport()
     }
 }
 
 /// A resolver that never answers (for the 10 s timeout path).
 final class HangingLiveSiteResolver: LiveSiteResolver {
+    var platform: LivePlatform { .huya }
     var resolveCount = 0
 
-    func resolve(roomId: String, completion: @escaping (LivePlayUrlResolution?) -> Void) {
+    func roomInfo(roomId: String, completion: @escaping (Result<LiveRoom, Error>) -> Void) {
+    }
+
+    func resolve(roomId: String, quality: LiveQuality?, completion: @escaping (Result<LivePlayUrlResolution, Error>) -> Void) {
         resolveCount += 1
+    }
+
+    func makeDanmakuTransport() -> LiveDanmakuTransport {
+        FakeDanmakuTransport()
     }
 }
 
 // MARK: - Builders
 
 private func makeRoom() -> LiveRoom {
-    return LiveRoom(roomId: "123", platform: "huya", title: "测试直播间", streamer: "主播", onlineCount: 100, coverURL: nil, isLive: true)
+    return LiveRoom(roomId: "123", platform: .huya, title: "测试直播间", streamer: "主播", onlineCount: 100, isLive: true)
 }
 
-private func makeResolution(urls: [URL], quality: LiveQuality? = nil, issuedAt: Date? = nil, refreshAt: Date? = nil, invalidAt: Date? = nil) -> LivePlayUrlResolution {
+private func makeResolution(urls: [URL], quality: LiveQuality? = nil, issuedAt: Date = Date(), refreshAt: Date? = nil, invalidAt: Date? = nil) -> LivePlayUrlResolution {
     let lines = urls.enumerated().map { index, url in
-        LiveLine(name: "线路\(index + 1)", urls: [url])
+        LiveLine(name: "线路\(index + 1)", urls: [url.absoluteString])
     }
     return LivePlayUrlResolution(lines: lines, formats: [], qualities: [], quality: quality, issuedAt: issuedAt, refreshAt: refreshAt, invalidAt: invalidAt)
 }

@@ -41,11 +41,12 @@
 //     restoreBrightnessOnExit() restores on disappear;
 //   togglePlayPause(), switchQuality(to: LiveQuality),
 //     switchLine(to: Int index).
-//   LiveQuality has `quality` (label) + `selectionId`
-//   (identity: id ?? label, Flutter mirror). LiveLine is
+//   LiveQuality has `name` (label) + `id` (identity). LiveLine is
 //   selected by index (display is always "线路 N").
-//   DanmakuMessage has `message` + `userName` (Flutter
-//   LiveMessage mirror).
+//   DanmakuMessage has `text` + `userName` (Flutter
+//   LiveMessage mirror). The transport is owned by the view model
+//   (`startDanmaku` / `stopDanmaku`); the page starts it on appear
+//   and stops it on disappear.
 
 import AVFoundation
 import MediaPlayer
@@ -91,12 +92,12 @@ struct LiveRoomView: View {
     /// Watching count: the live session's number wins when it
     /// has one; otherwise the card's stored number.
     private var watchingCount: Int {
-        livePlayer.watching > 0 ? livePlayer.watching : currentRoom.watching
+        livePlayer.watching > 0 ? livePlayer.watching : currentRoom.onlineCount
     }
 
     /// Danmaku on/off for this platform (absent entry = enabled).
     private var danmakuEnabledForRoom: Bool {
-        danmakuSettings.enabled[currentRoom.platform] ?? true
+        danmakuSettings.isEnabled(for: currentRoom.platform)
     }
 
     var body: some View {
@@ -111,7 +112,7 @@ struct LiveRoomView: View {
             VideoOrientation.unlockPortrait()
             openCurrentRoom()
             isFollowing = LiveLibraryStore.isFollowed(
-                platform: currentRoom.platform, roomId: currentRoom.roomId)
+                platform: currentRoom.platform.rawValue, roomId: currentRoom.roomId)
             // Arm brightness (records the entry value, arms writes)
             // and seed the volume state from the system value.
             livePlayer.notePlayerEntry()
@@ -120,6 +121,7 @@ struct LiveRoomView: View {
         .onDisappear {
             autoHideWork?.cancel()
             VideoOrientation.unlockPortrait()
+            livePlayer.stopDanmaku()
             livePlayer.restoreBrightnessOnExit()
             coordinator.stop()
         }
@@ -142,7 +144,7 @@ struct LiveRoomView: View {
                 lines: livePlayer.lines,
                 selectedQualityIndex: $selectedQualityIndex,
                 selectedLineIndex: $selectedLineIndex,
-                currentQualityLabel: livePlayer.currentQuality?.quality,
+                currentQualityLabel: livePlayer.currentQuality?.name,
                 onSelectQuality: { index in switchQuality(to: index) },
                 onSelectLine: { index in switchLine(to: index) }
             )
@@ -162,21 +164,23 @@ struct LiveRoomView: View {
     // MARK: - Open / switch
 
     /// Open the current room: record history (Flutter L01),
+    /// configure the driver with the room + its platform resolver,
     /// then request playback (the coordinator stops music/VOD
     /// first — one sound at a time — and the live driver plays).
+    /// The view model also starts the danmaku transport (roomInfo
+    /// supplies the transport credentials when the card has none).
     private func openCurrentRoom() {
         let room = currentRoom
         LiveLibraryStore.recordHistory(
-            platform: room.platform, roomId: room.roomId,
-            title: room.title, nick: room.nick, cover: room.cover)
-        isFollowing = LiveLibraryStore.isFollowed(platform: room.platform, roomId: room.roomId)
+            platform: room.platform.rawValue, roomId: room.roomId,
+            title: room.title, nick: room.streamer, cover: room.cover)
+        isFollowing = LiveLibraryStore.isFollowed(platform: room.platform.rawValue, roomId: room.roomId)
         selectedQualityIndex = 0
         selectedLineIndex = 0
-        coordinator.requestLivePlay(
-            PlaybackItem(
-                id: LiveResumeKey.key(platform: room.platform, roomId: room.roomId),
-                kind: .live, title: room.title, artist: room.nick,
-                coverURL: liveCoverURL(for: room)))
+        let resolver = LiveSites.resolver(for: room.platform)
+        livePlayer.driver.configure(room: room, resolver: resolver)
+        coordinator.requestLivePlay(LiveDriver.playbackItem(room: room))
+        livePlayer.startDanmaku(room: room, resolver: resolver)
     }
 
     private func switchToRoom(at index: Int) {
@@ -207,13 +211,12 @@ struct LiveRoomView: View {
     private func toggleFollow() {
         let room = currentRoom
         isFollowing = LiveLibraryStore.toggleFollow(
-            platform: room.platform, roomId: room.roomId,
-            title: room.title, nick: room.nick, cover: room.cover)
+            platform: room.platform.rawValue, roomId: room.roomId,
+            title: room.title, nick: room.streamer, cover: room.cover)
     }
 
     private func toggleDanmaku() {
-        let platform = currentRoom.platform
-        danmakuSettings.enabled[platform] = !danmakuEnabledForRoom
+        danmakuSettings.setEnabled(!danmakuEnabledForRoom, for: currentRoom.platform)
         danmakuSettings.persist()
     }
 
@@ -289,7 +292,7 @@ struct LiveRoomView: View {
                         .foregroundStyle(theme.textPrimary)
                         .lineLimit(2)
                     HStack(spacing: 6) {
-                        if currentRoom.liveStatus {
+                        if currentRoom.isLive {
                             Text("LIVE")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.white)
@@ -309,11 +312,11 @@ struct LiveRoomView: View {
             }
             HStack(spacing: 10) {
                 anchorAvatar
-                Text(currentRoom.nick.isEmpty ? currentRoom.platform : currentRoom.nick)
+                Text(currentRoom.streamer.isEmpty ? currentRoom.platform.displayName : currentRoom.streamer)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
-                Text(LivePlatform.platform(for: currentRoom.platform)?.displayName ?? currentRoom.platform)
+                Text(currentRoom.platform.displayName)
                     .font(.system(size: 12))
                     .foregroundStyle(theme.textSecondary)
                     .padding(.horizontal, 8)
@@ -414,7 +417,7 @@ struct LiveRoomView: View {
             LiveDanmakuListView(
                 messages: livePlayer.messages,
                 settings: danmakuSettings,
-                platform: currentRoom.platform,
+                platform: currentRoom.platform.flutterSiteId,
                 onOpenSettings: { showDanmakuSettings = true }
             )
         }
@@ -430,7 +433,7 @@ struct LiveRoomView: View {
             }
             .buttonStyle(.plain)
             Button(action: { showQualitySheet = true }) {
-                Text(livePlayer.currentQuality?.quality ?? "画质")
+                Text(livePlayer.currentQuality?.name ?? "画质")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                     .padding(.horizontal, 12)
@@ -535,13 +538,13 @@ struct LiveRoomView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text(currentRoom.nick.isEmpty ? currentRoom.platform : currentRoom.nick)
+                Text(currentRoom.streamer.isEmpty ? currentRoom.platform.displayName : currentRoom.streamer)
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineLimit(1)
             }
             Spacer()
-            if currentRoom.liveStatus {
+            if currentRoom.isLive {
                 Text("LIVE")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
@@ -585,7 +588,7 @@ struct LiveRoomView: View {
             }
             .buttonStyle(.plain)
             Button(action: { showQualitySheet = true }) {
-                Text(livePlayer.currentQuality?.quality ?? "画质")
+                Text(livePlayer.currentQuality?.name ?? "画质")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -676,7 +679,7 @@ struct LiveQualityLineSheet: View {
                                     onSelectQuality(index)
                                     dismiss()
                                 }) {
-                                    Text(quality.quality)
+                                    Text(quality.name)
                                         .font(.system(size: 14, weight: .medium))
                                         .foregroundStyle(
                                             index == selectedQualityIndex
@@ -694,7 +697,7 @@ struct LiveQualityLineSheet: View {
                         }
                         if let acked = currentQualityLabel,
                            qualities.indices.contains(selectedQualityIndex),
-                           acked != qualities[selectedQualityIndex].quality {
+                           acked != qualities[selectedQualityIndex].name {
                             Text("清晰度已限制为 \(acked)")
                                 .font(.system(size: 13))
                                 .foregroundStyle(theme.textSecondary)

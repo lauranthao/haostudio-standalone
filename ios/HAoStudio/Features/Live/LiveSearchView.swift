@@ -39,7 +39,7 @@ final class LiveSearchViewModel: ObservableObject {
         }
         isSearching = true
         hasSearched = true
-        let platformId = platform.id
+        let platformId = platform.rawValue
         gateway.searchRooms(query: trimmed, platform: platformId) { [weak self] rooms in
             guard let self = self else { return }
             self.isSearching = false
@@ -123,7 +123,7 @@ struct LiveSearchView: View {
     private var platformRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(LivePlatform.all) { platform in
+                ForEach(LivePlatform.allCases) { platform in
                     Button(action: { viewModel.platform = platform }) {
                         Text(platform.displayName)
                             .font(.system(size: 14, weight: .medium))

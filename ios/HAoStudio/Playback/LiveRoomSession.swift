@@ -14,115 +14,14 @@
 // (4 s warn / 12 s fail watchdog). Differences from Flutter are
 // called out where they exist.
 //
-// B-LEG CONTRACT (assumed — B leg defines the real types in
-// `Services/LiveSites/LiveModels.swift`; if B leg has already
-// defined these names by merge time, DELETE this block and use
-// theirs — one type, one file, never two declarations of the same
-// type. The shapes below follow the S4 brief exactly: LiveRoom
-// (title/streamer/online count/cover/is-live/roomId/platform),
-// LiveLine (name + stream URL list), LiveQuality (quality tier),
-// DanmakuMessage, and LiveSiteResolver `resolve(roomId:completion:)`.
-// The session only ever calls the resolver through the single
-// `fetchFromResolver` path, so a resolver signature change at merge
-// touches one place.)
+// B-LEG CONTRACT (merged 2026-11-23): the room / line / quality /
+// danmaku / resolver types live in `Services/LiveSites/
+// LiveModels.swift` (B leg, canonical). This file only ever calls
+// the resolver through the single `fetchFromResolver` path.
 //
 // Swift 5.0: completion handlers only, no async/await, no `any`.
 
 import Foundation
-
-// MARK: - B-leg contract (ASSUMED — see header)
-
-/// One live room (B leg's `LiveRoom`).
-struct LiveRoom: Equatable {
-    let roomId: String
-    let platform: String
-    let title: String
-    let streamer: String
-    let onlineCount: Int
-    let coverURL: URL?
-    let isLive: Bool
-
-    init(roomId: String, platform: String, title: String, streamer: String, onlineCount: Int, coverURL: URL? = nil, isLive: Bool = true) {
-        self.roomId = roomId
-        self.platform = platform
-        self.title = title
-        self.streamer = streamer
-        self.onlineCount = onlineCount
-        self.coverURL = coverURL
-        self.isLive = isLive
-    }
-}
-
-/// One CDN line of a room (B leg's `LiveLine`): a name plus the
-/// stream addresses on that line, in try order.
-struct LiveLine: Equatable {
-    let name: String
-    let urls: [URL]
-
-    init(name: String, urls: [URL]) {
-        self.name = name
-        self.urls = urls
-    }
-}
-
-/// One quality tier (B leg's `LiveQuality`).
-struct LiveQuality: Equatable {
-    let id: String
-    let name: String
-
-    init(id: String, name: String) {
-        self.id = id
-        self.name = name
-    }
-}
-
-/// One danmaku message, receive-only (B leg's `DanmakuMessage`).
-/// The app never sends danmaku: all five platforms are
-/// receive-only transports.
-struct DanmakuMessage: Equatable {
-    let text: String
-    let sender: String?
-
-    init(text: String, sender: String? = nil) {
-        self.text = text
-        self.sender = sender
-    }
-}
-
-/// One resolved play plan: the lines for one quality, the declared
-/// format per flattened URL, the qualities the room offers, and the
-/// lease deadlines of this resolution. `urls` flattens the lines in
-/// platform order; `formats` runs parallel to `urls`.
-struct LivePlayUrlResolution {
-    let lines: [LiveLine]
-    let formats: [String]
-    let qualities: [LiveQuality]
-    let quality: LiveQuality?
-    let issuedAt: Date?
-    let refreshAt: Date?
-    let invalidAt: Date?
-
-    var urls: [URL] {
-        return lines.flatMap { $0.urls }
-    }
-
-    init(lines: [LiveLine], formats: [String] = [], qualities: [LiveQuality] = [], quality: LiveQuality? = nil, issuedAt: Date? = nil, refreshAt: Date? = nil, invalidAt: Date? = nil) {
-        self.lines = lines
-        self.formats = formats
-        self.qualities = qualities
-        self.quality = quality
-        self.issuedAt = issuedAt
-        self.refreshAt = refreshAt
-        self.invalidAt = invalidAt
-    }
-}
-
-/// Room resolution (B leg's `LiveSiteResolver`): roomId -> lines /
-/// qualities / stream addresses. The session never calls platform
-/// APIs directly; it only ever goes through this protocol.
-protocol LiveSiteResolver: AnyObject {
-    func resolve(roomId: String, completion: @escaping (LivePlayUrlResolution?) -> Void)
-}
 
 // MARK: - Stall watchdog (live twin of VodStallWatchdog)
 
@@ -223,8 +122,12 @@ final class LiveRecovery {
     /// Current resolved lines, in platform order.
     private(set) var lines: [LiveLine] = []
     /// Declared format per flattened URL, same order as `urls`
-    /// ("other" when the platform declared nothing).
-    private(set) var formats: [String] = []
+    /// (the line's own format, repeated per URL on that line).
+    /// Computed from `urlFacts` together with `urls`, so the two
+    /// can never drift apart when a URL string fails to parse.
+    var formats: [String] {
+        return urlFacts.map { $0.format }
+    }
     /// Qualities the room offers, from the last resolution.
     private(set) var qualities: [LiveQuality] = []
     /// Index of the line currently playing (indexes `urls`).
@@ -256,9 +159,22 @@ final class LiveRecovery {
         prefetchTimer?.invalidate()
     }
 
+    /// (URL, format) pairs, one per playable URL string, in line
+    /// order. B leg's `LiveLine.urls` are strings, so a string that
+    /// is not a valid URL is dropped here — together with its
+    /// format — which keeps `urls` and `formats` aligned.
+    var urlFacts: [(url: URL, format: String)] {
+        return lines.flatMap { line in
+            line.urls.compactMap { raw -> (URL, String)? in
+                guard let url = URL(string: raw) else { return nil }
+                return (url, line.format)
+            }
+        }
+    }
+
     /// All stream URLs, flattened from `lines` in platform order.
     var urls: [URL] {
-        return lines.flatMap { $0.urls }
+        return urlFacts.map { $0.url }
     }
 
     var currentUrl: URL? {
@@ -311,13 +227,12 @@ final class LiveRecovery {
     func adopt(resolution: LivePlayUrlResolution, previousUrl: URL?) {
         let previous = previousUrl ?? currentUrl
         lines = resolution.lines
-        formats = paddedFormats(resolution.formats, count: resolution.urls.count)
         qualities = resolution.qualities
         quality = resolution.quality
-        issuedAt = resolution.issuedAt ?? now()
+        issuedAt = resolution.issuedAt
         refreshAt = resolution.refreshAt
         invalidAt = resolution.invalidAt
-        currentLineIndex = matchLineIndex(urls: resolution.urls, previousUrl: previous)
+        currentLineIndex = matchLineIndex(urls: urls, previousUrl: previous)
         schedulePrefetch()
     }
 
@@ -332,7 +247,7 @@ final class LiveRecovery {
                 completion(nil)
                 return
             }
-            guard let resolution = resolution, !resolution.urls.isEmpty else {
+            guard let resolution = resolution, !resolution.appliedUrls.isEmpty else {
                 completion(nil)
                 return
             }
@@ -361,7 +276,7 @@ final class LiveRecovery {
                 completion(nil)
                 return
             }
-            guard let resolution = resolution, !resolution.urls.isEmpty else {
+            guard let resolution = resolution, !resolution.appliedUrls.isEmpty else {
                 completion(nil)
                 return
             }
@@ -392,12 +307,12 @@ final class LiveRecovery {
             guard !self.disposed else {
                 return
             }
-            guard let resolution = resolution, !resolution.urls.isEmpty else {
+            guard let resolution = resolution, !resolution.appliedUrls.isEmpty else {
                 self.schedulePrefetch(at: self.now().addingTimeInterval(LiveRecovery.refreshRetry))
                 return
             }
             self.held = resolution
-            let next = resolution.refreshAt ?? resolution.issuedAt?.addingTimeInterval(LiveRecovery.prefetchAfterIssue)
+            let next = resolution.refreshAt ?? resolution.issuedAt.addingTimeInterval(LiveRecovery.prefetchAfterIssue)
             self.schedulePrefetch(at: next ?? self.now().addingTimeInterval(LiveRecovery.refreshRetry))
         }
     }
@@ -422,7 +337,7 @@ final class LiveRecovery {
     /// Look at the held plan WITHOUT spending it. Nil when nothing
     /// usable is held (nothing held, empty, or past hard expiry).
     func peekHeld() -> LivePlayUrlResolution? {
-        guard let held = held, !held.urls.isEmpty else {
+        guard let held = held, !held.appliedUrls.isEmpty else {
             return nil
         }
         if let invalid = held.invalidAt, !invalid.isAfter(now()) {
@@ -490,11 +405,11 @@ final class LiveRecovery {
 
     // MARK: - Private
 
-    /// The single resolver call site (merge seam: if B leg's
-    /// resolver signature changes, this is the one place to change).
-    /// 10 s timeout: a timeout is a stream error, exactly like a
-    /// failed parse — the caller falls through to the next line or
-    /// the failure card, never a retry of the same call.
+    /// The single resolver call site. Passes the session's current
+    /// quality (nil = default/best) and maps a resolver failure to
+    /// nil — the caller falls through to the next line or the
+    /// failure card, never a retry of the same call. 10 s timeout:
+    /// a timeout is a stream error, exactly like a failed parse.
     private func fetchFromResolver(completion: @escaping (LivePlayUrlResolution?) -> Void) {
         guard let resolver = resolver else {
             completion(nil)
@@ -516,9 +431,14 @@ final class LiveRecovery {
         if let work = timeoutWork {
             DispatchQueue.main.asyncAfter(deadline: .now() + timeoutInterval, execute: work)
         }
-        resolver.resolve(roomId: roomId, completion: { resolution in
-            finish(resolution)
-        })
+        resolver.resolve(roomId: roomId, quality: quality) { result in
+            switch result {
+            case .success(let resolution):
+                finish(resolution)
+            case .failure:
+                finish(nil)
+            }
+        }
     }
 
     /// Match a previously playing URL in a refreshed list by CDN +
@@ -558,12 +478,6 @@ final class LiveRecovery {
         return URL(fileURLWithPath: last).deletingPathExtension().lastPathComponent
     }
 
-    private func paddedFormats(_ formats: [String], count: Int) -> [String] {
-        if formats.count >= count {
-            return Array(formats.prefix(count))
-        }
-        return formats + Array(repeating: "other", count: count - formats.count)
-    }
 }
 
 // MARK: - Room state machine
@@ -751,7 +665,7 @@ final class LiveRoomSession {
             return .exhausted
         }
         if let held = recovery.peekHeld() {
-            return .useHeld(matchedFirst(urls: held.urls))
+            return .useHeld(matchedFirst(urls: held.appliedUrls.compactMap { URL(string: $0) }))
         }
         if !recovery.isFetchFreshThrottled {
             return .fetchFresh

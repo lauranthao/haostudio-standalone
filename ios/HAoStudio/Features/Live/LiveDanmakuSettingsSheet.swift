@@ -76,12 +76,12 @@ struct LiveDanmakuSettingsSheet: View {
 
     private var platformSection: some View {
         Section {
-            ForEach(LivePlatform.all) { platform in
+            ForEach(LivePlatform.allCases) { platform in
                 Toggle(
                     platform.displayName,
                     isOn: Binding(
-                        get: { settings.enabled[platform.id] ?? true },
-                        set: { settings.enabled[platform.id] = $0 }
+                        get: { settings.enabled[platform.flutterSiteId] ?? true },
+                        set: { settings.enabled[platform.flutterSiteId] = $0 }
                     )
                 )
             }

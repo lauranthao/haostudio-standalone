@@ -255,11 +255,11 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
     /// a bare roomId can collide across platforms).
     static func playbackItem(room: LiveRoom) -> PlaybackItem {
         return PlaybackItem(
-            id: "\(room.platform):\(room.roomId)",
+            id: "\(room.platform.rawValue):\(room.roomId)",
             kind: .live,
             title: room.title,
             artist: room.streamer,
-            coverURL: room.coverURL
+            coverURL: URL(string: room.cover)
         )
     }
 
@@ -569,7 +569,7 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         }
         self.backend = backend
         self.currentEngine = engine
-        backend.open(url: url, headers: PlayerKernel.httpHeaders(platform: session.room?.platform)) { [weak self] ok in
+        backend.open(url: url, headers: PlayerKernel.httpHeaders(platform: session.room?.platform.rawValue)) { [weak self] ok in
             guard let self = self else {
                 completion(false)
                 return
@@ -643,7 +643,7 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         }
         backend = avBackend
         currentEngine = .avplayer
-        avBackend.open(url: url, headers: PlayerKernel.httpHeaders(platform: session.room?.platform)) { [weak self] ok in
+        avBackend.open(url: url, headers: PlayerKernel.httpHeaders(platform: session.room?.platform.rawValue)) { [weak self] ok in
             guard let self = self else {
                 return
             }
