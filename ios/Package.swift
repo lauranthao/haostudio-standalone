@@ -51,11 +51,15 @@ let package = Package(
                 "Storage",
             ],
             // The 13 LX scripts live under Services/LXEngine, which is
-            // a sources dir, so SwiftPM treats the .js files as
-            // unexpected compiler inputs unless they are declared
-            // resources (build #19 failed on exactly those 13 files).
-            resources: [
-                .process("Services/LXEngine/Scripts"),
+            // a sources dir, so SwiftPM tries to build rules for the
+            // .js files: "unexpected input file" without a resource
+            // declaration (build #19), "duplicate rule" with one
+            // (build #20 — the auto-discovered rule plus the declared
+            // one). Excluding the dir removes them from the build
+            // graph entirely; the tests locate the scripts on disk
+            // via #file, which the checkout still has.
+            exclude: [
+                "Services/LXEngine/Scripts",
             ],
             linkerSettings: [
                 .linkedFramework("Security"),
