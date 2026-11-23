@@ -1,5 +1,6 @@
 // swift-tools-version:5.5
-// HAo Studio 2.0 — SwiftPM test package (S1 migration + S2 music).
+// HAo Studio 2.0 — SwiftPM test package (S1 migration + S2 music
+// + S3 video + S4 live).
 //
 // Why a SwiftPM package instead of an Xcode unit-test target:
 // adding a test target means a second PBXNativeTarget, a test host
@@ -76,8 +77,11 @@ let package = Package(
                 "Services/MusicAPI",
                 "Services/Video",
                 "Services/DownloadEngine",
+                "Services/LiveSites",
                 "Playback/PlaybackCoordinator.swift",
+                "Playback/LiveRoomSession.swift",
                 "Features/Video/VideoLibraryStore.swift",
+                "Features/Live/LiveLibraryStore.swift",
                 "Storage",
             ],
             linkerSettings: [
@@ -109,6 +113,22 @@ let package = Package(
             name: "VideoFeaturesTests",
             dependencies: ["AppCore"],
             path: "Tests/VideoFeaturesTests"
+        ),
+        // S4: live services (5 platform resolvers + 5 danmaku
+        // transports + TARS) and live feature stores — same
+        // AppCore dependency. LiveRoomSession.swift (A leg) and
+        // LiveLibraryStore.swift (C leg) join AppCore as single
+        // files above; their sources land with their legs, so
+        // `swift test` fails on a missing file until they do.
+        .testTarget(
+            name: "LiveServicesTests",
+            dependencies: ["AppCore"],
+            path: "Tests/LiveServicesTests"
+        ),
+        .testTarget(
+            name: "LiveFeaturesTests",
+            dependencies: ["AppCore"],
+            path: "Tests/LiveFeaturesTests"
         ),
     ]
 )
