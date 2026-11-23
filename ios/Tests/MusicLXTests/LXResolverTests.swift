@@ -184,10 +184,12 @@ final class LXResolverTests: XCTestCase {
             },
             cooldown: cooldown)
         // Three failing resolves: the flaky job runs each time.
-        for _ in 0..<3 { _ = resolve(resolver) }
+        // (Distinct songIds: the 1 h cache would otherwise answer
+        // resolves 2-4 without invoking any job.)
+        for i in 0..<3 { _ = resolve(resolver, songId: "cool-\(i)") }
         XCTAssertEqual(invocations, 3)
         // Fourth resolve: the flaky job is cooled and skipped.
-        _ = resolve(resolver)
+        _ = resolve(resolver, songId: "cool-3")
         XCTAssertEqual(invocations, 3)
         XCTAssertTrue(cooldown.isCoolingDown("flaky"))
     }

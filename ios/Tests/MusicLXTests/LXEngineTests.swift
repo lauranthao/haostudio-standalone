@@ -1,7 +1,7 @@
 // HAo Studio 2.0 — LX engine tests (S2-B).
 //
 // A fake script (no network, no bundled script): it registers a
-// `musicUrl` handler and sends `inited` synchronously. Covers load
+// `request` handler routing `musicUrl` and sends `inited` synchronously. Covers load
 // + dispatch, the `inited` timeout for a silent script, the
 // import path (accepts a valid script, rejects a non-.js file and
 // a syntax-broken script), and removal.
@@ -36,11 +36,17 @@ final class LXEngineTests: XCTestCase {
             bundleLoader: { _ in nil })
     }
 
-    /// Minimal script: one `musicUrl` handler + synchronous `inited`.
+    /// Minimal script: one `request` handler routing `musicUrl` +
+    /// synchronous `inited`. (The engine dispatches every call as a
+    /// `request` event with the function name in `data.action` —
+    /// scripts never listen on the function name itself.)
     private let fakeScript = """
         /*! @name Fake Script @version 1.0.0 */
-        globalThis.lx.on('musicUrl', function (payload) {
-            return 'https://example.com/fake.mp3';
+        globalThis.lx.on('request', function (data) {
+            if (data.action === 'musicUrl') {
+                return 'https://example.com/fake.mp3';
+            }
+            return null;
         });
         globalThis.lx.send('inited', { status: true, sources: {
             tx: { name: 'fake', actions: ['musicUrl'], qualitys: ['128k'] }
