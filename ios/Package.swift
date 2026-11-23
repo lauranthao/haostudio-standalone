@@ -33,6 +33,13 @@ import PackageDescription
 
 let package = Package(
     name: "HAoStudioTests",
+    // Build #17 fix: the MusicLX target's path is the whole HAoStudio
+    // directory, which contains Base.lproj; SwiftPM requires the
+    // manifest to declare a default localization once it sees
+    // localized resources. "en" is the conventional value for
+    // Base.lproj. (S1's MigrationCore target only covers Storage/,
+    // which has no .lproj, so build #16 passed without it.)
+    defaultLocalization: "en",
     targets: [
         .target(
             name: "MigrationCore",
