@@ -32,11 +32,15 @@
 // them at merge; A leg owns the real declarations):
 //   LivePlayerViewModel: ObservableObject, created in
 //     HAoStudioApp as LivePlayerViewModel(driver: liveDriver).
-//   @Published isPlaying / qualities / lines / currentQuality /
-//     currentLine / messages / watching (all private(set));
-//   @Published brightness / volume (Double 0...1, settable);
-//   videoView: UIView? (the native surface, nil until attached);
-//   togglePlayPause(), switchQuality(to:), switchLine(to:).
+//   @Published isPlaying / currentQuality / currentLineIndex /
+//     watching / messages (all private(set)); lines / qualities /
+//     videoView are read-throughs from the driver;
+//   brightnessLevel / volumeLevel (Double 0...1, private(set)) +
+//     setBrightness(_:) / setVolume(_:) — the ONLY writers to the
+//     screen / system volume; notePlayerEntry() arms on appear,
+//     restoreBrightnessOnExit() restores on disappear;
+//   togglePlayPause(), switchQuality(to: LiveQuality),
+//     switchLine(to: Int index).
 //   LiveQuality has `quality` (label) + `selectionId`
 //   (identity: id ?? label, Flutter mirror). LiveLine is
 //   selected by index (display is always "线路 N").
@@ -108,12 +112,15 @@ struct LiveRoomView: View {
             openCurrentRoom()
             isFollowing = LiveLibraryStore.isFollowed(
                 platform: currentRoom.platform, roomId: currentRoom.roomId)
-            livePlayer.brightness = Double(UIScreen.main.brightness)
-            livePlayer.volume = Double(AVAudioSession.sharedInstance().outputVolume)
+            // Arm brightness (records the entry value, arms writes)
+            // and seed the volume state from the system value.
+            livePlayer.notePlayerEntry()
+            livePlayer.setVolume(Double(AVAudioSession.sharedInstance().outputVolume))
         }
         .onDisappear {
             autoHideWork?.cancel()
             VideoOrientation.unlockPortrait()
+            livePlayer.restoreBrightnessOnExit()
             coordinator.stop()
         }
         .onChange(of: isFullscreen) { _, fullscreen in
@@ -128,9 +135,6 @@ struct LiveRoomView: View {
             if playing && isFullscreen {
                 showControlsTemporarily()
             }
-        }
-        .onChange(of: livePlayer.brightness) { _, newValue in
-            UIScreen.main.brightness = CGFloat(min(1, max(0, newValue)))
         }
         .sheet(isPresented: $showQualitySheet) {
             LiveQualityLineSheet(
@@ -147,7 +151,9 @@ struct LiveRoomView: View {
             LiveDanmakuSettingsSheet(settings: $danmakuSettings)
         }
         .sheet(isPresented: $showBrightnessVolume) {
-            LiveBrightnessVolumeSheet(brightness: $livePlayer.brightness)
+            // The sheet's slider writes through setBrightness, the
+            // VM's only screen writer (armed by notePlayerEntry).
+            LiveBrightnessVolumeSheet(brightness: Binding(get: { livePlayer.brightnessLevel }, set: { livePlayer.setBrightness($0) }))
         }
         .toolbar(isFullscreen ? .hidden : .visible, for: .navigationBar)
         .statusBarHidden(isFullscreen)
@@ -195,7 +201,7 @@ struct LiveRoomView: View {
         guard livePlayer.lines.indices.contains(index) else { return }
         guard index != selectedLineIndex else { return }
         selectedLineIndex = index
-        livePlayer.switchLine(to: livePlayer.lines[index])
+        livePlayer.switchLine(to: index)
     }
 
     private func toggleFollow() {

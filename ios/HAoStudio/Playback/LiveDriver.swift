@@ -103,6 +103,12 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         return session.recovery?.lines ?? []
     }
 
+    /// The qualities the room offers, from the last resolution.
+    /// Empty until the first resolution.
+    var qualities: [LiveQuality] {
+        return session.recovery?.qualities ?? []
+    }
+
     static let openTimeout: TimeInterval = 10
 
     /// Test seam: open timeout seconds. Production is 10; tests set

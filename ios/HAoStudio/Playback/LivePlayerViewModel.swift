@@ -75,6 +75,29 @@ final class LivePlayerViewModel: ObservableObject {
     @Published private(set) var currentLineIndex: Int = 0
     @Published private(set) var currentQuality: LiveQuality?
     @Published private(set) var isAudioOnly = false
+    /// Watching count, mirrored from the session room (0 until the
+    /// first room info arrives; the B leg refreshes it).
+    @Published private(set) var watching: Int = 0
+    /// Danmaku messages for the room page, newest last. Fed by the
+    /// B-leg transports via `appendDanmaku` (the seam); capped so a
+    /// busy room cannot grow the list without bound.
+    @Published private(set) var messages: [DanmakuMessage] = []
+
+    /// Lines of the current resolution, from the driver (re-read on
+    /// every render driven by currentQuality / currentLineIndex).
+    var lines: [LiveLine] { driver.lines }
+    /// Qualities the room offers, from the driver.
+    var qualities: [LiveQuality] { driver.qualities }
+    /// The video surface for the room page to embed. Nil until the
+    /// first backend opens.
+    var videoView: UIView? { driver.videoView }
+
+    /// Append one received danmaku message (B-leg transports call
+    /// this; the room page only reads `messages`).
+    func appendDanmaku(_ message: DanmakuMessage) {
+        messages.append(message)
+        if messages.count > 200 { messages.removeFirst(messages.count - 200) }
+    }
 
     // Own UI state.
     /// Controls overlay visible. Auto-hides 3 s after the last
@@ -145,6 +168,7 @@ final class LivePlayerViewModel: ObservableObject {
         }.store(in: &cancellables)
         driver.$currentRoom.sink { [weak self] value in
             self?.currentRoom = value
+            self?.watching = driver.session.room?.onlineCount ?? 0
         }.store(in: &cancellables)
         driver.$currentLineIndex.sink { [weak self] value in
             self?.currentLineIndex = value

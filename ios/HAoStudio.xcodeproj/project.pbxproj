@@ -127,9 +127,18 @@
 		0000000000000000000000FB /* EmbyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FA /* EmbyModels.swift */; };
 		0000000000000000000000FD /* EmbyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FC /* EmbyTabView.swift */; };
 		0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FE /* IJKPlayerBackend.swift */; };
+		000000000000000000000136 /* LiveDanmakuSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000135 /* LiveDanmakuSettingsSheet.swift */; };
+		000000000000000000000138 /* LiveDanmakuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000137 /* LiveDanmakuView.swift */; };
+		00000000000000000000013A /* LiveDataGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000139 /* LiveDataGateway.swift */; };
 		00000000000000000000012F /* LiveDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012E /* LiveDriver.swift */; };
+		00000000000000000000013C /* LiveLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013B /* LiveLibraryStore.swift */; };
+		00000000000000000000013E /* LiveLibraryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013D /* LiveLibraryViews.swift */; };
 		000000000000000000000131 /* LivePlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* LivePlayerViewModel.swift */; };
+		000000000000000000000140 /* LiveRoomCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000013F /* LiveRoomCard.swift */; };
 		000000000000000000000133 /* LiveRoomSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000132 /* LiveRoomSession.swift */; };
+		000000000000000000000142 /* LiveRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000141 /* LiveRoomView.swift */; };
+		000000000000000000000144 /* LiveSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000143 /* LiveSearchView.swift */; };
+		000000000000000000000146 /* LiveTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000145 /* LiveTabView.swift */; };
 		000000000000000000000101 /* MpvPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000100 /* MpvPlayerBackend.swift */; };
 		000000000000000000000103 /* MusicAlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000102 /* MusicAlbumDetailView.swift */; };
 		000000000000000000000105 /* MusicArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* MusicArtistDetailView.swift */; };
@@ -260,9 +269,18 @@
 		0000000000000000000000FA /* EmbyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyModels.swift; sourceTree = "<group>"; };
 		0000000000000000000000FC /* EmbyTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyTabView.swift; sourceTree = "<group>"; };
 		0000000000000000000000FE /* IJKPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IJKPlayerBackend.swift; sourceTree = "<group>"; };
+		000000000000000000000135 /* LiveDanmakuSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDanmakuSettingsSheet.swift; sourceTree = "<group>"; };
+		000000000000000000000137 /* LiveDanmakuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDanmakuView.swift; sourceTree = "<group>"; };
+		000000000000000000000139 /* LiveDataGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDataGateway.swift; sourceTree = "<group>"; };
 		00000000000000000000012E /* LiveDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriver.swift; sourceTree = "<group>"; };
+		00000000000000000000013B /* LiveLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLibraryStore.swift; sourceTree = "<group>"; };
+		00000000000000000000013D /* LiveLibraryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLibraryViews.swift; sourceTree = "<group>"; };
 		000000000000000000000130 /* LivePlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePlayerViewModel.swift; sourceTree = "<group>"; };
+		00000000000000000000013F /* LiveRoomCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRoomCard.swift; sourceTree = "<group>"; };
 		000000000000000000000132 /* LiveRoomSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRoomSession.swift; sourceTree = "<group>"; };
+		000000000000000000000141 /* LiveRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRoomView.swift; sourceTree = "<group>"; };
+		000000000000000000000143 /* LiveSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSearchView.swift; sourceTree = "<group>"; };
+		000000000000000000000145 /* LiveTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTabView.swift; sourceTree = "<group>"; };
 		000000000000000000000100 /* MpvPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpvPlayerBackend.swift; sourceTree = "<group>"; };
 		000000000000000000000102 /* MusicAlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumDetailView.swift; sourceTree = "<group>"; };
 		000000000000000000000104 /* MusicArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicArtistDetailView.swift; sourceTree = "<group>"; };
@@ -431,6 +449,7 @@
 		000000000000000000000073 /* Features */ = {isa = PBXGroup; children = (
 				000000000000000000000074 /* Music */,
 				00000000000000000000012C /* Video */,
+				000000000000000000000134 /* Live */,
 			); path = Features; sourceTree = "<group>"; };
 		000000000000000000000074 /* Music */ = {isa = PBXGroup; children = (
 				000000000000000000000102 /* MusicAlbumDetailView.swift */,
@@ -520,6 +539,17 @@
 				00000000000000000000011E /* VideoSearchView.swift */,
 				000000000000000000000120 /* VideoTabView.swift */,
 		); path = Video; sourceTree = "<group>"; };
+		000000000000000000000134 /* Live */ = {isa = PBXGroup; children = (
+				000000000000000000000135 /* LiveDanmakuSettingsSheet.swift */,
+				000000000000000000000137 /* LiveDanmakuView.swift */,
+				000000000000000000000139 /* LiveDataGateway.swift */,
+				00000000000000000000013B /* LiveLibraryStore.swift */,
+				00000000000000000000013D /* LiveLibraryViews.swift */,
+				00000000000000000000013F /* LiveRoomCard.swift */,
+				000000000000000000000141 /* LiveRoomView.swift */,
+				000000000000000000000143 /* LiveSearchView.swift */,
+				000000000000000000000145 /* LiveTabView.swift */,
+		); path = Live; sourceTree = "<group>"; };
 		00000000000000000000012D /* DownloadEngine */ = {isa = PBXGroup; children = (
 				0000000000000000000000F2 /* DownloadEngine.swift */,
 		); path = DownloadEngine; sourceTree = "<group>"; };
@@ -579,9 +609,18 @@
 				000000000000000000000001 /* HAoStudioApp.swift in Sources */,
 				000000000000000000000003 /* HaoTheme.swift in Sources */,
 				0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */,
+				000000000000000000000136 /* LiveDanmakuSettingsSheet.swift in Sources */,
+				000000000000000000000138 /* LiveDanmakuView.swift in Sources */,
+				00000000000000000000013A /* LiveDataGateway.swift in Sources */,
 				00000000000000000000012F /* LiveDriver.swift in Sources */,
+				00000000000000000000013C /* LiveLibraryStore.swift in Sources */,
+				00000000000000000000013E /* LiveLibraryViews.swift in Sources */,
 				000000000000000000000131 /* LivePlayerViewModel.swift in Sources */,
+				000000000000000000000140 /* LiveRoomCard.swift in Sources */,
 				000000000000000000000133 /* LiveRoomSession.swift in Sources */,
+				000000000000000000000142 /* LiveRoomView.swift in Sources */,
+				000000000000000000000144 /* LiveSearchView.swift in Sources */,
+				000000000000000000000146 /* LiveTabView.swift in Sources */,
 				00000000000000000000006C /* KeychainStore.swift in Sources */,
 				000000000000000000000077 /* LXEngine.swift in Sources */,
 				000000000000000000000079 /* LXModels.swift in Sources */,
