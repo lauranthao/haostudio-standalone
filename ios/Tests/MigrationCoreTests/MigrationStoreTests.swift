@@ -69,7 +69,7 @@ final class MigrationStoreTests: XCTestCase {
         return try? JSONSerialization.jsonObject(with: raw, options: [])
     }
 
-    private func run() -> MigrationReport {
+    private func runMigration() -> MigrationReport {
         MigrationStore.runIfNeeded(documentsURL: docs, defaults: defaults)
     }
 
@@ -92,7 +92,7 @@ final class MigrationStoreTests: XCTestCase {
             "some_future_key_xyz": "keep me",
         ])
 
-        let report = run()
+        let report = runMigration()
 
         XCTAssertEqual(report.outcome, .migrated)
         XCTAssertEqual(report.totalKeys, 13)
@@ -132,7 +132,7 @@ final class MigrationStoreTests: XCTestCase {
     // MARK: - Snapshot problems are skips, never crashes
 
     func testMissingSnapshotSkipped() {
-        let report = run()
+        let report = runMigration()
         XCTAssertEqual(report.outcome, .noSnapshot)
         XCTAssertFalse(MigrationStore.isMigrationDone(defaults: defaults))
         XCTAssertTrue(MigrationStore.migrationNoticeNeeded(defaults: defaults))
@@ -141,7 +141,7 @@ final class MigrationStoreTests: XCTestCase {
 
     func testCorruptSnapshotSkipped() {
         writeSnapshotRaw("this is not json {{{")
-        let report = run()
+        let report = runMigration()
         XCTAssertEqual(report.outcome, .invalidSnapshot)
         XCTAssertFalse(MigrationStore.isMigrationDone(defaults: defaults))
         XCTAssertTrue(MigrationStore.migrationNoticeNeeded(defaults: defaults))
@@ -149,19 +149,19 @@ final class MigrationStoreTests: XCTestCase {
 
     func testWrongSchemaSkipped() {
         writeSnapshot(["videoPlayerKey": "ijk"], schema: 2)
-        XCTAssertEqual(run().outcome, .invalidSnapshot)
+        XCTAssertEqual(runMigration().outcome, .invalidSnapshot)
         XCTAssertNil(defaults.string(forKey: "videoPlayerKey"))
     }
 
     func testWrongVersionSkipped() {
         writeSnapshot(["videoPlayerKey": "ijk"], appVersion: "2.0.0")
-        XCTAssertEqual(run().outcome, .invalidSnapshot)
+        XCTAssertEqual(runMigration().outcome, .invalidSnapshot)
         XCTAssertNil(defaults.string(forKey: "videoPlayerKey"))
     }
 
     func testMissingVersionAccepted() {
         writeSnapshot(["videoPlayerKey": "ijk"], appVersion: nil)
-        XCTAssertEqual(run().outcome, .migrated)
+        XCTAssertEqual(runMigration().outcome, .migrated)
         XCTAssertEqual(defaults.string(forKey: "videoPlayerKey"), "ijk")
     }
 
@@ -174,7 +174,7 @@ final class MigrationStoreTests: XCTestCase {
             "hao_lists": "[1,2",
             "hao_live_hist_limit": 25,
         ])
-        let report = run()
+        let report = runMigration()
         XCTAssertEqual(report.outcome, .migrated)
         XCTAssertEqual(report.skippedKeyNames, ["hao_lists", "musicSpeed"])
         XCTAssertEqual(defaults.string(forKey: "videoPlayerKey"), "ijk")
@@ -196,7 +196,7 @@ final class MigrationStoreTests: XCTestCase {
         ])
         MigrationStore.testFailOnKey = "hao_lists"
 
-        let failed = run()
+        let failed = runMigration()
         XCTAssertEqual(failed.outcome, .failed)
         XCTAssertFalse(MigrationStore.isMigrationDone(defaults: defaults))
         XCTAssertEqual(MigrationStore.migrationState(defaults: defaults), MigrationStore.stateFailed)
@@ -205,7 +205,7 @@ final class MigrationStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: docs.appendingPathComponent("hao_lists.json").path))
 
         MigrationStore.testFailOnKey = nil
-        let retried = run()
+        let retried = runMigration()
         XCTAssertEqual(retried.outcome, .migrated)
         XCTAssertEqual(defaults.string(forKey: "videoPlayerKey"), "ijk")
         XCTAssertNotNil(readJSONFile("hao_lists"))
@@ -215,8 +215,8 @@ final class MigrationStoreTests: XCTestCase {
 
     func testRepeatMigrationIsIdempotent() {
         writeSnapshot(["videoPlayerKey": "ijk", "musicSpeed": 1.5])
-        XCTAssertEqual(run().outcome, .migrated)
-        let second = run()
+        XCTAssertEqual(runMigration().outcome, .migrated)
+        let second = runMigration()
         XCTAssertEqual(second.outcome, .alreadyDone)
         XCTAssertEqual(defaults.string(forKey: "videoPlayerKey"), "ijk")
         XCTAssertEqual(defaults.double(forKey: "musicSpeed"), 1.5)

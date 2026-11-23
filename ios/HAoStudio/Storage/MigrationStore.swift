@@ -492,7 +492,7 @@ enum MigrationStore {
         var journal = MigrationJournal()
         var appliedDefaults: [String] = []
         var appliedFiles: [String] = []
-        var priorEmbyApiKey: String? = KeychainStore.loadEmbyApiKey()
+        let priorEmbyApiKey: String? = KeychainStore.loadEmbyApiKey()
         var wroteEmbyKeychain = false
 
         for write in defaultWrites {
