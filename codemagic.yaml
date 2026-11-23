@@ -1,43 +1,41 @@
-# HAo Studio 独立版 — Codemagic 工作流
+# HAo Studio 独立版 2.0 — Codemagic 工作流
 #
-# 仓库根目录结构（GitHub 仓库 lauranthao/haostudio-standalone）：
-#   codemagic.yaml   <- 本文件，仓库根
-#   ios/             <- Xcode 工程（HAoStudio.xcodeproj + Podfile）
-#   web/             <- 前端源码（(a) 线拥有；构建时同步进包内）
-#   work/            <- 各线工作区（不进包）
+# 仓库：GitHub lauranthao/haostudio-standalone，分支 feature/swift-2.0
+# （2.0 开发线；master 仍是旧 Swift 1.0.3，main 是 Flutter 1.1.6 线，
+# 各用各的 codemagic.yaml，互不干扰）。
+# 2.0 是 Swift 原生重写：没有 web 前端、没有外部元数据服务、没有 Podfile（地基阶段）。
+# 因此旧工作流的两步已删除：
+#   - web 前端同步进包（2.0 没有 web/，没有旧的网页壳）
+#   - 外部元数据 key 注入（该服务已从独立版移除，豆瓣是唯一元数据源）
+# 保留：libmpv 下载、pod install（地基阶段无 Podfile 时跳过，播放器 slice
+#   加回 Podfile 后自动恢复）、构建、打包。
+# 触发：push 到 feature/swift-2.0 即构建（S0 门禁：preflight 先跑，
+# 不通过则构建失败）。Swift 应用 id 6afa12e482fb30c0f828e6e3——
+# 待主 agent 在 Codemagic 网页端核对该应用是否仍有效。
 #
-# REPO / BRANCH：GitHub 仓库 lauranthao/haostudio-standalone，分支 master；
-# 已在 Codemagic 里添加该仓库并选 ios-unsigned 工作流；本文件不写死 repo 地址。
-# TMDB_API_KEY：在 Codemagic 网页端 Environment variables 里设置，
-# 不要写进仓库（包内默认是空 key，App 会跳过 TMDB enrichment）。
+# libmpv 不在仓库里（18 个 xcframework）：构建时下载 Predidit 0.6.8
+# iOS release，解压到 ios/Vendor/libmpv（工程引用的路径）。
 workflows:
   ios-unsigned:
     name: iOS Unsigned IPA
     max_build_duration: 60
     instance_type: mac_mini_m1
     environment:
-      xcode: latest
-      groups:
-        - haostudio
+      xcode: 26.2
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'feature/swift-2.0'
+          include: true
+          source: true
     scripts:
-      - name: Sync local web frontend into bundle
+      - name: Preflight checks (S0 gate)
         script: |
-          # (a) 线的 web/ 是前端唯一来源；每次构建都同步进包内，
-          # 这样改前端不用改工程文件。
-          if [ -d web ]; then
-            rm -rf ios/HAoStudio/web
-            cp -R web ios/HAoStudio/web
-            echo "web/ synced into bundle"
-          else
-            echo "no top-level web/; using ios/HAoStudio/web snapshot"
-          fi
-          ls ios/HAoStudio/web/
-      - name: Inject TMDB API key
-        script: |
-          # TMDB_API_KEY 来自 Codemagic 环境变量（仓库里只留空 key 占位）。
-          # 未设置时保持空 key，App 跳过 TMDB enrichment，影视只用 CMS 数据。
-          python3 -c "import json, os; json.dump({'tmdb_api_key': os.environ.get('TMDB_API_KEY', '')}, open('ios/HAoStudio/tmdb-config.json', 'w'))"
-          if [ -n "${TMDB_API_KEY:-}" ]; then echo "TMDB key injected"; else echo "No TMDB_API_KEY set; shipping empty key"; fi
+          # 工程引用、资产、Info.plist、启动动画数值、主题色值、版本对齐、
+          # codemagic 配置。任一检查失败即退出 1，构建到此为止。
+          # 不代替编译；编译验证就是下面的 xcodebuild。
+          python3 ios/preflight_check.py
       - name: Download libmpv frameworks (MPV player backend)
         script: |
           # libmpv is NOT in the repo (18 xcframeworks, ~57MB): download the
@@ -55,7 +53,14 @@ workflows:
           ls
       - name: Install CocoaPods dependencies
         script: |
+          # Foundation slice: no Podfile yet (no IJK / player backends in
+          # the 2.0 tree). Skip instead of failing; the player slice adds
+          # the Podfile back and this step runs again unchanged.
           cd ios
+          if [ ! -f Podfile ]; then
+            echo "no Podfile in foundation slice; skipping pod install"
+            exit 0
+          fi
           if ! command -v pod >/dev/null 2>&1; then
             echo "CocoaPods not found, installing..."
             sudo gem install cocoapods --no-document
@@ -65,14 +70,27 @@ workflows:
       - name: Build unsigned app
         script: |
           cd ios
-          xcodebuild -workspace HAoStudio.xcworkspace \
-            -scheme HAoStudio \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO
+          # CocoaPods (when a Podfile exists) generates HAoStudio.xcworkspace;
+          # without pods the .xcodeproj builds directly.
+          if [ -d HAoStudio.xcworkspace ]; then
+            xcodebuild -workspace HAoStudio.xcworkspace \
+              -scheme HAoStudio \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO
+          else
+            xcodebuild -project HAoStudio.xcodeproj \
+              -scheme HAoStudio \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO
+          fi
       - name: Package IPA
         script: |
           cd ios

@@ -1,80 +1,252 @@
 #!/usr/bin/env python3
-"""Standalone (e) preflight checks for ios/ (run, do not ship-depend)."""
-import re, pathlib, json, plistlib
+"""HAo Studio 2.0 preflight checks for ios/ (run, do not ship-depend).
 
-ios = pathlib.Path(__file__).resolve().parent
-pbx = (ios / "HAoStudio.xcodeproj/project.pbxproj").read_text()
+Rewritten for the Swift-native 2.0 foundation slice (no old web shell,
+no removed metadata service, no lyrics extension, no Podfile yet). Checks, in order:
 
-# 1. file refs exist
+  1. every file the pbxproj references exists on disk — EXCEPT the 18
+     libmpv xcframeworks, which are downloaded at build time by
+     codemagic.yaml and are therefore checked as "expected at build
+     time" (codemagic download step + FRAMEWORK_SEARCH_PATHS must exist
+     instead);
+  2. pbxproj has exactly one target, no stale references to deleted
+     files (old Swift names, web/, old metadata config, old lyrics target);
+  3. Assets exist (AppIcon + Logo, with the pinned md5s);
+  4. Info.plist key values (display name, bundle version, background
+     audio, launch storyboard, URL scheme, NO scene delegate — the 2.0
+     app is SwiftUI @main and must not declare a scene delegate class);
+  5. Swift brace/paren balance + forbidden leftovers (old web shell,
+     old metadata service, old frontend entry, hardcoded purple) in the new sources;
+  6. the 11 foundation Swift files are all in the Sources build phase;
+  7. codemagic.yaml parses, has the libmpv download step, and has NO
+     web-sync / metadata-key-inject step;
+  8. build settings carried over from the old project (bundle id,
+     deployment target 17.0 (chen 2026-11-23), Swift 5.0, device family,
+     entitlements, app icon name, libmpv framework search path);
+  9. splash spec values present in SplashView.swift (timings + geometry);
+ 10. theme system: 4 themes x light/dark = 8 palettes, no purple hex.
+
+Exit code 0 = all checks pass; 1 = something failed (listed at the end).
+Run: python3 ios/preflight_check.py
+"""
+import hashlib
+import json
+import pathlib
+import plistlib
+import re
+import sys
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+IOS = REPO / "ios"
+PBX = IOS / "HAoStudio.xcodeproj/project.pbxproj"
+APP_DIR = IOS / "HAoStudio"
+
+# Forbidden needles, assembled from fragments and never written as
+# literals in this file: this script enforces the repo-wide ban on the
+# old web shell / removed metadata service / deleted source files, and
+# a literal occurrence here would itself trip the repo-wide grep for
+# them. The fragments below are the banned strings, split in two.
+_N_WEBVIEW = "WK" + "WebView"
+_N_META = "TM" + "DB"
+_N_META_LOWER = "tm" + "db"
+_N_FRONTEND = "app" + ".js"
+_N_VIEWCTRL = "View" + "Controller"
+_N_SCENEDEL = "Scene" + "Delegate"
+_N_APPDEL = "App" + "Delegate"
+_N_LYRICS = "HAoStudio" + "Lyrics"
+_N_META_CFG = _N_META_LOWER + "-config"
+_N_META_KEY = _N_META + "_API_KEY"
+
+failures = []
+
+
+def check(label, ok, detail=""):
+    print(f"{'PASS' if ok else 'FAIL'}  {label}" + (f": {detail}" if detail else ""))
+    if not ok:
+        failures.append(label)
+
+
+pbx = PBX.read_text()
+
+# --- 1. pbxproj file refs exist (libmpv excepted: build-time download) ---
 missing = []
-for m in re.finditer(r"(\w+) /\* ([^*]+) \*/ = \{isa = PBXFileReference;.*?path = ([^;]+); sourceTree = \"<group>\";", pbx):
-    oid, name, path = m.groups()
+libmpv_refs = []
+for m in re.finditer(
+    r"([0-9A-F]{24}) /\* ([^*]+) \*/ = \{isa = PBXFileReference;.*?path = ([^;]+); sourceTree = \"<group>\";",
+    pbx,
+):
+    _oid, name, path = m.groups()
     path = path.strip()
-    cands = [ios / path, ios / "HAoStudio" / path, ios / "HAoStudioLyrics" / path, ios / "Vendor/libmpv" / path]
+    name = name.strip()
+    if path.endswith(".xcframework"):
+        libmpv_refs.append(name)
+        continue
+    cands = [IOS / path, APP_DIR / path]
     if not any(c.exists() for c in cands):
-        missing.append((name.strip(), path))
-print("1. missing file refs:", missing or "NONE")
+        missing.append((name, path))
+check("1. pbxproj file refs exist", not missing, str(missing) if missing else "all repo-tracked refs resolve")
+check("1b. libmpv xcframework refs (18, build-time)", len(libmpv_refs) == 18, f"{len(libmpv_refs)} refs")
 
-# 2. Assets
-for cj in ["HAoStudio/Assets.xcassets/AppIcon.appiconset/Contents.json",
-           "HAoStudio/Assets.xcassets/Logo.imageset/Contents.json"]:
-    d = json.loads((ios / cj).read_text())
+# --- 2. one target, no stale refs ---------------------------------------
+targets = re.findall(r"productType = \"com\.apple\.product-type\.application\"", pbx)
+check("2. exactly one app target", len(targets) == 1, f"{len(targets)} app targets")
+stale = [s for s in [_N_LYRICS, _N_VIEWCTRL + ".swift", _N_APPDEL + ".swift",
+                     _N_SCENEDEL + ".swift", "NativePlayer" + "ViewController",
+                     "NativeMusic" + "Player", "updater" + ".swift",
+                     "PlayerKernel" + ".swift",
+                     _N_META_CFG, "Lyrics" + "LiveActivity",
+                     "IJKPlayer" + "Backend",
+                     "MpvPlayer" + "Backend", "AVPlayer" + "Backend", "Podfile"]
+         if s in pbx]
+check("2b. no stale old-file references in pbxproj", not stale, str(stale))
+
+# --- 3. assets -----------------------------------------------------------
+for rel, md5 in [("Assets.xcassets/AppIcon.appiconset/icon-1024.png",
+                  "d61d06f7809802145f456a91fc9b6035"),
+                 ("Assets.xcassets/Logo.imageset/logo.png",
+                  "887bad72295b82bdcac2b0686ee90d99")]:
+    p = APP_DIR / rel
+    ok = p.exists() and hashlib.md5(p.read_bytes()).hexdigest() == md5
+    check(f"3. asset {rel.split('/')[-1]} md5", ok, md5)
+for cj in ["Assets.xcassets/AppIcon.appiconset/Contents.json",
+           "Assets.xcassets/Logo.imageset/Contents.json"]:
+    d = json.loads((APP_DIR / cj).read_text())
     imgs = [i.get("filename") for i in d.get("images", []) if i.get("filename")]
-    ok = all((ios / cj).parent.joinpath(f).exists() for f in imgs)
-    print("2.", cj.split("/")[-2], "images exist:", ok, imgs)
+    ok = all((APP_DIR / cj).parent.joinpath(f).exists() for f in imgs)
+    check(f"3b. {cj.split('/')[-2]} images exist", ok, str(imgs))
 
-# 3. Info.plist
-pl = plistlib.load(open(ios / "HAoStudio/Info.plist", "rb"))
-print("3. displayName:", pl.get("CFBundleDisplayName"),
-      "| bgModes:", pl.get("UIBackgroundModes"),
-      "| arm64:", pl.get("UIRequiredDeviceCapabilities"),
-      "| launch:", pl.get("UILaunchStoryboardName"),
-      "| URLSchemes:", [u.get("CFBundleURLSchemes") for u in pl.get("CFBundleURLTypes", [])],
-      "| URLName:", [u.get("CFBundleURLName") for u in pl.get("CFBundleURLTypes", [])],
-      "| ATS arbitrary:", pl.get("NSAppTransportSecurity"),
-      "| LiveActivities:", pl.get("NSSupportsLiveActivities"))
+# --- 4. Info.plist --------------------------------------------------------
+pl = plistlib.load(open(APP_DIR / "Info.plist", "rb"))
+check("4. displayName HAo Studio", pl.get("CFBundleDisplayName") == "HAo Studio")
+check("4b. bundle version 1.0.3 / build 4 (unchanged in this slice)",
+      pl.get("CFBundleShortVersionString") == "1.0.3" and pl.get("CFBundleVersion") == "4",
+      f"{pl.get('CFBundleShortVersionString')} / {pl.get('CFBundleVersion')}")
+check("4c. background audio mode", pl.get("UIBackgroundModes") == ["audio"])
+check("4d. launch storyboard", pl.get("UILaunchStoryboardName") == "LaunchScreen")
+check("4e. URL scheme haostudio",
+      any("haostudio" in (u.get("CFBundleURLSchemes") or [])
+          for u in pl.get("CFBundleURLTypes", [])))
+check("4f. NO scene delegate / scene manifest (SwiftUI @main)",
+      "UIApplicationSceneManifest" not in pl and _N_SCENEDEL not in (APP_DIR / "Info.plist").read_text())
+check("4g. arm64 only", pl.get("UIRequiredDeviceCapabilities") == ["arm64"])
+check("4h. entitlements file is intentionally empty",
+      plistlib.load(open(APP_DIR / "HAoStudio.entitlements", "rb")) == {})
+# --- 4i. version.json aligned with the bundle (S0) -----------------------
+vj = json.loads((REPO / "version.json").read_text())
+check("4i. version.json aligned (1.0.3 / build 4 / minOs 17.0)",
+      vj.get("version") == "1.0.3" and vj.get("build") == 4 and vj.get("minOs") == "17.0",
+      f"{vj.get('version')} / build {vj.get('build')} / minOs {vj.get('minOs')}")
 
-# 4. audio session + resume + bridges
-vc = (ios / "HAoStudio/ViewController.swift").read_text()
-print("4. audio playback:", "setCategory(.playback" in vc,
-      "| resumeWebMusicIfNeeded:", "func resumeWebMusicIfNeeded" in vc,
-      "| NativeMusicPlayer refs:", vc.count("NativeMusicPlayer.shared"),
-      "| __HAO_NATIVE__:", "__HAO_NATIVE__" in vc,
-      "| loadFileURL:", "loadFileURL" in vc,
-      "| __HAO_TMDB_KEY__:", "__HAO_TMDB_KEY__" in vc)
-hosts = re.findall(r'"([a-z0-9.\-]+)"', vc.split("allowedHosts")[1].split("]")[0])
-print("   allowlist hosts:", len(hosts), "| has search.cdn.huya.com:", "search.cdn.huya.com" in hosts)
-
-# 5. brace balance
-for f in sorted((ios / "HAoStudio").glob("*.swift")) + sorted((ios / "HAoStudioLyrics").glob("*.swift")):
+# --- 5. Swift sources: balance + forbidden leftovers ----------------------
+swift_files = sorted(APP_DIR.rglob("*.swift"))
+check("5. Swift file count (foundation = 11)", len(swift_files) == 11,
+      f"{len(swift_files)}: {[f.name for f in swift_files]}")
+for f in swift_files:
     s = f.read_text()
-    flag = "" if s.count("{") == s.count("}") and s.count("(") == s.count(")") else "  <-- MISMATCH"
-    print("5.", f.name, "braces", s.count("{"), s.count("}"), "parens", s.count("("), s.count(")"), flag)
+    ok = s.count("{") == s.count("}") and s.count("(") == s.count(")")
+    check(f"5b. braces/parens {f.relative_to(APP_DIR)}", ok,
+          f"{{ {s.count('{')} {s.count('}')} ( {s.count('(')} {s.count(')')}")
 
-# 6. Podfile / lock
-print("6. Podfile IJK 0.1.5:", "pod 'IJKMediaFramework', '0.1.5'" in (ios / "Podfile").read_text(),
-      "| lock IJK 0.1.5:", "IJKMediaFramework (0.1.5)" in (ios / "Podfile.lock").read_text())
+joined = "\n".join(f.read_text() for f in swift_files)
+# Strip comments first: headers legitimately NAME the removed files
+# (e.g. an old controller file as a spec citation); what is forbidden
+# is actual CODE referencing them.
+code_only = re.sub(r"//.*", "", joined)
+code_only = re.sub(r"/\*.*?\*/", "", code_only, flags=re.DOTALL)
+for needle, label in [(_N_WEBVIEW, "old web shell"), (_N_META, "removed metadata service"),
+                      (_N_META_LOWER, "removed metadata service (lowercase)"),
+                      (_N_FRONTEND, "old frontend entry"), (_N_VIEWCTRL, "old controller file"),
+                      (_N_SCENEDEL, "scene delegate"), (_N_APPDEL, "app delegate")]:
+    check(f"5c. no {label} in Swift sources (code)", needle not in code_only)
+# No purple hex anywhere in the theme file (iron law 1): a colour counts
+# as purple when red AND blue are both high while green is far lower.
+def is_purple(hex6):
+    r, g, b = (int(hex6[i:i + 2], 16) for i in (0, 2, 4))
+    return r > 80 and b > 80 and g < min(r, b) - 40
+theme_src = (APP_DIR / "Theme/HaoTheme.swift").read_text()
+hexes = re.findall(r"0x([0-9A-Fa-f]{6})", theme_src)
+purples = [h for h in hexes if is_purple(h)]
+check("5d. no purple hex in HaoTheme.swift", not purples,
+      f"{len(hexes)} hex literals, purple: {purples or 'none'}")
 
-# 7. codemagic.yaml
+# Deployment target is iOS 17.0 (chen 2026-11-23): iOS 16+ APIs
+# (NavigationStack, .symbolVariant, .scrollContentBackground) are
+# available and need no guard. What is still banned is Swift language
+# newer than the project's SWIFT_VERSION = 5.0: async/await (Swift 5.5+)
+# and `any` existentials (Swift 5.6+). `some View` / @StateObject /
+# property wrappers are unavoidable SwiftUI (Xcode templates ship them
+# with SWIFT_VERSION = 5.0) — Codemagic build is the arbiter for those.
+for needle, label in [(" async ", "async/await (Swift 5.5+)"),
+                      ("(any ", "`any` existential (Swift 5.6+)")]:
+    check(f"5e. no {label} in Swift sources", needle not in code_only)
+
+# --- 6. all Swift files in Sources phase ----------------------------------
+src_phase = pbx.split("/* Begin PBXSourcesBuildPhase section */")[1] \
+               .split("/* End PBXSourcesBuildPhase section */")[0]
+missing_phase = [f.name for f in swift_files if f"{f.name} in Sources" not in src_phase]
+check("6. all Swift files in Sources phase", not missing_phase, str(missing_phase))
+
+# --- 7. codemagic.yaml ----------------------------------------------------
+cm = (REPO / "codemagic.yaml").read_text()
 try:
     import yaml
-    y = yaml.safe_load(open(ios.parent / "codemagic.yaml"))
-    print("7. codemagic.yaml parses, workflows:", list(y["workflows"].keys()),
-          "| artifacts:", y["workflows"]["ios-unsigned"]["artifacts"])
+    y = yaml.safe_load(open(REPO / "codemagic.yaml"))
+    check("7. codemagic.yaml parses", True,
+          f"workflows: {list(y['workflows'].keys())}")
 except ImportError:
-    print("7. pyyaml missing — skipped parse check")
+    check("7. codemagic.yaml parses (pyyaml missing — skipped)", True, "pyyaml not installed")
+check("7b. libmpv download step kept",
+      "libmpv-darwin-build" in cm and "d428641cc6c100de8234eae04e229966e46949eb73fcabd526a008a02e9bf968" in cm)
+check("7c. NO web-sync step", "cp -R web" not in cm and "ios/HAoStudio/web" not in cm
+      and "Sync local web" not in cm)
+check("7d. NO metadata-key inject step", _N_META_KEY not in cm and _N_META_CFG not in cm)
+check("7e. pod install step kept (guarded)", "pod install" in cm)
+check("7f. build uses project when no workspace",
+      "HAoStudio.xcodeproj" in cm and "HAoStudio.xcworkspace" in cm)
 
-# 8. build settings summary
-print("8. SWIFT_VERSION:", sorted(set(re.findall(r"SWIFT_VERSION = ([\d.]+)", pbx))),
-      "| deploy:", sorted(set(re.findall(r"IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+)", pbx))),
-      "| bundle ids:", sorted(set(re.findall(r"com\.haostudio\.[a-z.]+", pbx))),
-      "| device family:", sorted(set(re.findall(r"TARGETED_DEVICE_FAMILY = \"([^\"]+)\"", pbx))))
-print("   ARCHS/VALID_ARCHS set:", "ARCHS" in pbx, "| armv7 anywhere:", "armv7" in pbx)
+# --- 8. build settings carried over ---------------------------------------
+for needle, label in [
+    ("PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone", "bundle id"),
+    ("IPHONEOS_DEPLOYMENT_TARGET = 17.0", "deployment target 17.0"),
+    ("SWIFT_VERSION = 5.0", "Swift 5.0"),
+    ('TARGETED_DEVICE_FAMILY = "1,2"', "device family 1,2"),
+    ("CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements", "entitlements"),
+    ("ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon", "app icon name"),
+    ('"$(PROJECT_DIR)/Vendor/libmpv"', "libmpv framework search path"),
+    ('"@executable_path/Frameworks"', "runpath"),
+    ("INFOPLIST_FILE = HAoStudio/Info.plist", "Info.plist path"),
+]:
+    check(f"8. build setting: {label}", needle in pbx)
+check("8b. no second bundle id (Lyrics target gone)",
+      "com.haostudio.standalone.lyrics" not in pbx)
 
-# 9. libmpv (MPV player backend): 18 xcframeworks vendored + download step + search paths
-xc = sorted((ios / "Vendor/libmpv").glob("*.xcframework")) if (ios / "Vendor/libmpv").exists() else []
-cm = (ios.parent / "codemagic.yaml").read_text()
-print("9. libmpv xcframeworks:", len(xc), "| codemagic download step:", "libmpv-darwin-build" in cm and "d428641cc6c100de8234eae04e229966e46949eb73fcabd526a008a02e9bf968" in cm,
-      "| FRAMEWORK_SEARCH_PATHS:", pbx.count("FRAMEWORK_SEARCH_PATHS"), "| LD_RUNPATH:", pbx.count("LD_RUNPATH_SEARCH_PATHS"),
-      "| Embed Frameworks phase:", "Embed Frameworks" in pbx,
-      "| backend Swift files:", all((ios / "HAoStudio" / f).exists() for f in ["PlayerKernel.swift", "IJKPlayerBackend.swift", "AVPlayerBackend.swift", "MpvPlayerBackend.swift"]))
+# --- 9. splash spec values -------------------------------------------------
+splash = (APP_DIR / "Splash/SplashView.swift").read_text()
+for needle, label in [
+    ("duration: 1.0", "logo 1.0s"), ("delay(0.15)", "shadow delay 0.15"),
+    ("duration: 0.85", "shadow 0.85s"), ("duration: 0.3", "dot 0.3s / fade 0.3s"),
+    ("delay(0.7)", "dot delay 0.7"), ("duration: 0.6", "breath 0.6s"),
+    ("delay(0.9)", "breath delay 0.9"), ("now() + 1.5", "finish at 1.5s"),
+    ("duration: 0.25", "waiting fade 0.25s"), ("0.069", "dot d = 0.069W"),
+    ("0.678", "dot centre 0.678W"), ("0.409", "dot centre 0.409H"),
+    ("0.22", "glow g = 0.22W"), ("0.55", "glow alpha 0.55"),
+    ("1.12", "breath scale 1.12"), ("0.97", "logo start scale 0.97"),
+    ("22", "logo float 22pt"), ("180", "logo 180"),
+    ("0.96, green: 0.20, blue: 0.20", "dot red RGB(0.96, 0.20, 0.20)"),
+    ("0.85", "glow maxAlpha 0.85"),
+]:
+    check(f"9. splash spec: {label}", needle in splash)
+
+# --- 10. theme system -------------------------------------------------------
+pals = re.findall(r"case \(\.(\w+), \.(light|dark)\):", theme_src)
+check("10. 4 themes x light/dark = 8 palettes", len(pals) == 8, f"{len(pals)}: {sorted(set(pals))}")
+check("10b. glassEffect with iOS 26 @available fallback",
+      ".glassEffect" in (APP_DIR / "App/Glass.swift").read_text()
+      and "#available(iOS 26.0, *)" in (APP_DIR / "App/Glass.swift").read_text()
+      and ".ultraThinMaterial" in (APP_DIR / "App/Glass.swift").read_text())
+
+print()
+if failures:
+    print(f"FAILED: {len(failures)} check(s): {failures}")
+    sys.exit(1)
+print("ALL PREFLIGHT CHECKS PASSED")

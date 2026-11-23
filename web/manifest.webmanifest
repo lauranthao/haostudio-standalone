@@ -1,1 +1,0 @@
-{"background_color": "#f6f2ee", "description": "HAo Studio：音乐、歌单与在线影视", "display": "standalone", "icons": [{"sizes": "512x512", "src": "./logo.png", "type": "image/png"}], "name": "HAo Studio", "orientation": "portrait", "scope": "/", "short_name": "HAo Studio", "start_url": "/", "theme_color": "#e5484d"}
