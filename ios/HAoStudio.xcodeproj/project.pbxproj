@@ -95,7 +95,7 @@
 		0000000000000000000000B5 /* MusicPlayerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B6 /* MusicPlayerSheets.swift */; };
 		0000000000000000000000B7 /* MusicPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B8 /* MusicPlayerView.swift */; };
 		0000000000000000000000B9 /* MusicPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BA /* MusicPlayerViewModel.swift */; };
-		0000000000000000000001D5 /* MusicResumeLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D6 /* MusicResumeLogic.swift */; };
+		0000000000000000000001DE /* MusicResumeLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001DF /* MusicResumeLogic.swift */; };
 		0000000000000000000000BB /* MusicQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BC /* MusicQueue.swift */; };
 		0000000000000000000000BD /* MusicQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BE /* MusicQueueView.swift */; };
 		0000000000000000000000BF /* MusicRadio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C0 /* MusicRadio.swift */; };
@@ -298,7 +298,7 @@
 		0000000000000000000000B6 /* MusicPlayerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerSheets.swift; sourceTree = "<group>"; };
 		0000000000000000000000B8 /* MusicPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerView.swift; sourceTree = "<group>"; };
 		0000000000000000000000BA /* MusicPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerViewModel.swift; sourceTree = "<group>"; };
-		0000000000000000000001D6 /* MusicResumeLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicResumeLogic.swift; sourceTree = "<group>"; };
+		0000000000000000000001DF /* MusicResumeLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicResumeLogic.swift; sourceTree = "<group>"; };
 		0000000000000000000000BC /* MusicQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueue.swift; sourceTree = "<group>"; };
 		0000000000000000000000BE /* MusicQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueueView.swift; sourceTree = "<group>"; };
 		0000000000000000000000C0 /* MusicRadio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicRadio.swift; sourceTree = "<group>"; };
@@ -654,7 +654,7 @@
 				0000000000000000000000BC /* MusicQueue.swift */,
 				0000000000000000000000BE /* MusicQueueView.swift */,
 				0000000000000000000000C0 /* MusicRadio.swift */,
-				0000000000000000000001D6 /* MusicResumeLogic.swift */,
+				0000000000000000000001DF /* MusicResumeLogic.swift */,
 				0000000000000000000000C2 /* MusicRowViews.swift */,
 				0000000000000000000000C4 /* MusicSearchMerge.swift */,
 				0000000000000000000000C6 /* MusicSearchView.swift */,
@@ -900,7 +900,7 @@
 				0000000000000000000000BB /* MusicQueue.swift in Sources */,
 				0000000000000000000000BD /* MusicQueueView.swift in Sources */,
 				0000000000000000000000BF /* MusicRadio.swift in Sources */,
-				0000000000000000000001D5 /* MusicResumeLogic.swift in Sources */,
+				0000000000000000000001DE /* MusicResumeLogic.swift in Sources */,
 				0000000000000000000000C1 /* MusicRowViews.swift in Sources */,
 				00000000000000000000009B /* MusicSearchAPI.swift in Sources */,
 				0000000000000000000000C3 /* MusicSearchMerge.swift in Sources */,
