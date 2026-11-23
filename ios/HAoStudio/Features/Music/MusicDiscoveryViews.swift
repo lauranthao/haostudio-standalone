@@ -89,8 +89,8 @@ struct MusicPlazaView: View {
             .padding(.horizontal, 24)
             .padding(.top, 12)
             MusicEmptyState(
-                icon: "square.grid.2x2", title: "歌单广场暂未接入",
-                note: "歌单浏览需要 LX 腿提供歌单接口（未在契约里），接上后这里按平台列出歌单。已选平台 \(discoveryVM.plazaPlatform.displayName) 已保存。"
+                icon: "square.grid.2x2", title: "歌单广场尚未上线",
+                note: "这里以后会按平台列出歌单。"
             )
             Spacer()
         }

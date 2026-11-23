@@ -154,8 +154,14 @@ struct MusicEqualizerView: View {
                 ForEach(MusicEqualizerPreset.allCases, id: \.rawValue) { preset in
                     let selected = !eqVM.isCustom && eqVM.selectedPreset == preset
                     Button(action: { eqVM.applyPreset(preset) }) {
-                        Text(selected ? "✓ \(preset.displayName)" : preset.displayName)
-                            .font(.system(size: 12, weight: .medium))
+                        HStack(spacing: 4) {
+                            if selected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            Text(preset.displayName)
+                                .font(.system(size: 12, weight: .medium))
+                        }
                             .foregroundStyle(selected ? theme.accent : theme.textPrimary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 30)

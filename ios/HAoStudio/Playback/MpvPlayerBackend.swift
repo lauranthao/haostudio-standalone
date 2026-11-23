@@ -52,7 +52,7 @@ private final class MpvVideoView: UIView {
     var displayLayer: AVSampleBufferDisplayLayer? { layer as? AVSampleBufferDisplayLayer }
 }
 
-final class MpvPlayerBackend: NSObject, VideoPlayerBackend {
+final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable {
     var onEvent: ((VideoBackendEvent) -> Void)?
     var onVideoSize: ((CGSize) -> Void)?
 
@@ -246,6 +246,18 @@ final class MpvPlayerBackend: NSObject, VideoPlayerBackend {
     func pause() {
         guard let handle = mpvHandle else { return }
         mpv_set_property_string(handle, "pause", "yes")
+    }
+
+    // MARK: - Live background audio (LiveAudioOnlyCapable)
+
+    /// S7-C: Flutter `setAudioOnly` — drop the video track, keep
+    /// the audio flowing. mpv `video=no` stops video decoding /
+    /// output; `video=auto` restores it. No-op before open (no
+    /// handle yet), mirroring play()/pause(). Live only — VOD
+    /// never calls this.
+    func setAudioOnly(_ audioOnly: Bool) {
+        guard let handle = mpvHandle else { return }
+        mpv_set_property_string(handle, "video", audioOnly ? "no" : "auto")
     }
 
     func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {

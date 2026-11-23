@@ -47,8 +47,8 @@ struct HAoStudioApp: App {
         _themeStore = StateObject(wrappedValue: themeStore)
         _settingsStore = StateObject(wrappedValue: SettingsStore(themeStore: themeStore))
         // S6: wire the backup engine + update checker behind the
-        // shared flow (B leg). The flow's rows stay inert ("尚未接入")
-        // until these two lines run.
+        // shared flow (B leg). The flow's rows are live once these
+        // two lines run.
         BackupUpdateFlow.shared.engine = FileBackupEngine()
         BackupUpdateFlow.shared.checker = DefaultUpdateChecker()
         let coordinator = PlaybackCoordinator()
@@ -90,6 +90,11 @@ struct HAoStudioApp: App {
     /// S6: the launch-time automatic update check runs once per app
     /// launch (the 20 h throttle lives in the checker itself).
     @State private var didTriggerAutoUpdateCheck = false
+    /// S7-C: scenePhase drives the live background-audio handoff
+    /// (S4 left `handleBackground` / `handleForeground` with no
+    /// caller). The session guards both calls, so the launch-time
+    /// inactive -> active transition is a no-op.
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -124,6 +129,18 @@ struct HAoStudioApp: App {
             .environmentObject(musicPlayer)
             .environmentObject(videoPlayer)
             .environmentObject(livePlayer)
+            .onChange(of: scenePhase) { newPhase in
+                switch newPhase {
+                case .background:
+                    livePlayer.handleBackground()
+                case .active:
+                    livePlayer.handleForeground()
+                case .inactive:
+                    break
+                @unknown default:
+                    break
+                }
+            }
         }
     }
 }

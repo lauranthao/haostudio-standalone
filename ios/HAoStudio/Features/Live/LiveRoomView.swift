@@ -250,7 +250,7 @@ struct LiveRoomView: View {
 
     /// The video frame: the A-leg native surface when attached;
     /// before that, the room cover dimmed as the backdrop and an
-    /// honest "not attached" note — never a fake frame.
+    /// honest "no picture yet" note — never a fake frame.
     private var videoArea: some View {
         ZStack {
             Color.black
@@ -268,7 +268,7 @@ struct LiveRoomView: View {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .font(.system(size: 28))
                         .foregroundStyle(.white.opacity(0.6))
-                    Text("播放器核心未接入")
+                    Text("暂无画面")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
                 }
