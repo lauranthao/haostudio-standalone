@@ -119,9 +119,13 @@ void main() {
   }
 
   /// The visible HaoNativeSwitches, in page order: wallpaper, background
-  /// colour, then the rest of the flat 6-group page (13 _BeansSwitchRow
-  /// + 3 _PanelSwitch = 16; the old "12" predates the I-影视 VOD rows
-  /// — dialogue boost, 2x spoiler, pure-audio — 4 switches).
+  /// colour, then the rest of the flat 6-group page (14 _BeansSwitchRow
+  /// + 3 _PanelSwitch = 17; the old "12" predates the I-影视 VOD rows
+  /// — dialogue boost, 2x spoiler, pure-audio — 4 switches; the 17th
+  /// is 启动时自动检查更新 in 关于 — the large-title restructure
+  /// (build 30) dropped the hand-written title out of the list, so
+  /// the page is shorter and the last switch now fits in the 4200pt
+  /// viewport instead of sitting just below the fold).
   List<HaoNativeSwitch> switches(WidgetTester tester) =>
       tester.widgetList<HaoNativeSwitch>(find.byType(HaoNativeSwitch)).toList();
 
@@ -129,7 +133,7 @@ void main() {
     testWidgets('wallpaper switch flips on the first frame, then persists',
         (tester) async {
       await pumpPage(tester);
-      expect(switches(tester).length, 16);
+      expect(switches(tester).length, 17);
       expect(switches(tester).first.value, isFalse);
 
       await tester.tap(find.byType(HaoNativeSwitch).first);
@@ -246,18 +250,17 @@ void main() {
         topLeft.dy + size.height / 2,
       );
       final gesture = await tester.startGesture(thumb);
-      // The first move only arms the drag: CupertinoSlider's
-      // recognizer uses DragStartBehavior.start, so the move that
-      // crosses the touch slop is discarded — the value does not
-      // move and nothing is written. (The Material Slider moved
-      // on the first move; verified side by side: Material
-      // 1.0 -> 0.9913 on the first -20, Cupertino stays 1.0
-      // until the second move.) The G-P2-3 contract is about the
-      // Hive puts, not the first move: nothing during the drag,
-      // one put on release.
+      // The first move moves the value: CupertinoSlider's drag-start
+      // snaps _currentDragValue to the position where the drag won
+      // (past the touch slop), so the slop is NOT discarded from the
+      // value — the first -20 lands at 1.0 - 20/extent (0.9712 here).
+      // (An older comment claimed the first move was discarded and
+      // the value stayed 1.0; that does not match this Slider
+      // implementation.) The G-P2-3 contract is about the Hive puts,
+      // not the first move: nothing during the drag, one put on release.
       await gesture.moveBy(const Offset(-20, 0));
       await tester.pump();
-      expect(controller.glassIntensity.value, 1.0);
+      expect(controller.glassIntensity.value, lessThan(1.0));
       expect(HiveStore.box.get('haoGlassIntensity'), isNull);
       await gesture.moveBy(const Offset(-20, 0));
       await tester.pump();

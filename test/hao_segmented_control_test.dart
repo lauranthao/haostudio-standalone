@@ -50,16 +50,18 @@ void main() {
       ),
     );
 
-    // Initially 甲 is selected (accent), 乙/丙 are secondary.
+    // Initially 甲 is selected (textPrimary, not accent: F1 — the
+    // selected label must stay readable in dark mode, where accent is
+    // darker than the text), 乙/丙 are secondary.
     final theme = HaoThemes.of(HaoThemeId.appleGlass).light.extension<HaoTheme>()!;
     Text textOf(String label) => tester.widget<Text>(find.text(label));
-    expect(textOf('甲').style?.color, theme.accent);
+    expect(textOf('甲').style?.color, theme.textPrimary);
     expect(textOf('乙').style?.color, theme.textSecondary);
 
     await tester.tap(find.text('乙'));
     await tester.pumpAndSettle();
     expect(selected, 'b');
-    expect(textOf('乙').style?.color, theme.accent);
+    expect(textOf('乙').style?.color, theme.textPrimary);
     expect(textOf('甲').style?.color, theme.textSecondary);
     // One selectionClick for the change.
     expect(

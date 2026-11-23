@@ -13,6 +13,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -218,6 +219,16 @@ void main() {
     await tester.runAsync(() => controller.playQueue([first, second], 0));
     await settle(tester);
     await tester.pump(const Duration(milliseconds: 300));
+    // The mini player takes ~64pt off the scroll view once playback
+    // starts, so the 最近播放 section can sit just below the fold:
+    // the SliverList only builds it once it is in range (probe
+    // 2026-11-23: 0 SongRows before scrolling, 1 after dragging
+    // -600). The data is already there (getRecent has the song) —
+    // bring the section into view before asserting on its rows.
+    // (scrollUntilVisible can't be used here: the page holds
+    // several nested Scrollables and the helper needs exactly one.)
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.pumpAndSettle();
     // Scope to the SongRow rows: the mini player bar shows the same
     // playing title, so a bare find.text would match twice.
     Finder inRecent(String title) =>

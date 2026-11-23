@@ -70,7 +70,11 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          expect(find.text('设置'), findsOneWidget);
+          // CupertinoSliverNavigationBar keeps two Text('设置') in the
+          // tree: the large title (visible at rest) and the collapsed
+          // nav-bar title (shown only after scrolling). The settings
+          // goldens verify only one is visible at rest.
+          expect(find.text('设置'), findsNWidgets(2));
           expect(tester.takeException(), isNull);
         },
       );
