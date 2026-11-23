@@ -30,7 +30,7 @@ struct MusicFavEntry {
     }
 
     init(json: [String: Any]) {
-        self.key = MusicJSON.string(json, "key")
+        self.key = MusicDict.string(json, "key")
         if let songJSON = json["song"] as? [String: Any] {
             self.song = MusicSong(json: songJSON)
         } else {
@@ -93,13 +93,13 @@ enum MusicLibraryStore {
     private static func readArray(named name: String) -> [[String: Any]] {
         let url = LocalStore.collectionURL(named: name)
         guard let data = try? Data(contentsOf: url) else { return [] }
-        return MusicJSON.objectArray(from: data)
+        return MusicDict.objectArray(from: data)
     }
 
     private static func readObject(named name: String) -> [String: Any] {
         let url = LocalStore.collectionURL(named: name)
         guard let data = try? Data(contentsOf: url) else { return [:] }
-        return MusicJSON.object(from: data)
+        return MusicDict.object(from: data)
     }
 
     private static func readStringArray(named name: String) -> [String] {
@@ -112,19 +112,19 @@ enum MusicLibraryStore {
 
     private static func writeStringArray(named name: String, _ value: [String]) {
         let url = LocalStore.collectionURL(named: name)
-        guard let data = MusicJSON.data(forTopLevel: value) else { return }
+        guard let data = MusicDict.data(forTopLevel: value) else { return }
         try? data.write(to: url, options: [.atomic])
     }
 
     private static func writeArray(named name: String, _ value: [[String: Any]]) {
         let url = LocalStore.collectionURL(named: name)
-        guard let data = MusicJSON.data(forTopLevel: value) else { return }
+        guard let data = MusicDict.data(forTopLevel: value) else { return }
         try? data.write(to: url, options: [.atomic])
     }
 
     private static func writeObject(named name: String, _ value: [String: Any]) {
         let url = LocalStore.collectionURL(named: name)
-        guard let data = MusicJSON.data(forTopLevel: value) else { return }
+        guard let data = MusicDict.data(forTopLevel: value) else { return }
         try? data.write(to: url, options: [.atomic])
     }
 
@@ -551,7 +551,7 @@ enum MusicLibraryStore {
         var ids = fmDislikedIds()
         ids.insert(songId)
         let url = LocalStore.collectionURL(named: "fmDislikedIds")
-        guard let data = MusicJSON.data(forTopLevel: Array(ids)) else { return }
+        guard let data = MusicDict.data(forTopLevel: Array(ids)) else { return }
         try? data.write(to: url, options: [.atomic])
     }
 

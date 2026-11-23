@@ -111,7 +111,7 @@ targets = re.findall(r"productType = \"com\.apple\.product-type\.application\"",
 check("2. exactly one app target", len(targets) == 1, f"{len(targets)} app targets")
 stale = [s for s in [_N_LYRICS, _N_VIEWCTRL + ".swift", _N_APPDEL + ".swift",
                      _N_SCENEDEL + ".swift", "NativePlayer" + "ViewController",
-                     "NativeMusic" + "Player", "updater" + ".swift",
+                     "updater" + ".swift",
                      "PlayerKernel" + ".swift",
                      _N_META_CFG, "Lyrics" + "LiveActivity",
                      "IJKPlayer" + "Backend",
@@ -182,7 +182,7 @@ check("4l. every Swift file ref resolves to a file on disk", not _missing,
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
-check("5. Swift file count (foundation = 13)", len(swift_files) == 13,
+check("5. Swift file count (S2 = 56: 13 foundation + 43 music)", len(swift_files) == 56,
       f"{len(swift_files)}: {[f.name for f in swift_files]}")
 for f in swift_files:
     s = f.read_text()

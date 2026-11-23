@@ -50,7 +50,7 @@ final class MusicSearchViewModel: ObservableObject {
         armSettleTimer()
         MusicLibraryStore.saveSearchQuery(trimmed)
         history = MusicLibraryStore.getSearchHistory()
-        MusicSearchAPI.search(keyword: trimmed) { [weak self] batch in
+        MusicSearchAPI.shared.search(keyword: trimmed) { [weak self] batch in
             guard let self = self else { return }
             // Stale leg from an older query: drop it, never mix.
             guard trimmed == self.currentQuery else { return }

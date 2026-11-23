@@ -238,7 +238,7 @@ final class MusicPlayerViewModel: ObservableObject {
         } else {
             queue = MusicQueue(tracks: [song], index: 0)
         }
-        expectedItemId = song.songId.isEmpty ? song.identityKey : song.songId
+        expectedItemId = song.identityKey
         startPlayback()
         hapticTick()
     }
@@ -252,7 +252,14 @@ final class MusicPlayerViewModel: ObservableObject {
     /// Play a downloaded / local song. The resolver (player leg)
     /// looks the file up by song id in the downloads / local index;
     /// this leg passes the same setQueue + requestPlay as remote.
-    func playLocal(song: MusicSong) {
+    /// Play a downloaded / local file. `fileURL` is the resolved
+    /// local file (downloads carry their path on the wrapper, not on
+    /// the song); it is stored on the queued copy's localPath so the
+    /// playback item carries a file URL and the resolver is bypassed.
+    /// Local-library songs already carry localPath.
+    func playLocal(song: MusicSong, fileURL: URL? = nil) {
+        var song = song
+        if let fileURL = fileURL { song.localPath = fileURL.path }
         play(song: song, in: [song], startAt: 0)
     }
 
@@ -274,7 +281,7 @@ final class MusicPlayerViewModel: ObservableObject {
         let nextIndex = queue.nextIndex(mode: playMode, auto: false)
         if nextIndex >= 0 {
             let nextSong = queue.tracks[nextIndex]
-            expectedItemId = nextSong.songId.isEmpty ? nextSong.identityKey : nextSong.songId
+            expectedItemId = nextSong.identityKey
         }
         player.next()
         hapticTick()
@@ -284,7 +291,7 @@ final class MusicPlayerViewModel: ObservableObject {
         let prevIndex = queue.prevIndex(mode: playMode)
         if prevIndex >= 0 {
             let prevSong = queue.tracks[prevIndex]
-            expectedItemId = prevSong.songId.isEmpty ? prevSong.identityKey : prevSong.songId
+            expectedItemId = prevSong.identityKey
         }
         player.previous()
         hapticTick()
@@ -315,11 +322,10 @@ final class MusicPlayerViewModel: ObservableObject {
     func seek(to seconds: Double) {
         let target = min(max(0, seconds), max(0, duration))
         scrubSeconds = nil
-        let accepted = player.seek(to: target) { [weak self] ok in
+        player.seek(to: target) { [weak self] ok in
             guard let self = self else { return }
             if !ok { self.handleSeekFailed() }
         }
-        if !accepted { handleSeekFailed() }
     }
 
     private func handleSeekFailed() {
@@ -367,7 +373,7 @@ final class MusicPlayerViewModel: ObservableObject {
             album: song.album, coverURL: song.cover, duration: song.dur,
             sourceID: song.platform.rawValue
         )
-        MusicLyricsAPI.fetchLyrics(for: track) { [weak self] result in
+        MusicLyricsAPI.shared.fetchLyrics(for: track) { [weak self] result in
             guard let self = self else { return }
             guard let result = result else {
                 self.lyricsLoaded = true
@@ -445,7 +451,7 @@ final class MusicPlayerViewModel: ObservableObject {
         guard index >= 0 && index < queue.tracks.count else { return }
         let song = queue.tracks[index]
         queue.index = index
-        expectedItemId = song.songId.isEmpty ? song.identityKey : song.songId
+        expectedItemId = song.identityKey
         startPlayback()
     }
 

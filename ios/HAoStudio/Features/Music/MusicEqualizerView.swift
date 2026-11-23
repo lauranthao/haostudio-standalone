@@ -77,9 +77,9 @@ struct MusicEqualizerView: View {
 
     private var bandsCard: some View {
         VStack(spacing: 0) {
-            ForEach(0..<MusicEqualizer.bandCount, id: \.self) { band in
+            ForEach(0..<MusicEQMath.bandCount, id: \.self) { band in
                 HStack(spacing: 12) {
-                    Text(MusicEqualizer.frequencyLabel(MusicEqualizer.bandFrequencies[band]))
+                    Text(MusicEQMath.frequencyLabel(MusicEQMath.bandFrequencies[band]))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.textSecondary)
                         .frame(width: 52, alignment: .leading)
@@ -88,8 +88,8 @@ struct MusicEqualizerView: View {
                             get: { eqVM.gains[band] },
                             set: { eqVM.setGain(band: band, value: $0) }
                         ),
-                        in: -MusicEqualizer.maximumGain...MusicEqualizer.maximumGain,
-                        step: MusicEqualizer.gainStep
+                        in: -MusicEQMath.maximumGain...MusicEQMath.maximumGain,
+                        step: MusicEQMath.gainStep
                     )
                     .tint(theme.accent)
                     .disabled(!eqVM.enabled)
@@ -99,7 +99,7 @@ struct MusicEqualizerView: View {
                         .frame(width: 44, alignment: .trailing)
                 }
                 .padding(.vertical, 6)
-                if band < MusicEqualizer.bandCount - 1 {
+                if band < MusicEQMath.bandCount - 1 {
                     Divider().background(theme.hairline)
                 }
             }
@@ -127,8 +127,8 @@ struct MusicEqualizerView: View {
                     get: { eqVM.preamp },
                     set: { eqVM.setPreamp($0) }
                 ),
-                in: -MusicEqualizer.maximumGain...MusicEqualizer.maximumGain,
-                step: MusicEqualizer.gainStep
+                in: -MusicEQMath.maximumGain...MusicEQMath.maximumGain,
+                step: MusicEQMath.gainStep
             )
             .tint(theme.accent)
             .disabled(!eqVM.enabled)
@@ -286,7 +286,7 @@ struct EQCurveView: View {
             let height = geometry.size.height
             let stepX = gains.count > 1 ? width / CGFloat(gains.count - 1) : width
             let midY = height / 2
-            let scale = (height / 2 - 4) / CGFloat(MusicEqualizer.maximumGain)
+            let scale = (height / 2 - 4) / CGFloat(MusicEQMath.maximumGain)
             let points = gains.enumerated().map { index, gain in
                 CGPoint(x: CGFloat(index) * stepX, y: midY - CGFloat(gain) * scale)
             }

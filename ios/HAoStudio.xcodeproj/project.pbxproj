@@ -58,6 +58,62 @@
 		000000000000000000000045 /* Mbedx509.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000046 /* Mbedx509.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		000000000000000000000048 /* Png16.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 000000000000000000000049 /* Png16.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		00000000000000000000004B /* Xml2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 00000000000000000000004C /* Xml2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		000000000000000000000075 /* NativeMusicPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000076 /* NativeMusicPlayer.swift */; };
+		000000000000000000000077 /* LXEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000078 /* LXEngine.swift */; };
+		000000000000000000000079 /* LXModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007A /* LXModels.swift */; };
+		00000000000000000000007B /* LXPrelude.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007C /* LXPrelude.swift */; };
+		00000000000000000000007D /* LXScriptFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000007E /* LXScriptFileStore.swift */; };
+		00000000000000000000007F /* LXScriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000080 /* LXScriptStore.swift */; };
+		000000000000000000000081 /* LXUserKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000082 /* LXUserKeyStore.swift */; };
+		000000000000000000000083 /* LXSourceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000084 /* LXSourceResolver.swift */; };
+		000000000000000000000085 /* MusicHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000086 /* MusicHTTP.swift */; };
+		000000000000000000000087 /* MusicQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000088 /* MusicQuality.swift */; };
+		000000000000000000000089 /* MusicTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008A /* MusicTrack.swift */; };
+		00000000000000000000008B /* ResolverPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008C /* ResolverPolicy.swift */; };
+		00000000000000000000008D /* MusicAlbumAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008E /* MusicAlbumAPI.swift */; };
+		00000000000000000000008F /* MusicAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000090 /* MusicAPIModels.swift */; };
+		000000000000000000000091 /* MusicAPITransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000092 /* MusicAPITransport.swift */; };
+		000000000000000000000093 /* MusicArtistAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000094 /* MusicArtistAPI.swift */; };
+		000000000000000000000095 /* MusicCommentsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000096 /* MusicCommentsAPI.swift */; };
+		000000000000000000000097 /* MusicLyricsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000098 /* MusicLyricsAPI.swift */; };
+		000000000000000000000099 /* MusicPlaylistImportAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000009A /* MusicPlaylistImportAPI.swift */; };
+		00000000000000000000009B /* MusicSearchAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000009C /* MusicSearchAPI.swift */; };
+		00000000000000000000009D /* MusicDiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000009E /* MusicDiscoveryViewModel.swift */; };
+		00000000000000000000009F /* MusicDiscoveryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000A0 /* MusicDiscoveryViews.swift */; };
+		0000000000000000000000A1 /* MusicEqualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000A2 /* MusicEqualizer.swift */; };
+		0000000000000000000000A3 /* MusicEqualizerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000A4 /* MusicEqualizerView.swift */; };
+		0000000000000000000000A5 /* MusicEqualizerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000A6 /* MusicEqualizerViewModel.swift */; };
+		0000000000000000000000A7 /* MusicHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000A8 /* MusicHomeView.swift */; };
+		0000000000000000000000A9 /* MusicHomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000AA /* MusicHomeViewModel.swift */; };
+		0000000000000000000000AB /* MusicLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000AC /* MusicLibraryStore.swift */; };
+		0000000000000000000000AD /* MusicLibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000AE /* MusicLibraryViewModel.swift */; };
+		0000000000000000000000AF /* MusicLibraryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B0 /* MusicLibraryViews.swift */; };
+		0000000000000000000000B1 /* MusicLyrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B2 /* MusicLyrics.swift */; };
+		0000000000000000000000B3 /* MusicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B4 /* MusicModels.swift */; };
+		0000000000000000000000B5 /* MusicPlayerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B6 /* MusicPlayerSheets.swift */; };
+		0000000000000000000000B7 /* MusicPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000B8 /* MusicPlayerView.swift */; };
+		0000000000000000000000B9 /* MusicPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BA /* MusicPlayerViewModel.swift */; };
+		0000000000000000000000BB /* MusicQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BC /* MusicQueue.swift */; };
+		0000000000000000000000BD /* MusicQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000BE /* MusicQueueView.swift */; };
+		0000000000000000000000BF /* MusicRadio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C0 /* MusicRadio.swift */; };
+		0000000000000000000000C1 /* MusicRowViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C2 /* MusicRowViews.swift */; };
+		0000000000000000000000C3 /* MusicSearchMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C4 /* MusicSearchMerge.swift */; };
+		0000000000000000000000C5 /* MusicSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C6 /* MusicSearchView.swift */; };
+		0000000000000000000000C7 /* MusicSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000C8 /* MusicSearchViewModel.swift */; };
+		0000000000000000000000C9 /* MusicSleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000CA /* MusicSleepTimer.swift */; };
+		0000000000000000000000CB /* feichangdao.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000CC /* feichangdao.js */; };
+		0000000000000000000000CD /* gdstudio.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000CE /* gdstudio.js */; };
+		0000000000000000000000CF /* helloworld.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000D0 /* helloworld.js */; };
+		0000000000000000000000D1 /* huibi.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000D2 /* huibi.js */; };
+		0000000000000000000000D3 /* hyw.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000D4 /* hyw.js */; };
+		0000000000000000000000D5 /* jiexiang.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000D6 /* jiexiang.js */; };
+		0000000000000000000000D7 /* kuliao.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000D8 /* kuliao.js */; };
+		0000000000000000000000D9 /* stellarwave.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000DA /* stellarwave.js */; };
+		0000000000000000000000DB /* stellarwave014.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000DC /* stellarwave014.js */; };
+		0000000000000000000000DD /* suyin.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000DE /* suyin.js */; };
+		0000000000000000000000DF /* tongyi.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E0 /* tongyi.js */; };
+		0000000000000000000000E1 /* xinghai.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E2 /* xinghai.js */; };
+		0000000000000000000000E3 /* yuxi.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E4 /* yuxi.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -97,6 +153,62 @@
 		000000000000000000000046 /* Mbedx509.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Mbedx509.xcframework; sourceTree = "<group>"; };
 		000000000000000000000049 /* Png16.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Png16.xcframework; sourceTree = "<group>"; };
 		00000000000000000000004C /* Xml2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Xml2.xcframework; sourceTree = "<group>"; };
+		000000000000000000000076 /* NativeMusicPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMusicPlayer.swift; sourceTree = "<group>"; };
+		000000000000000000000078 /* LXEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXEngine.swift; sourceTree = "<group>"; };
+		00000000000000000000007A /* LXModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXModels.swift; sourceTree = "<group>"; };
+		00000000000000000000007C /* LXPrelude.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXPrelude.swift; sourceTree = "<group>"; };
+		00000000000000000000007E /* LXScriptFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXScriptFileStore.swift; sourceTree = "<group>"; };
+		000000000000000000000080 /* LXScriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXScriptStore.swift; sourceTree = "<group>"; };
+		000000000000000000000082 /* LXUserKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXUserKeyStore.swift; sourceTree = "<group>"; };
+		000000000000000000000084 /* LXSourceResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LXSourceResolver.swift; sourceTree = "<group>"; };
+		000000000000000000000086 /* MusicHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicHTTP.swift; sourceTree = "<group>"; };
+		000000000000000000000088 /* MusicQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQuality.swift; sourceTree = "<group>"; };
+		00000000000000000000008A /* MusicTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicTrack.swift; sourceTree = "<group>"; };
+		00000000000000000000008C /* ResolverPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolverPolicy.swift; sourceTree = "<group>"; };
+		00000000000000000000008E /* MusicAlbumAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumAPI.swift; sourceTree = "<group>"; };
+		000000000000000000000090 /* MusicAPIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAPIModels.swift; sourceTree = "<group>"; };
+		000000000000000000000092 /* MusicAPITransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAPITransport.swift; sourceTree = "<group>"; };
+		000000000000000000000094 /* MusicArtistAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicArtistAPI.swift; sourceTree = "<group>"; };
+		000000000000000000000096 /* MusicCommentsAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicCommentsAPI.swift; sourceTree = "<group>"; };
+		000000000000000000000098 /* MusicLyricsAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLyricsAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000009A /* MusicPlaylistImportAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlaylistImportAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000009C /* MusicSearchAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000009E /* MusicDiscoveryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicDiscoveryViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000A0 /* MusicDiscoveryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicDiscoveryViews.swift; sourceTree = "<group>"; };
+		0000000000000000000000A2 /* MusicEqualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEqualizer.swift; sourceTree = "<group>"; };
+		0000000000000000000000A4 /* MusicEqualizerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEqualizerView.swift; sourceTree = "<group>"; };
+		0000000000000000000000A6 /* MusicEqualizerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEqualizerViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000A8 /* MusicHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicHomeView.swift; sourceTree = "<group>"; };
+		0000000000000000000000AA /* MusicHomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicHomeViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000AC /* MusicLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLibraryStore.swift; sourceTree = "<group>"; };
+		0000000000000000000000AE /* MusicLibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLibraryViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000B0 /* MusicLibraryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLibraryViews.swift; sourceTree = "<group>"; };
+		0000000000000000000000B2 /* MusicLyrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLyrics.swift; sourceTree = "<group>"; };
+		0000000000000000000000B4 /* MusicModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicModels.swift; sourceTree = "<group>"; };
+		0000000000000000000000B6 /* MusicPlayerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerSheets.swift; sourceTree = "<group>"; };
+		0000000000000000000000B8 /* MusicPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerView.swift; sourceTree = "<group>"; };
+		0000000000000000000000BA /* MusicPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicPlayerViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000BC /* MusicQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueue.swift; sourceTree = "<group>"; };
+		0000000000000000000000BE /* MusicQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueueView.swift; sourceTree = "<group>"; };
+		0000000000000000000000C0 /* MusicRadio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicRadio.swift; sourceTree = "<group>"; };
+		0000000000000000000000C2 /* MusicRowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicRowViews.swift; sourceTree = "<group>"; };
+		0000000000000000000000C4 /* MusicSearchMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchMerge.swift; sourceTree = "<group>"; };
+		0000000000000000000000C6 /* MusicSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchView.swift; sourceTree = "<group>"; };
+		0000000000000000000000C8 /* MusicSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000000CA /* MusicSleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSleepTimer.swift; sourceTree = "<group>"; };
+		0000000000000000000000CC /* feichangdao.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = feichangdao.js; sourceTree = "<group>"; };
+		0000000000000000000000CE /* gdstudio.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = gdstudio.js; sourceTree = "<group>"; };
+		0000000000000000000000D0 /* helloworld.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = helloworld.js; sourceTree = "<group>"; };
+		0000000000000000000000D2 /* huibi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = huibi.js; sourceTree = "<group>"; };
+		0000000000000000000000D4 /* hyw.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = hyw.js; sourceTree = "<group>"; };
+		0000000000000000000000D6 /* jiexiang.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = jiexiang.js; sourceTree = "<group>"; };
+		0000000000000000000000D8 /* kuliao.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = kuliao.js; sourceTree = "<group>"; };
+		0000000000000000000000DA /* stellarwave.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = stellarwave.js; sourceTree = "<group>"; };
+		0000000000000000000000DC /* stellarwave014.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = stellarwave014.js; sourceTree = "<group>"; };
+		0000000000000000000000DE /* suyin.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = suyin.js; sourceTree = "<group>"; };
+		0000000000000000000000E0 /* tongyi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = tongyi.js; sourceTree = "<group>"; };
+		0000000000000000000000E2 /* xinghai.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = xinghai.js; sourceTree = "<group>"; };
+		0000000000000000000000E4 /* yuxi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = yuxi.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,6 +271,7 @@
 			); path = App; sourceTree = "<group>"; };
 		00000000000000000000005F /* Playback */ = {isa = PBXGroup; children = (
 				000000000000000000000012 /* PlaybackCoordinator.swift */,
+				000000000000000000000076 /* NativeMusicPlayer.swift */,
 			); path = Playback; sourceTree = "<group>"; };
 		000000000000000000000060 /* Storage */ = {isa = PBXGroup; children = (
 				000000000000000000000014 /* LocalStore.swift */,
@@ -168,6 +281,80 @@
 		000000000000000000000061 /* Splash */ = {isa = PBXGroup; children = (
 				000000000000000000000016 /* SplashView.swift */,
 			); path = Splash; sourceTree = "<group>"; };
+		00000000000000000000006E /* Services */ = {isa = PBXGroup; children = (
+				00000000000000000000006F /* LXEngine */,
+				000000000000000000000071 /* MusicResolvers */,
+				000000000000000000000072 /* MusicAPI */,
+			); path = Services; sourceTree = "<group>"; };
+		00000000000000000000006F /* LXEngine */ = {isa = PBXGroup; children = (
+				000000000000000000000078 /* LXEngine.swift */,
+				00000000000000000000007A /* LXModels.swift */,
+				00000000000000000000007C /* LXPrelude.swift */,
+				00000000000000000000007E /* LXScriptFileStore.swift */,
+				000000000000000000000080 /* LXScriptStore.swift */,
+				000000000000000000000082 /* LXUserKeyStore.swift */,
+				000000000000000000000070 /* Scripts */,
+			); path = LXEngine; sourceTree = "<group>"; };
+		000000000000000000000070 /* Scripts */ = {isa = PBXGroup; children = (
+				0000000000000000000000CC /* feichangdao.js */,
+				0000000000000000000000CE /* gdstudio.js */,
+				0000000000000000000000D0 /* helloworld.js */,
+				0000000000000000000000D2 /* huibi.js */,
+				0000000000000000000000D4 /* hyw.js */,
+				0000000000000000000000D6 /* jiexiang.js */,
+				0000000000000000000000D8 /* kuliao.js */,
+				0000000000000000000000DA /* stellarwave.js */,
+				0000000000000000000000DC /* stellarwave014.js */,
+				0000000000000000000000DE /* suyin.js */,
+				0000000000000000000000E0 /* tongyi.js */,
+				0000000000000000000000E2 /* xinghai.js */,
+				0000000000000000000000E4 /* yuxi.js */,
+			); path = Scripts; sourceTree = "<group>"; };
+		000000000000000000000071 /* MusicResolvers */ = {isa = PBXGroup; children = (
+				000000000000000000000084 /* LXSourceResolver.swift */,
+				000000000000000000000086 /* MusicHTTP.swift */,
+				000000000000000000000088 /* MusicQuality.swift */,
+				00000000000000000000008A /* MusicTrack.swift */,
+				00000000000000000000008C /* ResolverPolicy.swift */,
+			); path = MusicResolvers; sourceTree = "<group>"; };
+		000000000000000000000072 /* MusicAPI */ = {isa = PBXGroup; children = (
+				00000000000000000000008E /* MusicAlbumAPI.swift */,
+				000000000000000000000090 /* MusicAPIModels.swift */,
+				000000000000000000000092 /* MusicAPITransport.swift */,
+				000000000000000000000094 /* MusicArtistAPI.swift */,
+				000000000000000000000096 /* MusicCommentsAPI.swift */,
+				000000000000000000000098 /* MusicLyricsAPI.swift */,
+				00000000000000000000009A /* MusicPlaylistImportAPI.swift */,
+				00000000000000000000009C /* MusicSearchAPI.swift */,
+			); path = MusicAPI; sourceTree = "<group>"; };
+		000000000000000000000073 /* Features */ = {isa = PBXGroup; children = (
+				000000000000000000000074 /* Music */,
+			); path = Features; sourceTree = "<group>"; };
+		000000000000000000000074 /* Music */ = {isa = PBXGroup; children = (
+				00000000000000000000009E /* MusicDiscoveryViewModel.swift */,
+				0000000000000000000000A0 /* MusicDiscoveryViews.swift */,
+				0000000000000000000000A2 /* MusicEqualizer.swift */,
+				0000000000000000000000A4 /* MusicEqualizerView.swift */,
+				0000000000000000000000A6 /* MusicEqualizerViewModel.swift */,
+				0000000000000000000000A8 /* MusicHomeView.swift */,
+				0000000000000000000000AA /* MusicHomeViewModel.swift */,
+				0000000000000000000000AC /* MusicLibraryStore.swift */,
+				0000000000000000000000AE /* MusicLibraryViewModel.swift */,
+				0000000000000000000000B0 /* MusicLibraryViews.swift */,
+				0000000000000000000000B2 /* MusicLyrics.swift */,
+				0000000000000000000000B4 /* MusicModels.swift */,
+				0000000000000000000000B6 /* MusicPlayerSheets.swift */,
+				0000000000000000000000B8 /* MusicPlayerView.swift */,
+				0000000000000000000000BA /* MusicPlayerViewModel.swift */,
+				0000000000000000000000BC /* MusicQueue.swift */,
+				0000000000000000000000BE /* MusicQueueView.swift */,
+				0000000000000000000000C0 /* MusicRadio.swift */,
+				0000000000000000000000C2 /* MusicRowViews.swift */,
+				0000000000000000000000C4 /* MusicSearchMerge.swift */,
+				0000000000000000000000C6 /* MusicSearchView.swift */,
+				0000000000000000000000C8 /* MusicSearchViewModel.swift */,
+				0000000000000000000000CA /* MusicSleepTimer.swift */,
+			); path = Music; sourceTree = "<group>"; };
 		000000000000000000000059 /* HAoStudio */ = {isa = PBXGroup; children = (
 				000000000000000000000002 /* HAoStudioApp.swift */,
 				00000000000000000000005D /* Theme */,
@@ -175,6 +362,8 @@
 				00000000000000000000005F /* Playback */,
 				000000000000000000000060 /* Storage */,
 				000000000000000000000061 /* Splash */,
+				00000000000000000000006E /* Services */,
+				000000000000000000000073 /* Features */,
 				00000000000000000000004E /* Assets.xcassets */,
 				000000000000000000000050 /* LaunchScreen.storyboard */,
 				000000000000000000000051 /* Info.plist */,
@@ -234,6 +423,19 @@
 		000000000000000000000056 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
 				00000000000000000000004D /* Assets.xcassets in Resources */,
 				00000000000000000000004F /* LaunchScreen.storyboard in Resources */,
+				0000000000000000000000CB /* feichangdao.js in Resources */,
+				0000000000000000000000CD /* gdstudio.js in Resources */,
+				0000000000000000000000CF /* helloworld.js in Resources */,
+				0000000000000000000000D1 /* huibi.js in Resources */,
+				0000000000000000000000D3 /* hyw.js in Resources */,
+				0000000000000000000000D5 /* jiexiang.js in Resources */,
+				0000000000000000000000D7 /* kuliao.js in Resources */,
+				0000000000000000000000D9 /* stellarwave.js in Resources */,
+				0000000000000000000000DB /* stellarwave014.js in Resources */,
+				0000000000000000000000DD /* suyin.js in Resources */,
+				0000000000000000000000DF /* tongyi.js in Resources */,
+				0000000000000000000000E1 /* xinghai.js in Resources */,
+				0000000000000000000000E3 /* yuxi.js in Resources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -252,6 +454,49 @@
 				00000000000000000000006A /* MigrationStore.swift in Sources */,
 				00000000000000000000006C /* KeychainStore.swift in Sources */,
 				000000000000000000000015 /* SplashView.swift in Sources */,
+				000000000000000000000075 /* NativeMusicPlayer.swift in Sources */,
+				000000000000000000000077 /* LXEngine.swift in Sources */,
+				000000000000000000000079 /* LXModels.swift in Sources */,
+				00000000000000000000007B /* LXPrelude.swift in Sources */,
+				00000000000000000000007D /* LXScriptFileStore.swift in Sources */,
+				00000000000000000000007F /* LXScriptStore.swift in Sources */,
+				000000000000000000000081 /* LXUserKeyStore.swift in Sources */,
+				000000000000000000000083 /* LXSourceResolver.swift in Sources */,
+				000000000000000000000085 /* MusicHTTP.swift in Sources */,
+				000000000000000000000087 /* MusicQuality.swift in Sources */,
+				000000000000000000000089 /* MusicTrack.swift in Sources */,
+				00000000000000000000008B /* ResolverPolicy.swift in Sources */,
+				00000000000000000000008D /* MusicAlbumAPI.swift in Sources */,
+				00000000000000000000008F /* MusicAPIModels.swift in Sources */,
+				000000000000000000000091 /* MusicAPITransport.swift in Sources */,
+				000000000000000000000093 /* MusicArtistAPI.swift in Sources */,
+				000000000000000000000095 /* MusicCommentsAPI.swift in Sources */,
+				000000000000000000000097 /* MusicLyricsAPI.swift in Sources */,
+				000000000000000000000099 /* MusicPlaylistImportAPI.swift in Sources */,
+				00000000000000000000009B /* MusicSearchAPI.swift in Sources */,
+				00000000000000000000009D /* MusicDiscoveryViewModel.swift in Sources */,
+				00000000000000000000009F /* MusicDiscoveryViews.swift in Sources */,
+				0000000000000000000000A1 /* MusicEqualizer.swift in Sources */,
+				0000000000000000000000A3 /* MusicEqualizerView.swift in Sources */,
+				0000000000000000000000A5 /* MusicEqualizerViewModel.swift in Sources */,
+				0000000000000000000000A7 /* MusicHomeView.swift in Sources */,
+				0000000000000000000000A9 /* MusicHomeViewModel.swift in Sources */,
+				0000000000000000000000AB /* MusicLibraryStore.swift in Sources */,
+				0000000000000000000000AD /* MusicLibraryViewModel.swift in Sources */,
+				0000000000000000000000AF /* MusicLibraryViews.swift in Sources */,
+				0000000000000000000000B1 /* MusicLyrics.swift in Sources */,
+				0000000000000000000000B3 /* MusicModels.swift in Sources */,
+				0000000000000000000000B5 /* MusicPlayerSheets.swift in Sources */,
+				0000000000000000000000B7 /* MusicPlayerView.swift in Sources */,
+				0000000000000000000000B9 /* MusicPlayerViewModel.swift in Sources */,
+				0000000000000000000000BB /* MusicQueue.swift in Sources */,
+				0000000000000000000000BD /* MusicQueueView.swift in Sources */,
+				0000000000000000000000BF /* MusicRadio.swift in Sources */,
+				0000000000000000000000C1 /* MusicRowViews.swift in Sources */,
+				0000000000000000000000C3 /* MusicSearchMerge.swift in Sources */,
+				0000000000000000000000C5 /* MusicSearchView.swift in Sources */,
+				0000000000000000000000C7 /* MusicSearchViewModel.swift in Sources */,
+				0000000000000000000000C9 /* MusicSleepTimer.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

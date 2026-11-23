@@ -84,6 +84,11 @@ struct PlaybackItem: Identifiable, Equatable {
     /// compiling.
     let coverURL: URL? = nil
 
+    /// Local file to play directly (downloads / local music). When
+    /// set, the coordinator returns this URL without asking the LX
+    /// resolver — local files never go through network resolution.
+    let localFileURL: URL? = nil
+
     var subtitle: String { artist ?? kindSubtitle }
 
     private var kindSubtitle: String {
@@ -108,6 +113,53 @@ protocol SourceResolver {
         targetQuality: AudioQuality?,
         completion: @escaping (URL?) -> Void
     )
+}
+
+/// A resolver that reports the tier actually played by its last
+/// resolve (Master honesty gate: the quality badge shows the real
+/// tier, never the target). The LX resolver conforms; resolvers
+/// that cannot report a tier simply do not conform, and the tier
+/// stays nil (unknown).
+protocol TierReportingResolver {
+    var lastResolvedTier: AudioQuality? { get }
+}
+
+// MARK: - Player errors and driver contract (moved from
+// NativeMusicPlayer.swift at the S2 merge: the MusicLX SwiftPM test
+// target compiles this file without the iOS-only player file, so the
+// contracts the coordinator programs against live here.)
+
+/// Structured open/seek errors (P0-04). A timeout is handled exactly
+/// like a stream error: the load is dropped and the caller falls
+/// back to the next candidate.
+enum MusicPlayerError: Error, Equatable {
+    case timeout
+    case noPlayableURL
+    case loadFailed
+    case seekFailed
+}
+
+/// What PlaybackCoordinator needs from the music player. The
+/// coordinator owns the resolver and the current-item bookkeeping;
+/// the player owns engines, queue and modes. The coordinator wires
+/// `resolveURL` to its resolver (serial, fastest first) and listens
+/// to `onTrackStarted` / `onTrackFailed` to keep `currentItem` in
+/// sync with the player's `currentTrack`.
+protocol MusicPlaybackDriver: AnyObject {
+    var currentTrack: PlaybackItem? { get }
+    var isPlaying: Bool { get }
+    /// Resolve a playable URL for an item. `excluding` lists URLs
+    /// that already failed for this request, so the resolver can
+    /// hand out the next candidate instead of repeating one. The
+    /// second value is the actual tier the URL plays at, when the
+    /// resolver knows it; nil means unknown, never the target tier.
+    var resolveURL: ((PlaybackItem, [URL], @escaping (URL?, AudioQuality?) -> Void) -> Void)? { get set }
+    var onTrackStarted: ((PlaybackItem) -> Void)? { get set }
+    var onTrackFailed: ((PlaybackItem, MusicPlayerError) -> Void)? { get set }
+    func play(item: PlaybackItem)
+    func open(item: PlaybackItem, url: URL, completion: @escaping (Result<Void, MusicPlayerError>) -> Void)
+    func stop()
+    func resume()
 }
 
 /// Single-audio coordinator. One instance for the whole app
@@ -144,9 +196,15 @@ final class PlaybackCoordinator: ObservableObject {
                     completion(nil, nil)
                     return
                 }
+                // Local files never go through network resolution.
+                if let fileURL = item.localFileURL {
+                    completion(fileURL, nil)
+                    return
+                }
                 if let resolver = self.resolver {
                     resolver.resolveFirstPlayable(for: item, targetQuality: self.targetQuality) { url in
-                        DispatchQueue.main.async { completion(url, nil) }
+                        let tier = (resolver as? TierReportingResolver)?.lastResolvedTier
+                        DispatchQueue.main.async { completion(url, tier) }
                     }
                 } else {
                     completion(nil, nil)
@@ -163,7 +221,7 @@ final class PlaybackCoordinator: ObservableObject {
         }
     }
 
-    static let targetQualityKey = "hao.audio.targetQuality"
+    static let targetQualityKey = "musicQuality"
 
     private let defaults: UserDefaults
 

@@ -1,5 +1,5 @@
 // swift-tools-version:5.5
-// HAo Studio 2.0 — migration tests (S1).
+// HAo Studio 2.0 — SwiftPM test package (S1 migration + S2 music).
 //
 // Why a SwiftPM package instead of an Xcode unit-test target:
 // adding a test target means a second PBXNativeTarget, a test host
@@ -7,15 +7,32 @@
 // build phases, scheme changes, and a preflight rewrite of the
 // exactly-one-target check. The pbxproj already broke twice on
 // smaller edits (builds 10 and 11), so the project file is not the
-// place to experiment. This package compiles the same Storage
-// sources the app target compiles (one source of truth, no copies)
-// and runs with `swift test` from ios/, which Codemagic runs as a
-// step before xcodebuild. No app code changes are needed to test.
+// place to experiment. This package compiles the same sources the
+// app target compiles (one source of truth, no copies) and runs
+// with `swift test` from ios/, which Codemagic runs as a step
+// before xcodebuild. No app code changes are needed to test.
+//
+// S2: the LX engine / resolvers / music API (module MusicLX) are
+// macOS-safe (Foundation + JavaScriptCore + CryptoKit + Security
+// only), so their tests run here. The player (MusicCore) and the
+// feature UI (MusicFeatures) import iOS-only frameworks
+// (MediaPlayer, AVRoutePickerView) and cannot run under
+// `swift test`; their tests run via `xcodebuild test` on an iOS
+// Simulator destination once an Xcode test target exists — there
+// is deliberately none yet (see the note above about the pbxproj).
+//
+// MusicLX sources: the three Services dirs plus the three files
+// they depend on outside Services — PlaybackCoordinator.swift
+// (PlaybackItem, AudioQuality, SourceResolver, the driver contract)
+// and Storage/LocalStore.swift + Storage/KeychainStore.swift
+// (documents dir + Keychain user keys). The driver contract lives
+// in PlaybackCoordinator.swift (not the player file) exactly so
+// this target does not pull in the iOS-only player.
 
 import PackageDescription
 
 let package = Package(
-    name: "MigrationTests",
+    name: "HAoStudioTests",
     targets: [
         .target(
             name: "MigrationCore",
@@ -28,6 +45,26 @@ let package = Package(
             name: "MigrationCoreTests",
             dependencies: ["MigrationCore"],
             path: "Tests/MigrationCoreTests"
+        ),
+        .target(
+            name: "MusicLX",
+            path: "HAoStudio",
+            sources: [
+                "Services/LXEngine",
+                "Services/MusicResolvers",
+                "Services/MusicAPI",
+                "Playback/PlaybackCoordinator.swift",
+                "Storage/LocalStore.swift",
+                "Storage/KeychainStore.swift",
+            ],
+            linkerSettings: [
+                .linkedFramework("Security"),
+            ]
+        ),
+        .testTarget(
+            name: "MusicLXTests",
+            dependencies: ["MusicLX"],
+            path: "Tests/MusicLXTests"
         ),
     ]
 )

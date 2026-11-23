@@ -26,6 +26,11 @@ struct HAoStudioApp: App {
         _ = MigrationStore.runIfNeeded()
         _themeStore = StateObject(wrappedValue: ThemeStore())
         let coordinator = PlaybackCoordinator()
+        // S2: wire the music engine behind the coordinator. The LX
+        // resolver answers resolveFirstPlayable; the player is the
+        // driver. Without these two lines requestPlay is a no-op.
+        coordinator.resolver = LXSourceResolver()
+        coordinator.musicDriver = NativeMusicPlayer.shared
         _coordinator = StateObject(wrappedValue: coordinator)
         _musicPlayer = StateObject(wrappedValue: MusicPlayerViewModel(coordinator: coordinator))
     }

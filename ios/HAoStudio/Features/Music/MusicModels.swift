@@ -16,73 +16,11 @@
 
 import Foundation
 
-/// Music platforms. `mg` (Migu) is resolver-only: no mg search exists
-/// (Flutter music_models.dart).
-enum MusicPlatform: String, CaseIterable {
-    case wy
-    case tx
-    case kg
-    case kw
-    case mg
-
-    static func fromCode(_ code: String?) -> MusicPlatform {
-        switch code {
-        case "tx": return .tx
-        case "kg": return .kg
-        case "kw": return .kw
-        case "mg": return .mg
-        case "wy": fallthrough
-        default: return .wy
-        }
-    }
-
-    /// Map an LX/search `sourceID` to a platform for badges. Known
-    /// platform codes map directly; an LX script id (e.g. "lx:…") has
-    /// no platform signal, so it falls back to wy — the badge then
-    /// shows 网易, which is wrong for a script result. Contract gap:
-    /// the LX leg should carry the platform on MusicTrack if badges
-    /// must be exact for script results (see the C-leg report).
-    static func fromSourceID(_ sourceID: String?) -> MusicPlatform {
-        return fromCode(sourceID)
-    }
-
-    /// Short badge shown on song rows (Flutter badgeName).
-    var badgeName: String {
-        switch self {
-        case .wy: return "网易"
-        case .tx: return "QQ"
-        case .kg: return "酷狗"
-        case .kw: return "酷我"
-        case .mg: return "咪咕"
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .wy: return "网易云"
-        case .tx: return "QQ音乐"
-        case .kg: return "酷狗音乐"
-        case .kw: return "酷我"
-        case .mg: return "咪咕"
-        }
-    }
-
-    /// Search merge order wy/tx/kg/kw (Flutter kSearchPlatforms).
-    var searchPriority: Int {
-        switch self {
-        case .wy: return 0
-        case .tx: return 1
-        case .kg: return 2
-        case .kw: return 3
-        case .mg: return 4
-        }
-    }
-}
 
 /// Tolerant JSON field readers. Numbers may arrive as Int, Double or
 /// numeric strings (Flutter wrote ints; the migration re-encoded via
 /// JSONSerialization, which keeps numbers as NSNumber).
-enum MusicJSON {
+enum MusicDict {
     static func string(_ dict: [String: Any], _ key: String) -> String {
         if let value = dict[key] as? String { return value }
         if let value = dict[key] as? NSNumber { return value.stringValue }
@@ -186,17 +124,17 @@ struct MusicSong: Equatable, Identifiable {
 
     init(json: [String: Any]) {
         self.init(
-            songId: MusicJSON.string(json, "songId"),
-            title: MusicJSON.string(json, "title"),
-            artist: MusicJSON.string(json, "artist"),
-            album: MusicJSON.string(json, "album"),
-            cover: MusicJSON.string(json, "cover"),
+            songId: MusicDict.string(json, "songId"),
+            title: MusicDict.string(json, "title"),
+            artist: MusicDict.string(json, "artist"),
+            album: MusicDict.string(json, "album"),
+            cover: MusicDict.string(json, "cover"),
             platform: MusicPlatform.fromCode(json["platform"] as? String),
-            dur: MusicJSON.int(json, "dur"),
-            albumYear: MusicJSON.int(json, "albumYear"),
-            reasonKey: MusicJSON.string(json, "reasonKey"),
-            reasonArg: MusicJSON.string(json, "reasonArg"),
-            localPath: MusicJSON.string(json, "localPath")
+            dur: MusicDict.int(json, "dur"),
+            albumYear: MusicDict.int(json, "albumYear"),
+            reasonKey: MusicDict.string(json, "reasonKey"),
+            reasonArg: MusicDict.string(json, "reasonArg"),
+            localPath: MusicDict.string(json, "localPath")
         )
     }
 
@@ -246,15 +184,16 @@ struct MusicSong: Equatable, Identifiable {
             title: track.title,
             artist: track.artist,
             album: track.album,
-            cover: track.coverURL,
+            cover: track.coverURL?.absoluteString ?? "",
             platform: MusicPlatform.fromSourceID(track.sourceID),
-            dur: track.duration
+            dur: track.duration.map { Int($0) } ?? 0
         )
     }
 
     /// The playback item for this song (coordinator contract).
     func toPlaybackItem() -> PlaybackItem {
-        PlaybackItem(id: songId.isEmpty ? identityKey : songId, kind: .music, title: title, artist: artist)
+        PlaybackItem(id: identityKey, kind: .music, title: title, artist: artist,
+                     localFileURL: localPath.isEmpty ? nil : URL(fileURLWithPath: localPath))
     }
 }
 
@@ -275,9 +214,9 @@ struct UserPlaylist: Equatable, Identifiable {
 
     init(json: [String: Any]) {
         self.init(
-            id: MusicJSON.string(json, "id"),
-            name: MusicJSON.string(json, "name"),
-            tracks: MusicJSON.array(json, "tracks").map(MusicSong.init(json:))
+            id: MusicDict.string(json, "id"),
+            name: MusicDict.string(json, "name"),
+            tracks: MusicDict.array(json, "tracks").map(MusicSong.init(json:))
         )
     }
 
@@ -340,10 +279,10 @@ struct DownloadedSong: Equatable {
     init(json: [String: Any]) {
         let songJSON = json["song"] as? [String: Any] ?? [:]
         self.song = MusicSong(json: songJSON)
-        self.filePath = MusicJSON.string(json, "filePath")
-        self.sizeBytes = MusicJSON.int(json, "sizeBytes")
-        self.downloadedAt = MusicJSON.int(json, "downloadedAt")
-        let code = MusicJSON.string(json, "quality")
+        self.filePath = MusicDict.string(json, "filePath")
+        self.sizeBytes = MusicDict.int(json, "sizeBytes")
+        self.downloadedAt = MusicDict.int(json, "downloadedAt")
+        let code = MusicDict.string(json, "quality")
         self.qualityCode = code.isEmpty ? "hires" : code
     }
 
@@ -372,14 +311,14 @@ struct ListenEvent: Equatable {
     var at: Int
 
     init(json: [String: Any]) {
-        self.songId = MusicJSON.string(json, "songId")
-        self.title = MusicJSON.string(json, "title")
-        self.artist = MusicJSON.string(json, "artist")
+        self.songId = MusicDict.string(json, "songId")
+        self.title = MusicDict.string(json, "title")
+        self.artist = MusicDict.string(json, "artist")
         self.platform = MusicPlatform.fromCode(json["platform"] as? String)
-        self.cover = MusicJSON.string(json, "cover")
-        self.dur = MusicJSON.int(json, "dur")
-        self.totalDur = MusicJSON.int(json, "totalDur")
-        self.at = MusicJSON.int(json, "at")
+        self.cover = MusicDict.string(json, "cover")
+        self.dur = MusicDict.int(json, "dur")
+        self.totalDur = MusicDict.int(json, "totalDur")
+        self.at = MusicDict.int(json, "at")
     }
 
     func toJSON() -> [String: Any] {
@@ -413,9 +352,9 @@ struct StoredLyricLine: Equatable {
     }
 
     init(json: [String: Any]) {
-        self.t = MusicJSON.double(json, "t")
-        self.text = MusicJSON.string(json, "text")
-        let translation = MusicJSON.string(json, "translation")
+        self.t = MusicDict.double(json, "t")
+        self.text = MusicDict.string(json, "text")
+        let translation = MusicDict.string(json, "translation")
         self.translation = translation.isEmpty ? nil : translation
     }
 
@@ -438,8 +377,8 @@ struct MusicQueueData {
     }
 
     init(json: [String: Any]) {
-        self.songs = MusicJSON.array(json, "songs").map(MusicSong.init(json:))
-        self.index = MusicJSON.int(json, "index")
+        self.songs = MusicDict.array(json, "songs").map(MusicSong.init(json:))
+        self.index = MusicDict.int(json, "index")
     }
 
     func toJSON() -> [String: Any] {

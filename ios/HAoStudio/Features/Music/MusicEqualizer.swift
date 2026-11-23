@@ -17,7 +17,7 @@
 
 import Foundation
 
-enum MusicEqualizer {
+enum MusicEQMath {
     static let bandFrequencies: [Double] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
     static let bandCount = 10
     static let maximumGain: Double = 12
@@ -121,16 +121,16 @@ struct MusicEqualizerCustomPreset: Equatable {
 
     init(name: String, gains: [Double], preamp: Double) {
         self.name = name
-        self.gains = MusicEqualizer.normalizeGains(gains)
-        self.preamp = MusicEqualizer.normalizeGain(preamp)
+        self.gains = MusicEQMath.normalizeGains(gains)
+        self.preamp = MusicEQMath.normalizeGain(preamp)
     }
 
     init(json: [String: Any]) {
         let rawGains = (json["gains"] as? [Double]) ?? (json["gains"] as? [NSNumber])?.map { $0.doubleValue } ?? []
         self.init(
-            name: MusicJSON.string(json, "name"),
+            name: MusicDict.string(json, "name"),
             gains: rawGains,
-            preamp: MusicJSON.double(json, "preamp")
+            preamp: MusicDict.double(json, "preamp")
         )
     }
 

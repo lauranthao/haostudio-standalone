@@ -8,6 +8,7 @@
 import Foundation
 
 /// Music platform codes, shared by search, resolvers and the LX engine.
+/// `mg` (Migu) is resolver-only: no mg search exists (Flutter music_models.dart).
 enum MusicPlatform: String, CaseIterable {
     case wy
     case tx
@@ -15,18 +16,63 @@ enum MusicPlatform: String, CaseIterable {
     case kw
     case mg
 
-    var displayName: String {
-        switch self {
-        case .wy: return "网易云音乐"
-        case .tx: return "QQ音乐"
-        case .kg: return "酷狗音乐"
-        case .kw: return "酷我音乐"
-        case .mg: return "咪咕音乐"
+    init?(code: String) {
+        self.init(rawValue: code)
+    }
+
+    /// Map a code to a platform, defaulting to wy for unknown codes
+    /// (Flutter fromCode behaviour).
+    static func fromCode(_ code: String?) -> MusicPlatform {
+        switch code {
+        case "tx": return .tx
+        case "kg": return .kg
+        case "kw": return .kw
+        case "mg": return .mg
+        case "wy": fallthrough
+        default: return .wy
         }
     }
 
-    init?(code: String) {
-        self.init(rawValue: code)
+    /// Map an LX/search `sourceID` to a platform for badges. Known
+    /// platform codes map directly; an LX script id (e.g. "lx:…") has
+    /// no platform signal, so it falls back to wy — the badge then
+    /// shows 网易, which is wrong for a script result. (Known gap:
+    /// the LX leg should carry the platform on MusicTrack if badges
+    /// must be exact for script results.)
+    static func fromSourceID(_ sourceID: String?) -> MusicPlatform {
+        return fromCode(sourceID)
+    }
+
+    /// Short badge shown on song rows (Flutter badgeName).
+    var badgeName: String {
+        switch self {
+        case .wy: return "网易"
+        case .tx: return "QQ"
+        case .kg: return "酷狗"
+        case .kw: return "酷我"
+        case .mg: return "咪咕"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .wy: return "网易云"
+        case .tx: return "QQ音乐"
+        case .kg: return "酷狗音乐"
+        case .kw: return "酷我"
+        case .mg: return "咪咕"
+        }
+    }
+
+    /// Search merge order wy/tx/kg/kw (Flutter kSearchPlatforms).
+    var searchPriority: Int {
+        switch self {
+        case .wy: return 0
+        case .tx: return 1
+        case .kg: return 2
+        case .kw: return 3
+        case .mg: return 4
+        }
     }
 }
 

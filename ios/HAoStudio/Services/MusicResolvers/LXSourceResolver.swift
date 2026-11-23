@@ -149,6 +149,10 @@ final class LXSourceResolver: SourceResolver {
         targetQuality: AudioQuality?,
         completion: @escaping (URL?) -> Void
     ) {
+        // A fresh resolve starts with no tier; finishResolve sets it
+        // just before completion fires, so the wiring never reads a
+        // stale tier from the previous track.
+        lastResolvedTier = nil
         // `PlaybackItem.id` is `platform|songId` (Flutter identityKey).
         let parts = item.id.split(separator: "|", maxSplits: 1)
         guard parts.count == 2,
@@ -966,3 +970,7 @@ extension LXSourceResolver {
         return id
     }
 }
+
+// MARK: - Tier reporting (Master honesty gate)
+
+extension LXSourceResolver: TierReportingResolver {}

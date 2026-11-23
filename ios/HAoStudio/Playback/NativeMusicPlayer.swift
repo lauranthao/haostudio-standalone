@@ -45,18 +45,6 @@ import MediaToolbox
 import AVKit
 import SwiftUI
 
-// MARK: - Errors
-
-/// Structured open/seek errors (P0-04). A timeout is handled exactly
-/// like a stream error: the load is dropped and the caller falls
-/// back to the next candidate.
-enum MusicPlayerError: Error, Equatable {
-    case timeout
-    case noPlayableURL
-    case loadFailed
-    case seekFailed
-}
-
 // MARK: - Play modes
 
 /// The five music play modes, verified against Flutter build 31
@@ -198,7 +186,7 @@ struct EqualizerSettings: Equatable {
     var enabled: Bool
     var gains: [Double]
     var presetName: String?
-    var preamp: Double
+    var preamp: Double = 0
 
     static let flat = EqualizerSettings(enabled: false, gains: [Double](repeating: 0, count: 10), presetName: "flat", preamp: 0)
 
@@ -860,31 +848,6 @@ final class MusicEqualizer {
     }
 }
 
-// MARK: - Driver protocol (coordinator wiring)
-
-/// What PlaybackCoordinator needs from the music player. The
-/// coordinator owns the resolver and the current-item bookkeeping;
-/// the player owns engines, queue and modes. The coordinator wires
-/// `resolveURL` to its resolver (serial, fastest first) and listens
-/// to `onTrackStarted` / `onTrackFailed` to keep `currentItem` in
-/// sync with the player's `currentTrack`.
-protocol MusicPlaybackDriver: AnyObject {
-    var currentTrack: PlaybackItem? { get }
-    var isPlaying: Bool { get }
-    /// Resolve a playable URL for an item. `excluding` lists URLs
-    /// that already failed for this request, so the resolver can
-    /// hand out the next candidate instead of repeating one. The
-    /// second value is the actual tier the URL plays at, when the
-    /// resolver knows it; nil means unknown, never the target tier.
-    var resolveURL: ((PlaybackItem, [URL], @escaping (URL?, AudioQuality?) -> Void) -> Void)? { get set }
-    var onTrackStarted: ((PlaybackItem) -> Void)? { get set }
-    var onTrackFailed: ((PlaybackItem, MusicPlayerError) -> Void)? { get set }
-    func play(item: PlaybackItem)
-    func open(item: PlaybackItem, url: URL, completion: @escaping (Result<Void, MusicPlayerError>) -> Void)
-    func stop()
-    func resume()
-}
-
 // MARK: - Native music player
 
 /// Native music player: AVPlayer A/B dual engines, crossfade on
@@ -918,7 +881,7 @@ final class NativeMusicPlayer: NSObject, ObservableObject, MusicPlaybackDriver {
     static let openTimeout: TimeInterval = 10
     static let crossfadeDuration: TimeInterval = 2.5
     static let seekTolerance: TimeInterval = 2.0
-    static let minSpeed: Double = 0.6
+    static let minSpeed: Double = 0.5
     static let maxSpeed: Double = 2.0
 
     /// Test seam: open timeout seconds. Production is 10; tests set

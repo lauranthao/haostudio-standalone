@@ -48,7 +48,7 @@ final class MusicEqualizerViewModel: ObservableObject {
 
     /// Preview curve = gains + preamp*0.35, clamped ±12.
     var previewGains: [Double] {
-        return MusicEqualizer.previewGains(gains: gains, preamp: preamp)
+        return MusicEQMath.previewGains(gains: gains, preamp: preamp)
     }
 
     /// Normalisation can only measure loudness while EQ is on.
@@ -70,14 +70,14 @@ final class MusicEqualizerViewModel: ObservableObject {
         defer { loading = false }
         enabled = defaults.bool(forKey: "hao_eq_enabled")
         if let stored = defaults.array(forKey: "hao_eq_band_gains") as? [Double] {
-            gains = MusicEqualizer.normalizeGains(stored)
+            gains = MusicEQMath.normalizeGains(stored)
         } else if let stored = defaults.array(forKey: "hao_eq_band_gains") as? [NSNumber] {
-            gains = MusicEqualizer.normalizeGains(stored.map { $0.doubleValue })
+            gains = MusicEQMath.normalizeGains(stored.map { $0.doubleValue })
         }
         selectedPreset = MusicEqualizerPreset.fromId(defaults.string(forKey: "hao_eq_preset"))
         selectedCustomName = defaults.string(forKey: "hao_eq_custom_name") ?? ""
         isCustom = defaults.string(forKey: "hao_eq_preset") == "custom"
-        preamp = MusicEqualizer.normalizeGain(defaults.double(forKey: "hao_eq_preamp"))
+        preamp = MusicEQMath.normalizeGain(defaults.double(forKey: "hao_eq_preamp"))
         selectedAutoEqName = defaults.string(forKey: "hao_eq_autoeq_name") ?? ""
         customPresets = readCustomPresets()
     }
@@ -139,12 +139,12 @@ final class MusicEqualizerViewModel: ObservableObject {
             isCustom = true
             selectedCustomName = ""
         }
-        gains[band] = MusicEqualizer.normalizeGain(value)
+        gains[band] = MusicEQMath.normalizeGain(value)
     }
 
     func setPreamp(_ value: Double) {
         selectedAutoEqName = ""
-        preamp = MusicEqualizer.normalizeGain(value)
+        preamp = MusicEQMath.normalizeGain(value)
     }
 
     func resetToFlat() {
@@ -156,13 +156,13 @@ final class MusicEqualizerViewModel: ObservableObject {
     private func readCustomPresets() -> [MusicEqualizerCustomPreset] {
         let url = LocalStore.collectionURL(named: "hao_eq_custom_presets")
         guard let data = try? Data(contentsOf: url) else { return [] }
-        return MusicJSON.objectArray(from: data).map(MusicEqualizerCustomPreset.init(json:))
+        return MusicDict.objectArray(from: data).map(MusicEqualizerCustomPreset.init(json:))
     }
 
     private func writeCustomPresets() {
         let url = LocalStore.collectionURL(named: "hao_eq_custom_presets")
         let value = customPresets.map { $0.toJSON() }
-        guard let data = MusicJSON.data(forTopLevel: value) else { return }
+        guard let data = MusicDict.data(forTopLevel: value) else { return }
         try? data.write(to: url, options: [.atomic])
     }
 

@@ -193,7 +193,7 @@ struct MusicDownloadsView: View {
                             Spacer()
                             Button(action: {
                                 if fileExists {
-                                    playerVM.playLocal(song: download.song)
+                                    playerVM.playLocal(song: download.song, fileURL: libraryVM.downloadedFileURL(for: download))
                                 }
                             }) {
                                 Image(systemName: "play.fill")
