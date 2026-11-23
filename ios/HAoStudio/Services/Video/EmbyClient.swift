@@ -274,7 +274,9 @@ final class EmbyClient {
 
     private func getJSON(url: URL, timeout: TimeInterval = 8, completion: @escaping (Result<[String: Any], EmbyError>) -> Void) {
         fetcher(url, authHeaders, timeout) { response in
-            completion(self.mapDocument(response, wantMap: true))
+            // mapDocument with wantMap: true only succeeds with a map;
+            // the cast below therefore always succeeds in practice.
+            completion(self.mapDocument(response, wantMap: true).map { $0 as? [String: Any] ?? [:] })
         }
     }
 
@@ -1066,7 +1068,7 @@ final class EmbyClient {
         let meta = toVideoMeta(item)
         let facts = EmbyStreamFacts.fromMediaSources(item["MediaSources"])
         if type == "Movie" || type == "Episode" || type == "Video" {
-            let episodeName = type == "Episode" ? episodeDisplayName(item) : "正片"
+            let episodeName = type == "Episode" ? EmbyClient.episodeDisplayName(item) : "正片"
             let markers = EmbySkipMarkers.fromChapters(item["Chapters"])
             _ = markers // Swift's PlayEpisode carries no skip-marker
             // fields (seam gap — see the leg report); the markers

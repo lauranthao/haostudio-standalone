@@ -327,10 +327,12 @@ final class DownloadEngine: NSObject {
                 return
             }
             handle = h
-            try? handle.seekToEnd()
+            // seekToEnd() needs macOS 10.15.4; the package targets
+            // 10.15.0, so use the long-available seekToEndOfFile().
+            _ = handle.seekToEndOfFile()
         } else {
             FileManager.default.createFile(atPath: part.path, contents: nil)
-            guard let h = try? FileHandle(forWriting: part) else {
+            guard let h = try? FileHandle(forWritingTo: part) else {
                 finishLocked(record, state: .failed, errorMessage: "无法创建下载文件")
                 return
             }
@@ -361,7 +363,7 @@ final class DownloadEngine: NSObject {
                 let part = self.partURL(for: record.info.request)
                 try? FileManager.default.removeItem(at: part)
                 FileManager.default.createFile(atPath: part.path, contents: nil)
-                record.fileHandle = try? FileHandle(forWriting: part)
+                record.fileHandle = try? FileHandle(forWritingTo: part)
                 if let length = response.value(forHTTPHeaderField: "Content-Length").flatMap({ Int64($0) }), length >= 0 {
                     record.expectedTotal = length
                     record.info.totalBytes = length
@@ -440,7 +442,7 @@ final class DownloadEngine: NSObject {
             let sourceSize = (try? FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber)?.int64Value ?? -1
             var existing: Int64 = 0
             if let handle = try? FileHandle(forUpdating: part) {
-                existing = (try? handle.seekToEnd()) ?? 0
+                existing = Int64(handle.seekToEndOfFile())
                 handle.closeFile()
             } else {
                 FileManager.default.createFile(atPath: part.path, contents: nil)
@@ -454,7 +456,7 @@ final class DownloadEngine: NSObject {
                 record.info.totalBytes = sourceSize
                 record.info.downloadedBytes = existing
             }
-            guard let reader = try? FileHandle(forReading: source) else {
+            guard let reader = try? FileHandle(forReadingFrom: source) else {
                 self.syncQueue.async {
                     self.finishLocked(record, state: .failed, errorMessage: "无法读取源文件")
                 }
@@ -470,7 +472,9 @@ final class DownloadEngine: NSObject {
                 }
                 return
             }
-            try? writer.seekToEnd()
+            // seekToEnd() needs macOS 10.15.4; the package targets
+            // 10.15.0, so use the long-available seekToEndOfFile().
+            _ = writer.seekToEndOfFile()
             var downloaded = existing
             while true {
                 let stop = self.syncQueue.sync { record.stopRequested }

@@ -729,7 +729,7 @@ final class DoubanService {
                 if !hits.isEmpty { self.suggestFails = 0 }
                 done(hits)
             }
-        }, completion: completion)
+        }, completion: { hits in completion(hits ?? []) })
     }
 
     // MARK: - Title → id
