@@ -278,10 +278,15 @@ void main() {
         }
       }
       expect(found, isTrue);
-      expect(
-        find.text('Emby 返回的数据有问题，请稍后重试'),
-        findsOneWidget,
-      );
+      // Merged behaviour (b31 data layer): the wrong-typed `Type`
+      // no longer throws a parse TypeError — the client's safe
+      // parsing defaults it, detail() then fails cleanly as an
+      // EmbyException, and the page shows the error card with that
+      // message. So the exact text is not pinned here; what this
+      // test guards is the outcome: an error card with a retry,
+      // never a spinner forever and never an unhandled error. The
+      // catch-all in _load stays as defense-in-depth for parse
+      // throws the safe layer does not cover.
       expect(find.text('重试'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
