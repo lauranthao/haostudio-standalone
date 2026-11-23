@@ -8,7 +8,7 @@
 // function, no network. Swift 5.0.
 
 import XCTest
-@testable import MusicLX
+@testable import AppCore
 
 final class EmbySynopsisTests: XCTestCase {
     func testWholeTextDoubledCollapsesToOneCopy() {

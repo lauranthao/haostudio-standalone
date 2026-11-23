@@ -7,7 +7,7 @@
 // Swift 5.0: no async/await, no `any`.
 
 import XCTest
-@testable import MusicLX
+@testable import AppCore
 
 final class DownloadEngineTests: XCTestCase {
     private var engine: DownloadEngine!

@@ -12,7 +12,17 @@
 // with `swift test` from ios/, which Codemagic runs as a step
 // before xcodebuild. No app code changes are needed to test.
 //
-// S2: the LX engine / resolvers / music API (module MusicLX) are
+// One target, not two: S1 had a MigrationCore target (whole
+// Storage dir) and S2 added a MusicLX target that also listed
+// Storage/LocalStore.swift + Storage/KeychainStore.swift. SwiftPM
+// forbids one file in two targets, so build #18 failed with
+// "target 'MusicLX' has overlapping sources" on exactly those two
+// files. The merge keeps every file in exactly one target —
+// AppCore — and both test suites import it. (A later slice that
+// needs testable sources must add them to AppCore or to a new
+// target that claims no file AppCore already has.)
+//
+// S2: the LX engine / resolvers / music API (module AppCore) are
 // macOS-safe (Foundation + JavaScriptCore + CryptoKit + Security
 // only), so their tests run here. The player (MusicCore) and the
 // feature UI (MusicFeatures) import iOS-only frameworks
@@ -21,40 +31,25 @@
 // Simulator destination once an Xcode test target exists — there
 // is deliberately none yet (see the note above about the pbxproj).
 //
-// MusicLX sources: the three Services dirs plus the three files
-// they depend on outside Services — PlaybackCoordinator.swift
-// (PlaybackItem, AudioQuality, SourceResolver, the driver contract)
-// and Storage/LocalStore.swift + Storage/KeychainStore.swift
-// (documents dir + Keychain user keys). The driver contract lives
-// in PlaybackCoordinator.swift (not the player file) exactly so
-// this target does not pull in the iOS-only player.
+// S3: the video services (CMS / Douban / Emby / danmaku) and the
+// shared download engine are Foundation-only too, so they join
+// AppCore as whole directories. VideoLibraryStore.swift joins as
+// a single file (its home is Features/Video, outside the service
+// dirs) so its tests compile; no other Features file is claimed.
+// VideoPlayerTests (A leg, iOS-only driver tests) stays unwired
+// until S7 — it is not a SwiftPM target.
 
 import PackageDescription
 
 let package = Package(
     name: "HAoStudioTests",
-    // Build #17 fix: the MusicLX target's path is the whole HAoStudio
-    // directory, which contains Base.lproj; SwiftPM requires the
-    // manifest to declare a default localization once it sees
-    // localized resources. "en" is the conventional value for
-    // Base.lproj. (S1's MigrationCore target only covers Storage/,
-    // which has no .lproj, so build #16 passed without it.)
+    // AppCore covers the whole HAoStudio dir, which holds
+    // Base.lproj; SwiftPM requires a default localization once a
+    // target has localized resources (build #17 failed without it).
     defaultLocalization: "en",
     targets: [
         .target(
-            name: "MigrationCore",
-            path: "HAoStudio/Storage",
-            linkerSettings: [
-                .linkedFramework("Security"),
-            ]
-        ),
-        .testTarget(
-            name: "MigrationCoreTests",
-            dependencies: ["MigrationCore"],
-            path: "Tests/MigrationCoreTests"
-        ),
-        .target(
-            name: "MusicLX",
+            name: "AppCore",
             path: "HAoStudio",
             sources: [
                 "Services/LXEngine",
@@ -63,30 +58,45 @@ let package = Package(
                 "Services/Video",
                 "Services/DownloadEngine",
                 "Playback/PlaybackCoordinator.swift",
-                "Storage/LocalStore.swift",
-                "Storage/KeychainStore.swift",
+                "Features/Video/VideoLibraryStore.swift",
+                "Storage",
+            ],
+            // The 13 LX scripts live under Services/LXEngine, which is
+            // a sources dir, so SwiftPM treats the .js files as
+            // unexpected compiler inputs unless they are declared
+            // resources (build #19 failed on exactly those 13 files).
+            resources: [
+                .process("Services/LXEngine/Scripts"),
             ],
             linkerSettings: [
                 .linkedFramework("Security"),
             ]
         ),
         .testTarget(
+            name: "MigrationCoreTests",
+            dependencies: ["AppCore"],
+            path: "Tests/MigrationCoreTests"
+        ),
+        .testTarget(
             name: "MusicLXTests",
-            dependencies: ["MusicLX"],
+            dependencies: ["AppCore"],
             path: "Tests/MusicLXTests"
         ),
         // S3: video services (CMS / Douban / Emby / danmaku) and the
-        // shared download engine live in MusicLX too — SwiftPM
-        // forbids one source file in two targets (build #18: the
-        // MusicLX/MigrationCore Storage overlap), so no separate
-        // VideoServices target is created here. At leg merge the
-        // coordinator moves these two dirs onto AppCore (the merged
-        // MusicLX + MigrationCore target from the music branch,
-        // 09b05e4) and re-points this test target at AppCore.
+        // shared download engine — tested against AppCore, which
+        // owns their sources (see the note above: one file, one
+        // target).
         .testTarget(
             name: "VideoServicesTests",
-            dependencies: ["MusicLX"],
+            dependencies: ["AppCore"],
             path: "Tests/VideoServicesTests"
+        ),
+        // S3: video feature stores (resume key, library store,
+        // music platform badge) — same AppCore dependency.
+        .testTarget(
+            name: "VideoFeaturesTests",
+            dependencies: ["AppCore"],
+            path: "Tests/VideoFeaturesTests"
         ),
     ]
 )

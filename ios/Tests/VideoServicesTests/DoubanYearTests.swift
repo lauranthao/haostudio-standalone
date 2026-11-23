@@ -6,7 +6,7 @@
 // mismatch must never be permanently cached. Swift 5.0.
 
 import XCTest
-@testable import MusicLX
+@testable import AppCore
 
 final class DoubanYearTests: XCTestCase {
     // MARK: - parseYear

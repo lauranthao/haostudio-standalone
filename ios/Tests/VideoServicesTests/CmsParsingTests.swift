@@ -5,7 +5,7 @@
 // no `any`.
 
 import XCTest
-@testable import MusicLX
+@testable import AppCore
 
 final class CmsParsingTests: XCTestCase {
     private func source() -> VideoSource {

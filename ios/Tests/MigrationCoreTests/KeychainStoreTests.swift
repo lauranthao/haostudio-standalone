@@ -10,7 +10,7 @@
 import Foundation
 import XCTest
 
-@testable import MigrationCore
+@testable import AppCore
 
 final class KeychainStoreTests: XCTestCase {
     private var docs: URL!

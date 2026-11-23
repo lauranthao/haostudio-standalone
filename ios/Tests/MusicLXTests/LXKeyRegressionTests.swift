@@ -11,7 +11,7 @@ import Foundation
 import JavaScriptCore
 import XCTest
 
-@testable import MusicLX
+@testable import AppCore
 
 final class LXKeyRegressionTests: XCTestCase {
     /// The 13 bundled scripts (4 heavily obfuscated scripts —

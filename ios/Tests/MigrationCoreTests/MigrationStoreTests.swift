@@ -13,7 +13,7 @@
 import Foundation
 import XCTest
 
-@testable import MigrationCore
+@testable import AppCore
 
 final class MigrationStoreTests: XCTestCase {
     private var docs: URL!
