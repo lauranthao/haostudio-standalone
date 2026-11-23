@@ -8,6 +8,7 @@
 // albumSize, alias}. No "会员歌" string anywhere (fix 10).
 
 import 'dart:convert';
+import '../../core/storage/safe_json.dart';
 
 /// Music platforms. `mg` (Migu) is resolver-only: no mg search exists.
 enum MusicPlatform { wy, tx, kg, kw, mg }
@@ -312,8 +313,8 @@ class Song {
       album: j['album']?.toString() ?? '',
       cover: j['cover']?.toString() ?? '',
       platform: MusicPlatformX.fromCode(j['platform']?.toString()),
-      dur: (j['dur'] as num?)?.toInt() ?? 0,
-      albumYear: (j['albumYear'] as num?)?.toInt() ?? 0,
+      dur: jIntN(j['dur']) ?? 0,
+      albumYear: jIntN(j['albumYear']) ?? 0,
       reasonKey: j['reasonKey']?.toString() ?? '',
       reasonArg: j['reasonArg']?.toString() ?? '',
       localPath: j['localPath']?.toString() ?? '',
@@ -424,8 +425,8 @@ class PlaylistSummary {
       name: j['name']?.toString() ?? '',
       cover: j['cover']?.toString() ?? '',
       creator: j['creator']?.toString() ?? '',
-      playCount: (j['playCount'] as num?)?.toInt() ?? 0,
-      trackCount: (j['trackCount'] as num?)?.toInt() ?? 0,
+      playCount: jIntN(j['playCount']) ?? 0,
+      trackCount: jIntN(j['trackCount']) ?? 0,
       desc: j['desc']?.toString() ?? '',
       time: j['time']?.toString() ?? '',
       platform: MusicPlatformX.fromCode(j['platform']?.toString()),
@@ -462,7 +463,7 @@ class UserPlaylist {
     : tracks = tracks ?? [];
 
   factory UserPlaylist.fromJson(Map<String, dynamic> j) {
-    final raw = j['tracks'] as List<dynamic>? ?? [];
+    final raw = jListN(j['tracks']) ?? [];
     return UserPlaylist(
       id: j['id']?.toString() ?? '',
       name: j['name']?.toString() ?? '',
@@ -611,7 +612,7 @@ class LyricLine {
       };
 
   factory LyricLine.fromJson(Map<String, dynamic> j) => LyricLine(
-        t: (j['t'] as num?)?.toDouble() ?? 0,
+        t: jDoubleN(j['t']) ?? 0,
         text: j['text']?.toString() ?? '',
         translation: j['translation']?.toString(),
       );
@@ -639,9 +640,9 @@ class ListenEvent {
       artist: j['artist']?.toString() ?? '',
       platform: MusicPlatformX.fromCode(j['platform']?.toString()),
       cover: j['cover']?.toString() ?? '',
-      dur: (j['dur'] as num?)?.toInt() ?? 0,
-      totalDur: (j['totalDur'] as num?)?.toInt() ?? 0,
-      at: (j['at'] as num?)?.toInt() ?? 0,
+      dur: jIntN(j['dur']) ?? 0,
+      totalDur: jIntN(j['totalDur']) ?? 0,
+      at: jIntN(j['at']) ?? 0,
     );
   }
 

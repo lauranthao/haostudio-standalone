@@ -28,6 +28,7 @@ import '../../features/video/cms_sources.dart';
 import '../../features/video/video_history_store.dart';
 import '../../features/video/video_models.dart';
 import '../../features/video/video_title_helpers.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Thrown when a CMS request times out (detail retry logic treats this
 /// differently from a fast failure — see VideoDetailService).
@@ -125,15 +126,15 @@ VideoItem parseCmsVideoItem(VideoSource source, Map<String, dynamic> x) {
     source: source.id,
     sourceName: source.name,
     vodId: (x['vod_id'] ?? '').toString(),
-    name: (x['vod_name'] as String?) ?? '',
-    pic: toHttps((x['vod_pic'] as String?) ?? ''),
+    name: jStr(x['vod_name']),
+    pic: toHttps(jStr(x['vod_pic'])),
     year: (x['vod_year'] ?? '').toString(),
-    type: (x['type_name'] as String?) ?? '',
-    area: (x['vod_area'] as String?) ?? '',
+    type: jStr(x['type_name']),
+    area: jStr(x['vod_area']),
     score: (x['vod_score'] ?? '').toString(),
     total: (x['vod_total'] ?? '').toString(),
-    remarks: (x['vod_remarks'] as String?) ?? '',
-    hits: (x['vod_hits'] as num?)?.toInt() ?? 0,
+    remarks: jStr(x['vod_remarks']),
+    hits: jIntN(x['vod_hits']) ?? 0,
   );
 }
 
@@ -227,7 +228,7 @@ VideoDetail? parseCmsDetail(
   String vodId,
   Map<String, dynamic> json,
 ) {
-  final list = (json['list'] as List<dynamic>? ?? const []);
+  final list = jList(json['list']);
   if (list.isEmpty) return null;
   // A malformed row (null / string instead of an object): the old
   // `list.first as Map` threw TypeError and the detail load died.
@@ -235,25 +236,25 @@ VideoDetail? parseCmsDetail(
   if (first is! Map<String, dynamic>) return null;
   final d = first;
   final lines = parsePlayLinesWithContentFallback(
-    (d['vod_play_url'] as String?) ?? '',
-    (d['vod_play_from'] as String?) ?? '',
-    (d['vod_content'] as String?) ?? '',
+    jStr(d['vod_play_url']),
+    jStr(d['vod_play_from']),
+    jStr(d['vod_content']),
   );
   if (lines.isEmpty) return null;
   return VideoDetail(
     source: source.id,
     vodId: vodId,
     meta: VideoMeta(
-      name: (d['vod_name'] as String?) ?? '',
-      pic: toHttps((d['vod_pic'] as String?) ?? ''),
+      name: jStr(d['vod_name']),
+      pic: toHttps(jStr(d['vod_pic'])),
       year: (d['vod_year'] ?? '').toString(),
-      type: (d['type_name'] as String?) ?? '',
-      area: (d['vod_area'] as String?) ?? '',
-      remarks: (d['vod_remarks'] as String?) ?? '',
+      type: jStr(d['type_name']),
+      area: jStr(d['vod_area']),
+      remarks: jStr(d['vod_remarks']),
       score: (d['vod_score'] ?? '').toString(),
-      actor: (d['vod_actor'] as String?) ?? '',
-      director: (d['vod_director'] as String?) ?? '',
-      content: (d['vod_content'] as String?) ?? '',
+      actor: jStr(d['vod_actor']),
+      director: jStr(d['vod_director']),
+      content: jStr(d['vod_content']),
     ),
     lines: lines,
   );
@@ -319,7 +320,7 @@ class CmsClient {
       timeout: timeout,
       cancelToken: cancelToken,
     );
-    final list = (json['list'] as List<dynamic>? ?? const []);
+    final list = jList(json['list']);
     return list
         .whereType<Map<String, dynamic>>()
         .map((x) => parseCmsVideoItem(source, x))
@@ -586,9 +587,9 @@ class CmsClient {
             cancelToken: token,
           );
           if (closed) return;
-          final list = (json['list'] as List<dynamic>? ?? const []);
+          final list = jList(json['list']);
           for (final raw in list.whereType<Map<String, dynamic>>()) {
-            final name = (raw['vod_name'] as String?) ?? '';
+            final name = jStr(raw['vod_name']);
             final y = (raw['vod_year'] ?? '').toString();
             if (videoNormTitle(name) == qn &&
                 (year.isEmpty || y.isEmpty || y == year)) {
@@ -769,21 +770,21 @@ class CmsClient {
         timeout: const Duration(seconds: 8),
         cancelToken: cancelToken,
       );
-      final items = (json['list'] as List<dynamic>? ?? const [])
+      final items = jList(json['list'])
           .whereType<Map<String, dynamic>>()
           .where((x) =>
-              ((x['vod_name'] as String?) ?? '').isNotEmpty &&
-              ((x['vod_pic'] as String?) ?? '').isNotEmpty &&
+              (jStr(x['vod_name'])).isNotEmpty &&
+              (jStr(x['vod_pic'])).isNotEmpty &&
               !isAdultVideo(
-                (x['type_name'] as String?) ?? '',
-                (x['vod_name'] as String?) ?? '',
+                jStr(x['type_name']),
+                jStr(x['vod_name']),
               ))
           .map((x) => parseCmsVideoItem(s, x))
           .toList();
       return _CmsTypePage(
         items: items,
-        total: (json['total'] as num?)?.toInt() ?? items.length,
-        pagecount: (json['pagecount'] as num?)?.toInt() ?? 1,
+        total: jIntN(json['total']) ?? items.length,
+        pagecount: jIntN(json['pagecount']) ?? 1,
       );
     } catch (_) {
       return null;
@@ -965,7 +966,7 @@ class CmsClient {
             timeout: const Duration(seconds: 8),
             cancelToken: cancelToken,
           );
-          for (final x in (json['list'] as List<dynamic>? ?? const [])
+          for (final x in jList(json['list'])
               .whereType<Map<String, dynamic>>()) {
             all.add(parseCmsVideoItem(s, x));
           }
@@ -1103,18 +1104,18 @@ class CmsClient {
       var srcPagecount = 1;
       var srcTotal = 0;
       for (final j in raws.whereType<Map<String, dynamic>>()) {
-        final pc = (j['pagecount'] as num?)?.toInt() ?? 1;
+        final pc = jIntN(j['pagecount']) ?? 1;
         if (pc > srcPagecount) srcPagecount = pc;
-        final tot = (j['total'] as num?)?.toInt() ?? 0;
+        final tot = jIntN(j['total']) ?? 0;
         if (tot > srcTotal) srcTotal = tot;
       }
       if (srcPagecount > bestPagecount) bestPagecount = srcPagecount;
       var items = <VideoItem>[];
       for (final j in raws.whereType<Map<String, dynamic>>()) {
-        for (final x in (j['list'] as List<dynamic>? ?? const [])
+        for (final x in jList(j['list'])
             .whereType<Map<String, dynamic>>()) {
-          if (((x['vod_name'] as String?) ?? '').isEmpty) continue;
-          if (((x['vod_pic'] as String?) ?? '').isEmpty) continue;
+          if ((jStr(x['vod_name'])).isEmpty) continue;
+          if ((jStr(x['vod_pic'])).isEmpty) continue;
           items.add(parseCmsVideoItem(s, x));
         }
       }
@@ -1325,9 +1326,9 @@ class _SourceClassTable {
   _SourceClassTable(this.source, Map<String, dynamic> json) {
     final rows = <_ClassRow>[];
     final ids = <String>{};
-    for (final c in (json['class'] as List<dynamic>? ?? const [])
+    for (final c in jList(json['class'])
         .whereType<Map<String, dynamic>>()) {
-      final nm = ((c['type_name'] as String?) ?? '').trim();
+      final nm = (jStr(c['type_name'])).trim();
       if (nm.isEmpty) continue;
       if (isAdultVideo(nm, null)) continue;
       if (nm.contains('里番')) continue;

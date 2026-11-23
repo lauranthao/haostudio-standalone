@@ -67,6 +67,7 @@ import 'lx_script_files.dart';
 import 'lx_script_store.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
+import '../../core/storage/safe_json.dart';
 
 /// JS prelude injected into every script runtime before the script
 /// itself. Pure JS, no host dependencies beyond `sendMessage` (provided
@@ -658,7 +659,7 @@ class _ScriptRuntime {
       return;
     }
     _timers.remove(idx)?.cancel();
-    final ms = (m['timeout'] as num?)?.toInt() ?? 0;
+    final ms = jIntN(m['timeout']) ?? 0;
     _timers[idx] = Timer(Duration(milliseconds: ms < 0 ? 0 : ms), () {
       _timers.remove(idx);
       _fireTimeout(idx);
@@ -708,7 +709,7 @@ class _HttpJob {
   });
 
   factory _HttpJob.fromJson(Map<String, dynamic> j) => _HttpJob(
-        id: (j['id'] as num?)?.toInt() ?? 0,
+        id: jIntN(j['id']) ?? 0,
         url: j['url']?.toString() ?? '',
         method: j['method']?.toString() ?? 'GET',
         headers: j['headers'] is Map
@@ -718,7 +719,7 @@ class _HttpJob {
               }
             : <String, String>{},
         body: j['body']?.toString(),
-        timeoutMs: (j['timeout'] as num?)?.toInt() ?? 0,
+        timeoutMs: jIntN(j['timeout']) ?? 0,
       );
 
   final int id;

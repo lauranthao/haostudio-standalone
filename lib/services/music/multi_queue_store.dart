@@ -15,6 +15,7 @@ import 'dart:convert';
 
 import '../../core/storage/hive_store.dart';
 import 'music_models.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Source keys. The detail pages pass these to
 /// `MusicPlayerController.playQueue(..., sourceKey: ...)`; the queue
@@ -36,13 +37,13 @@ class QueueMemoryEntry {
   QueueMemoryEntry({required this.songs, required this.index});
 
   factory QueueMemoryEntry.fromJson(Map<String, dynamic> j) {
-    final raw = j['songs'] as List<dynamic>? ?? [];
+    final raw = jListN(j['songs']) ?? [];
     return QueueMemoryEntry(
       songs: raw
           .whereType<Map<String, dynamic>>()
           .map(Song.fromJson)
           .toList(),
-      index: (j['index'] as num?)?.toInt() ?? 0,
+      index: jIntN(j['index']) ?? 0,
     );
   }
 

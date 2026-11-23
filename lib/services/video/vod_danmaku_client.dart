@@ -261,9 +261,16 @@ VodDanmakuCandidate? selectVodDanmakuCandidate(
 
 /// Parse hop-2's JSON body (`{"count": N, "comments": [...]}`) into
 /// comments. Entries with missing/illegal time or empty text are
-/// dropped. Top-level so [compute] can run it in an isolate.
+/// dropped. Top-level so [compute] can run it in an isolate. Total:
+/// an unparseable body returns [] instead of throwing into the
+/// compute isolate / caller (b31 crash hunt).
 List<VodDanmakuComment> parseVodDanmakuCommentsJson(String body) {
-  final decoded = jsonDecode(body);
+  final dynamic decoded;
+  try {
+    decoded = jsonDecode(body);
+  } catch (_) {
+    return const [];
+  }
   if (decoded is! Map) return const [];
   final raw = decoded['comments'];
   if (raw is! List) return const [];

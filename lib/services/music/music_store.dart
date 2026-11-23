@@ -7,6 +7,7 @@
 import 'dart:convert';
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
 import 'sleep_timer.dart';
@@ -15,8 +16,10 @@ class MusicStore {
   MusicStore._();
 
   static List<Map<String, dynamic>> _readList(String key) {
-    final raw = HiveStore.box.get(key) as String?;
-    if (raw == null || raw.isEmpty) return [];
+    // A wrong-typed stored value (old build) must read as empty, not
+    // throw TypeError into the caller (same trap as danmaku b30).
+    final raw = HiveStore.box.get(key);
+    if (raw is! String || raw.isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
@@ -32,8 +35,8 @@ class MusicStore {
   ) => HiveStore.put(key, jsonEncode(items));
 
   static Map<String, dynamic> _readMap(String key) {
-    final raw = HiveStore.box.get(key) as String?;
-    if (raw == null || raw.isEmpty) return {};
+    final raw = HiveStore.box.get(key);
+    if (raw is! String || raw.isEmpty) return {};
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;
@@ -346,12 +349,12 @@ class MusicStore {
 
   // ---- Daily picks cache (hao_daily_YYYY-MM-DD) ----
   static List<Song>? getDaily(String dayKey) {
-    final raw = HiveStore.box.get(HiveKeys.musicDailyKey(dayKey)) as String?;
-    if (raw == null || raw.isEmpty) return null;
+    final raw = HiveStore.box.get(HiveKeys.musicDailyKey(dayKey));
+    if (raw is! String || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        final tracks = decoded['tracks'] as List<dynamic>? ?? [];
+        final tracks = jList(decoded['tracks']);
         final songs = tracks
             .whereType<Map<String, dynamic>>()
             .map(Song.fromJson)
@@ -364,8 +367,8 @@ class MusicStore {
   }
 
   static bool getDailyCold(String dayKey) {
-    final raw = HiveStore.box.get(HiveKeys.musicDailyKey(dayKey)) as String?;
-    if (raw == null) return false;
+    final raw = HiveStore.box.get(HiveKeys.musicDailyKey(dayKey));
+    if (raw is! String || raw.isEmpty) return false;
     try {
       final decoded = jsonDecode(raw);
       return decoded is Map<String, dynamic> && decoded['cold'] == true;
@@ -380,8 +383,8 @@ class MusicStore {
   /// is empty — the card falls back to its gradient.
   static String? getFeatureCover(String key) {
     try {
-      final raw = HiveStore.box.get(key) as String?;
-      if (raw == null || raw.isEmpty) return null;
+      final raw = HiveStore.box.get(key);
+      if (raw is! String || raw.isEmpty) return null;
       return raw;
     } catch (_) {
       return null;
@@ -443,17 +446,19 @@ class MusicStore {
   // ---- Play queue (M-P0-4): the player playlist + current index,
   // persisted so a reorder / play-next survives app restarts. ----
   static ({List<Song> songs, int index}) getQueue() {
-    final raw = HiveStore.box.get(HiveKeys.musicQueue) as String?;
-    if (raw == null || raw.isEmpty) return (songs: <Song>[], index: -1);
+    final raw = HiveStore.box.get(HiveKeys.musicQueue);
+    if (raw is! String || raw.isEmpty) {
+      return (songs: <Song>[], index: -1);
+    }
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) {
-        final tracks = decoded['songs'] as List<dynamic>? ?? [];
+        final tracks = jList(decoded['songs']);
         final songs = tracks
             .whereType<Map<String, dynamic>>()
             .map(Song.fromJson)
             .toList();
-        final index = (decoded['index'] as num?)?.toInt() ?? -1;
+        final index = jIntN(decoded['index']) ?? -1;
         // An out-of-range / missing index with a non-empty queue
         // recovers to the first song: onInit copies this index into
         // currentIndex, and -1 with songs present leaves the player
@@ -490,7 +495,7 @@ class MusicStore {
     final map = _readMap(HiveKeys.musicResume);
     final out = <String, int>{};
     map.forEach((k, v) {
-      final n = (v as num?)?.toInt();
+      final n = jIntN(v);
       if (n != null && n > 0) out[k] = n;
     });
     return out;

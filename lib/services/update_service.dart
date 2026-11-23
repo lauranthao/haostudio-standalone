@@ -21,6 +21,7 @@ import 'package:dio/dio.dart';
 import '../../app/consts.dart';
 import '../core/network/http_client.dart';
 import '../core/storage/hive_store.dart';
+import '../core/storage/safe_json.dart';
 
 enum UpdateCheckResult {
   /// A newer version is available and was not skipped.
@@ -182,9 +183,9 @@ class UpdateService {
       return (
         UpdateInfo(
           version: version,
-          build: (data['build'] as num?)?.toInt() ?? 0,
+          build: jIntN(data['build']) ?? 0,
           ipaUrl: ipaUrl,
-          size: (data['size'] as num?)?.toInt(),
+          size: jIntN(data['size']),
           changelog: data['changelog']?.toString(),
         ),
         null,

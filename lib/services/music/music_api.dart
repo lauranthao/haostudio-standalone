@@ -17,6 +17,7 @@ import 'package:dio/dio.dart';
 import '../../core/network/http_client.dart';
 import 'music_models.dart';
 import 'music_store.dart';
+import '../../core/storage/safe_json.dart';
 
 /// UA for all music search/detail/lyrics/comments/plaza calls.
 const String kMusicUa =
@@ -163,9 +164,9 @@ class MusicApi {
     }, cancelToken: cancelToken);
     final songs = _asList(j?['result']?['songs']);
     return songs.map((x) {
-      final durMs = (x['duration'] as num?) ?? (x['dt'] as num?) ?? 0;
+      final durMs = jIntN(x['duration']) ?? jIntN(x['dt']) ?? 0;
       final ar = _asList(x['ar']);
-      final al = x['al'] as Map<String, dynamic>?;
+      final al = jMapN(x['al']);
       return Song(
         songId: x['id']?.toString() ?? '',
         title: x['name']?.toString() ?? '',
@@ -226,7 +227,7 @@ class MusicApi {
                 'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albummid.jpg',
               ),
         platform: MusicPlatform.tx,
-        dur: (x['interval'] as num?)?.toInt() ?? 0,
+        dur: jIntN(x['interval']) ?? 0,
       );
     }).toList();
   }
@@ -263,7 +264,7 @@ class MusicApi {
               artist: x['SingerName']?.toString() ?? '',
               album: x['AlbumName']?.toString() ?? '',
               platform: MusicPlatform.kg,
-              dur: (x['Duration'] as num?)?.toInt() ?? 0,
+              dur: jIntN(x['Duration']) ?? 0,
             ),
           )
           .where((s) => s.songId.isNotEmpty)
@@ -434,7 +435,7 @@ class MusicApi {
       headers: {'User-Agent': kMusicUa},
       query: {'s': q, 'type': '10', 'limit': '30', 'offset': '0'},
     );
-    return parseWyAlbums(j?['result'] as Map<String, dynamic>? ?? {});
+    return parseWyAlbums(jMap(j?['result']));
   }
 
   /// NetEase album payload -> [AlbumSummary] (`result.albums`).
@@ -448,11 +449,11 @@ class MusicApi {
             name: x['name']?.toString() ?? '',
             cover: coverHi(x['picUrl']?.toString() ?? ''),
             artist:
-                (x['artist'] as Map<String, dynamic>?)?['name']
+                jMapN(x['artist'])?['name']
                     ?.toString() ??
                 '',
-            publishTime: (x['publishTime'] as num?)?.toInt() ?? 0,
-            songCount: (x['size'] as num?)?.toInt() ?? 0,
+            publishTime: jIntN(x['publishTime']) ?? 0,
+            songCount: jIntN(x['size']) ?? 0,
             platform: MusicPlatform.wy,
           ),
         )
@@ -492,7 +493,7 @@ class MusicApi {
         'remoteplace': 'txt.mqq.all',
       },
     );
-    return parseTxAlbums(j?['data'] as Map<String, dynamic>? ?? {});
+    return parseTxAlbums(jMap(j?['data']));
   }
 
   /// QQ album payload -> [AlbumSummary] (`data.album.list`).
@@ -526,7 +527,7 @@ class MusicApi {
               .where((s) => s.isNotEmpty)
               .join(' / ');
           if (artist.isEmpty) artist = x['singerName']?.toString() ?? '';
-          final numericId = (x['id'] as num?)?.toInt() ?? 0;
+          final numericId = jIntN(x['id']) ?? 0;
           return AlbumSummary(
             id: mid.isNotEmpty ? mid : 'qq-album-$numericId-$name',
             name: name,
@@ -536,7 +537,7 @@ class MusicApi {
                     'https://y.gtimg.cn/music/photo_new/T002R300x300M000$mid.jpg',
                   ),
             artist: artist,
-            songCount: (x['total'] as num?)?.toInt() ?? 0,
+            songCount: jIntN(x['total']) ?? 0,
             platform: MusicPlatform.tx,
           );
         })
@@ -617,7 +618,7 @@ class MusicApi {
                     a['PICPATH']?.toString() ??
                     '',
               ),
-              songCount: (a['SONGNUM'] as num?)?.toInt() ?? 0,
+              songCount: jIntN(a['SONGNUM']) ?? 0,
               artist: decodeEntities(
                 a['ARTIST']?.toString() ?? a['artist']?.toString() ?? '',
               ),
@@ -644,7 +645,7 @@ class MusicApi {
       headers: {'User-Agent': kMusicUa},
       query: {'s': q, 'type': '1000', 'limit': '30', 'offset': '$off'},
     );
-    final res = j?['result'] as Map<String, dynamic>? ?? {};
+    final res = jMapN(j?['result']) ?? {};
     final list = _asList(res['playlists']);
     return (
       items: list
@@ -654,18 +655,18 @@ class MusicApi {
               name: x['name']?.toString() ?? '',
               cover: coverHi(x['coverImgUrl']?.toString() ?? ''),
               creator:
-                  (x['creator'] as Map<String, dynamic>?)?['nickname']
+                  jMapN(x['creator'])?['nickname']
                       ?.toString() ??
                   '',
-              playCount: (x['playCount'] as num?)?.toInt() ?? 0,
-              trackCount: (x['trackCount'] as num?)?.toInt() ?? 0,
+              playCount: jIntN(x['playCount']) ?? 0,
+              trackCount: jIntN(x['trackCount']) ?? 0,
               desc: x['description']?.toString() ?? '',
               platform: MusicPlatform.wy,
             ),
           )
           .where((p) => p.id.isNotEmpty && p.name.isNotEmpty)
           .toList(),
-      total: (res['playlistCount'] as num?)?.toInt() ?? 0,
+      total: jIntN(res['playlistCount']) ?? 0,
     );
   }
 
@@ -683,7 +684,7 @@ class MusicApi {
       final decoded = jsonDecode(text.replaceAll("'", '"'));
       if (decoded is Map<String, dynamic>) {
         list = _asList(decoded['abslist']);
-        total = (decoded['TOTAL'] as num?)?.toInt() ?? 0;
+        total = jIntN(decoded['TOTAL']) ?? 0;
       }
     } catch (_) {
       final ids = RegExp(r"'DC_TARGETID':'(\d+)'")
@@ -767,8 +768,8 @@ class MusicApi {
         cover: coverHi(
           x['picUrl']?.toString() ?? x['img1v1Url']?.toString() ?? '',
         ),
-        musicSize: (x['musicSize'] as num?)?.toInt() ?? 0,
-        albumSize: (x['albumSize'] as num?)?.toInt() ?? 0,
+        musicSize: jIntN(x['musicSize']) ?? 0,
+        albumSize: jIntN(x['albumSize']) ?? 0,
         platform: MusicPlatform.wy,
         alias: alias.isNotEmpty ? alias.first.toString() : '',
       );
@@ -804,9 +805,9 @@ class MusicApi {
         'remoteplace': 'txt.mqq.all',
       },
     );
-    final data = j?['data'] as Map<String, dynamic>? ?? {};
+    final data = jMapN(j?['data']) ?? {};
     final out = <ArtistSummary>[];
-    final zhida = data['zhida'] as Map<String, dynamic>?;
+    final zhida = jMapN(data['zhida']);
     if (zhida != null && zhida['type'] == 2) {
       final mid = zhida['singermid']?.toString() ?? '';
       out.add(
@@ -818,8 +819,8 @@ class MusicApi {
               : coverHi(
                   'https://y.gtimg.cn/music/photo_new/T001R300x300M000$mid.jpg',
                 ),
-          musicSize: (zhida['songnum'] as num?)?.toInt() ?? 0,
-          albumSize: (zhida['albumnum'] as num?)?.toInt() ?? 0,
+          musicSize: jIntN(zhida['songnum']) ?? 0,
+          albumSize: jIntN(zhida['albumnum']) ?? 0,
           platform: MusicPlatform.tx,
         ),
       );
@@ -875,8 +876,8 @@ class MusicApi {
             id: x['ARTISTID']?.toString() ?? '',
             name: x['ARTIST']?.toString() ?? '',
             cover: coverHi(x['hts_PICPATH']?.toString() ?? ''),
-            musicSize: (x['SONGNUM'] as num?)?.toInt() ?? 0,
-            albumSize: (x['ALBUMNUM'] as num?)?.toInt() ?? 0,
+            musicSize: jIntN(x['SONGNUM']) ?? 0,
+            albumSize: jIntN(x['ALBUMNUM']) ?? 0,
             platform: MusicPlatform.kw,
           );
         }).toList();
@@ -905,7 +906,7 @@ class MusicApi {
     final ar = pair[0] ?? {};
     var first = pair[1] ?? {};
     var allSongs = _asList(first['songs']);
-    final total = (first['total'] as num?)?.toInt() ?? 0;
+    final total = jIntN(first['total']) ?? 0;
     final pages = ((total / 100).ceil()).clamp(0, 10);
     if (pages > 1) {
       final rest = await Future.wait([
@@ -933,11 +934,11 @@ class MusicApi {
           ? _asList(s['artists'])
           : _asList(s['ar']);
       final album =
-          (s['album'] as Map<String, dynamic>?) ??
-          (s['al'] as Map<String, dynamic>?) ??
+          jMapN(s['album']) ??
+          jMapN(s['al']) ??
           {};
-      final durMs = (s['duration'] as num?) ?? (s['dt'] as num?) ?? 0;
-      final pt = (album['publishTime'] as num?)?.toInt() ?? 0;
+      final durMs = jIntN(s['duration']) ?? jIntN(s['dt']) ?? 0;
+      final pt = jIntN(album['publishTime']) ?? 0;
       return Song(
         songId: s['id']?.toString() ?? '',
         title: s['name']?.toString() ?? '',
@@ -951,22 +952,22 @@ class MusicApi {
     }
 
     final albums = _asList(ar['hotAlbums']).map((a) {
-      final artist = a['artist'] as Map<String, dynamic>?;
+      final artist = jMapN(a['artist']);
       return AlbumSummary(
         id: a['id']?.toString() ?? '',
         name: a['name']?.toString() ?? '',
         cover: coverHi(a['picUrl']?.toString() ?? ''),
-        publishTime: (a['publishTime'] as num?)?.toInt() ?? 0,
-        songCount: (a['size'] as num?)?.toInt() ?? 0,
+        publishTime: jIntN(a['publishTime']) ?? 0,
+        songCount: jIntN(a['size']) ?? 0,
         artist: artist?['name']?.toString() ?? '',
       );
     }).toList();
-    final artist = ar['artist'] as Map<String, dynamic>? ?? {};
+    final artist = jMapN(ar['artist']) ?? {};
     return ArtistDetail(
       name: artist['name']?.toString() ?? '',
       pic: coverHi(artist['picUrl']?.toString() ?? ''),
-      musicSize: (artist['musicSize'] as num?)?.toInt() ?? 0,
-      albumSize: (artist['albumSize'] as num?)?.toInt() ?? 0,
+      musicSize: jIntN(artist['musicSize']) ?? 0,
+      albumSize: jIntN(artist['albumSize']) ?? 0,
       songs: allSongs.map(mapSong).toList(),
       albums: albums,
     );
@@ -1048,11 +1049,7 @@ class MusicApi {
                 DateTime.tryParse(a['pubTime']?.toString() ?? '')
                     ?.millisecondsSinceEpoch ??
                 0,
-            songCount:
-                ((a['latest_song'] as Map<String, dynamic>?)?['song_count']
-                        as num?)
-                    ?.toInt() ??
-                0,
+            songCount: jIntN(jMapN(a['latest_song'])?['song_count']) ?? 0,
             artist: a['singerName']?.toString() ?? q,
             platform: MusicPlatform.tx,
           );
@@ -1064,13 +1061,13 @@ class MusicApi {
     var songnum = 0;
     var albumnum = 0;
     for (final j in results) {
-      final d = j?['data'] as Map<String, dynamic>? ?? {};
-      final z = d['zhida'] as Map<String, dynamic>?;
+      final d = jMapN(j?['data']) ?? {};
+      final z = jMapN(d['zhida']);
       if (z != null &&
           z['type'] == 2 &&
           (mid.isEmpty || z['singermid'] == mid)) {
-        songnum = (z['songnum'] as num?)?.toInt() ?? songnum;
-        albumnum = (z['albumnum'] as num?)?.toInt() ?? albumnum;
+        songnum = jIntN(z['songnum']) ?? songnum;
+        albumnum = jIntN(z['albumnum']) ?? albumnum;
       }
       for (final s in _asList(d['song']?['list'])) {
         final songmid = s['songmid']?.toString() ?? '';
@@ -1094,7 +1091,7 @@ class MusicApi {
                     'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albummid.jpg',
                   ),
             platform: MusicPlatform.tx,
-            dur: (s['interval'] as num?)?.toInt() ?? 0,
+            dur: jIntN(s['interval']) ?? 0,
           ),
         );
       }
@@ -1125,7 +1122,10 @@ class MusicApi {
         headers: {'User-Agent': kMusicUa},
       ),
     ]);
-    final songs = (trio[0] as List<Song>? ?? []).map((s) {
+    final songs = (trio[0] is List
+            ? jList(trio[0]).whereType<Song>().toList()
+            : const <Song>[])
+        .map((s) {
       return Song(
         songId: s.songId,
         title: s.title,
@@ -1138,7 +1138,7 @@ class MusicApi {
     var albums = <AlbumSummary>[];
     try {
       final decoded = jsonDecode(
-        (trio[1] as String? ?? '').replaceAll("'", '"'),
+        jStr(trio[1]).replaceAll("'", '"'),
       );
       if (decoded is Map<String, dynamic>) {
         final raw = _asList(decoded['abslist']).isNotEmpty
@@ -1162,7 +1162,7 @@ class MusicApi {
                       a['PICPATH']?.toString() ??
                       '',
                 ),
-                songCount: (a['SONGNUM'] as num?)?.toInt() ?? 0,
+                songCount: jIntN(a['SONGNUM']) ?? 0,
                 artist: decodeEntities(
                   a['ARTIST']?.toString() ?? a['artist']?.toString() ?? '',
                 ),
@@ -1176,7 +1176,7 @@ class MusicApi {
     var pic = '';
     try {
       final decoded = jsonDecode(
-        (trio[2] as String? ?? '').replaceAll("'", '"'),
+        jStr(trio[2]).replaceAll("'", '"'),
       );
       if (decoded is Map<String, dynamic>) {
         final list = _asList(decoded['abslist']);
@@ -1224,17 +1224,17 @@ class MusicApi {
     );
     final songs = _asList(j?['songs']);
     final al = songs.isNotEmpty
-        ? (songs.first['al'] as Map<String, dynamic>? ?? {})
+        ? jMap(songs.first['al'])
         : <String, dynamic>{};
     return AlbumDetail(
       name: al['name']?.toString() ?? '',
       pic: coverHi(al['picUrl']?.toString() ?? ''),
       artist:
-          (al['artist'] as Map<String, dynamic>?)?['name']?.toString() ?? '',
+          jMapN(al['artist'])?['name']?.toString() ?? '',
       songs: songs.map((s) {
         final ar = _asList(s['ar']);
-        final sal = s['al'] as Map<String, dynamic>?;
-        final durMs = (s['duration'] as num?) ?? (s['dt'] as num?) ?? 0;
+        final sal = jMapN(s['al']);
+        final durMs = jIntN(s['duration']) ?? jIntN(s['dt']) ?? 0;
         return Song(
           songId: s['id']?.toString() ?? '',
           title: s['name']?.toString() ?? '',
@@ -1265,7 +1265,7 @@ class MusicApi {
         'needNewCode': '0',
       },
     );
-    final d = j?['data'] as Map<String, dynamic>? ?? {};
+    final d = jMapN(j?['data']) ?? {};
     final pic = albummid.isEmpty
         ? ''
         : coverHi(
@@ -1286,7 +1286,7 @@ class MusicApi {
                   .join(' / '),
               cover: pic,
               platform: MusicPlatform.tx,
-              dur: (s['interval'] as num?)?.toInt() ?? 0,
+              dur: jIntN(s['interval']) ?? 0,
             );
           })
           .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
@@ -1346,8 +1346,8 @@ class MusicApi {
             id: x['id']?.toString() ?? '',
             name: x['name']?.toString() ?? '',
             cover: coverHi(x['picUrl']?.toString() ?? ''),
-            playCount: (x['playCount'] as num?)?.toInt() ?? 0,
-            trackCount: (x['trackCount'] as num?)?.toInt() ?? 0,
+            playCount: jIntN(x['playCount']) ?? 0,
+            trackCount: jIntN(x['trackCount']) ?? 0,
             desc: x['copywriter']?.toString() ?? '',
             platform: MusicPlatform.wy,
           );
@@ -1381,13 +1381,13 @@ class MusicApi {
     );
     return _asList(j?['data']?['list'])
         .map((x) {
-          final creator = x['creator'] as Map<String, dynamic>?;
+          final creator = jMapN(x['creator']);
           return PlaylistSummary(
             id: x['dissid']?.toString() ?? '',
             name: decodeEntities(x['dissname']?.toString() ?? ''),
             cover: coverHi(x['imgurl']?.toString() ?? ''),
             creator: creator?['name']?.toString() ?? '',
-            playCount: (x['listennum'] as num?)?.toInt() ?? 0,
+            playCount: jIntN(x['listennum']) ?? 0,
             trackCount: 0,
             desc: x['introduction']?.toString() ?? '',
             platform: MusicPlatform.tx,
@@ -1418,8 +1418,8 @@ class MusicApi {
               (x['imgurl']?.toString() ?? '').replaceAll('{size}', '400'),
             ),
             creator: x['nickname']?.toString() ?? '',
-            playCount: (x['playcount'] as num?)?.toInt() ?? 0,
-            trackCount: (x['songcount'] as num?)?.toInt() ?? 0,
+            playCount: jIntN(x['playcount']) ?? 0,
+            trackCount: jIntN(x['songcount']) ?? 0,
             desc: x['intro']?.toString() ?? '',
             time: x['publishtime']?.toString() ?? '',
             platform: MusicPlatform.kg,
@@ -1471,7 +1471,7 @@ class MusicApi {
           cancelToken: cancelToken,
         );
         if (j == null) return false;
-        final pl = j['playlist'] as Map<String, dynamic>? ?? {};
+        final pl = jMapN(j['playlist']) ?? {};
         name = pl['name']?.toString() ?? '';
         tids = _asList(pl['trackIds'])
             .map((t) => t['id']?.toString() ?? '')
@@ -1501,13 +1501,13 @@ class MusicApi {
         timeout: const Duration(seconds: 15),
         cancelToken: cancelToken,
       );
-      final result = j?['result'] as Map<String, dynamic>? ?? {};
+      final result = jMapN(j?['result']) ?? {};
       final tr = _asList(result['tracks']);
       final tracks = tr
           .map((t) {
             final ars = _asList(t['artists']);
-            final alb = t['album'] as Map<String, dynamic>?;
-            final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
+            final alb = jMapN(t['album']);
+            final durMs = jIntN(t['duration']) ?? jIntN(t['dt']) ?? 0;
             return Song(
               songId: t['id']?.toString() ?? '',
               title: t['name']?.toString() ?? '',
@@ -1590,10 +1590,10 @@ class MusicApi {
             ? _asList(t['artists'])
             : _asList(t['ar']);
         final alb =
-            (t['album'] as Map<String, dynamic>?) ??
-            (t['al'] as Map<String, dynamic>?) ??
+            jMapN(t['album']) ??
+            jMapN(t['al']) ??
             {};
-        final durMs = (t['duration'] as num?) ?? (t['dt'] as num?) ?? 0;
+        final durMs = jIntN(t['duration']) ?? jIntN(t['dt']) ?? 0;
         out.add(
           Song(
             songId: t['id']?.toString() ?? '',
@@ -1655,7 +1655,7 @@ class MusicApi {
     final tracks = _asList(cd['songlist'])
           .map((x) {
             final singers = _asList(x['singer']);
-            final album = x['album'] as Map<String, dynamic>?;
+            final album = jMapN(x['album']);
             final albumMid = album?['mid']?.toString() ?? '';
             return Song(
               songId: x['mid']?.toString() ?? '',
@@ -1667,7 +1667,7 @@ class MusicApi {
                       'https://y.gtimg.cn/music/photo_new/T002R300x300M000$albumMid.jpg',
                     ),
               platform: MusicPlatform.tx,
-              dur: (x['interval'] as num?)?.toInt() ?? 0,
+              dur: jIntN(x['interval']) ?? 0,
             );
           })
           .where((s) => s.songId.isNotEmpty && s.title.isNotEmpty)
@@ -1732,7 +1732,7 @@ class MusicApi {
               x['albumpic']?.toString() ?? x['musicPic']?.toString() ?? '',
             ),
             platform: MusicPlatform.kw,
-            dur: (x['duration'] as num?)?.toInt() ?? 0,
+            dur: jIntN(x['duration']) ?? 0,
           ),
         );
       }
@@ -1882,7 +1882,7 @@ class MusicApi {
       if (j == null) return null;
       final list = _asList(j['data']?['info']);
       return (
-        items: [for (final x in list) Map<String, dynamic>.from(x as Map)],
+        items: [for (final x in list) jMap(x)],
         last: list.isEmpty || list.length < 100,
       );
     }
@@ -1901,7 +1901,7 @@ class MusicApi {
         final sep = fn.indexOf(' - ');
         final artist = sep >= 0 ? fn.substring(0, sep) : '';
         final title = sep >= 0 ? fn.substring(sep + 3) : fn;
-        final trans = x['trans_param'] as Map<String, dynamic>?;
+        final trans = jMapN(x['trans_param']);
         final uc = trans?['union_cover']?.toString() ?? '';
         out.add(
           Song(
@@ -1910,7 +1910,7 @@ class MusicApi {
             artist: artist,
             cover: uc.isEmpty ? '' : coverHi(uc.replaceAll('{size}', '400')),
             platform: MusicPlatform.kg,
-            dur: (x['duration'] as num?)?.toInt() ?? 0,
+            dur: jIntN(x['duration']) ?? 0,
           ),
         );
       }
@@ -1956,11 +1956,11 @@ class MusicApi {
         cancelToken,
       );
       if (j == null) return null;
-      final list = j['list']?['list'] as Map<String, dynamic>?;
+      final list = jMapN(j['list']?['list']);
       final info = _asList(list?['info']);
-      if (p == 1) total = (list?['total'] as num?)?.toInt() ?? info.length;
+      if (p == 1) total = jIntN(list?['total']) ?? info.length;
       return (
-        items: [for (final x in info) Map<String, dynamic>.from(x as Map)],
+        items: [for (final x in info) jMap(x)],
         last: info.isEmpty || info.length < 10,
       );
     }
@@ -1984,7 +1984,7 @@ class MusicApi {
             artist: sep >= 0 ? fn.substring(0, sep) : '',
             cover: '',
             platform: MusicPlatform.kg,
-            dur: (x['duration'] as num?)?.toInt() ?? 0,
+            dur: jIntN(x['duration']) ?? 0,
           ),
         );
       }
@@ -2054,12 +2054,12 @@ class MusicApi {
         cancelToken,
       );
       if (j == null) return null;
-      final info = j['list'] as Map<String, dynamic>?;
+      final info = jMapN(j['list']);
       if (name.isEmpty) name = info?['name']?.toString() ?? '';
       final arr = _asList(info?['info']);
       fetched += arr.length;
       return (
-        items: [for (final s in arr) Map<String, dynamic>.from(s as Map)],
+        items: [for (final s in arr) jMap(s)],
         last: arr.isEmpty || arr.length < 100 || fetched >= 500,
       );
     }
@@ -2083,7 +2083,7 @@ class MusicApi {
             artist: sep >= 0 ? full.substring(0, sep) : '',
             cover: '',
             platform: MusicPlatform.kg,
-            dur: ((s['timelen'] as num?) ?? 0) ~/ 1000,
+            dur: (jIntN(s['timelen']) ?? 0) ~/ 1000,
           ),
         );
       }
@@ -2152,7 +2152,7 @@ class MusicApi {
             id: c['id']?.toString() ?? '',
             name: c['name']?.toString() ?? '',
             cover: c['coverImgUrl']?.toString() ?? '',
-            trackCount: (c['trackCount'] as num?)?.toInt() ?? 0,
+            trackCount: jIntN(c['trackCount']) ?? 0,
             desc: c['updateFrequency']?.toString() ?? '',
             platform: MusicPlatform.wy,
           ),
@@ -2538,13 +2538,13 @@ class MusicApi {
     );
     if (j == null) return null;
     CommentItem map(Map<String, dynamic> c) {
-      final user = c['user'] as Map<String, dynamic>? ?? {};
+      final user = jMapN(c['user']) ?? {};
       return CommentItem(
         nick: user['nickname']?.toString() ?? '',
         avatar: toHttps(user['avatarUrl']?.toString() ?? ''),
         content: c['content']?.toString() ?? '',
-        likes: (c['likedCount'] as num?)?.toInt() ?? 0,
-        time: (c['time'] as num?)?.toInt() ?? 0,
+        likes: jIntN(c['likedCount']) ?? 0,
+        time: jIntN(c['time']) ?? 0,
         platform: MusicPlatform.wy,
       );
     }
@@ -2574,7 +2574,7 @@ class MusicApi {
       timeout: const Duration(seconds: 8),
     );
     if (j == null) return null;
-    final comment = j['comment'] as Map<String, dynamic>? ?? {};
+    final comment = jMapN(j['comment']) ?? {};
     return (
       hot: <CommentItem>[],
       list: _asList(comment['commentlist']).map((c) {
@@ -2582,8 +2582,8 @@ class MusicApi {
           nick: c['nick']?.toString() ?? '',
           avatar: c['avatarurl']?.toString() ?? '',
           content: c['rootcommentcontent']?.toString() ?? '',
-          likes: (c['praisenum'] as num?)?.toInt() ?? 0,
-          time: ((c['time'] as num?)?.toInt() ?? 0) * 1000,
+          likes: jIntN(c['praisenum']) ?? 0,
+          time: (jIntN(c['time']) ?? 0) * 1000,
           platform: MusicPlatform.tx,
         );
       }).toList(),
@@ -2601,7 +2601,7 @@ class MusicApi {
       timeout: const Duration(seconds: 8),
     );
     if (j == null) return null;
-    final data = j['data'] as Map<String, dynamic>? ?? {};
+    final data = jMapN(j['data']) ?? {};
     final list = _asList(data['comment_list']).isNotEmpty
         ? _asList(data['comment_list'])
         : _asList(data['list']);
@@ -2613,10 +2613,10 @@ class MusicApi {
           avatar: c['user_pic']?.toString() ?? c['avatar']?.toString() ?? '',
           content: c['content']?.toString() ?? '',
           likes:
-              (c['like_count'] as num?)?.toInt() ??
-              (c['praisenum'] as num?)?.toInt() ??
+              jIntN(c['like_count']) ??
+              jIntN(c['praisenum']) ??
               0,
-          time: ((c['addtime'] as num?)?.toInt() ?? 0) * 1000,
+          time: (jIntN(c['addtime']) ?? 0) * 1000,
           platform: MusicPlatform.kg,
         );
       }).toList(),
@@ -2641,8 +2641,8 @@ class MusicApi {
           nick: c['u_name']?.toString() ?? '',
           avatar: c['u_pic']?.toString() ?? '',
           content: c['msg']?.toString() ?? '',
-          likes: (c['like'] as num?)?.toInt() ?? 0,
-          time: ((c['time'] as num?)?.toInt() ?? 0) * 1000,
+          likes: jIntN(c['like']) ?? 0,
+          time: (jIntN(c['time']) ?? 0) * 1000,
           platform: MusicPlatform.kw,
         );
       }).toList(),
@@ -2918,8 +2918,8 @@ class MusicApi {
             'https://music.163.com/api/song/lyric?os=pc&id=${Uri.encodeComponent(song.songId)}&lv=-1&kv=-1&tv=-1',
             headers: {'User-Agent': kMusicUa},
           );
-          final lrc = j?['lrc'] as Map<String, dynamic>?;
-          final tlyric = j?['tlyric'] as Map<String, dynamic>?;
+          final lrc = jMapN(j?['lrc']);
+          final tlyric = jMapN(j?['tlyric']);
           return parseLrcWithTranslation(
             lrc?['lyric']?.toString() ?? '',
             tlyric?['lyric']?.toString(),
@@ -2943,11 +2943,11 @@ class MusicApi {
             query: {'musicId': song.songId},
             timeout: const Duration(seconds: 15),
           );
-          final data = j?['data'] as Map<String, dynamic>? ?? {};
+          final data = jMapN(j?['data']) ?? {};
           return _asList(data['lrclist'])
               .map(
                 (x) => LyricLine(
-                  t: (x['time'] as num?)?.toDouble() ?? 0,
+                  t: jDoubleN(x['time']) ?? 0,
                   text: (x['lineLyric']?.toString() ?? '').trim(),
                 ),
               )

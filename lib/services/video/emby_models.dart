@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Video tab mode (build 28): which page of the video tab was last
 /// selected. Persisted under [HiveKeys.videoTabMode] ('cms' | 'emby',
@@ -68,28 +69,28 @@ class EmbyServerConfig {
 
   factory EmbyServerConfig.fromJson(Map<String, dynamic> json) =>
       EmbyServerConfig(
-        baseUrl: (json['baseUrl'] as String?) ?? '',
-        apiKey: (json['apiKey'] as String?) ?? '',
-        userId: (json['userId'] as String?) ?? '',
-        enabled: json['enabled'] as bool? ?? true,
-        movieLibraryId: json['movieLibraryId'] as String?,
-        tvLibraryId: json['tvLibraryId'] as String?,
-        name: (json['name'] as String?) ?? 'Emby',
-        note: (json['note'] as String?) ?? '',
-        username: (json['username'] as String?) ?? '',
-        accessToken: (json['accessToken'] as String?) ?? '',
-        deviceId: (json['deviceId'] as String?) ?? '',
-        serverName: (json['serverName'] as String?) ?? '',
-        serverVersion: (json['serverVersion'] as String?) ?? '',
-        reportProgress: json['reportProgress'] as bool? ?? true,
-        strmDirect: json['strmDirect'] as bool? ?? false,
-        fallbackUrls: (json['fallbackUrls'] as List<dynamic>?)
+        baseUrl: jStr(json['baseUrl']),
+        apiKey: jStr(json['apiKey']),
+        userId: jStr(json['userId']),
+        enabled: jBool(json['enabled'], true),
+        movieLibraryId: jStrN(json['movieLibraryId']),
+        tvLibraryId: jStrN(json['tvLibraryId']),
+        name: jStr(json['name'], 'Emby'),
+        note: jStr(json['note']),
+        username: jStr(json['username']),
+        accessToken: jStr(json['accessToken']),
+        deviceId: jStr(json['deviceId']),
+        serverName: jStr(json['serverName']),
+        serverVersion: jStr(json['serverVersion']),
+        reportProgress: jBool(json['reportProgress'], true),
+        strmDirect: jBool(json['strmDirect'], false),
+        fallbackUrls: jListN(json['fallbackUrls'])
                 ?.map((u) => u.toString())
                 .where((u) => u.trim().isNotEmpty)
                 .toList() ??
             const [],
-        reminderDays: (json['reminderDays'] as num?)?.toInt() ?? 0,
-        lastPlayedAtMs: (json['lastPlayedAtMs'] as num?)?.toInt(),
+        reminderDays: jIntN(json['reminderDays']) ?? 0,
+        lastPlayedAtMs: jIntN(json['lastPlayedAtMs']),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -531,19 +532,19 @@ class EmbyStreamFacts {
       }
     }
     if (source == null) return const EmbyStreamFacts();
-    final container = (source['Container'] as String?)?.toLowerCase();
-    final streams = (source['MediaStreams'] as List<dynamic>? ?? const [])
+    final container = jStrN(source['Container'])?.toLowerCase();
+    final streams = jList(source['MediaStreams'])
         .whereType<Map<String, dynamic>>()
         .toList();
     Map<String, dynamic>? video;
     for (final s in streams) {
-      if ((s['Type'] as String?) == 'Video') {
+      if (jStrN(s['Type']) == 'Video') {
         video = s;
         break;
       }
     }
     final audioStreams = streams
-        .where((s) => (s['Type'] as String?) == 'Audio')
+        .where((s) => jStrN(s['Type']) == 'Audio')
         .toList();
     Map<String, dynamic>? audio;
     for (final s in audioStreams) {
@@ -560,7 +561,7 @@ class EmbyStreamFacts {
     int? dvProfile;
     int? dvCompatId;
     final subType =
-        (video?['ExtendedVideoSubType'] as String?)?.toLowerCase();
+        jStrN(video?['ExtendedVideoSubType'])?.toLowerCase();
     if (subType != null) {
       final m = RegExp(r'doviprofile(\d)(\d)?').firstMatch(subType);
       if (m != null) {
@@ -576,32 +577,32 @@ class EmbyStreamFacts {
     }
 
     final dolbyVision = dvProfile != null ||
-        isDv(video?['ExtendedVideoType'] as String?) ||
-        isDv(video?['VideoRange'] as String?) ||
-        isDv(video?['VideoRangeType'] as String?);
+        isDv(jStrN(video?['ExtendedVideoType'])) ||
+        isDv(jStrN(video?['VideoRange'])) ||
+        isDv(jStrN(video?['VideoRangeType']));
     return EmbyStreamFacts(
       container: container,
-      videoCodec: (video?['Codec'] as String?)?.toLowerCase(),
-      audioCodec: (audio?['Codec'] as String?)?.toLowerCase(),
+      videoCodec: jStrN(video?['Codec'])?.toLowerCase(),
+      audioCodec: jStrN(audio?['Codec'])?.toLowerCase(),
       dolbyVision: dolbyVision,
       dvProfile: dvProfile,
       dvCompatId: dvCompatId,
-      width: (video?['Width'] as num?)?.toInt(),
-      height: (video?['Height'] as num?)?.toInt(),
+      width: jIntN(video?['Width']),
+      height: jIntN(video?['Height']),
       // 1.1.6 (browse A3 §3): bitrate + file size, Emby only. Both
       // are raw server values — BitRate is bits/second on the VIDEO
       // stream, Size is bytes on the MediaSource. Null when the
       // server does not report them (U3-1: field presence on chen's
       // server is still unverified — never a guessed default).
-      bitRate: (video?['BitRate'] as num?)?.toInt(),
-      size: (source['Size'] as num?)?.toInt(),
+      bitRate: jIntN(video?['BitRate']),
+      size: jIntN(source['Size']),
       // Build 29 (STRM 直连): the MediaSource's own path. For a
       // .strm item this is usually a local server path
       // ('/media/movie.strm') — the client only ever plays it
       // directly when it is a remote http(s) URL (see
       // EmbyClient.streamUrl); anything else falls back to the
       // server stream endpoint.
-      sourcePath: source['Path'] as String?,
+      sourcePath: jStrN(source['Path']),
     );
   }
 
@@ -687,9 +688,9 @@ class EmbyLibrary {
   });
 
   factory EmbyLibrary.fromJson(Map<String, dynamic> json) => EmbyLibrary(
-        id: (json['Id'] as String?) ?? '',
-        name: (json['Name'] as String?) ?? '',
-        collectionType: (json['CollectionType'] as String?) ?? '',
+        id: jStr(json['Id']),
+        name: jStr(json['Name']),
+        collectionType: jStr(json['CollectionType']),
       );
 
   final String id;
@@ -705,8 +706,8 @@ class EmbyUser {
   const EmbyUser({required this.id, required this.name});
 
   factory EmbyUser.fromJson(Map<String, dynamic> json) => EmbyUser(
-        id: (json['Id'] as String?) ?? '',
-        name: (json['Name'] as String?) ?? '',
+        id: jStr(json['Id']),
+        name: jStr(json['Name']),
       );
 
   final String id;

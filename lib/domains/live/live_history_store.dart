@@ -16,6 +16,7 @@ import 'dart:convert';
 import '../../core/models/live_models.dart';
 import '../../core/storage/hive_store.dart';
 import '../../shared/platforms/sites.dart';
+import '../../core/storage/safe_json.dart';
 
 /// One watched live room.
 class LiveHistoryEntry {
@@ -45,7 +46,7 @@ class LiveHistoryEntry {
         title: json['title']?.toString() ?? '',
         nick: json['nick']?.toString() ?? '',
         cover: json['cover']?.toString() ?? '',
-        at: (json['at'] as num?)?.toInt() ?? 0,
+        at: jIntN(json['at']) ?? 0,
       );
 
   final String platform;
@@ -114,10 +115,15 @@ class LiveHistoryStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded
-            .whereType<Map<String, dynamic>>()
-            .map(LiveHistoryEntry.fromJson)
-            .toList();
+        // Per-entry skip (b31 crash hunt): one corrupt row must not
+        // discard the whole list.
+        final out = <LiveHistoryEntry>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            out.add(LiveHistoryEntry.fromJson(e));
+          } catch (_) {}
+        }
+        return out;
       }
     } catch (_) {}
     return const [];

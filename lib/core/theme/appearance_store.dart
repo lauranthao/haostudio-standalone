@@ -87,8 +87,9 @@ class AppearanceStore {
   /// Hive values are relative.
   List<String> _readPaths() {
     try {
-      final raw = HiveStore.box.get(HiveKeys.wallpaperPaths) as String?;
-      if (raw == null || raw.isEmpty) return [];
+      final raw = HiveStore.box.get(HiveKeys.wallpaperPaths);
+      if (raw is! String) return [];
+      if (raw.isEmpty) return [];
       final decoded = jsonDecode(raw);
       if (decoded is List) {
         return decoded.map((e) => e.toString()).toList();

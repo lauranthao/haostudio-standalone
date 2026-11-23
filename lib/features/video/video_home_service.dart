@@ -48,7 +48,9 @@ class VideoHomeService {
   VideoHomeData? loadCached() {
     String? raw;
     try {
-      raw = HiveStore.box.get(HiveKeys.videoHomeCache) as String?;
+      raw = HiveStore.box.get(HiveKeys.videoHomeCache) is String
+          ? HiveStore.box.get(HiveKeys.videoHomeCache) as String
+          : null;
     } catch (_) {
       return null;
     }

@@ -22,6 +22,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/player/kernel/player_kernel.dart';
+import '../../core/storage/safe_json.dart';
 import '../../core/theme/glass.dart';
 import '../../core/theme/hao_radius.dart';
 import '../../core/theme/hao_themes.dart';
@@ -308,7 +309,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
     if (d.lines[lineIdx].episodes.isNotEmpty) return;
     if (_seasonLoading.contains(lineIdx)) return;
     final seasonId = lineIdx < _seasons.length
-        ? ((_seasons[lineIdx]['Id'] as String?) ?? '')
+        ? (jStrN(_seasons[lineIdx]['Id']) ?? '')
         : '';
     if (seasonId.isEmpty) return;
     setState(() => _seasonLoading.add(lineIdx));

@@ -173,7 +173,9 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
   VideoHomeData? _loadCached() {
     String? raw;
     try {
-      raw = HiveStore.box.get(HiveKeys.embyHomeCache) as String?;
+      raw = HiveStore.box.get(HiveKeys.embyHomeCache) is String
+          ? HiveStore.box.get(HiveKeys.embyHomeCache) as String
+          : null;
     } catch (_) {
       return null;
     }

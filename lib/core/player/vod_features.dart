@@ -51,6 +51,7 @@ import 'dart:typed_data';
 import '../storage/hive_store.dart';
 import 'kernel/video_fit.dart';
 import '../../features/video/video_models.dart';
+import '../storage/safe_json.dart';
 
 // -- 1. 双击快进秒数 ------------------------------------------------------
 
@@ -363,15 +364,15 @@ class VodMetadataOverride {
 
   factory VodMetadataOverride.fromJson(Map<String, dynamic> json) =>
       VodMetadataOverride(
-        title: (json['title'] as String?)?.trim().isEmpty == true
+        title: jStrN(json['title'])?.trim().isEmpty == true
             ? null
-            : (json['title'] as String?)?.trim(),
-        year: (json['year'] as String?)?.trim().isEmpty == true
+            : jStrN(json['title'])?.trim(),
+        year: jStrN(json['year'])?.trim().isEmpty == true
             ? null
-            : (json['year'] as String?)?.trim(),
-        poster: (json['poster'] as String?)?.trim().isEmpty == true
+            : jStrN(json['year'])?.trim(),
+        poster: jStrN(json['poster'])?.trim().isEmpty == true
             ? null
-            : (json['poster'] as String?)?.trim(),
+            : jStrN(json['poster'])?.trim(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{

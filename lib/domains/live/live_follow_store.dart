@@ -15,6 +15,7 @@ import 'dart:convert';
 
 import '../../core/models/live_models.dart';
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 
 /// One followed anchor / room.
 class LiveFollow {
@@ -46,7 +47,7 @@ class LiveFollow {
     title: json['title']?.toString() ?? '',
     nick: json['nick']?.toString() ?? '',
     cover: json['cover']?.toString() ?? '',
-    followedAt: (json['followedAt'] as num?)?.toInt() ?? 0,
+    followedAt: jIntN(json['followedAt']) ?? 0,
     group: json['group']?.toString() ?? '',
   );
 
@@ -102,10 +103,15 @@ class LiveFollowStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded
-            .whereType<Map<String, dynamic>>()
-            .map(LiveFollow.fromJson)
-            .toList();
+        // Per-entry skip (b31 crash hunt): one corrupt row must not
+        // discard the whole list.
+        final out = <LiveFollow>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            out.add(LiveFollow.fromJson(e));
+          } catch (_) {}
+        }
+        return out;
       }
     } catch (_) {}
     return const [];
