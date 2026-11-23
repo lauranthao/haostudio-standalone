@@ -79,11 +79,15 @@ struct MainTabView: View {
             .padding(.bottom, HaoLayout.tabBarBottomMargin)
         }
         .fullScreenCover(isPresented: $showingFullPlayer) {
-            // S2-C: a music item opens the real full player; other
-            // kinds keep the foundation placeholder until their
-            // slices land (video S3 / live S4).
+            // S2-C: a music item opens the real full player.
+            // S3-C: a VOD item re-opens the video player (tap-play
+            // on the detail page presents it directly; the mini
+            // player re-opens it here). Live keeps the foundation
+            // placeholder until S4.
             if coordinator.currentItem?.kind == .music {
                 MusicPlayerView()
+            } else if coordinator.currentItem?.kind == .vod {
+                VideoPlayerView()
             } else {
                 FullPlayerPlaceholderView()
             }
@@ -96,7 +100,7 @@ struct MainTabView: View {
         switch selectedTab {
         case .home: HomePlaceholderView()
         case .music: MusicHomeView()
-        case .movies: MoviesPlaceholderView()
+        case .movies: VideoTabView()
         case .live: LivePlaceholderView()
         case .my: MyPlaceholderView()
         }

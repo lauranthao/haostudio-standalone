@@ -17,6 +17,11 @@ struct HAoStudioApp: App {
     /// and playback state). Created here, next to the coordinator
     /// it observes — never one instance per page.
     @StateObject private var musicPlayer: MusicPlayerViewModel
+    /// S3-C: one shared video player view model for the whole app
+    /// (detail page, fullscreen player, mini-player re-entry all
+    /// observe the same episode/line state). Created here, next to
+    /// the coordinator it observes — never one instance per page.
+    @StateObject private var videoPlayer: VideoPlayerViewModel
 
     init() {
         // S1: the snapshot migration runs before anything reads
@@ -31,8 +36,18 @@ struct HAoStudioApp: App {
         // driver. Without these two lines requestPlay is a no-op.
         coordinator.resolver = LXSourceResolver()
         coordinator.musicDriver = NativeMusicPlayer.shared
+        // S3-C: wire the VOD engine behind the coordinator. The
+        // driver (A leg) owns engines + episode/line state; URL
+        // resolution is the B-leg CmsClient, which answers the
+        // seam VideoPlayURLResolver contract. The coordinator
+        // wires onEpisodeStarted / onEpisodeFailed itself in the
+        // vodDriver didSet — nothing else to do here.
+        let vodDriver = VideoDriver()
+        vodDriver.playURLResolver = CmsClient.shared
+        coordinator.vodDriver = vodDriver
         _coordinator = StateObject(wrappedValue: coordinator)
         _musicPlayer = StateObject(wrappedValue: MusicPlayerViewModel(coordinator: coordinator))
+        _videoPlayer = StateObject(wrappedValue: VideoPlayerViewModel(coordinator: coordinator))
     }
 
     /// The splash covers the first frame; it fades out at 1.5s
@@ -57,6 +72,7 @@ struct HAoStudioApp: App {
             .environmentObject(themeStore)
             .environmentObject(coordinator)
             .environmentObject(musicPlayer)
+            .environmentObject(videoPlayer)
         }
     }
 }
