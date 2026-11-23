@@ -323,7 +323,7 @@ enum MusicLibraryStore {
             if byKey[key] == nil {
                 byKey[key] = MusicSong(
                     songId: event.songId, title: event.title, artist: event.artist,
-                    platform: event.platform, cover: event.cover, dur: event.totalDur
+                    cover: event.cover, platform: event.platform, dur: event.totalDur
                 )
             }
         }

@@ -301,7 +301,7 @@ final class MusicPlayerViewModel: ObservableObject {
         let next = playMode.next
         playMode = next
         MusicLibraryStore.setPlayModeCode(next.code)
-        player.setMode(next.toContract())
+        player.setPlayMode(next.toContract())
         hapticTick()
     }
 
@@ -370,7 +370,7 @@ final class MusicPlayerViewModel: ObservableObject {
         }
         let track = MusicTrack(
             id: song.songId, title: song.title, artist: song.artist,
-            album: song.album, coverURL: song.cover, duration: song.dur,
+            album: song.album, coverURL: URL(string: song.cover), duration: TimeInterval(song.dur),
             sourceID: song.platform.rawValue
         )
         MusicLyricsAPI.shared.fetchLyrics(for: track) { [weak self] result in

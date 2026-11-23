@@ -159,6 +159,9 @@ func musicPrevTrackIndex(
         return current == 0 ? -1 : current - 1
     case .listLoop, .singleLoop:
         return (current - 1 + length) % length
+    case .shuffle:
+        // Unreachable: shuffle returns above. Exhaustiveness only.
+        return current
     }
 }
 

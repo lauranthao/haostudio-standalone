@@ -96,7 +96,7 @@ enum MusicRadio {
             let key = "\(event.platform.rawValue)|\(event.songId)"
             let song = MusicSong(
                 songId: event.songId, title: event.title, artist: event.artist,
-                platform: event.platform, cover: event.cover, dur: event.totalDur
+                cover: event.cover, platform: event.platform, dur: event.totalDur
             )
             if let existing = counts[key] {
                 counts[key] = (song: existing.song, plays: existing.plays + 1)
