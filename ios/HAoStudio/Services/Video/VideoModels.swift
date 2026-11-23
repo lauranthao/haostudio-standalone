@@ -35,7 +35,7 @@ struct VideoSource: Codable, Equatable, Identifiable {
 /// One title in a list / search result. `id` is the CMS vod_id as
 /// a string (ids drift on reseed; the stable identity for resume
 /// is title + year, see VideoResumeKey).
-struct VideoItem: Codable, Equatable, Identifiable {
+struct VideoItem: Codable, Equatable, Identifiable, Hashable {
     let id: String
     let title: String
     let coverURL: URL?

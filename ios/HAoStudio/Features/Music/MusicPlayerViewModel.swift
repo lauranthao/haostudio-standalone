@@ -388,7 +388,7 @@ final class MusicPlayerViewModel: ObservableObject {
                     kind: .music,
                     qualityCode: MusicLibraryStore.code(for: actualQuality)
                 )
-                DownloadEngine.shared.enqueue(request: request) { info in
+                DownloadEngine.shared.enqueue(request: request, completion: { info in
                     switch info.state {
                     case .completed:
                         var downloads = MusicLibraryStore.getDownloads()
@@ -407,7 +407,7 @@ final class MusicPlayerViewModel: ObservableObject {
                     default:
                         break
                     }
-                }
+                })
                 self.showToast("已加入下载")
             }
         }

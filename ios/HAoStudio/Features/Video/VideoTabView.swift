@@ -12,12 +12,6 @@
 
 import SwiftUI
 
-/// VideoItem gains Hashable here (all its fields already are) so
-/// it can ride a NavigationStack path. The seam file itself is
-/// not touched; if another leg adds the same conformance at merge,
-/// delete this one.
-extension VideoItem: Hashable {}
-
 /// Video tab navigation destinations.
 enum VideoDestination: Hashable {
     case search

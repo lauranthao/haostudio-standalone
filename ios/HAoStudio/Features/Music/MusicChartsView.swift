@@ -107,7 +107,7 @@ struct MusicChartsView: View {
                 }
             } else {
                 List {
-                    ForEach(viewModel.charts) { chart in
+                    ForEach(viewModel.charts, id: \.id) { chart in
                         NavigationLink(destination: MusicChartDetailView(chart: chart)) {
                             HStack(spacing: 12) {
                                 MusicCoverView(urlString: chart.cover, size: 48)

@@ -84,58 +84,7 @@ struct MusicArtistDetailView: View {
                     note: "该歌手没有返回歌曲或专辑，稍后再试。"
                 )
             } else {
-                List {
-                    Section {
-                        artistHeader
-                    }
-                    .listRowBackground(theme.scaffoldBackground)
-                    .listRowSeparator(.hidden)
-                    if !viewModel.songs.isEmpty {
-                        Section("热门歌曲") {
-                            ForEach(Array(viewModel.songs.prefix(30).enumerated()), id: \.element.id) { index, song in
-                                MusicSongRow(
-                                    song: song,
-                                    isPlaying: playerVM.currentSong?.identityKey == song.identityKey && playerVM.isPlaying,
-                                    onTap: {
-                                        playerVM.play(song: song, in: viewModel.songs, startAt: index)
-                                    },
-                                    onToggleFav: {
-                                        _ = MusicLibraryStore.toggleFav(song)
-                                    },
-                                    onAddToPlaylist: nil
-                                )
-                                .listRowBackground(theme.scaffoldBackground)
-                                .listRowSeparatorTint(theme.hairline)
-                            }
-                        }
-                    }
-                    if !viewModel.detail.albums.isEmpty {
-                        Section("专辑") {
-                            ForEach(viewModel.detail.albums) { album in
-                                NavigationLink(destination: MusicAlbumDetailView(album: album)) {
-                                    HStack(spacing: 12) {
-                                        MusicCoverView(urlString: album.cover, size: 48)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(album.name)
-                                                .font(.system(size: 15, weight: .semibold))
-                                                .foregroundStyle(theme.textPrimary)
-                                                .lineLimit(1)
-                                            Text(albumRowSubtitle(album))
-                                                .font(.system(size: 13))
-                                                .foregroundStyle(theme.textSecondary)
-                                                .lineLimit(1)
-                                        }
-                                        Spacer()
-                                    }
-                                }
-                                .listRowBackground(theme.scaffoldBackground)
-                                .listRowSeparatorTint(theme.hairline)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                contentList
             }
         }
         .background(theme.scaffoldBackground)
@@ -149,6 +98,65 @@ struct MusicArtistDetailView: View {
             }
         }
         .onAppear { viewModel.load() }
+    }
+
+    private var contentList: some View {
+        List {
+            Section {
+                artistHeader
+            }
+            .listRowBackground(theme.scaffoldBackground)
+            .listRowSeparator(.hidden)
+            if !viewModel.songs.isEmpty {
+                Section("热门歌曲") {
+                    ForEach(Array(viewModel.songs.prefix(30).enumerated()), id: \.element.id) { index, song in
+                        MusicSongRow(
+                            song: song,
+                            isPlaying: playerVM.currentSong?.identityKey == song.identityKey && playerVM.isPlaying,
+                            onTap: {
+                                playerVM.play(song: song, in: viewModel.songs, startAt: index)
+                            },
+                            onToggleFav: {
+                                _ = MusicLibraryStore.toggleFav(song)
+                            },
+                            onAddToPlaylist: nil
+                        )
+                        .listRowBackground(theme.scaffoldBackground)
+                        .listRowSeparatorTint(theme.hairline)
+                    }
+                }
+            }
+            if !viewModel.detail.albums.isEmpty {
+                Section("专辑") {
+                    ForEach(viewModel.detail.albums) { album in
+                        albumRow(album)
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
+    private func albumRow(_ album: AlbumSummary) -> some View {
+        NavigationLink(destination: MusicAlbumDetailView(album: album)) {
+            HStack(spacing: 12) {
+                MusicCoverView(urlString: album.cover, size: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(album.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(1)
+                    Text(albumRowSubtitle(album))
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+        }
+        .listRowBackground(theme.scaffoldBackground)
+        .listRowSeparatorTint(theme.hairline)
     }
 
     private var artistHeader: some View {
