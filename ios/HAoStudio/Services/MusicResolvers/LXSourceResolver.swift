@@ -1,0 +1,968 @@
+// LXSourceResolver.swift
+// Serial fastest-first source resolution (implements the
+// `SourceResolver` protocol from `PlaybackCoordinator.swift`).
+//
+// Flutter parity (`music_resolvers.dart`, 1.1.6+32):
+// - Jobs are asked ONE AT A TIME, in measured-speed order; the FIRST
+//   playable URL plays immediately — never ask all sources, never
+//   wait for a higher tier once a playable URL exists (chen
+//   2026-11-17 铁律). A below-target URL plays now as a per-song
+//   downgrade (the target tier persists to the next track), labelled
+//   with its REAL tier.
+// - 10 built-in resolvers (`huibq` disabled — its service returns
+//   503 "Service Suspended" since 2026-11-16) + LX script jobs.
+// - Per-job 3 s timeout, whole resolve 8 s (P0-16: first tier pass
+//   capped at 5 s, 3 s reserved for lower tiers, later passes at
+//   most 2 s each — see `ResolverBudget`).
+// - 3 consecutive failures cool a job for 5 min; a single timeout
+//   cools it immediately for 2 min; an empty answer is not a
+//   failure. Speed EMA + cooldown persist under `hao_resolver_speed`.
+// - Play-URL cache: 1 h TTL, 200-entry cap, key
+//   `songId|platform|quality`; an URL that fails at playback is
+//   evicted explicitly.
+// - Master honesty gate: only `zddyr` / `xinghai` (LX APIs with a
+//   verified real Master path) may claim Master, and only when the
+//   response reports `quality == 'master'` with no
+//   `quality_fallback`; LX scripts keep Master only when they return
+//   a `{url, quality: 'master'}` map; every other resolver caps at
+//   hires (see `MusicQualityGate`).
+// - Kugou signing: the Kugou signature secret was removed from
+//   source (P0-15); there is no `kugouSign` here and no hardcoded
+//   secret anywhere. Kugou shared-playlist import (the only place
+//   that needed the signature) fails explicitly instead — see
+//   `MusicPlaylistImportAPI`.
+//
+// `PlaybackItem.id` is parsed as `platform|songId` (the Flutter
+// `identityKey` convention); an id without a platform separator
+// resolves to nil. `lastResolvedTier` is the tier actually played
+// (the player leg reads it for the quality badge); it is set on the
+// main queue just before `completion` fires.
+
+import Foundation
+
+/// What one resolver job returned.
+enum LXResolverOutcome {
+    /// A URL, plus the tier the job actually served (nil = the
+    /// declared label applies — see `MusicQualityGate.declaredTier`).
+    case url(String, AudioQuality?)
+    /// No stock at this tier (not a failure — the job may serve a
+    /// lower tier).
+    case empty
+    /// The job errored (network / bad response / unplayable URL).
+    case error
+}
+
+/// One candidate source for one resolve.
+struct LXResolverJob {
+    let key: String
+    let name: String
+    let order: Int
+    let platforms: [MusicPlatform]
+    /// Prerequisite that waits OUTSIDE the per-job timeout (xinghai's
+    /// token fetch). Calls back when the prerequisite is ready — or
+    /// when it failed fast; the job's own function re-checks.
+    let warmup: ((@escaping () -> Void) -> Void)?
+    let run: (LXCancelToken, @escaping (LXResolverOutcome) -> Void) -> Void
+}
+
+/// One resolved play URL: the URL, the tier actually played, and the
+/// job that served it (for settings/debugging).
+struct PlayUrlResult {
+    let url: String
+    let quality: AudioQuality
+    let via: String
+}
+
+final class LXSourceResolver: SourceResolver {
+    /// User agent for the resolver's direct API calls (shared with
+    /// the music API modules — see `MusicUA`).
+    static let musicUserAgent = MusicUA.value
+
+    private let engine: LXEngine
+    private let httpClient: MusicHTTPClient
+    private let cooldown: ResolverCooldown
+    private let cache: PlayURLCache
+    private let scriptStore: LXScriptStore
+    private let documentsDirectory: URL
+    private let workQueue = DispatchQueue(label: "com.haostudio.lxresolver")
+
+    /// Budget overrides (production defaults are `ResolverBudget`).
+    /// Tests inject short budgets so a timeout test never waits real
+    /// seconds.
+    private let perJobTimeout: TimeInterval
+    private let totalBudget: TimeInterval
+    private let firstPassCap: TimeInterval
+    private let laterPassCap: TimeInterval
+    /// Test seam: when set, the job list comes from this provider
+    /// instead of the built-in resolvers + LX scripts, so tests can
+    /// run fake jobs without network. Production passes nil.
+    private let jobListProvider: ((MusicPlatform, AudioQuality, String, String, String) -> [LXResolverJob])?
+
+    /// The tier actually played by the last successful resolve (the
+    /// player leg reads it for the quality badge). Set on the main
+    /// queue just before `completion` fires; nil when the last
+    /// resolve found nothing.
+    private(set) var lastResolvedTier: AudioQuality?
+
+    /// True when the most recent resolve that returned nil ran out
+    /// of budget with jobs still untried, so "no source" would be a
+    /// lie. False when every available job was tried and answered
+    /// empty, when a URL was found, or when the song had no id.
+    private(set) var lastResolveTruncated = false
+
+    // Xinghai token state (4-min cache, single-flight).
+    private var xhToken: String?
+    private var xhTokenAt: Date?
+    private var xhTokenInFlight = false
+    private var xhTokenWaiters: [(String) -> Void] = []
+
+    init(
+        engine: LXEngine = .shared,
+        httpClient: MusicHTTPClient = URLSessionMusicHTTPClient(),
+        cooldown: ResolverCooldown? = nil,
+        cache: PlayURLCache? = nil,
+        scriptStore: LXScriptStore = LXScriptStore(),
+        documentsDirectory: URL? = nil,
+        perJobTimeout: TimeInterval = ResolverBudget.perJob,
+        totalBudget: TimeInterval = ResolverBudget.total,
+        firstPassCap: TimeInterval = ResolverBudget.firstPassCap,
+        laterPassCap: TimeInterval = ResolverBudget.laterPassCap,
+        jobListProvider: ((MusicPlatform, AudioQuality, String, String, String) -> [LXResolverJob])? = nil
+    ) {
+        self.engine = engine
+        self.httpClient = httpClient
+        self.documentsDirectory = documentsDirectory ?? LocalStore.documentsDirectory()
+        self.cooldown = cooldown ?? ResolverCooldown(documentsDirectory: self.documentsDirectory)
+        self.cache = cache ?? PlayURLCache()
+        self.scriptStore = scriptStore
+        self.perJobTimeout = perJobTimeout
+        self.totalBudget = totalBudget
+        self.firstPassCap = firstPassCap
+        self.laterPassCap = laterPassCap
+        self.jobListProvider = jobListProvider
+    }
+
+    // MARK: - SourceResolver protocol
+
+    func resolveFirstPlayable(
+        for item: PlaybackItem,
+        targetQuality: AudioQuality?,
+        completion: @escaping (URL?) -> Void
+    ) {
+        // `PlaybackItem.id` is `platform|songId` (Flutter identityKey).
+        let parts = item.id.split(separator: "|", maxSplits: 1)
+        guard parts.count == 2,
+              let platform = MusicPlatform(code: String(parts[0]))
+        else {
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+        resolve(
+            songId: String(parts[1]),
+            platform: platform,
+            title: item.title,
+            artist: item.artist ?? "",
+            quality: targetQuality ?? .hiRes
+        ) { result in
+            completion(result.flatMap { URL(string: $0.url) })
+        }
+    }
+
+    /// Typed convenience for the music UI leg.
+    func resolve(
+        track: MusicTrack,
+        targetQuality: AudioQuality?,
+        completion: @escaping (URL?) -> Void
+    ) {
+        guard let platform = track.platform else {
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+        resolve(
+            songId: track.id,
+            platform: platform,
+            title: track.title,
+            artist: track.artist,
+            quality: targetQuality ?? .hiRes
+        ) { result in
+            completion(result.flatMap { URL(string: $0.url) })
+        }
+    }
+
+    /// Drop a cached play URL (e.g. it failed at playback): the next
+    /// resolve for this song re-asks the sources.
+    func evictPlayUrl(songId: String, platform: MusicPlatform, quality: AudioQuality) {
+        cache.evict(PlayURLCache.key(songId: songId, platform: platform.rawValue, quality: quality))
+    }
+
+    // MARK: - Main entry
+
+    /// Per-resolve mutable state, owned by the work queue.
+    private final class ResolveState {
+        let tiers: [AudioQuality]
+        let requestedQuality: AudioQuality
+        var tierIndex = 0
+        var passIndex = 0
+        var truncated = false
+        let skipTimedOut = NSMutableSet()
+        let totalDeadline: Date
+        let background: Bool
+
+        init(tiers: [AudioQuality], requestedQuality: AudioQuality, totalDeadline: Date, background: Bool) {
+            self.tiers = tiers
+            self.requestedQuality = requestedQuality
+            self.totalDeadline = totalDeadline
+            self.background = background
+        }
+    }
+
+    func resolve(
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String,
+        quality: AudioQuality,
+        background: Bool = false,
+        completion: @escaping (PlayUrlResult?) -> Void
+    ) {
+        workQueue.async {
+            guard !songId.isEmpty else {
+                self.finishResolve(result: nil, truncated: false, completion: completion)
+                return
+            }
+            let cacheKey = PlayURLCache.key(songId: songId, platform: platform.rawValue, quality: quality)
+            if let cached = self.cache.get(cacheKey) {
+                let result = PlayUrlResult(url: cached.url, quality: cached.tier, via: "cache")
+                self.finishResolve(result: result, truncated: false, completion: completion)
+                return
+            }
+            // LX script jobs appear once the engine has loaded; kick
+            // off the load on first use (the first resolve after
+            // launch may predate them — later resolves include them).
+            self.engine.ensureInitialized { _ in }
+            // Warm the xinghai token in parallel: its first fetch can
+            // take seconds, and the sequential pass must not stall on it.
+            if self.applicableResolvers(platform).contains(where: { $0.key == "xinghai" }) {
+                self.getXhToken(cancelToken: nil) { _ in }
+            }
+            let state = ResolveState(
+                tiers: AudioQuality.chain(from: quality),
+                requestedQuality: quality,
+                totalDeadline: Date().addingTimeInterval(totalBudget),
+                background: background)
+            self.runTierPasses(
+                state: state, songId: songId, platform: platform,
+                title: title, artist: artist, completion: completion)
+        }
+    }
+
+    private func finishResolve(
+        result: PlayUrlResult?,
+        truncated: Bool,
+        completion: @escaping (PlayUrlResult?) -> Void
+    ) {
+        lastResolveTruncated = truncated
+        cooldown.saveNow()
+        let tier = result?.quality
+        DispatchQueue.main.async {
+            self.lastResolvedTier = tier
+            completion(result)
+        }
+    }
+
+    /// Walk the quality chain, fastest-first per tier. A whole
+    /// resolve is bounded by one global deadline. The FIRST playable
+    /// URL wins, at any tier — a below-target URL plays now as a
+    /// per-song downgrade; the chain only advances when NO source
+    /// returns anything at this tier.
+    private func runTierPasses(
+        state: ResolveState,
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String,
+        completion: @escaping (PlayUrlResult?) -> Void
+    ) {
+        guard state.tierIndex < state.tiers.count else {
+            finishResolve(result: nil, truncated: state.truncated, completion: completion)
+            return
+        }
+        let remaining = state.totalDeadline.timeIntervalSince(Date())
+        guard remaining > 0 else {
+            finishResolve(result: nil, truncated: state.truncated, completion: completion)
+            return
+        }
+        let tier = state.tiers[state.tierIndex]
+        state.tierIndex += 1
+        // P0-16: first tier pass capped at `firstPassCap`, later passes
+        // at `laterPassCap`, so the first tier can never eat the whole
+        // budget. Production: 5 s / 2 s of the 8 s total.
+        let cap = state.passIndex == 0 ? firstPassCap : laterPassCap
+        let budget = min(cap, remaining)
+        state.passIndex += 1
+        runPass(
+            tier: tier, songId: songId, platform: platform, title: title, artist: artist,
+            budget: budget, skipTimedOut: state.skipTimedOut, background: state.background
+        ) { [weak self] passResult, incomplete in
+            guard let self = self else { return }
+            state.truncated = state.truncated || incomplete
+            if let result = passResult {
+                // Cached under the REQUESTED tier's key (Flutter
+                // parity): a hires URL found while asking for master
+                // is the answer to a master request next time too.
+                self.cache.put(
+                    PlayURLCache.key(songId: songId, platform: platform.rawValue, quality: state.requestedQuality),
+                    url: result.url, tier: result.quality)
+                self.finishResolve(result: result, truncated: false, completion: completion)
+                return
+            }
+            self.workQueue.async {
+                self.runTierPasses(
+                    state: state, songId: songId, platform: platform,
+                    title: title, artist: artist, completion: completion)
+            }
+        }
+    }
+}
+
+// MARK: - One pass at a single quality
+
+extension LXSourceResolver {
+    /// One pass at a single quality: try jobs in measured-speed
+    /// order, one at a time, until a playable URL is found. Returns
+    /// `(nil, true)` when the budget died with jobs still untried;
+    /// `(nil, false)` when every available job was tried. Jobs that
+    /// time out are added to `skipTimedOut` so later tiers in the
+    /// same resolve don't waste budget re-asking a source that
+    /// doesn't answer; a definitive empty answer is retried at lower
+    /// tiers, which may serve the song.
+    private func runPass(
+        tier: AudioQuality,
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String,
+        budget: TimeInterval,
+        skipTimedOut: NSMutableSet,
+        background: Bool,
+        completion: @escaping (PlayUrlResult?, Bool) -> Void
+    ) {
+        let jobs = rankedJobs(platform: platform, tier: tier, songId: songId, title: title, artist: artist)
+        guard !jobs.isEmpty else {
+            completion(nil, false)
+            return
+        }
+        let deadline = Date().addingTimeInterval(budget)
+        runJobAt(
+            jobs: jobs, index: 0, tier: tier, songId: songId, platform: platform,
+            title: title, artist: artist, deadline: deadline,
+            skipTimedOut: skipTimedOut, background: background, completion: completion)
+    }
+
+    private func runJobAt(
+        jobs: [LXResolverJob],
+        index: Int,
+        tier: AudioQuality,
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String,
+        deadline: Date,
+        skipTimedOut: NSMutableSet,
+        background: Bool,
+        completion: @escaping (PlayUrlResult?, Bool) -> Void
+    ) {
+        guard index < jobs.count else {
+            completion(nil, false)
+            return
+        }
+        let job = jobs[index]
+        // Jobs still untried from `index` on (skipped-by-timeout jobs
+        // do not count: they were attempted).
+        func untriedFrom(_ i: Int) -> Bool {
+            jobs[i...].contains { !skipTimedOut.contains($0.key) }
+        }
+        if skipTimedOut.contains(job.key) {
+            runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                     platform: platform, title: title, artist: artist,
+                     deadline: deadline, skipTimedOut: skipTimedOut,
+                     background: background, completion: completion)
+            return
+        }
+        // A job prerequisite (xinghai's token) waits OUTSIDE the
+        // per-job timeout — the clock starts only once the token is
+        // in hand. Bounded by the pass budget.
+        if let warmup = job.warmup {
+            let warmRemaining = deadline.timeIntervalSince(Date())
+            guard warmRemaining > 0 else {
+                completion(nil, untriedFrom(index))
+                return
+            }
+            var warmed = false
+            let warmTimeout = DispatchWorkItem { [weak self] in
+                guard let self = self, !warmed else { return }
+                warmed = true
+                // Budget died waiting for the prerequisite: the source
+                // itself was never asked — not a job timeout, so no
+                // cooldown and no skipTimedOut.
+                self.workQueue.async {
+                    self.runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                                  platform: platform, title: title, artist: artist,
+                                  deadline: deadline, skipTimedOut: skipTimedOut,
+                                  background: background, completion: completion)
+                }
+            }
+            workQueue.asyncAfter(deadline: .now() + warmRemaining, execute: warmTimeout)
+            warmup {
+                guard !warmed else { return }
+                warmed = true
+                warmTimeout.cancel()
+                self.workQueue.async {
+                    self.runJobWithTimeout(
+                        job: job, jobs: jobs, index: index, tier: tier, songId: songId,
+                        platform: platform, title: title, artist: artist,
+                        deadline: deadline, skipTimedOut: skipTimedOut,
+                        background: background, completion: completion)
+                }
+            }
+            return
+        }
+        runJobWithTimeout(
+            job: job, jobs: jobs, index: index, tier: tier, songId: songId,
+            platform: platform, title: title, artist: artist,
+            deadline: deadline, skipTimedOut: skipTimedOut,
+            background: background, completion: completion)
+    }
+
+    private func runJobWithTimeout(
+        job: LXResolverJob,
+        jobs: [LXResolverJob],
+        index: Int,
+        tier: AudioQuality,
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String,
+        deadline: Date,
+        skipTimedOut: NSMutableSet,
+        background: Bool,
+        completion: @escaping (PlayUrlResult?, Bool) -> Void
+    ) {
+        let remaining = deadline.timeIntervalSince(Date())
+        guard remaining > 0 else {
+            let untried = jobs[index...].contains { !skipTimedOut.contains($0.key) }
+            completion(nil, untried)
+            return
+        }
+        let timeout = min(perJobTimeout, remaining)
+        let token = LXCancelToken()
+        let started = Date()
+        var finished = false
+        let timeoutWork = DispatchWorkItem { [weak self] in
+            guard let self = self, !finished else { return }
+            finished = true
+            token.cancel()
+            if !background {
+                self.cooldown.record(job.key, outcome: .timeout,
+                                     milliseconds: Int(timeout * 1000))
+            }
+            skipTimedOut.add(job.key)
+            self.workQueue.async {
+                self.runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                              platform: platform, title: title, artist: artist,
+                              deadline: deadline, skipTimedOut: skipTimedOut,
+                              background: background, completion: completion)
+            }
+        }
+        workQueue.asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
+        job.run(token) { [weak self] outcome in
+            guard let self = self else { return }
+            self.workQueue.async {
+                guard !finished else { return }
+                finished = true
+                timeoutWork.cancel()
+                let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+                switch outcome {
+                case .empty:
+                    if !background {
+                        self.cooldown.record(job.key, outcome: .empty, milliseconds: elapsedMs)
+                    }
+                    self.runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                                  platform: platform, title: title, artist: artist,
+                                  deadline: deadline, skipTimedOut: skipTimedOut,
+                                  background: background, completion: completion)
+                case .error:
+                    if !background {
+                        self.cooldown.record(job.key, outcome: .error, milliseconds: elapsedMs)
+                    }
+                    self.runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                                  platform: platform, title: title, artist: artist,
+                                  deadline: deadline, skipTimedOut: skipTimedOut,
+                                  background: background, completion: completion)
+                case .url(let rawUrl, let servedTier):
+                    let url = MusicText.toHttps(rawUrl)
+                    // A URL NSURL rejects kills the process the moment
+                    // it reaches AVURLAsset: treat it as a failed
+                    // source and try the next one.
+                    guard !url.isEmpty, MusicText.isPlayableURL(url) else {
+                        if !background {
+                            self.cooldown.record(job.key, outcome: .error, milliseconds: elapsedMs)
+                        }
+                        self.runJobAt(jobs: jobs, index: index + 1, tier: tier, songId: songId,
+                                      platform: platform, title: title, artist: artist,
+                                      deadline: deadline, skipTimedOut: skipTimedOut,
+                                      background: background, completion: completion)
+                        return
+                    }
+                    self.cooldown.record(job.key, outcome: .success, milliseconds: elapsedMs)
+                    // A resolver that reports the tier it actually
+                    // served is held to it; otherwise the declared label.
+                    let tier = servedTier ?? MusicQualityGate.declaredTier(resolverKey: job.key, requested: tier)
+                    completion(PlayUrlResult(url: url, quality: tier, via: job.name), false)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Job ranking
+
+extension LXSourceResolver {
+    /// Jobs for this platform in fastest-first order: cooled-down
+    /// jobs last, then by measured latency (unknown = middle), then
+    /// by declared order — except between two LX script jobs, where
+    /// the user's manual drag order wins over measured speed. Script
+    /// vs built-in is still by speed.
+    private func rankedJobs(
+        platform: MusicPlatform,
+        tier: AudioQuality,
+        songId: String,
+        title: String,
+        artist: String
+    ) -> [LXResolverJob] {
+        // Test seam: a `jobListProvider` replaces the built-in +
+        // script jobs; the ranking rules below still apply.
+        var jobs: [LXResolverJob]
+        if let provider = jobListProvider {
+            jobs = provider(platform, tier, songId, title, artist)
+        } else {
+            jobs = applicableResolvers(platform).map { resolver in
+                makeJob(resolver, tier: tier, songId: songId, platform: platform, title: title, artist: artist)
+            }
+            for source in engine.musicUrlSources(platform: platform.rawValue, quality: tier) {
+                let track = MusicTrack(id: songId, title: title, artist: artist, sourceID: platform.rawValue)
+                let scriptID = source.scriptID
+                let scriptName = source.scriptName
+                jobs.append(LXResolverJob(
+                    key: "lx:\(scriptID)",
+                    name: scriptName,
+                    order: 2,
+                    platforms: [platform],
+                    warmup: nil,
+                    run: { [weak self] token, done in
+                        guard let self = self else { done(.empty); return }
+                        self.engine.getMusicUrl(
+                            scriptID: scriptID, platform: platform.rawValue,
+                            track: track, quality: tier, cancelToken: token
+                        ) { result in
+                            guard let result = result else { done(.empty); return }
+                            done(.url(result.url, result.actualQuality))
+                        }
+                    }))
+            }
+        }
+        let manualOrder = scriptStore.scriptOrder()
+        var manualIndex: [String: Int] = [:]
+        for (i, id) in manualOrder.enumerated() { manualIndex[id] = i }
+        let unlistedScriptIndex = 1 << 30
+        jobs.sort { a, b in
+            let aCool = cooldown.isCoolingDown(a.key)
+            let bCool = cooldown.isCoolingDown(b.key)
+            if aCool != bCool { return !aCool }
+            if a.key.hasPrefix("lx:"), b.key.hasPrefix("lx:") {
+                let ai = manualIndex[String(a.key.dropFirst(3))] ?? unlistedScriptIndex
+                let bi = manualIndex[String(b.key.dropFirst(3))] ?? unlistedScriptIndex
+                if ai != bi { return ai < bi }
+            }
+            let aMs = cooldown.averageMs(a.key)
+            let bMs = cooldown.averageMs(b.key)
+            if aMs != bMs { return aMs < bMs }
+            return a.order < b.order
+        }
+        return jobs
+    }
+
+    private func makeJob(
+        _ resolver: BuiltInResolver,
+        tier: AudioQuality,
+        songId: String,
+        platform: MusicPlatform,
+        title: String,
+        artist: String
+    ) -> LXResolverJob {
+        LXResolverJob(
+            key: resolver.key,
+            name: resolver.name,
+            order: resolver.order,
+            platforms: resolver.platforms,
+            warmup: resolver.key == "xinghai" ? { [weak self] done in
+                self?.getXhToken(cancelToken: nil) { _ in done() }
+            } : nil,
+            run: { [weak self] token, done in
+                guard let self = self else { done(.error); return }
+                resolver.run(self, songId, platform, tier, title, artist, token, done)
+            })
+    }
+}
+
+
+// MARK: - Built-in resolvers
+
+/// One built-in (non-script) resolver. `run` receives the resolver
+/// instance (for `_fetchJson`), the song, the tier being tried, and
+/// the job's cancel token.
+struct BuiltInResolver {
+    let key: String
+    let name: String
+    let order: Int
+    let platforms: [MusicPlatform]
+    let run: (LXSourceResolver, String, MusicPlatform, AudioQuality, String, String, LXCancelToken, @escaping (LXResolverOutcome) -> Void) -> Void
+}
+
+extension LXSourceResolver {
+    /// The built-in resolvers in declaration order. `huibq` is
+    /// DISABLED (its service returns 503 "Service Suspended" since
+    /// 2026-11-16) — the order-1 resolver was dead, and its key fetch
+    /// ran before every first call. Re-enable only if the service
+    /// revives.
+    private func applicableResolvers(_ platform: MusicPlatform) -> [BuiltInResolver] {
+        allResolvers.filter { $0.platforms.contains(platform) }
+    }
+
+    private var allResolvers: [BuiltInResolver] {
+        [
+            BuiltInResolver(key: "tang", name: "tang", order: 15, platforms: [.tx]) { resolver, songId, _, tier, _, _, token, done in
+                let urlString = "https://tang.api.s01s.cn/music_open_api.php?mid=\(resolver.urlEncode(songId))"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    guard let json = json else { done(.empty); return }
+                    // QQ top tier field is `song_play_url_pq` — it is
+                    // the hires tier's URL source, not a separate
+                    // Master tier. Master caps at the same top field:
+                    // falling through to `song_play_url_standard`
+                    // would serve the LOWEST tier while the label
+                    // says hires.
+                    let field: String
+                    switch tier {
+                    case .master, .hiRes: field = "song_play_url_pq"
+                    case .flac: field = "song_play_url_sq"
+                    case .high320: field = "song_play_url_hq"
+                    case .standard128: field = "song_play_url_standard"
+                    }
+                    let url = (json[field] as? String) ?? (json["song_play_url"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "lzm", name: "lzm", order: 20, platforms: [.wy]) { resolver, songId, _, _, _, _, token, done in
+                let body = "id=\(resolver.urlEncode(songId))&type=wy"
+                resolver.fetchJson(
+                    "https://music.lzmhhh.com/api/music/url",
+                    method: "POST",
+                    headers: [
+                        "User-Agent": Self.musicUserAgent,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Referer": "https://music.lzmhhh.com/",
+                    ],
+                    body: body.data(using: .utf8),
+                    cancelToken: token
+                ) { json in
+                    let url = (json?["data"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "zddyr", name: "zddyr", order: 25, platforms: [.wy]) { resolver, songId, _, tier, _, _, token, done in
+                let urlString = "https://yy.zddyr.top/lx/api/?source=wy&songmid=\(resolver.urlEncode(songId))&quality=\(tier.lxCode)"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    guard let json = json, (json["code"] as? Int) == 200 else {
+                        done(.empty)
+                        return
+                    }
+                    let url = (json["url"] as? String) ?? ""
+                    guard !url.isEmpty else { done(.empty); return }
+                    // Master gate: verify the tier the API actually
+                    // served — a master request answered with a
+                    // fallback stream is hires, never master.
+                    done(.url(url, MusicQualityGate.lxApiServedTier(response: json, requested: tier)))
+                }
+            },
+            BuiltInResolver(key: "gd", name: "GD Studio", order: 30, platforms: [.wy]) { resolver, songId, _, tier, _, _, token, done in
+                let br: Int
+                switch tier {
+                case .master, .hiRes, .flac: br = 999
+                case .high320: br = 320
+                case .standard128: br = 128
+                }
+                let urlString = "https://music-api.gdstudio.xyz/api.php?types=url&id=\(resolver.urlEncode(songId))&source=netease&br=\(br)"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    let url = (json?["url"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "xinghai", name: "星海", order: 40, platforms: [.wy, .kg, .kw]) { resolver, songId, platform, tier, _, _, token, done in
+                resolver.getXhToken(cancelToken: token) { tk in
+                    guard !tk.isEmpty else { done(.empty); return }
+                    let sourceCode: String
+                    switch platform {
+                    case .wy: sourceCode = "wy"
+                    case .tx: sourceCode = "qq"
+                    case .kg: sourceCode = "kg"
+                    case .kw: sourceCode = "kw"
+                    case .mg: sourceCode = "mg"
+                    }
+                    var urlString = "https://yy1.zddyr.top/lx/api/?source=\(sourceCode)&songmid=\(resolver.urlEncode(songId))&quality=\(tier.lxCode)"
+                    if platform == .kg {
+                        urlString += "&mainHash=\(resolver.urlEncode(songId))"
+                    }
+                    resolver.fetchJson(urlString, headers: [
+                        "User-Agent": "lx-music",
+                        "X-Client": "XingHaiMusicSource/v3.2.19 (Linux)",
+                        "X-Token": tk,
+                    ], cancelToken: token) { json in
+                        guard let json = json, (json["code"] as? Int) == 200 else {
+                            done(.empty)
+                            return
+                        }
+                        let url = (json["url"] as? String) ?? ""
+                        guard !url.isEmpty else { done(.empty); return }
+                        done(.url(url, MusicQualityGate.lxApiServedTier(response: json, requested: tier)))
+                    }
+                }
+            },
+            BuiltInResolver(key: "oiapi_wy", name: "oiapi-网易", order: 60, platforms: [.wy]) { resolver, songId, _, _, _, _, token, done in
+                let urlString = "https://oiapi.net/api/Music_163?id=\(resolver.urlEncode(songId))"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    guard let json = json, (json["code"] as? Int) == 0 else {
+                        done(.empty)
+                        return
+                    }
+                    // The live API returns data as a Map
+                    // {items: [{url, ...}]}; the old shape was a bare
+                    // List. Accept both.
+                    var first: [String: Any]?
+                    if let list = json["data"] as? [Any], !list.isEmpty {
+                        first = list.first as? [String: Any]
+                    } else if let map = json["data"] as? [String: Any],
+                              let items = map["items"] as? [Any], !items.isEmpty {
+                        first = items.first as? [String: Any]
+                    }
+                    let url = (first?["url"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "oiapi_kw", name: "oiapi-酷我", order: 100, platforms: [.kw]) { resolver, _, _, tier, title, artist, token, done in
+                guard !title.isEmpty else { done(.empty); return }
+                let br: Int
+                switch tier {
+                case .master, .hiRes, .flac: br = 1
+                case .high320: br = 2
+                case .standard128: br = 3
+                }
+                let urlString = "https://oiapi.net/api/Kuwo?msg=\(resolver.urlEncode(title))&n=1&br=\(br)"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    let data = json?["data"] as? [String: Any]
+                    let url = (data?["url"] as? String) ?? ""
+                    guard !url.isEmpty else { done(.empty); return }
+                    // Title-only request: the API's first hit can be
+                    // a different song with the same title. The
+                    // response names its singer — when the expected
+                    // artist is known, require a match.
+                    if !artist.isEmpty,
+                       !LXSourceResolver.singerMatches((data?["singer"] as? String) ?? "", artist) {
+                        done(.empty)
+                        return
+                    }
+                    done(.url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "wwwweb", name: "wwwweb", order: 120, platforms: [.wy, .kw]) { resolver, songId, platform, tier, _, _, token, done in
+                let quality = LXSourceResolver.wwwwebQuality(tier, platform: platform)
+                let body = MusicJSON.string(from: [
+                    "source": platform.rawValue,
+                    "musicId": songId,
+                    "quality": quality,
+                ])
+                resolver.fetchJson(
+                    "https://c.wwwweb.top/music/url",
+                    method: "POST",
+                    headers: [
+                        "User-Agent": "lx-music-desktop/2.10.1",
+                        "Content-Type": "application/json",
+                        // De-keyed: the API key header is empty in the
+                        // Flutter baseline too (no key is bundled).
+                        "X-Api-Key": "",
+                    ],
+                    body: body?.data(using: .utf8),
+                    cancelToken: token
+                ) { json in
+                    guard let json = json, (json["code"] as? Int) == 200 else {
+                        done(.empty)
+                        return
+                    }
+                    let url = (json["url"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+            BuiltInResolver(key: "zddyr_kw", name: "星海酷我", order: 130, platforms: [.kw]) { resolver, songId, _, tier, title, _, token, done in
+                guard !title.isEmpty else { done(.empty); return }
+                // Refuses master/hires/lossless outright (returns
+                // empty -> downgrade).
+                guard tier == .high320 || tier == .standard128 else { done(.empty); return }
+                let urlString = "https://yy.zddyr.top/lx/api/?source=kw&name=\(resolver.urlEncode(title))&singer=&songmid=\(resolver.urlEncode(songId))&interval=&albumName=&quality=\(tier.lxCode)"
+                resolver.fetchJson(urlString, headers: ["User-Agent": Self.musicUserAgent], cancelToken: token) { json in
+                    guard let json = json, (json["code"] as? Int) == 200 else {
+                        done(.empty)
+                        return
+                    }
+                    let url = (json["url"] as? String) ?? ""
+                    done(url.isEmpty ? .empty : .url(url, nil))
+                }
+            },
+        ]
+    }
+
+    // MARK: - Quality helpers (per-resolver parameters)
+
+    /// wwwweb's quality parameter: master maps to its best known
+    /// value `flac`; Kuwo hires/lossless map to `320k`.
+    static func wwwwebQuality(_ quality: AudioQuality, platform: MusicPlatform) -> String {
+        if quality == .master { return "flac" }
+        if platform == .kw {
+            return (quality == .hiRes || quality == .flac) ? "320k" : quality.lxCode
+        }
+        return (quality == .hiRes || quality == .flac) ? "flac" : quality.lxCode
+    }
+
+    /// Singer-name containment check: normalize case + whitespace,
+    /// then either side must contain the other. An empty reported
+    /// singer cannot verify — the API names its singer, so a missing
+    /// name means the hit is unusable for a title-only lookup.
+    static func singerMatches(_ reported: String, _ expected: String) -> Bool {
+        func norm(_ s: String) -> String {
+            s.lowercased().components(separatedBy: .whitespacesAndNewlines).joined()
+        }
+        let r = norm(reported)
+        let e = norm(expected)
+        guard !r.isEmpty, !e.isEmpty else { return false }
+        return r.contains(e) || e.contains(r)
+    }
+
+    func urlEncode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+    }
+}
+
+// MARK: - HTTP + token plumbing
+
+extension LXSourceResolver {
+    /// Fetch a JSON object. Nil on network error, non-200 status, or
+    /// an unparseable body. An empty answer is NOT a failure — the
+    /// caller's job records it as `.empty`.
+    func fetchJson(
+        _ urlString: String,
+        method: String = "GET",
+        headers: [String: String] = [:],
+        body: Data? = nil,
+        timeout: TimeInterval = 5,
+        cancelToken: LXCancelToken?,
+        completion: @escaping ([String: Any]?) -> Void
+    ) {
+        guard let url = URL(string: urlString) else {
+            completion(nil)
+            return
+        }
+        httpClient.request(
+            url: url, method: method, headers: headers, body: body, timeout: timeout
+        ) { data, response, error in
+            if let token = cancelToken, token.isCancelled {
+                completion(nil)
+                return
+            }
+            guard error == nil,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let data = data, !data.isEmpty
+            else {
+                completion(nil)
+                return
+            }
+            if let dict = MusicJSON.object(from: String(data: data, encoding: .utf8) ?? "") as? [String: Any] {
+                completion(dict)
+                return
+            }
+            completion(nil)
+        }
+        // NOTE: the in-flight request is not cancelled here: the
+        // job-timeout work item cancels the token, the fetch
+        // completion sees it and discards the result, and the
+        // request itself is bounded by its own `timeout`. Cancelling
+        // the URLSession task would need the task handle plumbed
+        // through every resolver; the observable behaviour (the
+        // caller moves on at the job timeout) is identical.
+    }
+
+    /// Xinghai token, cached 4 minutes, single-flight: concurrent
+    /// callers share one fetch. Empty string when the token endpoint
+    /// is unreachable (the job then answers empty fast).
+    func getXhToken(
+        cancelToken: LXCancelToken?,
+        completion: @escaping (String) -> Void
+    ) {
+        workQueue.async {
+            if let token = self.xhToken,
+               let at = self.xhTokenAt,
+               Date().timeIntervalSince(at) < 4 * 60 {
+                completion(token)
+                return
+            }
+            self.xhTokenWaiters.append(completion)
+            guard !self.xhTokenInFlight else { return }
+            self.xhTokenInFlight = true
+            let deviceId = self.xhDeviceId()
+            let urlString = "https://yy1.zddyr.top/lx/api/token.php?device_id=\(self.urlEncode(deviceId))"
+            self.fetchJson(urlString, headers: ["User-Agent": "lx-music"], timeout: 6, cancelToken: cancelToken) { json in
+                self.workQueue.async {
+                    self.xhTokenInFlight = false
+                    let waiters = self.xhTokenWaiters
+                    self.xhTokenWaiters = []
+                    let token = ((json?["data"] as? [String: Any])?["token"] as? String) ?? ""
+                    if !token.isEmpty {
+                        self.xhToken = token
+                        self.xhTokenAt = Date()
+                    }
+                    for waiter in waiters { waiter(token) }
+                }
+            }
+        }
+    }
+
+    /// Stable per-install device id for the xinghai token endpoint,
+    /// persisted as a JSON string under `hao_sa_xh_device` (same key
+    /// name as the Flutter Hive entry). Not a secret — just an
+    /// install identifier the token endpoint expects.
+    private func xhDeviceId() -> String {
+        let url = documentsDirectory.appendingPathComponent("hao_sa_xh_device.json")
+        if let data = try? Data(contentsOf: url),
+           let stored = try? JSONDecoder().decode(String.self, from: data),
+           !stored.isEmpty {
+            return stored
+        }
+        let micros = Date().timeIntervalSince1970 * 1_000_000
+        let hex = String(Int(micros), radix: 16)
+        let suffix = String(hex.suffix(8))
+        let millis = String(Int(Date().timeIntervalSince1970 * 1000), radix: 36)
+        let id = "lx-sa-\(suffix)\(millis)"
+        if let data = try? JSONEncoder().encode(id) {
+            try? data.write(to: url, options: [.atomic])
+        }
+        return id
+    }
+}
