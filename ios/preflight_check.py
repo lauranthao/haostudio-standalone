@@ -68,6 +68,26 @@ def check(label, ok, detail=""):
 
 pbx = PBX.read_text()
 
+# Group-aware path resolution for PBXFileReference entries: a ref's path
+# is relative to its parent group, and groups nest (HAoStudio group path
+# = "HAoStudio", Theme group path = "Theme", ...). The naive check of
+# ios/<path> passed the BROKEN doubled paths (Theme/Theme/...) in
+# build #11 and failed the fixed bare paths — so every ref check below
+# resolves through the group chain. (2026-11-23: doubled-path fix.)
+_groups = {}
+for m in re.finditer(r"(\w+)(?: /\* [^*]+ \*/)? = \{isa = PBXGroup; children = \((.*?)\);(?: name = [^;]+;)?(?: path = ([^;]+);)? sourceTree = \"<group>\"; \};", pbx, re.S):
+    _groups[m.group(1)] = (m.group(3) or "", re.findall(r"(\w+) /\*", m.group(2)))
+_parent = {child: gid for gid, (_, kids) in _groups.items() for child in kids}
+def _resolve(rid, fname):
+    parts, cur, seen = [fname], _parent.get(rid), set()
+    while cur and cur not in seen:  # cycle guard: a bad parse must not hang
+        seen.add(cur)
+        pth, _ = _groups[cur]
+        if pth:
+            parts.append(pth)
+        cur = _parent.get(cur)
+    return "/".join(reversed(parts))
+
 # --- 1. pbxproj file refs exist (libmpv excepted: build-time download) ---
 missing = []
 libmpv_refs = []
@@ -81,8 +101,7 @@ for m in re.finditer(
     if path.endswith(".xcframework"):
         libmpv_refs.append(name)
         continue
-    cands = [IOS / path, APP_DIR / path]
-    if not any(c.exists() for c in cands):
+    if not (IOS / _resolve(_oid, path)).exists():
         missing.append((name, path))
 check("1. pbxproj file refs exist", not missing, str(missing) if missing else "all repo-tracked refs resolve")
 check("1b. libmpv xcframework refs (18, build-time)", len(libmpv_refs) == 18, f"{len(libmpv_refs)} refs")
@@ -148,6 +167,18 @@ check("4k. every XCBuildConfiguration closes buildSettings before name",
       all("}; name = " in ln for ln in pbx.splitlines()
           if "XCBuildConfiguration; buildSettings = {" in ln),
       "each config line must contain '}; name = '")
+# --- 4l. every Swift file ref resolves to a real file on disk ------------
+# (2026-11-23: Codemagic build #11 failed "Build input files cannot be
+# found" — 10 scaffold refs carried 'Theme/Theme/...' doubled paths
+# because the parent group already supplies the directory. Uses the
+# group-aware _resolve defined above check 1.)
+_missing = []
+for m in re.finditer(r"(\w+) /\* ([^*]+) \*/ = \{isa = PBXFileReference; lastKnownFileType = sourcecode\.swift; path = ([^;]+); sourceTree = \"<group>\"; \};", pbx):
+    resolved = _resolve(m.group(1), m.group(3))
+    if not (REPO / "ios" / resolved).is_file():
+        _missing.append(f"{m.group(2)} -> {resolved}")
+check("4l. every Swift file ref resolves to a file on disk", not _missing,
+      f"{len(_missing)} missing: {_missing[:3]}" if _missing else "all resolve")
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))

@@ -60,16 +60,16 @@
 
 /* Begin PBXFileReference section */
 		000000000000000000000002 /* HAoStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HAoStudioApp.swift; sourceTree = "<group>"; };
-		000000000000000000000004 /* HaoTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme/HaoTheme.swift; sourceTree = "<group>"; };
-		000000000000000000000006 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme/ThemeStore.swift; sourceTree = "<group>"; };
-		000000000000000000000008 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/Glass.swift; sourceTree = "<group>"; };
-		00000000000000000000000A /* GlassTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/GlassTabBar.swift; sourceTree = "<group>"; };
-		00000000000000000000000C /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MiniPlayerBar.swift; sourceTree = "<group>"; };
-		00000000000000000000000E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MainTabView.swift; sourceTree = "<group>"; };
-		000000000000000000000010 /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/PlaceholderViews.swift; sourceTree = "<group>"; };
-		000000000000000000000012 /* PlaybackCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Playback/PlaybackCoordinator.swift; sourceTree = "<group>"; };
-		000000000000000000000014 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage/LocalStore.swift; sourceTree = "<group>"; };
-		000000000000000000000016 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Splash/SplashView.swift; sourceTree = "<group>"; };
+		000000000000000000000004 /* HaoTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HaoTheme.swift; sourceTree = "<group>"; };
+		000000000000000000000006 /* ThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeStore.swift; sourceTree = "<group>"; };
+		000000000000000000000008 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		00000000000000000000000A /* GlassTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassTabBar.swift; sourceTree = "<group>"; };
+		00000000000000000000000C /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
+		00000000000000000000000E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		000000000000000000000010 /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViews.swift; sourceTree = "<group>"; };
+		000000000000000000000012 /* PlaybackCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackCoordinator.swift; sourceTree = "<group>"; };
+		000000000000000000000014 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
+		000000000000000000000016 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 		00000000000000000000004E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000050 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		000000000000000000000051 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
