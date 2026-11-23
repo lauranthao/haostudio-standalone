@@ -47,6 +47,12 @@ let package = Package(
     // Base.lproj; SwiftPM requires a default localization once a
     // target has localized resources (build #17 failed without it).
     defaultLocalization: "en",
+    // No platforms means SwiftPM targets the oldest macOS, where
+    // Combine (@Published / ObservableObject) and CryptoKit's
+    // Insecure hash are unavailable (build #22 failed on exactly
+    // those). The tests only run on modern CI Macs; 10.15 covers
+    // everything AppCore uses.
+    platforms: [.macOS(.v10_15)],
     targets: [
         .target(
             name: "AppCore",
