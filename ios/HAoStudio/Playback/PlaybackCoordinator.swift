@@ -124,6 +124,24 @@ protocol TierReportingResolver {
     var lastResolvedTier: AudioQuality? { get }
 }
 
+/// A resolver that can drop cached play URLs (S2 leg B exposed
+/// `evictPlayUrl` on LXSourceResolver). The coordinator uses it to
+/// honour `excluding`: a URL that failed at playback must never be
+/// served from cache again on the fallback resolve. The method is
+/// keyed by (songId, platform, quality), not by URL, so the
+/// coordinator evicts every tier for the song — the failed URL
+/// may have come from a below-target tier (downgrade), and
+/// evicting only the target tier could leave the dead URL cached
+/// under the tier that actually served it.
+protocol PlayURLEvictingResolver {
+    func evictPlayUrl(songId: String, platform: MusicPlatform, quality: AudioQuality)
+}
+
+// LXSourceResolver already exposes exactly this method (S2 leg B);
+// this declaration only states the conformance, so the coordinator
+// can use it without knowing the concrete resolver class.
+extension LXSourceResolver: PlayURLEvictingResolver {}
+
 // MARK: - Player errors and driver contract (moved from
 // NativeMusicPlayer.swift at the S2 merge: the MusicLX SwiftPM test
 // target compiles this file without the iOS-only player file, so the
@@ -216,7 +234,7 @@ final class PlaybackCoordinator: ObservableObject {
     /// foundation behaviour below still applies.
     var musicDriver: MusicPlaybackDriver? {
         didSet {
-            musicDriver?.resolveURL = { [weak self] item, _, completion in
+            musicDriver?.resolveURL = { [weak self] item, excluding, completion in
                 guard let self = self else {
                     completion(nil, nil)
                     return
@@ -227,6 +245,26 @@ final class PlaybackCoordinator: ObservableObject {
                     return
                 }
                 if let resolver = self.resolver {
+                    // Honour `excluding` (S2 gap fix): drop every
+                    // failed URL from the resolver's cache BEFORE
+                    // re-resolving, so the fallback resolve never
+                    // gets the same dead URL back from cache. The
+                    // identity key is `platform|songId` (Flutter
+                    // identityKey convention, same parse as
+                    // LXSourceResolver.resolveFirstPlayable); an id
+                    // without a platform separator has nothing to
+                    // evict and resolves normally.
+                    if !excluding.isEmpty,
+                       let evicting = resolver as? PlayURLEvictingResolver {
+                        let parts = item.id.split(separator: "|", maxSplits: 1)
+                        if parts.count == 2,
+                           let platform = MusicPlatform(code: String(parts[0])) {
+                            let songId = String(parts[1])
+                            for quality in AudioQuality.allCases {
+                                evicting.evictPlayUrl(songId: songId, platform: platform, quality: quality)
+                            }
+                        }
+                    }
                     resolver.resolveFirstPlayable(for: item, targetQuality: self.targetQuality) { url in
                         let tier = (resolver as? TierReportingResolver)?.lastResolvedTier
                         DispatchQueue.main.async { completion(url, tier) }
