@@ -606,9 +606,9 @@ final class VideoDriverTests: XCTestCase {
 
 /// Controllable stand-in for a backend WITH the VOD wiring
 /// capabilities (the MPV shape): records subtitle appearance,
-/// enhancement branch and audio-only calls so the driver tests
-/// can assert forwarding without a real engine.
-final class CapableFakeBackend: VideoPlayerBackend, VodSubtitleAppearanceCapable, VodEnhancementCapable, LiveAudioOnlyCapable {
+/// enhancement branch, dialogue boost and audio-only calls so
+/// the driver tests can assert forwarding without a real engine.
+final class CapableFakeBackend: VideoPlayerBackend, VodSubtitleAppearanceCapable, VodEnhancementCapable, DialogueBoostCapable, LiveAudioOnlyCapable {
     let engine: VideoEngine
     var onEvent: ((VideoBackendEvent) -> Void)?
     var onVideoSize: ((CGSize) -> Void)?
@@ -623,6 +623,7 @@ final class CapableFakeBackend: VideoPlayerBackend, VodSubtitleAppearanceCapable
 
     var subtitleCalls: [VodSubtitleAppearance] = []
     var enhancementCalls: [VodEnhancementBranch?] = []
+    var dialogueBoostCalls: [Bool] = []
     var audioOnlyCalls: [Bool] = []
 
     init(engine: VideoEngine) {
@@ -659,6 +660,10 @@ final class CapableFakeBackend: VideoPlayerBackend, VodSubtitleAppearanceCapable
 
     func setVodEnhancement(_ branch: VodEnhancementBranch?) {
         enhancementCalls.append(branch)
+    }
+
+    func setDialogueBoost(_ enabled: Bool) {
+        dialogueBoostCalls.append(enabled)
     }
 
     func setAudioOnly(_ audioOnly: Bool) {

@@ -167,6 +167,16 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
     /// `reopenAtCurrentPosition` (AVPlayer-backed P8 streams).
     var dvP8Downgrade: Bool = true
 
+    /// Settings storage for the "与其他音频同时播放" switch
+    /// (test seam: tests point this at an isolated suite;
+    /// production is `.standard`). The switch reads through the
+    /// SettingsStore key — no second key. The audio session is
+    /// global: an open used to reset the category with no
+    /// options, wiping the music player's mix flag (Flutter's
+    /// just_audio never resets the category, so it never had
+    /// this bug). The open now re-applies the stored switch.
+    var defaults: UserDefaults = .standard
+
     /// Audio-only state (SettingsStore.audioOnlyBackground,
     /// applied on background only). Remembered across backend
     /// swaps, so an auto-advance while backgrounded stays
@@ -180,6 +190,14 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
     /// every open (ladder swap / reopen), so a toggle never waits
     /// for the next episode. Nil = no branch (mpv defaults).
     private(set) var currentEnhancement: VodEnhancementBranch?
+
+    /// Dialogue boost switch, kept for the next open. Same live
+    /// + re-apply discipline as the enhancement branch: the
+    /// view model pushes the live setting, the driver forwards
+    /// it to a capable backend (MPV only), and a toggle made
+    /// before the backend existed lands at open instead of
+    /// waiting for the next episode.
+    private(set) var currentDialogueBoost: Bool = false
 
     /// Resolved subtitle appearance, kept for the next open.
     /// Same live + re-apply discipline as the enhancement branch.
@@ -669,11 +687,16 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
         if let branch = currentEnhancement, let capable = backend as? VodEnhancementCapable {
             capable.setVodEnhancement(branch)
         }
+        if currentDialogueBoost, let capable = backend as? DialogueBoostCapable {
+            capable.setDialogueBoost(true)
+        }
         if let capable = backend as? VodSubtitleAppearanceCapable {
             capable.setSubtitleAppearance(fontSize: currentSubtitleAppearance.fontSize, color: currentSubtitleAppearance.color, position: currentSubtitleAppearance.position)
         }
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            let mix = defaults.bool(forKey: SettingsStore.mixWithOthersKey)
+            let options: AVAudioSession.CategoryOptions = mix ? [.mixWithOthers] : []
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: options)
             try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
             // Audio session failure must not fail playback: the
@@ -790,6 +813,19 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
             self.currentEnhancement = branch
             if let backend = self.backend, let capable = backend as? VodEnhancementCapable {
                 capable.setVodEnhancement(branch)
+            }
+        }
+    }
+
+    /// Set dialogue boost (MPV only, VOD only), live to the
+    /// running backend and stored for the next open. A backend
+    /// without the capability no-ops — the choice is still
+    /// remembered, so a later capable backend picks it up.
+    func setDialogueBoost(_ enabled: Bool) {
+        ensureMain {
+            self.currentDialogueBoost = enabled
+            if let backend = self.backend, let capable = backend as? DialogueBoostCapable {
+                capable.setDialogueBoost(enabled)
             }
         }
     }
