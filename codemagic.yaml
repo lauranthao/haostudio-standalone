@@ -36,6 +36,15 @@ workflows:
           # codemagic 配置。任一检查失败即退出 1，构建到此为止。
           # 不代替编译；编译验证就是下面的 xcodebuild。
           python3 ios/preflight_check.py
+      - name: Migration unit tests (S1)
+        script: |
+          # SwiftPM package in ios/: compiles the same Storage sources
+          # the app target compiles and runs the migration suite
+          # (snapshot, corrupt snapshot, bad types, rollback,
+          # idempotency, backup import, keychain). No Xcode project
+          # changes needed. Fails the build when a test fails.
+          cd ios
+          swift test
       - name: Download libmpv frameworks (MPV player backend)
         script: |
           # libmpv is NOT in the repo (18 xcframeworks, ~57MB): download the

@@ -17,7 +17,7 @@ no removed metadata service, no lyrics extension, no Podfile yet). Checks, in or
      app is SwiftUI @main and must not declare a scene delegate class);
   5. Swift brace/paren balance + forbidden leftovers (old web shell,
      old metadata service, old frontend entry, hardcoded purple) in the new sources;
-  6. the 11 foundation Swift files are all in the Sources build phase;
+  6. the 13 foundation Swift files are all in the Sources build phase;
   7. codemagic.yaml parses, has the libmpv download step, and has NO
      web-sync / metadata-key-inject step;
   8. build settings carried over from the old project (bundle id,
@@ -182,7 +182,7 @@ check("4l. every Swift file ref resolves to a file on disk", not _missing,
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
-check("5. Swift file count (foundation = 11)", len(swift_files) == 11,
+check("5. Swift file count (foundation = 13)", len(swift_files) == 13,
       f"{len(swift_files)}: {[f.name for f in swift_files]}")
 for f in swift_files:
     s = f.read_text()
