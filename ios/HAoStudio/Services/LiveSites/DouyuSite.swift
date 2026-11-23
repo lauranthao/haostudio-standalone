@@ -200,7 +200,19 @@ final class DouyuLiveSite: LiveSiteResolver {
         requestPlayData(roomId: trimmed) { result in
             switch result {
                 case .success(let playData):
-                    let cdns = DouyuLiveSite.parseCdnCodes(playData)
+                    var cdns = DouyuLiveSite.parseCdnCodes(playData)
+                    // Pure Live 3.x comparator, verbatim: scdn* sorts LAST.
+                    cdns.sort { a, b in
+                        let aScdn = a.hasPrefix("scdn")
+                        let bScdn = b.hasPrefix("scdn")
+                        if aScdn && !bScdn {
+                            return false
+                        }
+                        if !aScdn && bScdn {
+                            return true
+                        }
+                        return false
+                    }
                     let qualities = DouyuLiveSite.parsePlayQualities(playData, cdns: cdns)
                     if qualities.isEmpty {
                         completion(.failure(LiveError.offline))
