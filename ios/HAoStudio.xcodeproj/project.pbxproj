@@ -127,6 +127,9 @@
 		0000000000000000000000FB /* EmbyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FA /* EmbyModels.swift */; };
 		0000000000000000000000FD /* EmbyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FC /* EmbyTabView.swift */; };
 		0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FE /* IJKPlayerBackend.swift */; };
+		00000000000000000000012F /* LiveDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012E /* LiveDriver.swift */; };
+		000000000000000000000131 /* LivePlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000130 /* LivePlayerViewModel.swift */; };
+		000000000000000000000133 /* LiveRoomSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000132 /* LiveRoomSession.swift */; };
 		000000000000000000000101 /* MpvPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000100 /* MpvPlayerBackend.swift */; };
 		000000000000000000000103 /* MusicAlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000102 /* MusicAlbumDetailView.swift */; };
 		000000000000000000000105 /* MusicArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* MusicArtistDetailView.swift */; };
@@ -257,6 +260,9 @@
 		0000000000000000000000FA /* EmbyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyModels.swift; sourceTree = "<group>"; };
 		0000000000000000000000FC /* EmbyTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyTabView.swift; sourceTree = "<group>"; };
 		0000000000000000000000FE /* IJKPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IJKPlayerBackend.swift; sourceTree = "<group>"; };
+		00000000000000000000012E /* LiveDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriver.swift; sourceTree = "<group>"; };
+		000000000000000000000130 /* LivePlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePlayerViewModel.swift; sourceTree = "<group>"; };
+		000000000000000000000132 /* LiveRoomSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRoomSession.swift; sourceTree = "<group>"; };
 		000000000000000000000100 /* MpvPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpvPlayerBackend.swift; sourceTree = "<group>"; };
 		000000000000000000000102 /* MusicAlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumDetailView.swift; sourceTree = "<group>"; };
 		000000000000000000000104 /* MusicArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicArtistDetailView.swift; sourceTree = "<group>"; };
@@ -343,6 +349,9 @@
 				0000000000000000000000EA /* AVPlayerBackend.swift */,
 				0000000000000000000000EE /* Diagnostics.swift */,
 				0000000000000000000000FE /* IJKPlayerBackend.swift */,
+				00000000000000000000012E /* LiveDriver.swift */,
+				000000000000000000000130 /* LivePlayerViewModel.swift */,
+				000000000000000000000132 /* LiveRoomSession.swift */,
 				000000000000000000000100 /* MpvPlayerBackend.swift */,
 				000000000000000000000076 /* NativeMusicPlayer.swift */,
 				000000000000000000000012 /* PlaybackCoordinator.swift */,
@@ -570,6 +579,9 @@
 				000000000000000000000001 /* HAoStudioApp.swift in Sources */,
 				000000000000000000000003 /* HaoTheme.swift in Sources */,
 				0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */,
+				00000000000000000000012F /* LiveDriver.swift in Sources */,
+				000000000000000000000131 /* LivePlayerViewModel.swift in Sources */,
+				000000000000000000000133 /* LiveRoomSession.swift in Sources */,
 				00000000000000000000006C /* KeychainStore.swift in Sources */,
 				000000000000000000000077 /* LXEngine.swift in Sources */,
 				000000000000000000000079 /* LXModels.swift in Sources */,
