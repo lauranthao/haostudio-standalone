@@ -11,7 +11,6 @@
 
 import '../../../core/theme/hao_radius.dart';
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import '../../../widgets/hao_pressable.dart';
@@ -718,16 +717,10 @@ class _SkeletonGrid extends StatelessWidget {
             borderRadius: BorderRadius.circular(HaoRadius.large),
             border: Border.all(color: theme.hairline),
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(HaoRadius.large),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(
-                sigmaX: theme.glassBlurSigma,
-                sigmaY: theme.glassBlurSigma,
-              ),
-              child: const SizedBox.expand(),
-            ),
-          ),
+          // No BackdropFilter here (b31 lag fix): the cell sits on
+          // the plain scaffold background, so a sigma-24 blur samples
+          // a solid colour — pure raster cost for zero visual effect.
+          child: const SizedBox.expand(),
         );
       },
     );

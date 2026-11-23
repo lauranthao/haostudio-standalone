@@ -283,6 +283,12 @@ class SongRow extends StatelessWidget {
       pressedScale: 0.97,
       child: GlassCard(
         radius: HaoRadius.large,
+        // Scrollable-list quality (b31 lag fix): the frosted default
+        // runs a live sigma-24 BackdropFilter per row — ~12 of them
+        // re-raster every scroll frame on a 999-song list. The
+        // library's standard shader is built for scrollable lists
+        // (5-10x faster) and keeps the same look.
+        quality: GlassCardQuality.standard,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: row,
