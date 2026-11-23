@@ -50,6 +50,13 @@ let package = Package(
                 "Playback/PlaybackCoordinator.swift",
                 "Storage",
             ],
+            // The 13 LX scripts live under Services/LXEngine, which is
+            // a sources dir, so SwiftPM treats the .js files as
+            // unexpected compiler inputs unless they are declared
+            // resources (build #19 failed on exactly those 13 files).
+            resources: [
+                .process("Services/LXEngine/Scripts"),
+            ],
             linkerSettings: [
                 .linkedFramework("Security"),
             ]
