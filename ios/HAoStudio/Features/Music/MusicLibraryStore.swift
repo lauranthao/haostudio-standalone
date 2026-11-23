@@ -576,4 +576,13 @@ enum MusicLibraryStore {
         map[identityKey] = seconds
         writeObject(named: resumeCollection, map)
     }
+
+    /// Drop the resume point for a track (natural completion):
+    /// the next play starts from 0. No-op when there is no
+    /// checkpoint, so it never rewrites the file needlessly.
+    static func clearResume(_ identityKey: String) {
+        var map = resumeMap()
+        guard map.removeValue(forKey: identityKey) != nil else { return }
+        writeObject(named: resumeCollection, map)
+    }
 }

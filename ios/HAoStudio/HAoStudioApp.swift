@@ -137,6 +137,9 @@ struct HAoStudioApp: App {
                     // audio-only switch keeps playing (video off),
                     // otherwise VOD pauses on background.
                     videoPlayer.handleBackground()
+                    // Autoresume: capture the music position now —
+                    // a suspended app can be killed with no callback.
+                    musicPlayer.saveResumeNow()
                 case .active:
                     livePlayer.handleForeground()
                     videoPlayer.handleForeground()
