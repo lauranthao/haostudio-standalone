@@ -98,7 +98,7 @@ final class DownloadEngineTests: XCTestCase {
         }
         XCTAssertEqual(first.state, .queued)
         let second = engine.enqueue(request: request(key: key, source: source, fileName: "dup.bin"))
-        XCTAssertEqual(second.key, key)
+        XCTAssertEqual(second.request.key, key)
         XCTAssertEqual(engine.allTasks().filter { $0.request.key == key }.count, 1)
         wait(for: [done], timeout: 20)
     }

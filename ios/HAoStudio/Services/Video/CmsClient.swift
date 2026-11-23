@@ -1379,7 +1379,7 @@ final class CmsClient: VideoPlayURLResolver {
                     let total = pages.reduce(0) { $0 + $1.total }
                     let pagecount = pages.reduce(1) { max($0, $1.pagecount) }
                     bestPagecount = max(bestPagecount, pagecount)
-                    var rows = CmsClient.interleaveTypeRows(pages.map { $0.rows })
+                    let rows = CmsClient.interleaveTypeRows(pages.map { $0.rows })
                     if rows.isEmpty {
                         step()
                         return
