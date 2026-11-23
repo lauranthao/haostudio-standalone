@@ -90,6 +90,13 @@ let package = Package(
                 // Tests/SettingsUITests/ until the S7 Xcode test
                 // target, same as MusicFeaturesTests.
                 "Features/My/SettingsLogic.swift",
+                // S6: backup engine + update checker (Foundation-only).
+                // The SwiftUI backup/update flow (BackupUpdateViews)
+                // lives in the app target only; its UI tests stay
+                // unwired in Tests/SettingsUITests/ until S7.
+                "Features/My/BackupUpdateLogic.swift",
+                "Services/Backup",
+                "Services/Update",
                 "Storage",
             ],
             linkerSettings: [
@@ -148,6 +155,20 @@ let package = Package(
             name: "SettingsTests",
             dependencies: ["AppCore"],
             path: "Tests/SettingsTests"
+        ),
+        // S6: backup engine round-trips (zip + envelope + rollback).
+        .testTarget(
+            name: "BackupTests",
+            dependencies: ["AppCore"],
+            path: "Tests/BackupTests"
+        ),
+        // S6: update checker (fixtures + mocks, no network). The
+        // cross-generation migration tests live in the existing
+        // MigrationCoreTests target, not here.
+        .testTarget(
+            name: "UpdateTests",
+            dependencies: ["AppCore"],
+            path: "Tests/UpdateTests"
         ),
     ]
 )

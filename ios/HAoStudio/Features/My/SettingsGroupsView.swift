@@ -25,6 +25,7 @@
 
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// The 7 settings groups as List Sections. Embed in the My tab
 /// List; do not wrap in another List / NavigationStack.
@@ -36,6 +37,10 @@ struct SettingsGroupsView: View {
     /// Emby status for the 源管理 → Emby 连接 row subtitle.
     /// The view model loads the stored config on init (A leg).
     @StateObject private var embyViewModel = EmbyConfigViewModel()
+
+    /// Backup + update flow (S6-B, shared with MyView's migration
+    /// notice so both drive the same picker / sheet / alert).
+    @ObservedObject private var backupFlow = BackupUpdateFlow.shared
 
     /// Danmaku settings edited by the reused S4 sheet; persisted
     /// when the sheet page disappears.
@@ -62,6 +67,55 @@ struct SettingsGroupsView: View {
             dataSection
             aboutSection
         }
+        .fileImporter(
+            isPresented: $backupFlow.showingImporter,
+            allowedContentTypes: [UTType.zip],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    backupFlow.importPicked(url: url)
+                }
+            case .failure(let error):
+                backupFlow.alert = BackupUpdateAlert(title: "选择文件失败", message: error.localizedDescription)
+            }
+        }
+        .sheet(item: $backupFlow.updatePrompt) { result in
+            UpdatePromptSheet(
+                result: result,
+                onSkip: { backupFlow.skipPromptedVersion() },
+                onLater: { backupFlow.dismissPrompt() }
+            )
+        }
+        .alert(
+            backupFlow.alert?.title ?? "提示",
+            isPresented: alertPresented,
+            presenting: backupFlow.alert,
+            actions: { _ in
+                Button("知道了", role: .cancel) {
+                }
+            },
+            message: { item in
+                Text(item.message)
+            }
+        )
+        .onAppear {
+            backupFlow.refreshUpdateState()
+        }
+    }
+
+    /// Presenting binding for the flow alert: shown while an
+    /// alert is set, cleared when the user dismisses it.
+    private var alertPresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { backupFlow.alert != nil },
+            set: { newValue in
+                if !newValue {
+                    backupFlow.alert = nil
+                }
+            }
+        )
     }
 
     // MARK: - Section scaffolding
@@ -633,7 +687,67 @@ struct SettingsGroupsView: View {
                 .onAppear {
                     refreshCacheSize()
                 }
+                backupExportRow
+                backupImportRow
             }
+        }
+    }
+
+    // MARK: - 数据：备份 (S6-B)
+
+    private var backupExportRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("导出备份")
+                    .font(.system(size: 15))
+                    .foregroundStyle(theme.textPrimary)
+                Spacer()
+                if backupFlow.isExporting {
+                    ProgressView()
+                } else {
+                    Button("导出") {
+                        backupFlow.beginExport()
+                    }
+                    .font(.system(size: 14))
+                }
+            }
+            if let exportedURL = backupFlow.exportedURL {
+                ShareLink(item: exportedURL) {
+                    HStack {
+                        Text("分享备份文件")
+                            .font(.system(size: 15))
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        Text(exportedURL.lastPathComponent)
+                            .font(.system(size: 13))
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                footnote("已导出，可分享保存到文件 App 或发送给自己。")
+            } else {
+                footnote("导出为单个 .zip 文件；备份不含 Emby 登录凭证。")
+            }
+        }
+    }
+
+    private var backupImportRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("导入备份")
+                    .font(.system(size: 15))
+                    .foregroundStyle(theme.textPrimary)
+                Spacer()
+                if backupFlow.isImporting {
+                    ProgressView()
+                } else {
+                    Button("选择文件") {
+                        backupFlow.beginImport()
+                    }
+                    .font(.system(size: 14))
+                }
+            }
+            footnote("从 .zip 备份文件导入；导入失败会自动回滚，现有数据不受影响。")
         }
     }
 
@@ -659,7 +773,56 @@ struct SettingsGroupsView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(theme.textSecondary)
                 }
+                checkUpdateRow
+                skippedVersionRow
                 Toggle("启动时自动检查更新", isOn: $settings.autoUpdateCheck)
+            }
+        }
+    }
+
+    // MARK: - 关于：检查更新 (S6-B)
+
+    /// Check row: the 版本 row above already shows the current
+    /// version, so this row shows the last check time + the
+    /// check button. The auto-check switch already exists (S5)
+    /// and is NOT duplicated here.
+    private var checkUpdateRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("检查更新")
+                    .font(.system(size: 15))
+                    .foregroundStyle(theme.textPrimary)
+                Text(UpdateCheckLogic.lastCheckLabel(date: backupFlow.lastCheckDate, now: Date()))
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textMuted)
+            }
+            Spacer()
+            if backupFlow.isCheckingUpdate {
+                ProgressView()
+            } else {
+                Button("检查") {
+                    backupFlow.checkForUpdate()
+                }
+                .font(.system(size: 14))
+            }
+        }
+    }
+
+    /// "已跳过 X 版本，点按取消跳过" — only when the checker
+    /// reports a skipped version. The skip itself lives with
+    /// the checker (C leg); this row only reads and clears it.
+    @ViewBuilder
+    private var skippedVersionRow: some View {
+        if let skipped = backupFlow.skippedVersionLabel {
+            HStack {
+                Text("已跳过 \(skipped)，点按取消跳过")
+                    .font(.system(size: 15))
+                    .foregroundStyle(theme.textPrimary)
+                Spacer()
+                Button("取消跳过") {
+                    backupFlow.clearSkippedVersion()
+                }
+                .font(.system(size: 14))
             }
         }
     }

@@ -384,6 +384,12 @@ final class SettingsStore: ObservableObject {
     /// the override through here instead.
     private let documentsURL: URL?
 
+    /// Observer for post-import re-read (S6): the backup engine posts
+    /// `.haoBackupImported` after a successful import; this store
+    /// re-reads every setting so the UI updates without a restart
+    /// (plan §7.2). Held so the observation lives as long as the store.
+    private var backupImportedObserver: NSObjectProtocol?
+
     init(defaults: UserDefaults = .standard, themeStore: ThemeStore, documentsURL: URL? = nil) {
         self.defaults = defaults
         self.themeStore = themeStore
@@ -435,6 +441,68 @@ final class SettingsStore: ObservableObject {
         self.bgColorHex = defaults.string(forKey: Self.bgColorHexKey) ?? ""
 
         self.nickname = defaults.string(forKey: Self.nicknameKey) ?? ""
+
+        // S6: re-read after a backup import (see reloadFromDefaults).
+        backupImportedObserver = NotificationCenter.default.addObserver(
+            forName: .haoBackupImported, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromDefaults()
+        }
+    }
+
+    /// Re-read every setting from UserDefaults (S6). Called after a
+    /// backup import posts `.haoBackupImported` so the UI updates
+    /// without a restart (plan §7.2: 导入后全部设置项重读). This
+    /// mirrors the reads in init — keep the two in sync when a
+    /// setting is added. Each didSet writes the same value back,
+    /// so re-reading is idempotent.
+    func reloadFromDefaults() {
+        let savedQuality = defaults.string(forKey: Self.musicQualityKey)
+        musicQuality = AudioQuality(rawValue: savedQuality ?? "") ?? .hiRes
+        hapticsEnabled = MusicLibraryStore.hapticsEnabled(defaults: defaults)
+        mixWithOthers = SettingsStore.boolValue(defaults, key: Self.mixWithOthersKey, default: false)
+        autoResume = SettingsStore.boolValue(defaults, key: Self.autoResumeKey, default: false)
+        autoUpdateCheck = SettingsStore.boolValue(defaults, key: Self.autoUpdateCheckKey, default: true)
+        normalizationEnabled = SettingsStore.boolValue(defaults, key: Self.normalizationEnabledKey, default: false)
+        normalizationStrength = SettingsStore.intValue(defaults, key: Self.normalizationStrengthKey, default: 1, range: 0...2)
+
+        // Engine preference, with the one-time `videoPlayerKey` bridge.
+        if defaults.object(forKey: Self.enginePreferenceKey) == nil,
+           let migrated = defaults.string(forKey: Self.legacyEngineKey) {
+            let engine = VideoEngine.from(raw: migrated)
+            enginePreference = engine
+            defaults.set(engine.rawValue, forKey: Self.enginePreferenceKey)
+        } else {
+            enginePreference = VideoEngine.from(raw: defaults.string(forKey: Self.enginePreferenceKey))
+        }
+        autoNextEpisode = SettingsStore.boolValue(defaults, key: Self.autoNextEpisodeKey, default: true)
+        doubleTapSeconds = SettingsStore.intValue(defaults, key: Self.doubleTapSecondsKey, default: 10, range: 5...30)
+        dialogueBoost = SettingsStore.boolValue(defaults, key: Self.dialogueBoostKey, default: false)
+        hideSynopsis = SettingsStore.boolValue(defaults, key: Self.hideSynopsisKey, default: false)
+        blurUnwatchedPosters = SettingsStore.boolValue(defaults, key: Self.blurUnwatchedPostersKey, default: false)
+        audioOnlyBackground = SettingsStore.boolValue(defaults, key: Self.audioOnlyBackgroundKey, default: false)
+        let savedFit = defaults.string(forKey: Self.videoFitKey)
+        videoFit = VideoFit(rawValue: savedFit ?? "") ?? .aspectFit
+        superResolution = SettingsStore.boolValue(defaults, key: Self.superResolutionKey, default: false)
+        interpolation = SettingsStore.boolValue(defaults, key: Self.interpolationKey, default: false)
+        sdrToHDR = SettingsStore.boolValue(defaults, key: Self.sdrToHDRKey, default: false)
+        dvP8Downgrade = SettingsStore.boolValue(defaults, key: Self.dvP8DowngradeKey, default: true)
+        let savedSkip = defaults.string(forKey: Self.skipIntroModeKey) ?? "off"
+        skipIntroMode = Self.skipIntroModes.contains(savedSkip) ? savedSkip : "off"
+        subtitleFontSize = defaults.string(forKey: Self.subtitleFontSizeKey) ?? "medium"
+        subtitleColor = defaults.string(forKey: Self.subtitleColorKey) ?? "white"
+        subtitlePosition = defaults.string(forKey: Self.subtitlePositionKey) ?? "bottom"
+        lowMemoryMode = defaults.string(forKey: Self.lowMemoryModeKey) ?? "auto"
+
+        cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: false)
+
+        wallpaperEnabled = SettingsStore.boolValue(defaults, key: Self.wallpaperEnabledKey, default: false)
+        wallpaperCurrent = defaults.string(forKey: Self.wallpaperCurrentKey) ?? ""
+        wallpaperPaths = WallpaperStore.list(documentsURL: documentsURL)
+        bgColorEnabled = SettingsStore.boolValue(defaults, key: Self.bgColorEnabledKey, default: false)
+        bgColorHex = defaults.string(forKey: Self.bgColorHexKey) ?? ""
+
+        nickname = defaults.string(forKey: Self.nicknameKey) ?? ""
     }
 
     // MARK: - Helpers
