@@ -515,6 +515,12 @@ struct CmsSearchRow {
 /// CMS client. Holds the source list (defaults unless overridden)
 /// and a 10-min in-memory type-map cache.
 final class CmsClient: VideoPlayURLResolver {
+    /// App-wide instance (default sources). HAoStudioApp installs
+    /// it as the VOD driver's play-URL resolver; the gateway uses
+    /// it for search / detail / home / by-type. Tests build their
+    /// own instances with stub fetchers instead.
+    static let shared = CmsClient()
+
     private let sources: [VideoSource]
     private let fetcher: VideoJSONFetcher
 
@@ -1005,6 +1011,57 @@ final class CmsClient: VideoPlayURLResolver {
                 return row
             }
             completion((rows: rows, total: VideoJSON.asInt(json["total"]), pagecount: max(1, VideoJSON.asInt(json["pagecount"]))))
+        }
+    }
+
+    /// One category page (`page` 0-based; CMS pages are 1-based,
+    /// so the fetch uses `page + 1`). Same candidate ladder as
+    /// homeRowOne: leaf → one type page on the primary source,
+    /// falling back to same-name candidates; parent → child pages
+    /// interleaved. Nil when no candidate returns a matching page.
+    func byType(typeName: String, page: Int, completion: @escaping (VideoByTypeResult?) -> Void) {
+        typeMap { map in
+            guard let entry = map[typeName] else {
+                completion(nil)
+                return
+            }
+            let attempts = [entry] + entry.candidates
+            let limited = Array(attempts.prefix(4))
+            var index = 0
+            func step() {
+                if index >= limited.count {
+                    completion(nil)
+                    return
+                }
+                let target = limited[index]
+                index += 1
+                guard let source = self.sourceById(target.source) else {
+                    step()
+                    return
+                }
+                if target.isParent {
+                    self.fetchChildPages(source: source, childTypeIds: target.childTypeIds, page: page + 1) { pages in
+                        let valid = pages.compactMap { $0 }
+                        if valid.isEmpty {
+                            step()
+                            return
+                        }
+                        let items = CmsClient.interleaveTypePages(valid.map { $0.rows.map { $0.item } })
+                        let total = valid.reduce(0) { $0 + $1.total }
+                        let pagecount = valid.map { $0.pagecount }.max() ?? 0
+                        completion(VideoByTypeResult(name: typeName, page: page, pagecount: pagecount, total: total, items: items))
+                    }
+                    return
+                }
+                self.fetchTypePage(source: source, typeId: target.typeId, page: page + 1) { result in
+                    guard let result = result, CmsClient.leafPageMatches(name: typeName, items: result.rows.map { $0.item }) else {
+                        step()
+                        return
+                    }
+                    completion(VideoByTypeResult(name: typeName, page: page, pagecount: result.pagecount, total: result.total, items: result.rows.map { $0.item }))
+                }
+            }
+            step()
         }
     }
 

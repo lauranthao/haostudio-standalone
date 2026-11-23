@@ -671,6 +671,43 @@ final class EmbyClient {
         items(includeItemTypes: "Movie,Video,Series", startIndex: startIndex, limit: limit, genres: genre, completion: completion)
     }
 
+    /// Distinct genre names across movies + series, from real
+    /// library content (first 200 items, sorted). Emby exposes no
+    /// /Genres list endpoint, so the tab's genre chips are built
+    /// from what the server actually holds — never a hardcoded
+    /// list. A genre that only appears past the first 200 items
+    /// will not chip until the library grows past it; the library
+    /// itself stays fully browsable without a chip.
+    func genreNames(completion: @escaping ([String]) -> Void) {
+        let query: [String: String] = [
+            "IncludeItemTypes": "Movie,Series",
+            "Recursive": "true",
+            "StartIndex": "0",
+            "Limit": "200",
+            "SortBy": "SortName",
+            "Fields": "Genres",
+        ]
+        guard let url = apiQuery("/Users/\(config.userId)/Items", query: query) else {
+            completion([])
+            return
+        }
+        getJSON(url: url) { result in
+            switch result {
+            case .failure:
+                completion([])
+            case .success(let json):
+                var seen: [String] = []
+                var set = Set<String>()
+                for raw in VideoJSON.asList(json["Items"]) {
+                    for genre in VideoJSON.asStringList(raw["Genres"]) where !genre.isEmpty {
+                        if set.insert(genre).inserted { seen.append(genre) }
+                    }
+                }
+                completion(seen.sorted())
+            }
+        }
+    }
+
     private func items(includeItemTypes: String, libraryId: String? = nil, startIndex: Int = 0, limit: Int = 50, genres: String? = nil, filters: String? = nil, completion: @escaping (Result<EmbyItemsPage, EmbyError>) -> Void) {
         var query: [String: String] = [
             "IncludeItemTypes": includeItemTypes,
