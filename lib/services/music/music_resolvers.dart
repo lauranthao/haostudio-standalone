@@ -48,6 +48,7 @@ import 'lx_script_engine.dart';
 import 'lx_script_store.dart';
 import 'music_models.dart';
 import 'music_quality.dart';
+import '../../core/storage/safe_json.dart';
 
 const String _musicUa =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
@@ -178,7 +179,7 @@ class _PlayUrlCache {
       final j = jsonDecode(raw);
       if (j is! Map<String, dynamic>) return null;
       final at = DateTime.fromMillisecondsSinceEpoch(
-        (j['at'] as num?)?.toInt() ?? 0,
+        jIntN(j['at']) ?? 0,
       );
       if (DateTime.now().difference(at) > _ttl) return null;
       final url = j['u']?.toString() ?? '';
@@ -188,7 +189,7 @@ class _PlayUrlCache {
       if (!isPlayableUrl(url)) return null;
       final result = PlayUrlResult(
         url: url,
-        candidates: (j['c'] as List<dynamic>?)
+        candidates: jListN(j['c'])
                 ?.map((e) => e.toString())
                 .toList() ??
             [url],
@@ -565,7 +566,7 @@ class MusicResolvers {
         timeout: const Duration(seconds: 6),
         cancelToken: cancelToken,
       );
-      final tk = (j?['data'] as Map<String, dynamic>?)?['token']?.toString() ?? '';
+      final tk = jMapN(j?['data'])?['token']?.toString() ?? '';
       if (tk.isNotEmpty) {
         _xhToken = tk;
         _xhTokenAt = DateTime.now();
@@ -614,7 +615,7 @@ class MusicResolvers {
       if (j == null) return '';
       if (j['code'] == 1) return '__KEY_EXPIRED__';
       final url = j['url']?.toString() ??
-          (j['data'] as Map<String, dynamic>?)?['url']?.toString() ??
+          jMapN(j['data'])?['url']?.toString() ??
           '';
       return toHttps(url);
     }
@@ -838,11 +839,11 @@ class MusicResolvers {
             final raw = j['data'];
             Map<String, dynamic>? first;
             if (raw is List && raw.isNotEmpty) {
-              first = raw.first as Map<String, dynamic>?;
+              first = jMapN(raw.first);
             } else if (raw is Map<String, dynamic>) {
-              final items = raw['items'] as List<dynamic>?;
+              final items = jListN(raw['items']);
               if (items != null && items.isNotEmpty) {
-                first = items.first as Map<String, dynamic>?;
+                first = jMapN(items.first);
               }
             }
             return _u(toHttps(first?['url']?.toString() ?? ''));
@@ -861,7 +862,7 @@ class MusicResolvers {
               cancelToken: cancelToken,
               headers: {'User-Agent': _musicUa},
             );
-            final data = j?['data'] as Map<String, dynamic>?;
+            final data = jMapN(j?['data']);
             final url = toHttps(data?['url']?.toString() ?? '');
             if (url.isEmpty) return _u('');
             // P1-L5: the request is title-only, so the API's first

@@ -41,6 +41,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/storage/hive_store.dart';
 import 'autoeq_presets.dart';
+import '../../core/storage/safe_json.dart';
 
 /// One user-saved custom preset (Beans `BeansEqualizerCustomPreset`).
 class EqualizerCustomPreset {
@@ -61,11 +62,11 @@ class EqualizerCustomPreset {
       };
 
   static EqualizerCustomPreset? fromJson(Map<String, dynamic> json) {
-    final name = (json['name'] as String?)?.trim();
+    final name = jStrN(json['name'])?.trim();
     if (name == null || name.isEmpty) return null;
     final gains = EqualizerStore.normalizeGains(json['gains']);
     final preamp = EqualizerStore.normalizeGain(
-      (json['preamp'] as num?)?.toDouble() ?? 0,
+      jDoubleN(json['preamp']) ?? 0,
     );
     return EqualizerCustomPreset(name: name, gains: gains, preamp: preamp);
   }
@@ -188,7 +189,7 @@ class EqualizerStore extends ChangeNotifier {
   static List<double> normalizeGains(dynamic values) {
     final list = values is List ? values : const [];
     return List<double>.generate(10, (i) {
-      final v = i < list.length ? (list[i] as num?)?.toDouble() ?? 0.0 : 0.0;
+      final v = i < list.length ? jDoubleN(list[i]) ?? 0.0 : 0.0;
       return normalizeGain(v);
     });
   }

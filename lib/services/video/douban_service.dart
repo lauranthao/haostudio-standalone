@@ -31,6 +31,7 @@ import '../../features/video/cms_sources.dart';
 import '../../features/video/video_models.dart';
 import '../../features/video/video_title_helpers.dart';
 import 'douban_parsers.dart';
+import '../../core/storage/safe_json.dart';
 
 /// One raw Douban HTTP result.
 typedef DoubanFetcher = Future<({int status, String body})> Function(
@@ -134,8 +135,8 @@ class HiveDoubanCache implements DoubanCache {
     if (map.length > maxEntries) {
       final keys = map.keys.toList()
         ..sort((a, b) {
-          final atA = (map[a] as Map?)?['at'] as num? ?? 0;
-          final atB = (map[b] as Map?)?['at'] as num? ?? 0;
+          final atA = jIntN(jMapN(map[a])?['at']) ?? 0;
+          final atB = jIntN(jMapN(map[b])?['at']) ?? 0;
           return atA.compareTo(atB);
         });
       for (var i = 0; i < map.length - maxEntries; i++) {
@@ -180,8 +181,8 @@ class HiveDoubanCache implements DoubanCache {
       // before stamped ones.
       final keys = map.keys.toList()
         ..sort((a, b) {
-          final atA = (map[a] as Map?)?['at'] as num? ?? 0;
-          final atB = (map[b] as Map?)?['at'] as num? ?? 0;
+          final atA = jIntN(jMapN(map[a])?['at']) ?? 0;
+          final atB = jIntN(jMapN(map[b])?['at']) ?? 0;
           return atA.compareTo(atB);
         });
       for (var i = 0; i < map.length - maxEntries; i++) {
@@ -461,7 +462,12 @@ class DoubanService {
     if (res.status < 200 || res.status >= 300) {
       throw StateError('http ${res.status}');
     }
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final decoded = jsonDecode(res.body);
+    // A non-object body (list / scalar / garbage) degrades to an
+    // empty result instead of throwing TypeError into the caller.
+    return decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
   }
 
   Future<String> _text(

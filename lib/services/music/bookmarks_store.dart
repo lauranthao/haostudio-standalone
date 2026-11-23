@@ -17,6 +17,7 @@
 import 'dart:convert';
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 
 /// One saved position in one song.
 class MusicBookmark {
@@ -42,8 +43,8 @@ class MusicBookmark {
   };
 
   static MusicBookmark? fromJson(Map<String, dynamic> json) {
-    final position = (json['position'] as num?)?.toInt();
-    final createdAt = (json['createdAt'] as num?)?.toInt();
+    final position = jIntN(json['position']);
+    final createdAt = jIntN(json['createdAt']);
     if (position == null || position < 0 || createdAt == null) {
       return null;
     }
@@ -68,8 +69,8 @@ class BookmarksStore {
   static const int maxSongs = 500;
 
   static Map<String, dynamic> _readMap() {
-    final raw = HiveStore.box.get(HiveKeys.musicBookmarks) as String?;
-    if (raw == null || raw.isEmpty) return {};
+    final raw = HiveStore.box.get(HiveKeys.musicBookmarks);
+    if (raw is! String || raw.isEmpty) return {};
     try {
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;

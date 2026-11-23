@@ -11,6 +11,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../core/player/kernel/video_fit.dart';
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 import 'cms_sources.dart';
 import 'video_models.dart';
 import 'video_title_helpers.dart';
@@ -25,10 +26,14 @@ class VideoHistoryStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        final list = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(WatchHistoryEntry.fromJson)
-            .toList();
+        // Per-entry skip (b31 crash hunt): one corrupt row must not
+        // discard the whole history — drop the bad row, keep the rest.
+        final list = <WatchHistoryEntry>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            list.add(WatchHistoryEntry.fromJson(e));
+          } catch (_) {}
+        }
         return _dedupeByFilm(list);
       }
     } catch (_) {}
@@ -302,7 +307,8 @@ class VideoHistoryStore {
         final raw = box.get(k);
         if (raw is String) {
           try {
-            at = (jsonDecode(raw) as Map)['at'] as int? ?? 0;
+            final d = jsonDecode(raw);
+            at = d is Map ? jIntN(d['at']) ?? 0 : 0;
           } catch (_) {}
         }
         withAt.add((k, at));
@@ -340,10 +346,13 @@ class VideoHistoryStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        return decoded
-            .whereType<Map<String, dynamic>>()
-            .map(VideoItem.fromJson)
-            .toList();
+        final out = <VideoItem>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            out.add(VideoItem.fromJson(e));
+          } catch (_) {}
+        }
+        return out;
       }
     } catch (_) {}
     return const [];
@@ -463,12 +472,13 @@ class VideoSourcesStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List && decoded.isNotEmpty) {
-        return _mergeDefaults(
-          decoded
-              .whereType<Map<String, dynamic>>()
-              .map(VideoSource.fromJson)
-              .toList(),
-        );
+        final parsed = <VideoSource>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            parsed.add(VideoSource.fromJson(e));
+          } catch (_) {}
+        }
+        return _mergeDefaults(parsed);
       }
     } catch (_) {}
     return List.of(kDefaultVideoSources);

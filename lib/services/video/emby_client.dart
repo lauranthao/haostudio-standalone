@@ -49,6 +49,7 @@ import '../../core/network/http_client.dart';
 import '../../core/player/vod_controls.dart';
 import '../../features/video/video_models.dart';
 import 'emby_models.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Human failure text, one per tier. Three tiers, never the CMS
 /// wording, never the raw URL or key.
@@ -215,15 +216,15 @@ class EmbyUserData {
   /// non-map value is "no user data" (all defaults).
   factory EmbyUserData.fromJson(dynamic json) {
     if (json is! Map<String, dynamic>) return const EmbyUserData();
-    final ticks = (json['PlaybackPositionTicks'] as num?)?.toDouble() ?? 0;
-    final pct = (json['PlayedPercentage'] as num?)?.toDouble();
+    final ticks = jDoubleN(json['PlaybackPositionTicks']) ?? 0;
+    final pct = jDoubleN(json['PlayedPercentage']);
     return EmbyUserData(
       playbackPositionSeconds:
           ticks > 0 ? ticks / EmbyClient.ticksPerSecond : 0,
       playedPercentage: pct != null ? (pct / 100).clamp(0.0, 1.0) : 0,
-      played: json['Played'] as bool? ?? false,
-      isFavorite: json['IsFavorite'] as bool? ?? false,
-      likes: json['Likes'] as bool?,
+      played: jBool(json['Played'], false),
+      isFavorite: jBool(json['IsFavorite'], false),
+      likes: jBoolN(json['Likes']),
     );
   }
 
@@ -532,8 +533,8 @@ class EmbyClient {
             _apiUrl('/System/Info'),
             cancelToken: cancelToken,
           );
-          final serverName = (info['ServerName'] as String?) ?? '';
-          final version = (info['Version'] as String?) ?? '';
+          final serverName = jStr(info['ServerName']);
+          final version = jStr(info['Version']);
           if (serverName.isEmpty && version.isEmpty) {
             throw EmbyException.other('Emby 服务器没有返回服务器信息');
           }
@@ -647,13 +648,13 @@ class EmbyClient {
           }
           final doc = res.json;
           if (doc is Map<String, dynamic>) {
-            final token = (doc['AccessToken'] as String?) ?? '';
+            final token = jStr(doc['AccessToken']);
             final user = doc['User'];
             final userId = user is Map<String, dynamic>
-                ? (user['Id'] as String?) ?? ''
+                ? jStr(user['Id'])
                 : '';
             final userName = user is Map<String, dynamic>
-                ? (user['Name'] as String?) ?? ''
+                ? jStr(user['Name'])
                 : '';
             if (token.isEmpty || userId.isEmpty) {
               return const EmbyAuthResult(
@@ -714,9 +715,9 @@ class EmbyClient {
         if (res.statusCode != 200) continue;
         final doc = res.json;
         if (doc is Map<String, dynamic> &&
-            ((doc['ServerName'] as String?)?.isNotEmpty == true ||
-                (doc['Version'] as String?)?.isNotEmpty == true ||
-                (doc['Id'] as String?)?.isNotEmpty == true)) {
+            (jStrN(doc['ServerName'])?.isNotEmpty == true ||
+                jStrN(doc['Version'])?.isNotEmpty == true ||
+                jStrN(doc['Id'])?.isNotEmpty == true)) {
           return true;
         }
       }
@@ -776,7 +777,7 @@ class EmbyClient {
       _apiUrl('/Users/${config.userId}/Views'),
       cancelToken: cancelToken,
     );
-    final items = (json['Items'] as List<dynamic>? ?? const [])
+    final items = jList(json['Items'])
         .whereType<Map<String, dynamic>>()
         .map(EmbyLibrary.fromJson)
         .where((l) => l.id.isNotEmpty)
@@ -804,7 +805,7 @@ class EmbyClient {
       _apiQuery('/Users/${config.userId}/Items', query),
       cancelToken: cancelToken,
     );
-    return (json['TotalRecordCount'] as num?)?.toInt() ?? 0;
+    return jIntN(json['TotalRecordCount']) ?? 0;
   }
 
   // -- Items -----------------------------------------------------------
@@ -1164,7 +1165,7 @@ class EmbyClient {
       'Fields': 'Overview,ImageTags',
     });
     final json = await _getJson(url, cancelToken: cancelToken);
-    final items = (json['Items'] as List<dynamic>? ?? const [])
+    final items = jList(json['Items'])
         .whereType<Map<String, dynamic>>()
         .where((s) => s['Type'] == 'Season' || s['Type'] == null)
         .toList();
@@ -1191,7 +1192,7 @@ class EmbyClient {
       'Fields': _kDetailFields,
     });
     final json = await _getJson(url, cancelToken: cancelToken);
-    final items = (json['Items'] as List<dynamic>? ?? const [])
+    final items = jList(json['Items'])
         .whereType<Map<String, dynamic>>()
         .toList();
     items.sort(_byIndexNumber);
@@ -1261,7 +1262,7 @@ class EmbyClient {
       }
       rethrow;
     }
-    final type = (item['Type'] as String?) ?? '';
+    final type = jStr(item['Type']);
     final meta = _toVideoMeta(item);
     final facts = EmbyStreamFacts.fromMediaSources(item['MediaSources']);
     // 'Video' plays like a movie: one loose file, one direct line
@@ -1307,13 +1308,13 @@ class EmbyClient {
       final lines = <PlayLine>[];
       var foundEpisodes = false;
       for (final season in seasonList) {
-        final seasonId = (season['Id'] as String?) ?? '';
+        final seasonId = jStr(season['Id']);
         if (seasonId.isEmpty) continue;
-        final index = (season['IndexNumber'] as num?)?.toInt();
+        final index = jIntN(season['IndexNumber']);
         final lineName = index != null
             ? '第 $index 季'
-            : ((season['Name'] as String?) ?? '').isNotEmpty
-                ? (season['Name'] as String?)!
+            : (jStr(season['Name'])).isNotEmpty
+                ? jStrN(season['Name'])!
                 : '季';
         var eps = <PlayEpisode>[];
         if (!foundEpisodes) {
@@ -1344,7 +1345,7 @@ class EmbyClient {
   // -- Mapping (pure apart from imageUrl) ------------------------------
 
   EmbyItemsPage _pageFromJson(Map<String, dynamic> json) {
-    final items = (json['Items'] as List<dynamic>? ?? const [])
+    final items = jList(json['Items'])
         .whereType<Map<String, dynamic>>()
         .where((m) {
           // Playable video types only (build 30 audit §17): 'Video'
@@ -1352,7 +1353,7 @@ class EmbyClient {
           // 'Trailer' / 'Extra' / 'BoxSet' stay out: trailers and
           // extras are not films, and a BoxSet has no playable
           // detail yet (it needs a children listing page first).
-          final t = (m['Type'] as String?) ?? '';
+          final t = jStr(m['Type']);
           return t == 'Movie' ||
               t == 'Series' ||
               t == 'Episode' ||
@@ -1362,7 +1363,7 @@ class EmbyClient {
         .toList();
     return EmbyItemsPage(
       items: items,
-      totalCount: (json['TotalRecordCount'] as num?)?.toInt() ?? items.length,
+      totalCount: jIntN(json['TotalRecordCount']) ?? items.length,
     );
   }
 
@@ -1373,21 +1374,21 @@ class EmbyClient {
   /// rating ride on the item, so the tab page can show server-side
   /// "continue watching" instead of local history only.
   VideoItem _toVideoItem(Map<String, dynamic> json) {
-    final id = (json['Id'] as String?) ?? '';
+    final id = jStr(json['Id']);
     final imageTags = json['ImageTags'];
     final tag = imageTags is Map<String, dynamic>
-        ? (imageTags['Primary'] as String?)
+        ? jStrN(imageTags['Primary'])
         : null;
     final backdropTag = imageTags is Map<String, dynamic>
-        ? (imageTags['Backdrop'] as String?)
+        ? jStrN(imageTags['Backdrop'])
         : null;
-    final genres = (json['Genres'] as List<dynamic>? ?? const [])
+    final genres = jList(json['Genres'])
         .map((g) => g.toString())
         .where((g) => g.isNotEmpty)
         .toList();
     final rating = json['CommunityRating'];
     final userData = EmbyUserData.fromJson(json['UserData']);
-    final runTicks = (json['RunTimeTicks'] as num?)?.toDouble() ?? 0;
+    final runTicks = jDoubleN(json['RunTimeTicks']) ?? 0;
     var fraction = userData.playedPercentage;
     if (fraction <= 0 &&
         userData.playbackPositionSeconds > 0 &&
@@ -1400,14 +1401,14 @@ class EmbyClient {
     // 3-season show read "3 集" and a 1-season show showed no count
     // at all. RecursiveItemCount is the episode total; fall back to
     // ChildCount when the server omits it.
-    final totalCount = (json['Type'] as String?) == 'Series'
+    final totalCount = jStrN(json['Type']) == 'Series'
         ? (json['RecursiveItemCount'] ?? json['ChildCount'])
         : json['ChildCount'];
     return VideoItem(
       source: sourceId,
       sourceName: 'Emby',
       vodId: id,
-      name: (json['Name'] as String?) ?? '',
+      name: jStr(json['Name']),
       pic: tag != null && tag.isNotEmpty
           ? imageUrl(id, maxWidth: 400, tag: tag)
           : '',
@@ -1424,43 +1425,43 @@ class EmbyClient {
       played: userData.played,
       isFavorite: userData.isFavorite,
       likes: userData.likes,
-      mediaType: (json['Type'] as String?) ?? '',
-      seriesId: (json['SeriesId'] as String?) ?? '',
-      seriesName: (json['SeriesName'] as String?) ?? '',
-      seasonIndex: (json['ParentIndexNumber'] as num?)?.toInt(),
-      episodeIndex: (json['IndexNumber'] as num?)?.toInt(),
+      mediaType: jStr(json['Type']),
+      seriesId: jStr(json['SeriesId']),
+      seriesName: jStr(json['SeriesName']),
+      seasonIndex: jIntN(json['ParentIndexNumber']),
+      episodeIndex: jIntN(json['IndexNumber']),
     );
   }
 
   VideoMeta _toVideoMeta(Map<String, dynamic> json) {
-    final id = (json['Id'] as String?) ?? '';
+    final id = jStr(json['Id']);
     final imageTags = json['ImageTags'];
     final tag = imageTags is Map<String, dynamic>
-        ? (imageTags['Primary'] as String?)
+        ? jStrN(imageTags['Primary'])
         : null;
     final backdropTag = imageTags is Map<String, dynamic>
-        ? (imageTags['Backdrop'] as String?)
+        ? jStrN(imageTags['Backdrop'])
         : null;
-    final genres = (json['Genres'] as List<dynamic>? ?? const [])
+    final genres = jList(json['Genres'])
         .map((g) => g.toString())
         .where((g) => g.isNotEmpty)
         .toList();
     final rating = json['CommunityRating'];
-    final ticks = (json['RunTimeTicks'] as num?)?.toInt();
+    final ticks = jIntN(json['RunTimeTicks']);
     // People (cast + crew) ride on the item DTO by default — the
     // old mapping dropped them, so the detail page never showed
     // 演员/导演 even though the server sends them. Actors join with
     // '，' so VideoMeta.castNames splits them back into names.
-    final people = (json['People'] as List<dynamic>? ?? const [])
+    final people = jList(json['People'])
         .whereType<Map<String, dynamic>>()
         .toList();
     String namesOf(String type) => people
-        .where((p) => (p['Type'] as String?) == type)
-        .map((p) => (p['Name'] as String?) ?? '')
+        .where((p) => jStrN(p['Type']) == type)
+        .map((p) => jStr(p['Name']))
         .where((n) => n.isNotEmpty)
         .join(type == 'Actor' ? '，' : ' / ');
     return VideoMeta(
-      name: (json['Name'] as String?) ?? '',
+      name: jStr(json['Name']),
       pic: tag != null && tag.isNotEmpty
           ? imageUrl(id, maxWidth: 800, tag: tag)
           : '',
@@ -1473,7 +1474,7 @@ class EmbyClient {
       score: rating is num ? _formatRating(rating) : '',
       actor: namesOf('Actor'),
       director: namesOf('Director'),
-      content: (json['Overview'] as String?) ?? '',
+      content: jStr(json['Overview']),
       runtime: ticks != null && ticks > 0 ? (ticks ~/ 600000000) : null,
     );
   }
@@ -1490,9 +1491,9 @@ class EmbyClient {
   /// Episode display name: the episode title when present, else
   /// '第 N 集' from IndexNumber, else '正片'.
   String _episodeDisplayName(Map<String, dynamic> json) {
-    final name = (json['Name'] as String?) ?? '';
+    final name = jStr(json['Name']);
     if (name.isNotEmpty) return name;
-    final index = (json['IndexNumber'] as num?)?.toInt();
+    final index = jIntN(json['IndexNumber']);
     if (index != null) return '第 $index 集';
     return '正片';
   }
@@ -1501,8 +1502,8 @@ class EmbyClient {
     Map<String, dynamic> a,
     Map<String, dynamic> b,
   ) {
-    final ai = (a['IndexNumber'] as num?)?.toInt();
-    final bi = (b['IndexNumber'] as num?)?.toInt();
+    final ai = jIntN(a['IndexNumber']);
+    final bi = jIntN(b['IndexNumber']);
     if (ai == null && bi == null) return 0;
     if (ai == null) return 1;
     if (bi == null) return -1;

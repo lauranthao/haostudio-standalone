@@ -12,6 +12,8 @@
 // - VOD has NO quality tiers (one URL per episode) and therefore NO
 //   quality selector anywhere in the video UI (live only — hard rule).
 
+import '../../core/storage/safe_json.dart';
+
 /// One Apple CMS source. `kind: 'play'` = search + play; `kind:
 /// 'search'` = search only (its play URLs are not trusted).
 /// `sort` ascending = priority. `enabled: false` = shipped off.
@@ -28,11 +30,11 @@ class VideoSource {
 
   factory VideoSource.fromJson(Map<String, dynamic> json) => VideoSource(
         id: json['id'],
-        name: (json['name'] as String?) ?? '',
-        apiUrl: (json['apiUrl'] as String?) ?? '',
-        kind: (json['kind'] as String?) ?? 'play',
-        enabled: json['enabled'] as bool? ?? true,
-        sort: (json['sort'] as num?)?.toInt() ?? 999,
+        name: jStr(json['name']),
+        apiUrl: jStr(json['apiUrl']),
+        kind: jStr(json['kind'], 'play'),
+        enabled: jBool(json['enabled'], true),
+        sort: jIntN(json['sort']) ?? 999,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -98,31 +100,31 @@ class VideoItem {
 
   factory VideoItem.fromJson(Map<String, dynamic> json) => VideoItem(
         source: json['source'],
-        sourceName: (json['sourceName'] as String?) ?? '',
-        vodId: (json['vodId'] as String?) ?? '',
-        name: (json['name'] as String?) ?? '',
-        pic: (json['pic'] as String?) ?? '',
-        backdrop: (json['backdrop'] as String?) ?? '',
-        picAlt: (json['picAlt'] as String?) ?? '',
-        year: (json['year'] as String?) ?? '',
-        type: (json['type'] as String?) ?? '',
-        area: (json['area'] as String?) ?? '',
-        score: (json['score'] as String?) ?? '',
-        total: (json['total'] as String?) ?? '',
-        remarks: (json['remarks'] as String?) ?? '',
-        hits: (json['hits'] as num?)?.toInt() ?? 0,
+        sourceName: jStr(json['sourceName']),
+        vodId: jStr(json['vodId']),
+        name: jStr(json['name']),
+        pic: jStr(json['pic']),
+        backdrop: jStr(json['backdrop']),
+        picAlt: jStr(json['picAlt']),
+        year: jStr(json['year']),
+        type: jStr(json['type']),
+        area: jStr(json['area']),
+        score: jStr(json['score']),
+        total: jStr(json['total']),
+        remarks: jStr(json['remarks']),
+        hits: jIntN(json['hits']) ?? 0,
         progressSeconds:
-            (json['progressSeconds'] as num?)?.toDouble() ?? 0,
+            jDoubleN(json['progressSeconds']) ?? 0,
         progressFraction:
-            (json['progressFraction'] as num?)?.toDouble() ?? 0,
-        played: json['played'] as bool? ?? false,
-        isFavorite: json['isFavorite'] as bool? ?? false,
-        likes: json['likes'] as bool?,
-        mediaType: (json['mediaType'] as String?) ?? '',
-        seriesId: (json['seriesId'] as String?) ?? '',
-        seriesName: (json['seriesName'] as String?) ?? '',
-        seasonIndex: (json['seasonIndex'] as num?)?.toInt(),
-        episodeIndex: (json['episodeIndex'] as num?)?.toInt(),
+            jDoubleN(json['progressFraction']) ?? 0,
+        played: jBool(json['played'], false),
+        isFavorite: jBool(json['isFavorite'], false),
+        likes: jBoolN(json['likes']),
+        mediaType: jStr(json['mediaType']),
+        seriesId: jStr(json['seriesId']),
+        seriesName: jStr(json['seriesName']),
+        seasonIndex: jIntN(json['seasonIndex']),
+        episodeIndex: jIntN(json['episodeIndex']),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -285,12 +287,12 @@ class PlayEpisode {
   });
 
   factory PlayEpisode.fromJson(Map<String, dynamic> json) => PlayEpisode(
-        name: (json['name'] as String?) ?? '正片',
-        url: (json['url'] as String?) ?? '',
-        isMissing: json['isMissing'] as bool? ?? false,
-        introStart: (json['introStart'] as num?)?.toDouble(),
-        introEnd: (json['introEnd'] as num?)?.toDouble(),
-        creditsStart: (json['creditsStart'] as num?)?.toDouble(),
+        name: jStr(json['name'], '正片'),
+        url: jStr(json['url']),
+        isMissing: jBool(json['isMissing'], false),
+        introStart: jDoubleN(json['introStart']),
+        introEnd: jDoubleN(json['introEnd']),
+        creditsStart: jDoubleN(json['creditsStart']),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -461,11 +463,11 @@ class PlayLine {
   const PlayLine({required this.name, required this.episodes});
 
   factory PlayLine.fromJson(Map<String, dynamic> json) => PlayLine(
-        name: (json['name'] as String?) ?? '',
+        name: jStr(json['name']),
         // One malformed episode must not kill the whole line: a
         // persisted cache entry (or an older build's shape) can
         // carry a non-map element, and the old `as` cast threw.
-        episodes: (json['episodes'] as List<dynamic>? ?? const [])
+        episodes: jList(json['episodes'])
             .whereType<Map<String, dynamic>>()
             .map(PlayEpisode.fromJson)
             .toList(),
@@ -501,22 +503,22 @@ class VideoMeta {
   });
 
   factory VideoMeta.fromJson(Map<String, dynamic> json) => VideoMeta(
-        name: (json['name'] as String?) ?? '',
-        pic: (json['pic'] as String?) ?? '',
-        backdrop: (json['backdrop'] as String?) ?? '',
-        picAlt: (json['picAlt'] as String?) ?? '',
-        year: (json['year'] as String?) ?? '',
-        type: (json['type'] as String?) ?? '',
-        area: (json['area'] as String?) ?? '',
-        remarks: (json['remarks'] as String?) ?? '',
-        score: (json['score'] as String?) ?? '',
-        actor: (json['actor'] as String?) ?? '',
-        director: (json['director'] as String?) ?? '',
-        content: (json['content'] as String?) ?? '',
-        runtime: (json['runtime'] as num?)?.toInt(),
-        releaseDate: (json['releaseDate'] as String?) ?? '',
+        name: jStr(json['name']),
+        pic: jStr(json['pic']),
+        backdrop: jStr(json['backdrop']),
+        picAlt: jStr(json['picAlt']),
+        year: jStr(json['year']),
+        type: jStr(json['type']),
+        area: jStr(json['area']),
+        remarks: jStr(json['remarks']),
+        score: jStr(json['score']),
+        actor: jStr(json['actor']),
+        director: jStr(json['director']),
+        content: jStr(json['content']),
+        runtime: jIntN(json['runtime']),
+        releaseDate: jStr(json['releaseDate']),
         douban: json['douban'] is Map<String, dynamic>
-            ? DoubanMark.fromJson(json['douban'] as Map<String, dynamic>)
+            ? DoubanMark.fromJson(jMap(json['douban']))
             : null,
       );
 
@@ -593,10 +595,10 @@ class DoubanMark {
   });
 
   factory DoubanMark.fromJson(Map<String, dynamic> json) => DoubanMark(
-        id: (json['id'] as String?) ?? '',
-        score: (json['score'] as String?) ?? '',
-        poster: (json['poster'] as String?) ?? '',
-        castPhotos: (json['castPhotos'] as List<dynamic>? ?? const [])
+        id: jStr(json['id']),
+        score: jStr(json['score']),
+        poster: jStr(json['poster']),
+        castPhotos: jList(json['castPhotos'])
             .map((e) => e.toString())
             .toList(),
       );
@@ -628,17 +630,17 @@ class VideoDetail {
 
   factory VideoDetail.fromJson(Map<String, dynamic> json) => VideoDetail(
         source: json['source'],
-        vodId: (json['vodId'] as String?) ?? '',
+        vodId: jStr(json['vodId']),
         // Missing/non-map meta used to throw (`as` on null); a detail
         // without meta is an empty meta, not a crash.
         meta: json['meta'] is Map<String, dynamic>
-            ? VideoMeta.fromJson(json['meta'] as Map<String, dynamic>)
+            ? VideoMeta.fromJson(jMap(json['meta']))
             : VideoMeta(name: ''),
-        lines: (json['lines'] as List<dynamic>? ?? const [])
+        lines: jList(json['lines'])
             .whereType<Map<String, dynamic>>()
             .map(PlayLine.fromJson)
             .toList(),
-        mediaType: (json['mediaType'] as String?) ?? '',
+        mediaType: jStr(json['mediaType']),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -679,11 +681,11 @@ class VideoHomeRow {
   });
 
   factory VideoHomeRow.fromJson(Map<String, dynamic> json) => VideoHomeRow(
-        name: (json['name'] as String?) ?? '',
-        count: (json['count'] as num?)?.toInt() ?? 0,
+        name: jStr(json['name']),
+        count: jIntN(json['count']) ?? 0,
         // Skip malformed items instead of throwing: one bad item in
         // the persisted home cache used to discard the whole cache.
-        items: (json['items'] as List<dynamic>? ?? const [])
+        items: jList(json['items'])
             .whereType<Map<String, dynamic>>()
             .map(VideoItem.fromJson)
             .toList(),
@@ -705,12 +707,12 @@ class VideoHomeData {
   const VideoHomeData({required this.rows, required this.fetchedAt});
 
   factory VideoHomeData.fromJson(Map<String, dynamic> json) => VideoHomeData(
-        rows: (json['rows'] as List<dynamic>? ?? const [])
+        rows: jList(json['rows'])
             .whereType<Map<String, dynamic>>()
             .map(VideoHomeRow.fromJson)
             .toList(),
         fetchedAt: DateTime.fromMillisecondsSinceEpoch(
-          (json['fetchedAt'] as num?)?.toInt() ?? 0,
+          jIntN(json['fetchedAt']) ?? 0,
         ),
       );
 
@@ -756,28 +758,28 @@ class DoubanDetail {
   });
 
   factory DoubanDetail.fromJson(Map<String, dynamic> json) => DoubanDetail(
-        id: (json['id'] as String?) ?? '',
-        media: (json['media'] as String?) ?? 'movie',
-        title: (json['title'] as String?) ?? '',
-        year: (json['year'] as String?) ?? '',
-        poster: (json['poster'] as String?) ?? '',
-        overview: (json['overview'] as String?) ?? '',
-        score: (json['score'] as String?) ?? '',
-        genres: (json['genres'] as List<dynamic>? ?? const [])
+        id: jStr(json['id']),
+        media: jStr(json['media'], 'movie'),
+        title: jStr(json['title']),
+        year: jStr(json['year']),
+        poster: jStr(json['poster']),
+        overview: jStr(json['overview']),
+        score: jStr(json['score']),
+        genres: jList(json['genres'])
             .map((e) => e.toString())
             .toList(),
-        runtime: (json['runtime'] as num?)?.toInt(),
-        countries: (json['countries'] as List<dynamic>? ?? const [])
+        runtime: jIntN(json['runtime']),
+        countries: jList(json['countries'])
             .map((e) => e.toString())
             .toList(),
-        director: (json['director'] as String?) ?? '',
-        castNames: (json['castNames'] as List<dynamic>? ?? const [])
+        director: jStr(json['director']),
+        castNames: jList(json['castNames'])
             .map((e) => e.toString())
             .toList(),
-        castPhotos: (json['castPhotos'] as List<dynamic>? ?? const [])
+        castPhotos: jList(json['castPhotos'])
             .map((e) => e.toString())
             .toList(),
-        episodes: (json['episodes'] as String?) ?? '',
+        episodes: jStr(json['episodes']),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -938,26 +940,26 @@ class WatchHistoryEntry {
   factory WatchHistoryEntry.fromJson(Map<String, dynamic> json) =>
       WatchHistoryEntry(
         source: json['source'],
-        vodId: (json['vodId'] as String?) ?? '',
-        title: (json['title'] as String?) ?? '',
-        pic: (json['pic'] as String?) ?? '',
-        backdrop: (json['backdrop'] as String?) ?? '',
-        picAlt: (json['picAlt'] as String?) ?? '',
+        vodId: jStr(json['vodId']),
+        title: jStr(json['title']),
+        pic: jStr(json['pic']),
+        backdrop: jStr(json['backdrop']),
+        picAlt: jStr(json['picAlt']),
         // Pre-P1-16 rows carry no year: '' means "unknown", and the
         // film key falls back to title-only for them (see filmKey).
-        year: (json['year'] as String?) ?? '',
-        lineIdx: (json['lineIdx'] as num?)?.toInt() ?? 0,
-        epIdx: (json['epIdx'] as num?)?.toInt() ?? 0,
-        epName: (json['epName'] as String?) ?? '',
-        position: (json['position'] as num?)?.toDouble() ?? 0,
-        duration: (json['duration'] as num?)?.toDouble() ?? 0,
+        year: jStr(json['year']),
+        lineIdx: jIntN(json['lineIdx']) ?? 0,
+        epIdx: jIntN(json['epIdx']) ?? 0,
+        epName: jStr(json['epName']),
+        position: jDoubleN(json['position']) ?? 0,
+        duration: jDoubleN(json['duration']) ?? 0,
         // 1.1.6 (browse A3 §4): optional — rows written before this
         // carry neither key and read back as null / '' (never a
         // crash, never a guessed next episode).
-        totalEpisodes: (json['totalEpisodes'] as num?)?.toInt(),
-        nextEpName: (json['nextEpName'] as String?) ?? '',
+        totalEpisodes: jIntN(json['totalEpisodes']),
+        nextEpName: jStr(json['nextEpName']),
         at: DateTime.fromMillisecondsSinceEpoch(
-          (json['at'] as num?)?.toInt() ?? 0,
+          jIntN(json['at']) ?? 0,
         ),
       );
 
@@ -1052,19 +1054,19 @@ class ResumeInfo {
   /// Port of `vodLocalLoad`: position > 10 s and >= 30 s from the end.
   static ResumeInfo? fromStored(Map<String, dynamic>? stored, List<PlayLine> lines) {
     if (stored == null || lines.isEmpty) return null;
-    final li = (stored['lineIdx'] as num?)?.toInt() ?? 0;
-    final ei = (stored['epIdx'] as num?)?.toInt() ?? 0;
+    final li = jIntN(stored['lineIdx']) ?? 0;
+    final ei = jIntN(stored['epIdx']) ?? 0;
     if (li < 0 || li >= lines.length) return null;
     final eps = lines[li].episodes;
     if (ei < 0 || ei >= eps.length) return null;
-    final pos = (stored['position'] as num?)?.toDouble() ?? 0;
-    final dur = (stored['duration'] as num?)?.toDouble() ?? 0;
+    final pos = jDoubleN(stored['position']) ?? 0;
+    final dur = jDoubleN(stored['duration']) ?? 0;
     if (pos <= 10) return null;
     if (dur > 0 && pos >= dur - 30) return null;
     return ResumeInfo(
       lineIdx: li,
       epIdx: ei,
-      epName: (stored['epName'] as String?) ?? '',
+      epName: jStr(stored['epName']),
       position: pos,
       duration: dur,
     );

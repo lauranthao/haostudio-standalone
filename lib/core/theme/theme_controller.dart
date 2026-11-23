@@ -60,21 +60,27 @@ class ThemeController extends GetxController {
 
   /// Load persisted values from the `app_settings` Hive box.
   void loadFromBox(Box<dynamic> box) {
-    final savedTheme = box.get(_themeKey) as String?;
+    final savedTheme = box.get(_themeKey) is String
+        ? box.get(_themeKey) as String
+        : null;
     if (savedTheme != null) {
       themeId.value = HaoThemeId.values.firstWhere(
         (e) => e.name == savedTheme,
         orElse: () => HaoThemeId.appleGlass,
       );
     }
-    final savedMode = box.get(_modeKey) as String?;
+    final savedMode = box.get(_modeKey) is String
+        ? box.get(_modeKey) as String
+        : null;
     if (savedMode != null) {
       themeMode.value = ThemeMode.values.firstWhere(
         (e) => e.name == savedMode,
         orElse: () => ThemeMode.system,
       );
     }
-    final savedFont = box.get(_fontKey) as String?;
+    final savedFont = box.get(_fontKey) is String
+        ? box.get(_fontKey) as String
+        : null;
     if (savedFont != null) customFontFamily.value = savedFont;
     // Custom accent: same shared key the tab bar reads
     // (TabBarAccentController persists it with opacity); the theme

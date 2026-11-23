@@ -19,6 +19,7 @@ import 'dart:convert';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 
 import '../../core/storage/hive_store.dart';
+import '../../core/storage/safe_json.dart';
 
 class LxCustomScript {
   const LxCustomScript({
@@ -35,7 +36,7 @@ class LxCustomScript {
         name: j['name']?.toString() ?? '',
         url: j['url']?.toString() ?? '',
         code: j['code']?.toString() ?? '',
-        addedAt: (j['addedAt'] as num?)?.toInt() ?? 0,
+        addedAt: jIntN(j['addedAt']) ?? 0,
       );
 
   Map<String, dynamic> toJson() => {

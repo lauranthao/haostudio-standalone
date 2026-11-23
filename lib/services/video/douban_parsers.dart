@@ -15,34 +15,35 @@
 
 import '../../features/video/video_models.dart';
 import '../../features/video/video_title_helpers.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Parse `movie.douban.com/j/subject_abstract?subject_id=<id>`.
 /// Returns null when `r==='error'` or no `subject`.
 DoubanDetail? parseDoubanAbstract(Map<String, dynamic>? json) {
   if (json == null) return null;
   if (json['r'] == 'error') return null;
-  final s = json['subject'] as Map<String, dynamic>?;
+  final s = jMapN(json['subject']);
   if (s == null) return null;
-  final duration = (s['duration'] as String?) ?? '';
+  final duration = jStr(s['duration']);
   final mm = RegExp(r'(\d+)').firstMatch(duration);
   final rate = s['rate'];
-  final directors = (s['directors'] as List<dynamic>? ?? const [])
+  final directors = jList(s['directors'])
       .map((e) => e.toString())
       .where((e) => e.isNotEmpty)
       .toList();
-  final actors = (s['actors'] as List<dynamic>? ?? const [])
+  final actors = jList(s['actors'])
       .map((e) => e.toString())
       .where((e) => e.isNotEmpty)
       .toList();
-  final region = (s['region'] as String?) ?? '';
+  final region = jStr(s['region']);
   final rateStr = rate?.toString();
   return DoubanDetail(
     id: (s['id'] ?? '').toString(),
     media: s['is_tv'] == true ? 'tv' : 'movie',
-    title: (s['title'] as String?) ?? '',
+    title: jStr(s['title']),
     year: s['release_year']?.toString(),
     score: rateStr?.isNotEmpty == true ? rateStr : null,
-    genres: (s['types'] as List<dynamic>? ?? const [])
+    genres: jList(s['types'])
         .map((e) => e.toString())
         .where((e) => e.isNotEmpty)
         .toList(),
@@ -198,9 +199,9 @@ Map<String, String> parseDoubanDesktopCast(String? html) {
 /// (desc 中国内地男演员) passes, 张三 (desc 人物泛称) is rejected.
 String? parseBaikeCardPhoto(Map<String, dynamic>? json, String name) {
   if (json == null || name.isEmpty) return null;
-  final title = (json['title'] as String?)?.trim() ?? '';
+  final title = jStrN(json['title'])?.trim() ?? '';
   if (title != name) return null;
-  final desc = (json['desc'] as String?) ?? '';
+  final desc = jStr(json['desc']);
   const entertainer = [
     '演员',
     '歌手',
@@ -213,7 +214,7 @@ String? parseBaikeCardPhoto(Map<String, dynamic>? json, String name) {
     '舞者',
   ];
   if (desc.isNotEmpty && !entertainer.any(desc.contains)) return null;
-  final image = (json['image'] as String?)?.trim() ?? '';
+  final image = jStrN(json['image'])?.trim() ?? '';
   if (image.isEmpty) return null;
   return image;
 }

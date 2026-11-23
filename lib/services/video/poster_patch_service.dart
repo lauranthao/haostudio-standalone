@@ -50,6 +50,7 @@ import '../../core/storage/hive_store.dart';
 import '../../features/video/video_models.dart';
 import '../../features/video/video_title_helpers.dart';
 import '../../shared/platforms/bilibili/bilibili_wbi.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Hive key for the title→poster patch map. Value is the contract.
 const String kPosterPatchHiveKey = 'hao_poster_patch';
@@ -169,7 +170,7 @@ class PosterPatchService {
       String? oldestKey;
       var oldestAt = 0;
       for (final e in map.entries) {
-        final at = (e.value is Map ? (e.value as Map)['at'] as num? : null)
+        final at = (e.value is Map ? jIntN((e.value as Map)['at']) : null)
                 ?.toInt() ??
             0;
         if (oldestKey == null || at < oldestAt) {
@@ -208,7 +209,7 @@ class PosterPatchService {
     final url = entry['url']?.toString() ?? '';
     final source = entry['source']?.toString() ?? '';
     if (url.isEmpty || source == 'failed') return null;
-    final at = (entry['at'] as num?)?.toInt() ?? 0;
+    final at = jIntN(entry['at']) ?? 0;
     if (DateTime.now().millisecondsSinceEpoch - at >
         kPosterPatchSuccessTtl.inMilliseconds) {
       return null;
@@ -220,7 +221,7 @@ class PosterPatchService {
     final entry = _loadMap()[key];
     if (entry is! Map) return false;
     if (entry['source']?.toString() != 'failed') return false;
-    final at = (entry['at'] as num?)?.toInt() ?? 0;
+    final at = jIntN(entry['at']) ?? 0;
     return DateTime.now().millisecondsSinceEpoch - at <
         kPosterPatchFailureTtl.inMilliseconds;
   }
@@ -310,16 +311,16 @@ class PosterPatchService {
         'Accept': 'application/json',
       },
     );
-    final list = body?['list'] as List? ?? const [];
+    final list = jList(body?['list']);
     for (final raw in list.whereType<Map<String, dynamic>>()) {
       final images = raw['images'];
       final url = images is Map
           ? (images['large']?.toString() ?? '')
           : '';
       if (url.isEmpty) continue;
-      final nameCn = (raw['name_cn'] as String?) ?? '';
-      final name = (raw['name'] as String?) ?? '';
-      final airDate = (raw['air_date'] as String?) ?? '';
+      final nameCn = jStr(raw['name_cn']);
+      final name = jStr(raw['name']);
+      final airDate = jStr(raw['air_date']);
       final cYear = airDate.length >= 4 ? airDate.substring(0, 4) : '';
       if (candidatePasses(
             candidateName: nameCn.isNotEmpty ? nameCn : name,
@@ -403,9 +404,9 @@ class PosterPatchService {
         final result = data is Map ? data['result'] : null;
         if (result is! List) continue;
         for (final raw in result.whereType<Map<String, dynamic>>()) {
-          final cover = (raw['cover'] as String?) ?? '';
+          final cover = jStr(raw['cover']);
           if (cover.isEmpty) continue;
-          final name = _stripEmTags((raw['title'] as String?) ?? '');
+          final name = _stripEmTags(jStr(raw['title']));
           // PGC search returns no reliable year: the title gate is
           // the only check (a wrong-year candidate cannot be told
           // apart here, so the gate must stay strict).

@@ -23,6 +23,7 @@ import 'music_models.dart';
 import 'music_quality.dart';
 import 'music_resolvers.dart';
 import 'music_store.dart';
+import '../../core/storage/safe_json.dart';
 
 /// Subdirectory under Documents holding the downloaded files.
 const String kMusicDownloadsSubdir = 'music_downloads';
@@ -51,11 +52,11 @@ class DownloadedSong {
   factory DownloadedSong.fromJson(Map<String, dynamic> j) {
     return DownloadedSong(
       song: Song.fromJson(
-        (j['song'] as Map<String, dynamic>? ?? const {}),
+        (jMapN(j['song']) ?? const {}),
       ),
       filePath: j['filePath']?.toString() ?? '',
-      sizeBytes: (j['sizeBytes'] as num?)?.toInt() ?? 0,
-      downloadedAt: (j['downloadedAt'] as num?)?.toInt() ?? 0,
+      sizeBytes: jIntN(j['sizeBytes']) ?? 0,
+      downloadedAt: jIntN(j['downloadedAt']) ?? 0,
       // Pre-tier entries have no field: hires is the safe default —
       // never over-claim Master for a file whose tier was not
       // recorded.
@@ -206,15 +207,19 @@ class MusicDownloadService {
   List<DownloadedSong> _readIndex() {
     final cached = _indexCache;
     if (cached != null) return List.of(cached);
-    final raw = HiveStore.box.get(HiveKeys.musicDownloads) as String?;
-    if (raw == null || raw.isEmpty) return [];
+    final raw = HiveStore.box.get(HiveKeys.musicDownloads);
+    if (raw is! String || raw.isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
-        final parsed = decoded
-            .whereType<Map<String, dynamic>>()
-            .map(DownloadedSong.fromJson)
-            .toList();
+        // Per-entry skip (b31 crash hunt): one corrupt index row must
+        // not discard the whole download index.
+        final parsed = <DownloadedSong>[];
+        for (final e in decoded.whereType<Map<String, dynamic>>()) {
+          try {
+            parsed.add(DownloadedSong.fromJson(e));
+          } catch (_) {}
+        }
         _indexCache = parsed;
         return List.of(parsed);
       }

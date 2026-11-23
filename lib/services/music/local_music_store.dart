@@ -73,8 +73,8 @@ class LocalMusicStore {
   }
 
   List<Song> _readIndex() {
-    final raw = HiveStore.box.get(HiveKeys.musicLocalFiles) as String?;
-    if (raw == null || raw.isEmpty) return [];
+    final raw = HiveStore.box.get(HiveKeys.musicLocalFiles);
+    if (raw is! String || raw.isEmpty) return [];
     try {
       final decoded = jsonDecode(raw);
       if (decoded is List) {
