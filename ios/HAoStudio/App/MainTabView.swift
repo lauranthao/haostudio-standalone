@@ -101,7 +101,7 @@ struct MainTabView: View {
         case .home: HomePlaceholderView()
         case .music: MusicHomeView()
         case .movies: VideoTabView()
-        case .live: LivePlaceholderView()
+        case .live: LiveTabView()
         case .my: MyPlaceholderView()
         }
     }

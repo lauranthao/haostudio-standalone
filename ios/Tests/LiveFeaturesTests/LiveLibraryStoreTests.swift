@@ -1,0 +1,164 @@
+// HAo Studio 2.0 — live library store tests (S4-C leg).
+//
+// Pure rules only (no file I/O, no network): resume key, follow
+// merge/dedupe, history merge/dedupe/cap, day sections, search
+// history merge. The store's disk methods go through LocalStore
+// and are covered by the S1 migration tests' approach (real
+// Documents dir), not here.
+//
+// Wiring (merge, per the build #18 lesson — one file, one
+// target): this target imports AppCore; B leg adds this single
+// file Features/Live/LiveLibraryStore.swift (Foundation only —
+// no SwiftUI, no UIKit) to the AppCore sources, and a
+// LiveFeaturesTests test target depending on it. Do NOT add
+// LiveLibraryStore.swift to a second target.
+
+import XCTest
+
+@testable import AppCore
+
+final class LiveLibraryStoreTests: XCTestCase {
+    private func follow(
+        platform: String = "bilibili",
+        roomId: String = "1",
+        followedAt: Date = Date()
+    ) -> LiveFollowedRoom {
+        LiveFollowedRoom(
+            platform: platform, roomId: roomId, title: "标题",
+            nick: "主播", cover: "", followedAt: followedAt)
+    }
+
+    private func entry(
+        platform: String = "bilibili",
+        roomId: String = "1",
+        watchedAt: Date = Date()
+    ) -> LiveHistoryEntry {
+        LiveHistoryEntry(
+            platform: platform, roomId: roomId, title: "标题",
+            nick: "主播", cover: "", watchedAt: watchedAt)
+    }
+
+    // MARK: - Resume key (Flutter identityKey)
+
+    func testResumeKeyJoinsPlatformAndRoomId() {
+        XCTAssertEqual(
+            LiveResumeKey.key(platform: "douyu", roomId: "123"),
+            "douyu|123")
+    }
+
+    func testSameRoomIdOnTwoPlatformsHasDifferentKeys() {
+        XCTAssertNotEqual(
+            LiveResumeKey.key(platform: "bilibili", roomId: "1"),
+            LiveResumeKey.key(platform: "huya", roomId: "1"))
+    }
+
+    // MARK: - Follows merge
+
+    func testSameRoomReplacesInsteadOfDuplicating() {
+        let merged = LiveLibraryStore.mergedFollows([follow()], with: follow())
+        XCTAssertEqual(merged.count, 1)
+    }
+
+    func testReFollowMovesToFrontWithFreshTime() {
+        let old = follow(roomId: "1", followedAt: Date(timeIntervalSince1970: 1000))
+        let fresh = follow(roomId: "1", followedAt: Date(timeIntervalSince1970: 2000))
+        let merged = LiveLibraryStore.mergedFollows(
+            [follow(roomId: "2"), old], with: fresh)
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged[0].roomId, "1")
+        XCTAssertEqual(merged[0].followedAt, Date(timeIntervalSince1970: 2000))
+        XCTAssertEqual(merged[1].roomId, "2")
+    }
+
+    func testFollowsAreUncapped() {
+        var stored: [LiveFollowedRoom] = []
+        for index in 0..<120 {
+            stored = LiveLibraryStore.mergedFollows(
+                stored, with: follow(roomId: "\(index)"))
+        }
+        XCTAssertEqual(stored.count, 120)
+    }
+
+    // MARK: - History merge + cap
+
+    func testReEnterMovesToFrontWithFreshTime() {
+        let old = entry(roomId: "1", watchedAt: Date(timeIntervalSince1970: 1000))
+        let fresh = entry(roomId: "1", watchedAt: Date(timeIntervalSince1970: 2000))
+        let merged = LiveLibraryStore.mergedHistory(
+            [entry(roomId: "2"), old], with: fresh, limit: 50)
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged[0].roomId, "1")
+        XCTAssertEqual(merged[0].watchedAt, Date(timeIntervalSince1970: 2000))
+    }
+
+    func testHistoryCapTrimsOldest() {
+        var stored: [LiveHistoryEntry] = []
+        for index in 0..<55 {
+            stored = LiveLibraryStore.mergedHistory(
+                stored, with: entry(roomId: "\(index)"), limit: 50)
+        }
+        XCTAssertEqual(stored.count, 50)
+        XCTAssertEqual(stored[0].roomId, "54")
+        XCTAssertEqual(stored[49].roomId, "5")
+    }
+
+    func testZeroLimitMeansUnlimited() {
+        var stored: [LiveHistoryEntry] = []
+        for index in 0..<80 {
+            stored = LiveLibraryStore.mergedHistory(
+                stored, with: entry(roomId: "\(index)"), limit: 0)
+        }
+        XCTAssertEqual(stored.count, 80)
+    }
+
+    func testWouldDeleteCount() {
+        let stored = (0..<10).map { entry(roomId: "\($0)") }
+        XCTAssertEqual(LiveLibraryStore.wouldDeleteCount(stored, newLimit: 6), 4)
+        XCTAssertEqual(LiveLibraryStore.wouldDeleteCount(stored, newLimit: 10), 0)
+        XCTAssertEqual(LiveLibraryStore.wouldDeleteCount(stored, newLimit: 20), 0)
+        XCTAssertEqual(LiveLibraryStore.wouldDeleteCount(stored, newLimit: 0), 0)
+    }
+
+    // MARK: - Day sections (Pure Live HistorySection.of)
+
+    func testSectionTodayYesterdayRecentEarlier() {
+        let now = Date(timeIntervalSince1970: 1_764_000_000)
+        let calendar = Calendar.current
+        XCTAssertEqual(LiveHistorySection.of(now, now: now), .today)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        XCTAssertEqual(LiveHistorySection.of(yesterday, now: now), .yesterday)
+        let threeDaysAgo = calendar.date(byAdding: .day, value: -3, to: now) ?? now
+        XCTAssertEqual(LiveHistorySection.of(threeDaysAgo, now: now), .recent)
+        let tenDaysAgo = calendar.date(byAdding: .day, value: -10, to: now) ?? now
+        XCTAssertEqual(LiveHistorySection.of(tenDaysAgo, now: now), .earlier)
+    }
+
+    func testSectionLabels() {
+        XCTAssertEqual(LiveHistorySection.today.label, "今天")
+        XCTAssertEqual(LiveHistorySection.yesterday.label, "昨天")
+        XCTAssertEqual(LiveHistorySection.recent.label, "2–6 天前")
+        XCTAssertEqual(LiveHistorySection.earlier.label, "更早")
+    }
+
+    // MARK: - Search history merge
+
+    func testSameQueryMovesToFront() {
+        let merged = LiveLibraryStore.mergedSearchHistory(["a", "b"], with: "a")
+        XCTAssertEqual(merged, ["a", "b"])
+    }
+
+    func testBlankQueryIsIgnored() {
+        let merged = LiveLibraryStore.mergedSearchHistory(["a"], with: "   ")
+        XCTAssertEqual(merged, ["a"])
+    }
+
+    func testSearchHistoryCapsAtTwenty() {
+        var stored: [String] = []
+        for index in 0..<25 {
+            stored = LiveLibraryStore.mergedSearchHistory(stored, with: "q\(index)")
+        }
+        XCTAssertEqual(stored.count, 20)
+        XCTAssertEqual(stored[0], "q24")
+        XCTAssertEqual(stored[19], "q5")
+    }
+}
