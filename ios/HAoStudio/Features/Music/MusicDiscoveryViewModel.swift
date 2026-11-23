@@ -8,9 +8,12 @@
 //
 // Daily picks are cached per day (hao_daily.json); a missing day is
 // built from local data (most-played + top artists, seeded by day).
-// Plaza needs a platform API that is NOT in the LX contract —
-// its page shows an honest empty state, never fake rows (see the
-// C-leg report). Charts moved to MusicChartsView.swift (S3-C).
+// Plaza (S7-A): the platform APIs ARE in the music API leg —
+// MusicPlaylistImportAPI.plaza(platform:) (S3) serves wy / tx /
+// kg / kw from the real platform endpoints, never a fallback
+// platform. A platform that answers with nothing shows the honest
+// "暂无推荐" empty state, never fake rows. Charts moved to
+// MusicChartsView.swift (S3-C).
 
 import SwiftUI
 
@@ -73,6 +76,13 @@ final class MusicDiscoveryViewModel: ObservableObject {
         didSet { recomputeReport() }
     }
     @Published var plazaPlatform: MusicPlatform = .wy
+    /// Plaza rows for the current platform (real platform data,
+    /// S7-A). `plazaFailed` is true when the platform answered with
+    /// nothing — failure and empty are indistinguishable from the
+    /// API, so the page shows one honest "暂无推荐" state for both.
+    @Published private(set) var plazaPlaylists: [PlaylistSummary] = []
+    @Published private(set) var plazaLoading = false
+    @Published private(set) var plazaFailed = false
 
     private var listenLog: [ListenEvent] = []
 
@@ -126,6 +136,22 @@ final class MusicDiscoveryViewModel: ObservableObject {
     func setPlazaPlatform(_ platform: MusicPlatform) {
         plazaPlatform = platform
         MusicLibraryStore.setPlazaPlatform(platform)
+        loadPlaza()
+    }
+
+    /// Fetch the plaza for the current platform ONLY — never silently
+    /// fall back to another platform. The API completion runs on the
+    /// main queue (MusicAPITransport), same as the charts view model.
+    func loadPlaza() {
+        plazaLoading = true
+        plazaFailed = false
+        let platform = plazaPlatform
+        MusicPlaylistImportAPI.shared.plaza(platform: platform) { [weak self] playlists in
+            guard let self = self else { return }
+            self.plazaLoading = false
+            self.plazaPlaylists = playlists
+            self.plazaFailed = playlists.isEmpty
+        }
     }
 
     // MARK: - Listen report

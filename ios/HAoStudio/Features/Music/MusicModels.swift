@@ -14,6 +14,7 @@
 // in this file): MusicTrack { id, title, artist, album, coverURL,
 // duration, sourceID }.
 
+import AVFoundation
 import Foundation
 
 
@@ -470,4 +471,87 @@ struct MusicSeededRandom {
 func musicDurationText(seconds: Int) -> String {
     let total = max(0, seconds)
     return "\(total / 60):\(String(format: "%02d", total % 60))"
+}
+
+// MARK: - Local-file quality (S7-A)
+//
+// The S2 honest limitation: a local file's player badge was nil —
+// the resolver is bypassed for local files, so no tier was ever
+// reported. The tier is now derived from the file itself.
+//
+// Master honesty gate, same as streaming: NOTHING here may return
+// .master. A local file carries no Master provenance (no MQA /
+// server-confirmed tier), so even a 192 kHz / 24-bit FLAC tops out
+// at Hi-Res. Under-claiming is the rule: a file that proves no
+// tier gets the honest "本地" label, never a guessed tier.
+//
+// Derivation (conservative, from measured properties only):
+// - lossless container (FLAC / ALAC / PCM) + sample rate >= 96 kHz
+//   or >= 24 bits per channel -> Hi-Res; other lossless -> FLAC.
+// - lossy file with average bitrate >= 320 kbps -> 320k.
+// - anything else (lossy below 320 kbps, unknown format, unreadable
+//   file) -> nil, shown as "本地".
+
+/// Measured properties of one local audio file. All optional: a
+/// probe that cannot measure a property leaves it nil instead of
+/// inventing a value.
+struct LocalAudioProbe {
+    var isLossless: Bool
+    var sampleRate: Double?
+    var bitsPerChannel: Int?
+    var bitrateKbps: Double?
+}
+
+/// Pure tier mapping (unit-tested). Never returns .master — see the
+/// honesty gate above.
+func localFileQualityTier(isLossless: Bool, sampleRate: Double?, bitsPerChannel: Int?, bitrateKbps: Double?) -> AudioQuality? {
+    if isLossless {
+        if (sampleRate ?? 0) >= 96_000 || (bitsPerChannel ?? 0) >= 24 { return .hiRes }
+        return .flac
+    }
+    if (bitrateKbps ?? 0) >= 320 { return .high320 }
+    return nil
+}
+
+/// Badge label for a local file: the derived tier's label, or "本地"
+/// when the file proves no tier. Never returns an empty string.
+func localFileQualityLabel(for url: URL) -> String {
+    guard let probe = probeLocalAudioFile(url),
+          let tier = localFileQualityTier(
+              isLossless: probe.isLossless,
+              sampleRate: probe.sampleRate,
+              bitsPerChannel: probe.bitsPerChannel,
+              bitrateKbps: probe.bitrateKbps)
+    else { return "本地" }
+    return MusicLibraryStore.badgeLabel(for: tier)
+}
+
+/// Read a local audio file's properties with AVAudioFile. Fail-soft:
+/// nil on any failure (missing / corrupt / unsupported file) — the
+/// caller shows "本地", never a crash and never a guessed tier.
+/// The bitrate is the file average (size / duration); it is only
+/// used for the lossy >= 320 kbps step, never for lossless.
+func probeLocalAudioFile(_ url: URL) -> LocalAudioProbe? {
+    guard let file = try? AVAudioFile(forReading: url) else { return nil }
+    let format = file.fileFormat
+    // Four-char format IDs (Core Audio OSTypes, written out so no
+    // AudioToolbox import is needed): 'flac' / 'alac' / 'lpcm'.
+    let formatID = format.formatID
+    let isLossless = formatID == 0x666C_6163 || formatID == 0x616C_6163 || formatID == 0x6C70_636D
+    let sampleRate = format.sampleRate > 0 ? format.sampleRate : nil
+    let bits = format.streamDescription.pointee.mBitsPerChannel
+    let bitsPerChannel = bits > 0 ? Int(bits) : nil
+    var bitrateKbps: Double?
+    if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
+       file.length > 0,
+       let rate = sampleRate, rate > 0 {
+        let seconds = Double(file.length) / rate
+        if seconds > 0 { bitrateKbps = Double(size) * 8 / seconds / 1000 }
+    }
+    return LocalAudioProbe(
+        isLossless: isLossless,
+        sampleRate: sampleRate,
+        bitsPerChannel: bitsPerChannel,
+        bitrateKbps: bitrateKbps
+    )
 }
