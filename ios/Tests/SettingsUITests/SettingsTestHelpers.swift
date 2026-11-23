@@ -8,7 +8,7 @@ import Foundation
 import UIKit
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 /// A generated image, so tests never need a bundle asset.
 enum SettingsTestImages {

@@ -48,18 +48,16 @@ import UIKit
 
 /// Backend capability for live background audio-only mode
 /// (Flutter `setAudioOnly`: drop the video track, keep the audio).
-/// No VideoPlayerBackend implements this today — the backends are
-/// another leg's files and this leg does not touch them — so the
-/// driver calls it opportunistically (`as?` cast) and records
-/// `isAudioOnly` regardless. The engine wiring (MPV: set the
-/// `video` property to `no`; AVPlayer/IJK: their video-track
-/// equivalent) is a backend-leg seam: until it lands, the
-/// `.playback` audio session still keeps live AUDIO alive in
-/// background, but an MPV core whose video output is suspended may
-/// stall the whole stream (the Flutter root cause this mode exists
-/// to fix). The state machine, the flag and the foreground restore
-/// are implemented here and tested; the engine call is the open
-/// seam, not a silent no-op.
+/// MPV implements it (S7-C: `video=no` / `video=auto`); AVPlayer
+/// and IJK do not yet, so the driver calls it opportunistically
+/// (`as?` cast) and records `isAudioOnly` regardless. Until the
+/// AVPlayer/IJK equivalents land, the `.playback` audio session
+/// still keeps live AUDIO alive in background on those engines,
+/// but a core whose video output is suspended may stall the whole
+/// stream (the Flutter root cause this mode exists to fix). The
+/// state machine, the flag and the foreground restore are
+/// implemented here and tested; the missing engine call is the
+/// open seam, not a silent no-op.
 protocol LiveAudioOnlyCapable: AnyObject {
     func setAudioOnly(_ audioOnly: Bool)
 }

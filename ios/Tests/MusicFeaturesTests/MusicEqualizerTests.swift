@@ -5,7 +5,7 @@
 
 import XCTest
 
-@testable import MusicFeatures
+@testable import HAoStudio
 
 final class MusicEqualizerTests: XCTestCase {
     func testNormalizeGainClamps() {

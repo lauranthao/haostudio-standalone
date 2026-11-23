@@ -4,10 +4,10 @@
 // into `ios/Package.swift` (this leg does not edit it). SettingsStore
 // / ThemeStore are @MainActor ObservableObjects with SwiftUI
 // (Color) and UIKit state, so `swift test` on a macOS runner
-// cannot compile this target. S7 wires a `SettingsTests` Xcode
+// cannot compile this target. S7 wired the `HAoStudioTests` Xcode
 // test target (run with `xcodebuild test` against an iOS simulator
-// destination); the target compiles the `Features/My` sources
-// directly and imports AppCore for the storage / player types.
+// destination); the target has the app as its host and the tests
+// `@testable import HAoStudio` for the storage / player types.
 //
 // Isolation (same pattern as MigrationStoreTests): every test
 // uses a fresh UserDefaults suite (UUID) and a fresh temporary
@@ -17,7 +17,7 @@
 import Foundation
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 @MainActor
 final class SettingsStoreTests: XCTestCase {

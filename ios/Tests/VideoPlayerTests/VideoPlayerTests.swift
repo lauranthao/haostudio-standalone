@@ -1,17 +1,14 @@
 // HAo Studio 2.0 — video player tests (S3, leg A).
 //
 // iOS-only, same treatment as S2's MusicPlayerTests: NOT wired
-// into `ios/Package.swift` (this leg does not edit it). S7 wires
-// a `VideoPlayerTests` Xcode test target (run with `xcodebuild
+// into `ios/Package.swift` (this leg does not edit it). S7 wired
+// the `HAoStudioTests` Xcode test target (run with `xcodebuild
 // test` against an iOS simulator destination, or an equivalent
 // iOS-capable run — `swift test` on a macOS runner cannot compile
-// this target: UIKit / AVFoundation). The S7 target compiles the
-// `HAoStudio/Playback` video sources directly, EXCEPT
-// `PlaybackCoordinator.swift` (owned by AppCore — build #18,
-// 2026-11-23: one source file, one target; never list a file
-// AppCore already owns), and imports AppCore for the
-// Services/Video types + coordinator contracts (Leg B adds
-// Services/Video to AppCore; no separate VideoServices target).
+// this target: UIKit / AVFoundation). The target has the app as
+// its host and the tests `@testable import HAoStudio` for the
+// Playback / Services types (Leg B added Services/Video to
+// AppCore; no separate VideoServices target).
 //
 // The driver is driven through a fake backend and a fake
 // resolver, never real engines: the open timeout uses a short
@@ -21,7 +18,7 @@
 import Foundation
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 // MARK: - Fakes
 

@@ -54,7 +54,12 @@ struct MusicSleepTimerView: View {
                     Text("睡眠定时")
                 } footer: {
                     if playerVM.sleepActive {
-                        Text("正在倒计时：\(playerVM.sleepRemainingText)。到时暂停播放。")
+                        Text(sleepStatusText(
+                            option: playerVM.sleepTimer.option,
+                            remainingText: playerVM.sleepRemainingText,
+                            tracksCompleted: playerVM.sleepTimer.tracksCompleted,
+                            trackTarget: playerVM.sleepTimer.trackTarget
+                        ))
                     } else {
                         Text("到时暂停播放。播完本首 / 播完 N 首 / 到歌单结束在切歌完成时停下。")
                     }
@@ -171,7 +176,7 @@ struct MusicQualitySheet: View {
                     HStack {
                         Text("当前实际")
                         Spacer()
-                        Text(playerVM.actualQuality.map { MusicLibraryStore.badgeLabel(for: $0) } ?? "—")
+                        Text(playerVM.qualityBadgeLabel ?? "—")
                             .foregroundStyle(theme.textSecondary)
                     }
                 }

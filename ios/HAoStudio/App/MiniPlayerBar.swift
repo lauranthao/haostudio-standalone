@@ -1,4 +1,4 @@
-// HAo Studio 2.0 — mini player strip + full-player placeholder.
+// HAo Studio 2.0 — mini player strip + full-player fallback.
 //
 // The mini player is a floating glass strip ABOVE the tab bar. Tapping it
 // opens the full player. S2-C wiring:
@@ -8,6 +8,9 @@
 //   live items it shows no transport button (their players are other
 //   slices' — a button with no engine behind it would be fake).
 // - Tapping the strip opens the full player (music: the real player).
+// - S7-C: the cover slot shows the item's real artwork
+//   (MusicCoverView); its placeholder is the same note icon as
+//   before when the item carries no cover URL.
 
 import SwiftUI
 
@@ -17,7 +20,7 @@ struct MiniPlayerBar: View {
     @EnvironmentObject private var musicPlayer: MusicPlayerViewModel
     @Environment(\.haoTheme) private var theme
 
-    /// Opens the full player (foundation: the empty-state placeholder).
+    /// Opens the full player for the current item.
     var onTapFullPlayer: () -> Void
 
     var body: some View {
@@ -29,16 +32,10 @@ struct MiniPlayerBar: View {
             HStack(spacing: 12) {
                 Button(action: onTapFullPlayer) {
                     HStack(spacing: 12) {
-                        // Cover slot: theme surface until the player slice
-                        // supplies real artwork.
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(theme.surfaceStrong)
-                            .frame(width: 40, height: 40)
-                            .overlay {
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(theme.textSecondary)
-                            }
+                        // Real artwork when the item carries a cover
+                        // URL; MusicCoverView falls back to the note
+                        // placeholder when there is none.
+                        MusicCoverView(urlString: item.coverURL?.absoluteString ?? "", size: 40, cornerRadius: 8)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title)
                                 .font(.system(size: 15, weight: .semibold))
@@ -80,10 +77,11 @@ struct MiniPlayerBar: View {
     }
 }
 
-/// Full-player empty state for the foundation slice. The real player
-/// (music / VOD / live) arrives in the player slice; this view only
-/// proves the navigation path from the mini player exists and never
-/// pretends anything is playing.
+/// Fallback when the mini player cannot rebuild a real player
+/// from the current item (only reachable for a live item whose id
+/// does not parse as a room id — music / VOD / live all open
+/// their real players). Shows the item title and a plain
+/// "cannot play" note, never dev jargon, with a close button.
 struct FullPlayerPlaceholderView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var coordinator: PlaybackCoordinator
@@ -101,7 +99,7 @@ struct FullPlayerPlaceholderView: View {
                         .font(.system(size: 16))
                         .foregroundStyle(theme.textSecondary)
                 }
-                Text("播放器是后续 slice，此处为空态占位。")
+                Text("当前内容无法播放")
                     .font(.system(size: 14))
                     .foregroundStyle(theme.textMuted)
             }

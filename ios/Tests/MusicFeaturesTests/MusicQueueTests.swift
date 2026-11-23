@@ -6,7 +6,7 @@
 
 import XCTest
 
-@testable import MusicFeatures
+@testable import HAoStudio
 
 final class MusicQueueTests: XCTestCase {
     private func song(_ id: String, title: String = "Song") -> MusicSong {

@@ -4,15 +4,14 @@
 // Values are built inline; nothing reads Documents or
 // UserDefaults. Isolation follows MigrationStoreTests.
 //
-// Wiring note for the coordinator: this file uses
-// `@testable import AppCore` like MigrationStoreTests. If the
-// SettingsTests target is wired to the app module instead
-// (MyView.swift is a SwiftUI file and AppCore has so far stayed
-// Foundation-only), only the import line below changes.
+// Wiring note: S7 wired this file to the app module
+// (`@testable import HAoStudio`) under the `HAoStudioTests` Xcode
+// test target, because MyView.swift is a SwiftUI file and AppCore
+// has stayed Foundation-only.
 
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 final class MyEntriesTests: XCTestCase {
     // MARK: - Entry counts

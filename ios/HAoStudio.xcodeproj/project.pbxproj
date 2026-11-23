@@ -159,7 +159,6 @@
 		000000000000000000000123 /* VodDanmakuClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000122 /* VodDanmakuClient.swift */; };
 		000000000000000000000125 /* VodDanmakuLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* VodDanmakuLayer.swift */; };
 		000000000000000000000127 /* VodGestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* VodGestures.swift */; };
-		000000000000000000000129 /* VodPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000128 /* VodPlayerViewModel.swift */; };
 		00000000000000000000012B /* VodSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* VodSettingsSheet.swift */; };
 		00000000000000000000015D /* BilibiliDanmaku.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000148 /* BilibiliDanmaku.swift */; };
 		00000000000000000000015E /* BilibiliSite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000149 /* BilibiliSite.swift */; };
@@ -203,6 +202,23 @@
 		000000000000000000000199 /* VersionCompare.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019A /* VersionCompare.swift */; };
 		00000000000000000000019B /* BackupUpdateLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019C /* BackupUpdateLogic.swift */; };
 		00000000000000000000019D /* BackupUpdateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019E /* BackupUpdateViews.swift */; };
+		0000000000000000000001A0 /* BackupUpdateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019F /* BackupUpdateUITests.swift */; };
+		0000000000000000000001A2 /* CacheManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A1 /* CacheManagerTests.swift */; };
+		0000000000000000000001A4 /* EmbyConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A3 /* EmbyConfigTests.swift */; };
+		0000000000000000000001A6 /* ImageLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A5 /* ImageLoaderTests.swift */; };
+		0000000000000000000001A8 /* MyEntriesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A7 /* MyEntriesTests.swift */; };
+		0000000000000000000001AA /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A9 /* SettingsStoreTests.swift */; };
+		0000000000000000000001AC /* SettingsTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AB /* SettingsTestHelpers.swift */; };
+		0000000000000000000001AE /* VideoEngineReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AD /* VideoEngineReporterTests.swift */; };
+		0000000000000000000001B0 /* MusicEqualizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AF /* MusicEqualizerTests.swift */; };
+		0000000000000000000001B2 /* MusicLyricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B1 /* MusicLyricsTests.swift */; };
+		0000000000000000000001B4 /* MusicQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B3 /* MusicQueueTests.swift */; };
+		0000000000000000000001B6 /* MusicReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B5 /* MusicReportTests.swift */; };
+		0000000000000000000001B8 /* MusicSearchMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B7 /* MusicSearchMergeTests.swift */; };
+		0000000000000000000001D0 /* MusicS7PolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001CF /* MusicS7PolishTests.swift */; };
+		0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B9 /* MusicSleepTimerTests.swift */; };
+		0000000000000000000001BC /* LiveDriverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BB /* LiveDriverTests.swift */; };
+		0000000000000000000001BE /* VideoPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BD /* VideoPlayerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -343,7 +359,6 @@
 		000000000000000000000122 /* VodDanmakuClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuClient.swift; sourceTree = "<group>"; };
 		000000000000000000000124 /* VodDanmakuLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuLayer.swift; sourceTree = "<group>"; };
 		000000000000000000000126 /* VodGestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodGestures.swift; sourceTree = "<group>"; };
-		000000000000000000000128 /* VodPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodPlayerViewModel.swift; sourceTree = "<group>"; };
 		00000000000000000000012A /* VodSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodSettingsSheet.swift; sourceTree = "<group>"; };
 		000000000000000000000148 /* BilibiliDanmaku.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilibiliDanmaku.swift; sourceTree = "<group>"; };
 		000000000000000000000149 /* BilibiliSite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BilibiliSite.swift; sourceTree = "<group>"; };
@@ -387,6 +402,25 @@
 		00000000000000000000019A /* VersionCompare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionCompare.swift; sourceTree = "<group>"; };
 		00000000000000000000019C /* BackupUpdateLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpdateLogic.swift; sourceTree = "<group>"; };
 		00000000000000000000019E /* BackupUpdateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpdateViews.swift; sourceTree = "<group>"; };
+		00000000000000000000019F /* BackupUpdateUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpdateUITests.swift; sourceTree = "<group>"; };
+		0000000000000000000001A1 /* CacheManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManagerTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001A3 /* EmbyConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyConfigTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001A5 /* ImageLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoaderTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001A7 /* MyEntriesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyEntriesTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001A9 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001AB /* SettingsTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTestHelpers.swift; sourceTree = "<group>"; };
+		0000000000000000000001AD /* VideoEngineReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEngineReporterTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001AF /* MusicEqualizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEqualizerTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001B1 /* MusicLyricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLyricsTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001B3 /* MusicQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueueTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001B5 /* MusicReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicReportTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001B7 /* MusicSearchMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchMergeTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001CF /* MusicS7PolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicS7PolishTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001B9 /* MusicSleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSleepTimerTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001BB /* LiveDriverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriverTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001BD /* VideoPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001BF /* HAoStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HAoStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0000000000000000000001C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -409,6 +443,8 @@
 				000000000000000000000044 /* Mbedx509.xcframework in Frameworks */,
 				000000000000000000000047 /* Png16.xcframework in Frameworks */,
 				00000000000000000000004A /* Xml2.xcframework in Frameworks */,
+			); runOnlyForDeploymentPostprocessing = 0; };
+		0000000000000000000001C7 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
@@ -461,7 +497,6 @@
 				000000000000000000000112 /* VideoDriver.swift */,
 				000000000000000000000124 /* VodDanmakuLayer.swift */,
 				000000000000000000000126 /* VodGestures.swift */,
-				000000000000000000000128 /* VodPlayerViewModel.swift */,
 				00000000000000000000012A /* VodSettingsSheet.swift */,
 			); path = Playback; sourceTree = "<group>"; };
 		000000000000000000000060 /* Storage */ = {isa = PBXGroup; children = (
@@ -657,11 +692,13 @@
 			); path = Vendor; sourceTree = "<group>"; };
 		00000000000000000000005A /* Products */ = {isa = PBXGroup; children = (
 				000000000000000000000053 /* HAoStudio.app */,
+				0000000000000000000001BF /* HAoStudioTests.xctest */,
 			); name = Products; sourceTree = "<group>"; };
 		000000000000000000000058 = {isa = PBXGroup; children = (
 				000000000000000000000059 /* HAoStudio */,
 				00000000000000000000005B /* Vendor */,
 				00000000000000000000005A /* Products */,
+				0000000000000000000001C1 /* Tests */,
 			); sourceTree = "<group>"; };
 		00000000000000000000012C /* Video */ = {isa = PBXGroup; children = (
 				0000000000000000000000F4 /* EmbyCategoryView.swift */,
@@ -691,6 +728,38 @@
 		00000000000000000000012D /* DownloadEngine */ = {isa = PBXGroup; children = (
 				0000000000000000000000F2 /* DownloadEngine.swift */,
 		); path = DownloadEngine; sourceTree = "<group>"; };
+		0000000000000000000001C2 /* SettingsUITests */ = {isa = PBXGroup; children = (
+				00000000000000000000019F /* BackupUpdateUITests.swift */,
+				0000000000000000000001A1 /* CacheManagerTests.swift */,
+				0000000000000000000001A3 /* EmbyConfigTests.swift */,
+				0000000000000000000001A5 /* ImageLoaderTests.swift */,
+				0000000000000000000001A7 /* MyEntriesTests.swift */,
+				0000000000000000000001A9 /* SettingsStoreTests.swift */,
+				0000000000000000000001AB /* SettingsTestHelpers.swift */,
+				0000000000000000000001AD /* VideoEngineReporterTests.swift */,
+			); path = SettingsUITests; sourceTree = "<group>"; };
+		0000000000000000000001C3 /* MusicFeaturesTests */ = {isa = PBXGroup; children = (
+				0000000000000000000001AF /* MusicEqualizerTests.swift */,
+				0000000000000000000001B1 /* MusicLyricsTests.swift */,
+				0000000000000000000001B3 /* MusicQueueTests.swift */,
+				0000000000000000000001B5 /* MusicReportTests.swift */,
+				0000000000000000000001B7 /* MusicSearchMergeTests.swift */,
+				0000000000000000000001CF /* MusicS7PolishTests.swift */,
+				0000000000000000000001B9 /* MusicSleepTimerTests.swift */,
+			); path = MusicFeaturesTests; sourceTree = "<group>"; };
+		0000000000000000000001C4 /* VideoPlayerTests */ = {isa = PBXGroup; children = (
+				0000000000000000000001BB /* LiveDriverTests.swift */,
+				0000000000000000000001BD /* VideoPlayerTests.swift */,
+			); path = VideoPlayerTests; sourceTree = "<group>"; };
+		0000000000000000000001C5 /* HAoStudioTests */ = {isa = PBXGroup; children = (
+				0000000000000000000001C0 /* Info.plist */,
+			); path = HAoStudioTests; sourceTree = "<group>"; };
+		0000000000000000000001C1 /* Tests */ = {isa = PBXGroup; children = (
+				0000000000000000000001C2 /* SettingsUITests */,
+				0000000000000000000001C3 /* MusicFeaturesTests */,
+				0000000000000000000001C4 /* VideoPlayerTests */,
+				0000000000000000000001C5 /* HAoStudioTests */,
+			); path = Tests; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -702,11 +771,28 @@
 			); buildRules = (
 			); dependencies = (
 			); name = HAoStudio; productName = HAoStudio; productReference = 000000000000000000000053 /* HAoStudio.app */; productType = "com.apple.product-type.application"; };
+		0000000000000000000001C9 /* HAoStudioTests */ = {isa = PBXNativeTarget; buildConfigurationList = 0000000000000000000001CC /* Build configuration list for PBXNativeTarget "HAoStudioTests" */; buildPhases = (
+				0000000000000000000001C7 /* Frameworks */,
+				0000000000000000000001C6 /* Sources */,
+				0000000000000000000001C8 /* Resources */,
+			); buildRules = (
+			); dependencies = (
+				0000000000000000000001CA /* PBXTargetDependency */,
+			); name = HAoStudioTests; productName = HAoStudioTests; productReference = 0000000000000000000001BF /* HAoStudioTests.xctest */; productType = "com.apple.product-type.bundle.unit-test"; };
 /* End PBXNativeTarget section */
 
+/* Begin PBXContainerItemProxy section */
+		0000000000000000000001CB /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 000000000000000000000063 /* Project object */; proxyType = 1; remoteGlobalIDString = 000000000000000000000062; remoteInfo = HAoStudio; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		0000000000000000000001CA /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 000000000000000000000062 /* HAoStudio */; targetProxy = 0000000000000000000001CB /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
 /* Begin PBXProject section */
-		000000000000000000000063 /* Project object */ = {isa = PBXProject; attributes = { LastSwiftUpdateCheck = 1500; LastUpgradeCheck = 1500; TargetAttributes = { 000000000000000000000062 = { CreatedOnToolsVersion = 15.0; }; }; }; buildConfigurationList = 000000000000000000000069 /* Build configuration list for PBXProject "HAoStudio" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = ( en, Base, ); mainGroup = 000000000000000000000058; productRefGroup = 00000000000000000000005A /* Products */; projectDirPath = ""; projectRoot = ""; targets = (
+		000000000000000000000063 /* Project object */ = {isa = PBXProject; attributes = { LastSwiftUpdateCheck = 1500; LastUpgradeCheck = 1500; TargetAttributes = { 000000000000000000000062 = { CreatedOnToolsVersion = 15.0; }; 0000000000000000000001C9 = { CreatedOnToolsVersion = 15.0; TestTargetID = 000000000000000000000062; }; }; }; buildConfigurationList = 000000000000000000000069 /* Build configuration list for PBXProject "HAoStudio" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = ( en, Base, ); mainGroup = 000000000000000000000058; productRefGroup = 00000000000000000000005A /* Products */; projectDirPath = ""; projectRoot = ""; targets = (
 				000000000000000000000062 /* HAoStudio */,
+				0000000000000000000001C9 /* HAoStudioTests */,
 			); };
 /* End PBXProject section */
 
@@ -727,6 +813,8 @@
 				0000000000000000000000DF /* tongyi.js in Resources */,
 				0000000000000000000000E1 /* xinghai.js in Resources */,
 				0000000000000000000000E3 /* yuxi.js in Resources */,
+			); runOnlyForDeploymentPostprocessing = 0; };
+		0000000000000000000001C8 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
@@ -833,7 +921,6 @@
 				000000000000000000000123 /* VodDanmakuClient.swift in Sources */,
 				000000000000000000000125 /* VodDanmakuLayer.swift in Sources */,
 				000000000000000000000127 /* VodGestures.swift in Sources */,
-				000000000000000000000129 /* VodPlayerViewModel.swift in Sources */,
 				00000000000000000000012B /* VodSettingsSheet.swift in Sources */,
 				00000000000000000000015D /* BilibiliDanmaku.swift in Sources */,
 				00000000000000000000015E /* BilibiliSite.swift in Sources */,
@@ -878,6 +965,25 @@
 				00000000000000000000019B /* BackupUpdateLogic.swift in Sources */,
 				00000000000000000000019D /* BackupUpdateViews.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
+		0000000000000000000001C6 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+				0000000000000000000001A0 /* BackupUpdateUITests.swift in Sources */,
+				0000000000000000000001A2 /* CacheManagerTests.swift in Sources */,
+				0000000000000000000001A4 /* EmbyConfigTests.swift in Sources */,
+				0000000000000000000001A6 /* ImageLoaderTests.swift in Sources */,
+				0000000000000000000001A8 /* MyEntriesTests.swift in Sources */,
+				0000000000000000000001AA /* SettingsStoreTests.swift in Sources */,
+				0000000000000000000001AC /* SettingsTestHelpers.swift in Sources */,
+				0000000000000000000001AE /* VideoEngineReporterTests.swift in Sources */,
+				0000000000000000000001B0 /* MusicEqualizerTests.swift in Sources */,
+				0000000000000000000001B2 /* MusicLyricsTests.swift in Sources */,
+				0000000000000000000001B4 /* MusicQueueTests.swift in Sources */,
+				0000000000000000000001B6 /* MusicReportTests.swift in Sources */,
+				0000000000000000000001B8 /* MusicSearchMergeTests.swift in Sources */,
+				0000000000000000000001D0 /* MusicS7PolishTests.swift in Sources */,
+				0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */,
+				0000000000000000000001BC /* LiveDriverTests.swift in Sources */,
+				0000000000000000000001BE /* VideoPlayerTests.swift in Sources */,
+			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -885,6 +991,8 @@
 		000000000000000000000065 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; CODE_SIGN_ENTITLEMENTS = HAoStudio/HAoStudio.entitlements; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; INFOPLIST_FILE = HAoStudio/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0.3; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(PROJECT_DIR)/Vendor/libmpv", ); LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", ); VALIDATE_PRODUCT = YES; }; name = Release; };
 		000000000000000000000066 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ( "DEBUG=1", "$(inherited)", ); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0.3; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
 		000000000000000000000067 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_ENABLE_OBJC_WEAK = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LOCALIZATION_PREFS = ""; MARKETING_VERSION = 1.0.3; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; VALIDATE_PRODUCT = YES; }; name = Release; };
+		0000000000000000000001CD /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; ONLY_ACTIVE_ARCH = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; BUNDLE_LOADER = "$(TEST_HOST)"; COPY_PHASE_STRIP = NO; INFOPLIST_FILE = Tests/HAoStudioTests/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks", ); PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HAoStudio.app/HAoStudio"; }; name = Debug; };
+		0000000000000000000001CE /* Release */ = {isa = XCBuildConfiguration; buildSettings = { DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; VALIDATE_PRODUCT = YES; BUNDLE_LOADER = "$(TEST_HOST)"; COPY_PHASE_STRIP = NO; INFOPLIST_FILE = Tests/HAoStudioTests/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks", ); PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.standalone.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HAoStudio.app/HAoStudio"; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -895,6 +1003,10 @@
 		000000000000000000000069 /* Build configuration list for PBXProject "HAoStudio" */ = {isa = XCConfigurationList; buildConfigurations = (
 				000000000000000000000066 /* Debug */,
 				000000000000000000000067 /* Release */,
+			); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		0000000000000000000001CC /* Build configuration list for PBXNativeTarget "HAoStudioTests" */ = {isa = XCConfigurationList; buildConfigurations = (
+				0000000000000000000001CD /* Debug */,
+				0000000000000000000001CE /* Release */,
 			); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 	};

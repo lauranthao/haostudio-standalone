@@ -1,16 +1,12 @@
 // HAo Studio 2.0 — live driver tests (S4, leg A).
 //
 // iOS-only, same treatment as S3's VideoPlayerTests: NOT wired
-// into `ios/Package.swift` (this leg does not edit it). S7 wires
-// a `VideoPlayerTests` Xcode test target (run with `xcodebuild
+// into `ios/Package.swift` (this leg does not edit it). S7 wired
+// the `HAoStudioTests` Xcode test target (run with `xcodebuild
 // test` against an iOS simulator destination — `swift test` on a
 // macOS runner cannot compile this target: UIKit / AVFoundation).
-// The S7 target compiles the `HAoStudio/Playback` live sources
-// directly (LiveDriver, LiveRoomSession, LivePlayerViewModel),
-// EXCEPT `PlaybackCoordinator.swift` (owned by AppCore — build #18,
-// 2026-11-23: one source file, one target; never list a file
-// AppCore already owns), and imports AppCore for the
-// Services/Video types + coordinator contracts.
+// The target has the app as its host and the tests
+// `@testable import HAoStudio` for the Playback / Services types.
 //
 // The driver is driven through a fake backend (shared with
 // VideoPlayerTests.swift: FakeVideoBackend / FakeBackendFactory —
@@ -24,7 +20,7 @@
 import Foundation
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 // MARK: - Fakes
 

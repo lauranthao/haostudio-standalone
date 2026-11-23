@@ -112,10 +112,10 @@ struct LiveRoomRow: View {
                     HStack(spacing: 6) {
                         if room.isLive {
                             Text("LIVE")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
                                 .background(theme.liveRed, in: Capsule())
                         }
                         Text(room.streamer.isEmpty ? room.platform.displayName : room.streamer)

@@ -16,7 +16,6 @@
 
 import Foundation
 import SwiftUI
-import UIKit
 
 // MARK: - Config + pure math
 
@@ -112,84 +111,5 @@ final class VodGestureState: ObservableObject {
     /// Called by the single-tap gesture.
     func singleTapped() {
         onSingleTap?()
-    }
-}
-
-// MARK: - UIKit wiring
-//
-// SwiftUI's `onTapGesture(count:)` cannot report WHERE a
-// double-tap landed (needed for left = back / right = forward),
-// and a single-tap handler on the same view can also fire on a
-// double-tap. So the overlay below uses UIKit recognisers: the
-// single-tap requires the double-tap to fail, the double-tap
-// reports its location, and the long-press reports press/release.
-// All decisions (VOD gate, seek amount) still live in the state
-// / math above — the recognisers only report raw gestures.
-
-/// Transparent overlay hosting the VOD gesture recognisers. The
-/// page puts it over the video area only (never over the progress
-/// bar — scrubbing must never trigger a long-press 2x).
-struct VodGestureOverlayView: UIViewRepresentable {
-    var state: VodGestureState
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        let single = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.singleTap(_:)))
-        single.numberOfTapsRequired = 1
-        let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
-        double.numberOfTapsRequired = 2
-        single.require(toFail: double)
-        let long = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.longPress(_:)))
-        long.minimumPressDuration = VodGestureConfig.longPressMinimumDuration
-        long.allowableMovement = 20
-        view.addGestureRecognizer(single)
-        view.addGestureRecognizer(double)
-        view.addGestureRecognizer(long)
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(state: state)
-    }
-
-    final class Coordinator: NSObject {
-        let state: VodGestureState
-
-        init(state: VodGestureState) {
-            self.state = state
-        }
-
-        @objc func singleTap(_ recogniser: UITapGestureRecognizer) {
-            guard recogniser.state == .ended else { return }
-            state.singleTapped()
-        }
-
-        @objc func doubleTap(_ recogniser: UITapGestureRecognizer) {
-            guard recogniser.state == .ended,
-                  let view = recogniser.view else { return }
-            let location = recogniser.location(in: view)
-            state.doubleTapped(atX: location.x, width: view.bounds.width)
-        }
-
-        @objc func longPress(_ recogniser: UILongPressGestureRecognizer) {
-            switch recogniser.state {
-            case .began:
-                state.longPressBegan()
-            case .ended, .cancelled, .failed:
-                state.longPressEnded()
-            default:
-                break
-            }
-        }
-    }
-}
-
-extension View {
-    /// Attach the VOD gesture layer over the video area.
-    func vodGestures(_ state: VodGestureState) -> some View {
-        overlay(VodGestureOverlayView(state: state))
     }
 }

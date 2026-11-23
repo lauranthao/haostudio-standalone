@@ -35,7 +35,7 @@ private struct PlaceholderPage: View {
 
 struct HomePlaceholderView: View {
     var body: some View {
-        PlaceholderPage(title: "首页", note: "占位页 — 内容由后续 slice 填入。")
+        PlaceholderPage(title: "首页", note: "首页正在准备中。")
     }
 }
 

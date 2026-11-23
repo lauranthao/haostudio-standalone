@@ -624,29 +624,6 @@ enum EmbySynopsis {
     }
 }
 
-// MARK: - Unplayed reminder (pure threshold check)
-
-/// Unplayed reminder: pure threshold check. The threshold
-/// (`reminderDays`, 0 = off) and the last-played stamp are stored
-/// in the config; this only decides "is it due". Firing a
-/// reminder needs a notification channel + an app-start check,
-/// neither of which exists in this version — nothing notifies yet.
-enum EmbyReminder {
-    static let options = [0, 3, 7, 14, 30]
-
-    static func label(days: Int) -> String {
-        days <= 0 ? "关闭" : "\(days) 天"
-    }
-
-    static func shouldRemind(lastPlayedAtMs: Int?, thresholdDays: Int, now: Date) -> Bool {
-        if thresholdDays <= 0 { return false }
-        guard let lastPlayedAtMs = lastPlayedAtMs else { return false }
-        let last = Date(timeIntervalSince1970: TimeInterval(lastPlayedAtMs) / 1000)
-        let days = Calendar.current.dateComponents([.day], from: last, to: now).day ?? 0
-        return days >= thresholdDays
-    }
-}
-
 // MARK: - Config store
 
 /// Fault-tolerant read/write of the Emby config (same pattern as

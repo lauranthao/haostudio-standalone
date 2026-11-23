@@ -1,10 +1,9 @@
 // HAo Studio 2.0 — backup + update UI tests (S6-B leg).
 //
-// UNWIRED (same as the other files in this directory): there is
-// no Xcode test target yet — these run from the S7 Xcode target,
-// not from `swift test`. The assertions below only touch AppCore
-// pure logic (UpdatePromptContent), so the only wiring change at
-// S7 is the import line, same as MyEntriesTests.
+// WIRED (S7): runs under the `HAoStudioTests` Xcode test target,
+// not from `swift test`. The assertions below only touch pure
+// logic (UpdatePromptContent); the S7 wiring change was the import
+// line (`@testable import HAoStudio`), same as MyEntriesTests.
 // What these tests CANNOT cover (verify by hand at merge): the
 // sheet actually appears on check, the fileImporter opens the
 // .zip picker, ShareLink shares the exported file, the alert
@@ -12,7 +11,7 @@
 
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 final class BackupUpdateUITests: XCTestCase {
     private func makeResult(

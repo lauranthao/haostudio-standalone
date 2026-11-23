@@ -24,13 +24,6 @@
 
 import Foundation
 
-/// File references stored in collection indexes. Only the relative name
-/// is ever persisted (`local_music/x.mp3`, `wallpapers/y.png` …).
-struct StoredFileRef: Codable, Equatable {
-    /// Relative name: `<subdir>/<file>`, or a bare `<file>`.
-    var relativeName: String
-}
-
 enum LocalStore {
     /// App Documents directory (current container — rebuilt on every
     /// read, never cached across launches).

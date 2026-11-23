@@ -149,7 +149,7 @@ struct MusicAlbumDetailView: View {
             MusicCoverView(urlString: viewModel.detail.pic, size: 120, cornerRadius: 12)
             VStack(alignment: .leading, spacing: 6) {
                 Text(viewModel.detail.name.isEmpty ? album.name : viewModel.detail.name)
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(2)
                 Text(viewModel.detail.artist.isEmpty ? album.artist : viewModel.detail.artist)

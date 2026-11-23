@@ -92,6 +92,28 @@ func sleepRemainingText(_ remaining: TimeInterval) -> String {
     return "\(total / 60):\(String(format: "%02d", total % 60))"
 }
 
+/// Status line for the sleep sheet footer (S7-A). Wall-clock modes
+/// show the live remaining time; completion modes show what they
+/// wait for (and, for after-N-tracks, how many have finished).
+/// Before S7-A the footer printed "正在倒计时：" with an empty
+/// remaining time for completion modes — they have no clock.
+/// `remainingText` is only read for wall-clock options. Pure
+/// function (unit-tested).
+func sleepStatusText(option: SleepTimerOption, remainingText: String, tracksCompleted: Int, trackTarget: Int) -> String {
+    switch option {
+    case .off:
+        return ""
+    case .queueEnd:
+        return "到歌单结束时停止。"
+    case .currentTrackEnd:
+        return "播完本首后停止。"
+    case .afterNTracks:
+        return "播完 \(trackTarget) 首后停止（已播完 \(tracksCompleted) 首）。"
+    case .min5, .min15, .min30, .min45, .min60, .min90, .custom:
+        return "正在倒计时：\(remainingText)。到时暂停播放。"
+    }
+}
+
 final class MusicSleepTimer {
     /// Called once when a wall-clock timer reaches zero. The timer
     /// has already cleared itself by then.

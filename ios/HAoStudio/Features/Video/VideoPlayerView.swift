@@ -696,7 +696,7 @@ struct VideoPlayerEpisodeSheet: View {
 /// The video frame. The A-leg driver's native surface
 /// (MPV / IJK / AVPlayer view) is embedded here; before the first
 /// open the episode cover rides dimmed as the backdrop and the
-/// page states the core is not attached yet — never a fake frame.
+/// page states there is no picture yet — never a fake frame.
 struct VideoPlayerSurface: View {
     @EnvironmentObject private var videoPlayer: VideoPlayerViewModel
 
@@ -718,7 +718,7 @@ struct VideoPlayerSurface: View {
                     Image(systemName: "film")
                         .font(.system(size: 28))
                         .foregroundStyle(.white.opacity(0.6))
-                    Text("播放器核心未接入")
+                    Text("暂无画面")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
                 }

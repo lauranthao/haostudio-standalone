@@ -16,7 +16,7 @@
 import Foundation
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 @MainActor
 final class EmbyConfigTests: XCTestCase {

@@ -3,19 +3,13 @@
 // The flow + update sheet. The engine (A leg) and the checker
 // (C leg) are NOT built here: the flow talks to them only through
 // the `BackupEngine` / `UpdateChecker` protocols in
-// BackupUpdateLogic.swift, and the coordinator wires the real
-// implementations into `BackupUpdateFlow.shared` at merge
-// (HAoStudioApp owns the other shared stores, but this leg must
-// not touch that file — the wiring is one line in the merge).
-// Until they are wired, tapping a row shows an honest "尚未接入"
-// alert instead of a dead button or a crash.
+// BackupUpdateLogic.swift, and HAoStudioApp wires the real
+// implementations into `BackupUpdateFlow.shared` at launch (S6).
+// The nil guards below are defensive only — the app never ships
+// with engine/checker unwired — so a nil engine shows a plain
+// "不可用" alert instead of a dead button or a crash.
 //
-// Wiring note for the coordinator:
-// - `BackupUpdateFlow.shared.engine = <A-leg engine>`
-// - `BackupUpdateFlow.shared.checker = <C-leg checker>`
-// - Register this file + BackupUpdateLogic.swift in the pbxproj
-//   Sources phase (this leg must not touch the pbxproj); also
-//   bump the preflight Swift-file count (137 -> 139).
+// Wiring note:
 // - The update button opens the download URL in Safari with
 //   `openURL`: no silent download, no automatic install.
 // - Red is never used here: the minOs-blocked state is a warning
@@ -68,7 +62,7 @@ final class BackupUpdateFlow: ObservableObject {
 
     func beginExport() {
         guard let engine = engine else {
-            alert = BackupUpdateAlert(title: "导出备份未接入", message: "备份引擎尚未接入（S6 合腿时接线），请等下一个版本再试。")
+            alert = BackupUpdateAlert(title: "导出备份不可用", message: "备份引擎不可用，请稍后再试。")
             return
         }
         guard !isExporting else {
@@ -96,7 +90,7 @@ final class BackupUpdateFlow: ObservableObject {
 
     func beginImport() {
         guard engine != nil else {
-            alert = BackupUpdateAlert(title: "导入备份未接入", message: "备份引擎尚未接入（S6 合腿时接线），请等下一个版本再试。")
+            alert = BackupUpdateAlert(title: "导入备份不可用", message: "备份引擎不可用，请稍后再试。")
             return
         }
         showingImporter = true
@@ -107,7 +101,7 @@ final class BackupUpdateFlow: ObservableObject {
     /// access is held until its completion returns.
     func importPicked(url: URL) {
         guard let engine = engine else {
-            alert = BackupUpdateAlert(title: "导入备份未接入", message: "备份引擎尚未接入（S6 合腿时接线），请等下一个版本再试。")
+            alert = BackupUpdateAlert(title: "导入备份不可用", message: "备份引擎不可用，请稍后再试。")
             return
         }
         guard !isImporting else {
@@ -145,7 +139,7 @@ final class BackupUpdateFlow: ObservableObject {
 
     func checkForUpdate() {
         guard let checker = checker else {
-            alert = BackupUpdateAlert(title: "检查更新未接入", message: "更新检查器尚未接入（S6 合腿时接线），请等下一个版本再试。")
+            alert = BackupUpdateAlert(title: "检查更新不可用", message: "更新检查器不可用，请稍后再试。")
             return
         }
         guard !isCheckingUpdate else {

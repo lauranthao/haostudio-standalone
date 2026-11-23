@@ -11,7 +11,7 @@ import Foundation
 import UIKit
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 /// URLProtocol stub: answers every request from `handler` and
 /// counts requests, so the cache behaviour is observable.
