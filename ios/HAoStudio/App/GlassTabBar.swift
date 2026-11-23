@@ -1,22 +1,42 @@
-// HAo Studio 2.0 — floating glass tab bar.
+// HAo Studio 2.0 — bottom tab bar.
 //
-// Ported from the Kumone reference
-// (~/workspace/research/kumone/Sources/Kumone/Features/GlassTabBar.swift):
-// full-height glass capsule (56pt content + 4pt inset = 64pt), sliding
-// selection pill, draggable pill that switches tabs live, settle spring
-// response 0.35 / dampingFraction 0.82.
+// This is a REAL system UITabBar (UIKit), hosted in SwiftUI through a
+// UIViewRepresentable. It is NOT a hand-drawn capsule: there is no
+// floating glass capsule, no sliding pill view, no drag-to-switch-tabs,
+// no settle spring. Tab switching, selection state, VoiceOver and
+// haptics are all the system's own behaviour.
 //
-// Differences from Kumone, per chen's rules:
-// - Selected-item colour is BLACK (light) / white (dark) — `tabSelected`
-//   from the theme palette — NOT Kumone's red, NOT the theme accent.
-// - Unselected items are primary at 80% opacity, as in Kumone.
-// - The bar itself uses the shared `haoGlassCapsule()` treatment
-//   (native .glassEffect on iOS 26+, regular material below), so the
-//   iOS 17–25 fallback and the iOS 26+ path stay one component.
+// Layout contract (MainTabView.swift, untouched): this view sits in the
+// bottom safe-area inset, in the same VStack as the mini player — the
+// mini player is the row above the bar, so the two can never overlap
+// and the mini player never appears twice. The 5 tabs come from
+// HaoTab.allCases in MainTabView's order: 首页/音乐/影视/直播/我的.
+// Tab content switching stays in MainTabView (@State selection +
+// content swap); this file owns only the bar itself.
+//
+// Glass:
+// - iOS 26+: the system tab bar is Liquid Glass. The glass is applied
+//   explicitly as UITabBarAppearance.backgroundEffect = UIGlassEffect()
+//   — the UIKit spelling of SwiftUI's .glassEffect. No custom opaque
+//   background is painted over it: a custom background would overlay
+//   and kill the glass (Apple: "Any custom backgrounds and appearances
+//   you use in these elements might overlay or interfere with Liquid
+//   Glass"). isTranslucent stays true for the same reason.
+// - iOS 17–25: configureWithDefaultBackground() — the classic
+//   translucent frosted-glass bar. Deployment target is 17.0, so every
+//   iOS 26 API below is behind #available(iOS 26.0, *).
+//
+// Selection pill (UITabBar.selectionIndicatorImage):
+// - Solid #E4E4E4 in light mode, solid #3A3A3C in dark mode.
+//   Never black, never faint.
+// - Selected icon + label: theme.tabSelected — BLACK (light) / white
+//   (dark) in all four themes. Never red, never the theme accent.
+// - Unselected: primary at 80%, as before.
 
 import SwiftUI
+import UIKit
 
-/// One tab in the floating bar.
+/// One tab in the bar.
 struct GlassTabBarItem: Identifiable {
     let tab: HaoTab
     let title: String
@@ -35,89 +55,149 @@ struct GlassTabBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.haoTheme) private var theme
 
-    /// Finger x (in content space) while actively dragging the pill; nil at rest.
-    @State private var dragX: CGFloat?
-    @State private var isDragging = false
-
     var body: some View {
-        GeometryReader { geo in
-            let count = max(items.count, 1)
-            let cellW = geo.size.width / CGFloat(count)
-            let selectedIndex = items.firstIndex { $0.tab == selection } ?? 0
-            let restX = cellW * (CGFloat(selectedIndex) + 0.5)
-            let pillX = isDragging
-                ? min(max(dragX ?? restX, cellW / 2), geo.size.width - cellW / 2)
-                : restX
-
-            ZStack(alignment: .leading) {
-                selectionPill
-                    .frame(width: cellW - 8, height: HaoLayout.tabBarContentHeight)
-                    .position(x: pillX, y: geo.size.height / 2)
-
-                HStack(spacing: 0) {
-                    ForEach(items) { item in
-                        itemLabel(item)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(dragGesture(cellW: cellW, count: count))
-        }
+        SystemTabBar(
+            items: items,
+            selection: $selection,
+            onReselect: onReselect,
+            theme: theme,
+            colorScheme: colorScheme
+        )
         .frame(height: HaoLayout.tabBarContentHeight)
         .padding(HaoLayout.tabBarInnerInset)
-        .haoGlassCapsule()
+    }
+}
+
+/// The system UITabBar, bridged into SwiftUI.
+///
+/// A bare UITabBar (not a UITabBarController): MainTabView owns the tab
+/// content and switches it by @State, so no view-controller ownership
+/// is needed here — the bar is a control, not a container.
+private struct SystemTabBar: UIViewRepresentable {
+    let items: [GlassTabBarItem]
+    @Binding var selection: HaoTab
+    var onReselect: (HaoTab) -> Void
+    let theme: HaoThemePalette
+    let colorScheme: ColorScheme
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
     }
 
-    private func itemLabel(_ item: GlassTabBarItem) -> some View {
-        let isSelected = selection == item.tab
-        return VStack(spacing: 3) {
-            Image(systemName: item.icon)
-                .font(.system(size: 23, weight: .semibold))
-            Text(item.title)
-                .font(.system(size: 10, weight: .semibold))
+    func makeUIView(context: Context) -> UITabBar {
+        let tabBar = UITabBar()
+        tabBar.delegate = context.coordinator
+        // Translucent: the glass (iOS 26) / blur (iOS 17–25) must show
+        // the content behind the bar. Setting this false would turn the
+        // bar into a flat opaque slab.
+        tabBar.isTranslucent = true
+        return tabBar
+    }
+
+    func updateUIView(_ tabBar: UITabBar, context: Context) {
+        // Keep the coordinator's copy fresh: it is created once, and the
+        // struct snapshot it was born with goes stale after the first
+        // selection change.
+        context.coordinator.items = items
+        context.coordinator.selection = $selection
+        context.coordinator.onReselect = onReselect
+
+        // Items, in the order MainTabView defines them. Titles + SF
+        // Symbols come from HaoTab, so the bar can never drift from the
+        // tab definitions.
+        tabBar.items = items.enumerated().map { offset, item in
+            UITabBarItem(
+                title: item.title,
+                image: UIImage(systemName: item.icon),
+                tag: offset
+            )
         }
-        // Selected: black (light) / white (dark) — chen's rule, not red.
+
+        // Selected item follows the SwiftUI binding. Setting selectedItem
+        // directly does not call the delegate, so this cannot loop.
+        if let index = items.firstIndex(where: { $0.tab == selection }) {
+            tabBar.selectedItem = tabBar.items?[index]
+        }
+
+        // Selected icon + label: theme.tabSelected (black / white).
+        // Never red, never the theme accent.
+        tabBar.tintColor = UIColor(theme.tabSelected)
         // Unselected: primary at 80%.
-        .foregroundStyle(isSelected ? theme.tabSelected : Color.primary.opacity(0.8))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
+        tabBar.unselectedItemTintColor = UIColor.label.withAlphaComponent(0.8)
+
+        // Selection pill: solid #E4E4E4 (light) / #3A3A3C (dark).
+        // Never black, never faint.
+        tabBar.selectionIndicatorImage = Self.selectionPillImage(for: colorScheme)
+
+        Self.configureAppearance(for: tabBar)
     }
 
-    /// The sliding indicator — a bar-height capsule with a faint tint
-    /// (black @ 7.5% in light / white @ 10% in dark), as in Kumone.
-    private var selectionPill: some View {
-        Capsule(style: .continuous)
-            .fill(colorScheme == .dark
-                  ? Color.white.opacity(0.10)
-                  : Color.black.opacity(0.075))
+    /// Bar background: glass on iOS 26, classic blur below.
+    private static func configureAppearance(for tabBar: UITabBar) {
+        let appearance = UITabBarAppearance()
+        if #available(iOS 26.0, *) {
+            // Liquid Glass is the system tab-bar material on iOS 26.
+            // configureWithDefaultBackground() keeps the system
+            // background; the explicit UIGlassEffect below is the UIKit
+            // spelling of SwiftUI's .glassEffect. No backgroundColor and
+            // no backgroundImage are set — either would paint over the
+            // glass.
+            appearance.configureWithDefaultBackground()
+            appearance.backgroundEffect = UIGlassEffect()
+        } else {
+            // iOS 17–25: classic frosted glass (translucent blur).
+            appearance.configureWithDefaultBackground()
+        }
+        tabBar.standardAppearance = appearance
+        tabBar.scrollEdgeAppearance = appearance
     }
 
-    private func index(for x: CGFloat, cellW: CGFloat, count: Int) -> Int {
-        min(max(Int(x / cellW), 0), count - 1)
+    /// Stretchable solid pill for the selected tab.
+    ///
+    /// #E4E4E4 in light mode, #3A3A3C in dark mode — opaque, solid.
+    /// Never black, never faint (the old capsule used black @ 7.5% /
+    /// white @ 10%, which read as a smudge, not a selection).
+    /// Cap insets keep the semicircular ends intact while the middle
+    /// stretches to the tab's width.
+    private static func selectionPillImage(for colorScheme: ColorScheme) -> UIImage {
+        let color: UIColor
+        if colorScheme == .dark {
+            // #3A3A3C, opaque.
+            color = UIColor(red: 0x3A / 255, green: 0x3A / 255, blue: 0x3C / 255, alpha: 1)
+        } else {
+            // #E4E4E4, opaque.
+            color = UIColor(red: 0xE4 / 255, green: 0xE4 / 255, blue: 0xE4 / 255, alpha: 1)
+        }
+        let size = CGSize(width: 60, height: 36)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            let path = UIBezierPath(
+                roundedRect: CGRect(origin: .zero, size: size),
+                cornerRadius: size.height / 2
+            )
+            color.setFill()
+            path.fill()
+        }
+        let inset = UIEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
+        return image.resizableImage(withCapInsets: inset, resizingMode: .stretch)
     }
 
-    private func dragGesture(cellW: CGFloat, count: Int) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                // Wait for a clear horizontal intent before "lifting" the pill,
-                // so a plain tap slides rather than teleporting to the finger.
-                if !isDragging && abs(value.translation.width) < 8 { return }
-                isDragging = true
-                dragX = value.location.x
-                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
-                if tab != selection { selection = tab }   // live switch, pill tracks finger
+    /// UITabBarDelegate: taps go back to the SwiftUI binding. Tapping
+    /// the already-selected tab reports a reselect instead of a switch.
+    final class Coordinator: NSObject, UITabBarDelegate {
+        var items: [GlassTabBarItem] = []
+        var selection: Binding<HaoTab> = .constant(.home)
+        var onReselect: (HaoTab) -> Void = { _ in }
+
+        func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+            guard let index = tabBar.items?.firstIndex(where: { $0 === item }),
+                  index < items.count
+            else { return }
+            let tab = items[index].tab
+            if tab == selection.wrappedValue {
+                onReselect(tab)
+            } else {
+                selection.wrappedValue = tab
             }
-            .onEnded { value in
-                let tab = items[index(for: value.location.x, cellW: cellW, count: count)].tab
-                if isDragging {
-                    withAnimation(HaoLayout.settleSpring) { selection = tab; dragX = nil }
-                } else if tab == selection {
-                    onReselect(tab)
-                } else {
-                    withAnimation(HaoLayout.settleSpring) { selection = tab }
-                }
-                isDragging = false
-            }
+        }
     }
 }
