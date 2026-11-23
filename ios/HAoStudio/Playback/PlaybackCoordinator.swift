@@ -79,8 +79,27 @@ struct PlaybackItem: Identifiable, Equatable {
     let kind: PlaybackKind
     let title: String
     let artist: String?
+    /// the player shows title/artist without artwork then. Added by
+    /// the S2 music leg with a default so existing constructions keep
+    /// compiling.
+    let coverURL: URL?
+
+    /// Local file to play directly (downloads / local music). When
+    /// set, the coordinator returns this URL without asking the LX
+    /// resolver — local files never go through network resolution.
+    let localFileURL: URL?
 
     var subtitle: String { artist ?? kindSubtitle }
+
+    init(id: String, kind: PlaybackKind, title: String, artist: String?,
+         coverURL: URL? = nil, localFileURL: URL? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.artist = artist
+        self.coverURL = coverURL
+        self.localFileURL = localFileURL
+    }
 
     private var kindSubtitle: String {
         switch kind {
@@ -106,6 +125,53 @@ protocol SourceResolver {
     )
 }
 
+/// A resolver that reports the tier actually played by its last
+/// resolve (Master honesty gate: the quality badge shows the real
+/// tier, never the target). The LX resolver conforms; resolvers
+/// that cannot report a tier simply do not conform, and the tier
+/// stays nil (unknown).
+protocol TierReportingResolver {
+    var lastResolvedTier: AudioQuality? { get }
+}
+
+// MARK: - Player errors and driver contract (moved from
+// NativeMusicPlayer.swift at the S2 merge: the MusicLX SwiftPM test
+// target compiles this file without the iOS-only player file, so the
+// contracts the coordinator programs against live here.)
+
+/// Structured open/seek errors (P0-04). A timeout is handled exactly
+/// like a stream error: the load is dropped and the caller falls
+/// back to the next candidate.
+enum MusicPlayerError: Error, Equatable {
+    case timeout
+    case noPlayableURL
+    case loadFailed
+    case seekFailed
+}
+
+/// What PlaybackCoordinator needs from the music player. The
+/// coordinator owns the resolver and the current-item bookkeeping;
+/// the player owns engines, queue and modes. The coordinator wires
+/// `resolveURL` to its resolver (serial, fastest first) and listens
+/// to `onTrackStarted` / `onTrackFailed` to keep `currentItem` in
+/// sync with the player's `currentTrack`.
+protocol MusicPlaybackDriver: AnyObject {
+    var currentTrack: PlaybackItem? { get }
+    var isPlaying: Bool { get }
+    /// Resolve a playable URL for an item. `excluding` lists URLs
+    /// that already failed for this request, so the resolver can
+    /// hand out the next candidate instead of repeating one. The
+    /// second value is the actual tier the URL plays at, when the
+    /// resolver knows it; nil means unknown, never the target tier.
+    var resolveURL: ((PlaybackItem, [URL], @escaping (URL?, AudioQuality?) -> Void) -> Void)? { get set }
+    var onTrackStarted: ((PlaybackItem) -> Void)? { get set }
+    var onTrackFailed: ((PlaybackItem, MusicPlayerError) -> Void)? { get set }
+    func play(item: PlaybackItem)
+    func open(item: PlaybackItem, url: URL, completion: @escaping (Result<Void, MusicPlayerError>) -> Void)
+    func stop()
+    func resume()
+}
+
 /// Single-audio coordinator. One instance for the whole app
 /// (owned by HAoStudioApp, injected as an environment object).
 @MainActor
@@ -126,7 +192,46 @@ final class PlaybackCoordinator: ObservableObject {
     /// project keeps SWIFT_VERSION = 5.0 from the old project.)
     var resolver: SourceResolver?
 
-    static let targetQualityKey = "hao.audio.targetQuality"
+    /// The music player driver, installed by the app entry once the
+    /// player slice exists. Wiring (not a public API change): the
+    /// driver resolves URLs through `resolver`, reports track starts
+    /// so `currentItem` stays in sync with the player's current
+    /// track, and reports failures so a failed track never stays
+    /// recorded as playing. When no driver is installed the
+    /// foundation behaviour below still applies.
+    var musicDriver: MusicPlaybackDriver? {
+        didSet {
+            musicDriver?.resolveURL = { [weak self] item, _, completion in
+                guard let self = self else {
+                    completion(nil, nil)
+                    return
+                }
+                // Local files never go through network resolution.
+                if let fileURL = item.localFileURL {
+                    completion(fileURL, nil)
+                    return
+                }
+                if let resolver = self.resolver {
+                    resolver.resolveFirstPlayable(for: item, targetQuality: self.targetQuality) { url in
+                        let tier = (resolver as? TierReportingResolver)?.lastResolvedTier
+                        DispatchQueue.main.async { completion(url, tier) }
+                    }
+                } else {
+                    completion(nil, nil)
+                }
+            }
+            musicDriver?.onTrackStarted = { [weak self] item in
+                DispatchQueue.main.async { self?.currentItem = item }
+            }
+            musicDriver?.onTrackFailed = { [weak self] item, _ in
+                DispatchQueue.main.async {
+                    if self?.currentItem?.id == item.id { self?.currentItem = nil }
+                }
+            }
+        }
+    }
+
+    static let targetQualityKey = "musicQuality"
 
     private let defaults: UserDefaults
 
@@ -140,17 +245,33 @@ final class PlaybackCoordinator: ObservableObject {
     /// request ONLY when a resolver is plugged in (player slice). Until
     /// then this is a no-op by design — recording an item with no engine
     /// would show a mini player for playback that is not happening.
-    /// The player slice implements: stop current first (rule 1), resolve
-    /// serially (rule 4), then set `currentItem` and start the engine.
+    /// With a music driver installed (player slice): stop the current
+    /// playback first (rule 1, one sound at a time), then let the
+    /// driver resolve serially (rule 4) and open the URL; `currentItem`
+    /// is set by the driver's onTrackStarted callback, only once the
+    /// track really starts. Tapping the song that is already playing
+    /// does not restart it.
     func requestPlay(_ item: PlaybackItem) {
-        guard resolver != nil else { return }
-        currentItem = item
+        guard let driver = musicDriver else {
+            guard resolver != nil else { return }
+            currentItem = item
+            return
+        }
+        if let current = driver.currentTrack, current.id == item.id {
+            if driver.isPlaying { return }
+            driver.resume()
+            currentItem = item
+            return
+        }
+        driver.stop()
+        driver.play(item: item)
     }
 
     /// Stop everything. Clears the current item; the player slice also
     /// stops the engine here (rule 1: starting anything else stops the
     /// current playback first).
     func stop() {
+        musicDriver?.stop()
         currentItem = nil
     }
 }
