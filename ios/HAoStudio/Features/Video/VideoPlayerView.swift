@@ -55,14 +55,15 @@ protocol VideoPlayerEngine: AnyObject {
     func resume()
     func stop()
     /// S7 wiring: the 影视播放器 settings the core applies.
-    /// Enhancement / subtitle appearance take effect live and
-    /// are kept for the next open; `setAudioOnly` drops the video
-    /// track (MPV only — other engines no-op);
+    /// Enhancement / subtitle appearance / dialogue boost take
+    /// effect live and are kept for the next open; `setAudioOnly`
+    /// drops the video track (MPV only — other engines no-op);
     /// `reopenAtCurrentPosition` reopens a DV-P8 stream at its
     /// position when the downgrade switch flipped (false when
     /// nothing changed routing, so the caller reopens nothing).
     func applyVodEnhancement(_ branch: VodEnhancementBranch?)
     func setSubtitleAppearance(_ appearance: VodSubtitleAppearance)
+    func setDialogueBoost(_ enabled: Bool)
     func setAudioOnly(_ audioOnly: Bool)
     @discardableResult
     func reopenAtCurrentPosition() -> Bool
@@ -154,9 +155,9 @@ final class VideoPlayerViewModel: ObservableObject {
 
     /// Push the settings to the engine + danmaku layer and persist
     /// them. Called on engine attach and on every settings change.
-    /// Audio / subtitle track picks and dialogue boost have state
-    /// bits in the driver but no backend wiring yet (MPV aid/sid/af
-    /// — A-leg known gap), so those two rows persist only.
+    /// Audio / subtitle track picks have state bits in the driver
+    /// but no backend wiring yet (MPV aid/sid — A-leg known gap),
+    /// so those two rows persist only.
     func applySettings() {
         settings.persist()
         pushVodSettingsToDriver()
@@ -176,6 +177,7 @@ final class VideoPlayerViewModel: ObservableObject {
         pushDvP8ToDriver()
         pushEnhancementToDriver()
         pushSubtitleAppearanceToDriver()
+        pushDialogueBoostToDriver()
     }
 
     private func pushDvP8ToDriver() {
@@ -200,6 +202,20 @@ final class VideoPlayerViewModel: ObservableObject {
             position: appSettings?.subtitlePosition ?? "bottom"
         )
         vodDriver?.setSubtitleAppearance(appearance)
+    }
+
+    /// Push the dialogue-boost switch into the driver (wiring
+    /// follow-up: the 17th dead key). The source is the sheet
+    /// state, not the settings store — the sheet and the
+    /// settings page share one UserDefaults key, and the sheet
+    /// state is the one the player just changed; the view syncs
+    /// it from the settings store when the page-side switch
+    /// flips while the player is open (see the onChange below).
+    /// The driver stores it and applies it live + at every
+    /// open; a backend without the capability (AVPlayer/IJK)
+    /// no-ops.
+    private func pushDialogueBoostToDriver() {
+        vodDriver?.setDialogueBoost(settings.dialogueBoostEnabled)
     }
 
     /// Last DV-P8 value pushed to the driver. The settings page
@@ -749,6 +765,17 @@ struct VideoPlayerView: View {
             videoPlayer.applySettings()
         }
         .onChange(of: settingsStore.sdrToHDR) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.dialogueBoost) { _, newValue in
+            // Wiring follow-up: the settings page and the
+            // in-player sheet share one key. Sync the sheet
+            // state first — applySettings persists the sheet
+            // state, so pushing the stale one would clobber the
+            // switch the user just flipped. The sync itself
+            // triggers the settings onChange above, so this
+            // applySettings is the belt to the same braces.
+            videoPlayer.settings.dialogueBoostEnabled = newValue
             videoPlayer.applySettings()
         }
         .onChange(of: settingsStore.dvP8Downgrade) { _, _ in

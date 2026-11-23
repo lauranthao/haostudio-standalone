@@ -52,7 +52,7 @@ private final class MpvVideoView: UIView {
     var displayLayer: AVSampleBufferDisplayLayer? { layer as? AVSampleBufferDisplayLayer }
 }
 
-final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable, VodSubtitleAppearanceCapable, VodEnhancementCapable {
+final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable, VodSubtitleAppearanceCapable, VodEnhancementCapable, DialogueBoostCapable {
     var onEvent: ((VideoBackendEvent) -> Void)?
     var onVideoSize: ((CGSize) -> Void)?
 
@@ -353,6 +353,32 @@ final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable
             setRuntimeProperty("video-sync", "audio")
             setRuntimeProperty("interpolation", "no")
         }
+    }
+
+    /// Flutter `kDialogueBoostCentreFilter` (K 组 build 29, b30
+    /// loudnorm): centre-channel fold + dynamic normalization.
+    /// Stereo-safe — the pan stage is bit-identical on stereo (a
+    /// missing centre reads as silence) and folds correctly on
+    /// 5.1; loudnorm is what makes it audible on stereo, lifting
+    /// quiet passages and taming loud ones. Coefficients / target
+    /// 待真机验证 (same caveat as Flutter).
+    static let dialogueBoostFilter = "lavfi[pan=stereo|c0=1.0*c0+0.7*c2+0.3*c4|c1=1.0*c1+0.7*c2+0.3*c5,loudnorm=I=-16:TP=-1.5:LRA=11:linear=false]"
+
+    /// Flutter `MpvBackend.setDialogueBoost` (VOD only, MPV
+    /// only): `volume-max=300` (Flutter `kMpvVolumeMax`, so gain
+    /// can exceed 100%) + the centre filter above while on.
+    /// Off drops the filter; the 300 ceiling stays — the live
+    /// volume boost needs it regardless of this switch. Best
+    /// effort through `setRuntimeProperty`: a refused write never
+    /// breaks playback, and no-op before open (the driver
+    /// remembers the switch and re-applies it at open).
+    func setDialogueBoost(_ enabled: Bool) {
+        setRuntimeProperty("volume-max", "300")
+        if !enabled {
+            setRuntimeProperty("af", "")
+            return
+        }
+        setRuntimeProperty("af", Self.dialogueBoostFilter)
     }
 
     func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {

@@ -150,6 +150,18 @@ protocol VodEnhancementCapable: AnyObject {
     func setVodEnhancement(_ branch: VodEnhancementBranch?)
 }
 
+/// Runtime dialogue boost (MPV only, VOD only — Flutter
+/// `DialogueBoostCapableBackend`, K 组 build 29). Same capability
+/// pattern as `VodEnhancementCapable`: a backend that cannot do
+/// it does not conform and the driver no-ops through the `as?`
+/// cast. The driver remembers the switch and re-applies it at
+/// every open, so a toggle made before the backend existed still
+/// lands; the MPV half is `volume-max=300` + a centre-channel
+/// fold with loudnorm (see `MpvPlayerBackend`).
+protocol DialogueBoostCapable: AnyObject {
+    func setDialogueBoost(_ enabled: Bool)
+}
+
 // MARK: - Kernel
 
 enum PlayerKernel {

@@ -758,7 +758,13 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         isLoading = false
         backend.play()
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            // The audio session is global: an open used to reset
+            // the category with no options, wiping the music
+            // player's mix flag (Flutter's just_audio never resets
+            // the category). Re-apply the stored switch instead.
+            let mix = defaults.bool(forKey: SettingsStore.mixWithOthersKey)
+            let options: AVAudioSession.CategoryOptions = mix ? [.mixWithOthers] : []
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: options)
             try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
             // Audio session failure must not fail playback: the
