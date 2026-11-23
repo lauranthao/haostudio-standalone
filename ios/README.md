@@ -27,9 +27,9 @@ Swift 原生重写（SwiftUI）：零网站连接，不登录、无商店、无�
 - **主题**：4 主题（苹果毛玻璃/暗夜鎏金/清新薄荷/极夜冰蓝）× 浅色/深色。
   色值对照 Flutter `hao_themes.dart`；所有 UI 读环境里的 palette，不写死颜色。
   底栏选中态黑色（深色模式为白色，深色底上黑色看不见）；红色只用于 LIVE 徽标/录制点。
-- **底栏**：悬浮胶囊，iOS 26+ 用 `.glassEffect`，必须 `@available(iOS 26.0, *)`
-  兜底，iOS 17–25 回落 `.ultraThinMaterial`；弹簧 response 0.35 /
-  dampingFraction 0.82（Kumone `GlassTabBar.swift` 参考值）。
+- **底栏**：系统 `UITabBar`（SwiftUI 里 `UIViewRepresentable` 桥接），iOS 26+
+  用 `UIGlassEffect` 玻璃，iOS 17–25 回落系统默认毛玻璃背景；选中 pill 实色
+  #E4E4E4（浅色）/ #3A3A3C（深色），选中图标+文字黑/白。
 - **迷你播放器**：悬浮玻璃条，位于底栏上方；点它进全屏播放器（地基里是空态
   占位，不做假播放）。地基无播放引擎，当前无播放项时整条隐藏。
 - **播放协调器**：同一时间只能有一个声音；音乐只用 AVPlayer；点播点播放直接
