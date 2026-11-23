@@ -216,6 +216,8 @@
 		0000000000000000000001B6 /* MusicReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B5 /* MusicReportTests.swift */; };
 		0000000000000000000001B8 /* MusicSearchMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B7 /* MusicSearchMergeTests.swift */; };
 		0000000000000000000001D0 /* MusicS7PolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001CF /* MusicS7PolishTests.swift */; };
+		0000000000000000000001D4 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D5 /* HomeViewModel.swift */; };
+		0000000000000000000001D6 /* HomeAggregationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D7 /* HomeAggregationTests.swift */; };
 		0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B9 /* MusicSleepTimerTests.swift */; };
 		0000000000000000000001BC /* LiveDriverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BB /* LiveDriverTests.swift */; };
 		0000000000000000000001BE /* VideoPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BD /* VideoPlayerTests.swift */; };
@@ -416,6 +418,8 @@
 		0000000000000000000001B5 /* MusicReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicReportTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001B7 /* MusicSearchMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSearchMergeTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001CF /* MusicS7PolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicS7PolishTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001D5 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		0000000000000000000001D7 /* HomeAggregationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAggregationTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001B9 /* MusicSleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSleepTimerTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001BB /* LiveDriverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriverTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001BD /* VideoPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerTests.swift; sourceTree = "<group>"; };
@@ -606,7 +610,11 @@
 				00000000000000000000012C /* Video */,
 				000000000000000000000134 /* Live */,
 				000000000000000000000172 /* My */,
+				0000000000000000000001D3 /* Home */,
 			); path = Features; sourceTree = "<group>"; };
+		0000000000000000000001D3 /* Home */ = {isa = PBXGroup; children = (
+				0000000000000000000001D5 /* HomeViewModel.swift */,
+			); path = Home; sourceTree = "<group>"; };
 		000000000000000000000172 /* My */ = {isa = PBXGroup; children = (
 				00000000000000000000019C /* BackupUpdateLogic.swift */,
 				00000000000000000000019E /* BackupUpdateViews.swift */,
@@ -753,6 +761,7 @@
 			); path = VideoPlayerTests; sourceTree = "<group>"; };
 		0000000000000000000001C5 /* HAoStudioTests */ = {isa = PBXGroup; children = (
 				0000000000000000000001C0 /* Info.plist */,
+				0000000000000000000001D7 /* HomeAggregationTests.swift */,
 			); path = HAoStudioTests; sourceTree = "<group>"; };
 		0000000000000000000001C1 /* Tests */ = {isa = PBXGroup; children = (
 				0000000000000000000001C2 /* SettingsUITests */,
@@ -878,6 +887,7 @@
 				0000000000000000000000A7 /* MusicHomeView.swift in Sources */,
 				0000000000000000000000A9 /* MusicHomeViewModel.swift in Sources */,
 				0000000000000000000000AB /* MusicLibraryStore.swift in Sources */,
+				0000000000000000000001D4 /* HomeViewModel.swift in Sources */,
 				0000000000000000000000AD /* MusicLibraryViewModel.swift in Sources */,
 				0000000000000000000000AF /* MusicLibraryViews.swift in Sources */,
 				0000000000000000000000B1 /* MusicLyrics.swift in Sources */,
@@ -983,6 +993,7 @@
 				0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */,
 				0000000000000000000001BC /* LiveDriverTests.swift in Sources */,
 				0000000000000000000001BE /* VideoPlayerTests.swift in Sources */,
+				0000000000000000000001D6 /* HomeAggregationTests.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
