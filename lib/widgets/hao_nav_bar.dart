@@ -22,6 +22,7 @@
 //   press feedback the old `IconButton`s never had.
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show Tooltip;
 
 import '../core/theme/hao_themes.dart';
 import '../core/theme/haptics.dart';
@@ -175,10 +176,18 @@ class HaoNavBarButton extends StatefulWidget {
     super.key,
     required this.child,
     required this.onPressed,
+    this.tooltip,
   });
 
   final Widget child;
   final VoidCallback? onPressed;
+
+  /// Accessibility label (long-press tooltip), the same text the
+  /// old Material IconButton carried — the iOS conversion dropped
+  /// it on 15 buttons (live room switch, clear-history, upload,
+  /// ...); a nav button with no label is invisible to VoiceOver
+  /// and to tooltip-driven tests.
+  final String? tooltip;
 
   @override
   State<HaoNavBarButton> createState() => _HaoNavBarButtonState();
@@ -190,7 +199,7 @@ class _HaoNavBarButtonState extends State<HaoNavBarButton> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
-    return GestureDetector(
+    final button = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
       onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
@@ -212,6 +221,9 @@ class _HaoNavBarButtonState extends State<HaoNavBarButton> {
         ),
       ),
     );
+    final tooltip = widget.tooltip;
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip, child: button);
   }
 }
 

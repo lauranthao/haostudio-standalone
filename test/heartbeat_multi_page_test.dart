@@ -258,6 +258,14 @@ void main() {
   );
 
   Future<void> closeSnackbars(WidgetTester tester) async {
+    // b30: the music stall watchdog runs a periodic 500ms Timer;
+    // the test framework fails the test if any Timer is still
+    // pending after the tree is disposed, and tearDown's Get.reset
+    // runs too late (invariants are checked first). Stop the watch
+    // here, at the end of every test body, via the seam the
+    // watchdog batch provided — the controller's onClose cancels it
+    // too, but only when Get actually deletes the controller.
+    controller.stopStallWatchdogForTest();
     Get.closeAllSnackbars();
     await tester.pump();
     await tester.pump(const Duration(seconds: 5));

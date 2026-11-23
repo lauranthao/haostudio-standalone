@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:standalone/widgets/hao_nav_bar.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
@@ -231,10 +232,11 @@ void main() {
       // pushReplacement builds the new page before the old page
       // disposes (and deletes the FullscreenController registration),
       // so the new room's [] toggle must still work on its controller.
-      // The [] button exists twice (AppBar + control bar): target the
-      // AppBar one, which is always visible in portrait.
+      // The [] button exists twice (nav bar + control bar): target the
+      // nav-bar one, which is always visible in portrait. b30: the
+      // nav bar is HaoNavBar (Cupertino), not a Material AppBar.
       final appBarFullscreen = find.descendant(
-        of: find.byType(AppBar),
+        of: find.byType(HaoNavBar),
         matching: find.byIcon(Icons.fullscreen),
       );
       expect(appBarFullscreen, findsOneWidget);

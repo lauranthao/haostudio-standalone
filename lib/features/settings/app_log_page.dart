@@ -146,7 +146,7 @@ class _AppLogPageState extends State<AppLogPage> {
       appBar: HaoNavBar(
         title: '日志',
         leading: HaoNavBarTextButton(label: '完成', onPressed: () => Get.back()),
-        actions: [HaoNavBarButton( onPressed: _clear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),)), HaoNavBarButton( onPressed: _share,child: Icon(Icons.ios_share, shadows: HaoTheme.legibilityShadows(context),))],
+        actions: [HaoNavBarButton(tooltip: '清空日志', onPressed: _clear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),)), HaoNavBarButton(tooltip: '分享日志', onPressed: _share,child: Icon(Icons.ios_share, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: Stack(
         children: [

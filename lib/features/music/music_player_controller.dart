@@ -2345,6 +2345,12 @@ class MusicPlayerController extends GetxController
       _pendingSeek = pos;
       return;
     }
+    // No native player (unsupported platform / init failed): the
+    // optimistic position above is all there is — touching _active
+    // here throws LateInitializationError (b30 T6: the sheet now
+    // seeks on displayDuration, which is > 0 from song metadata
+    // even when nothing is playing). Same guard as play/pause.
+    if (!_playersReady) return;
     await _active.seek(pos);
     _noteStallBaseline();
   }

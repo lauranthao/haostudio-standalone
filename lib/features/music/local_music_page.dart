@@ -109,7 +109,7 @@ class _LocalMusicPageState extends State<LocalMusicPage> {
     return Scaffold(
       appBar: HaoNavBar(
         title: '本地文件',
-        actions: [HaoNavBarButton( onPressed: _import,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add))],
+        actions: [HaoNavBarButton(tooltip: '导入音频', onPressed: _import,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.add))],
       ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())

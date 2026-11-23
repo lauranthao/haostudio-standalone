@@ -35,6 +35,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:standalone/widgets/hao_nav_bar.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
 import 'package:standalone/core/player/kernel/player_engine.dart';
@@ -216,7 +217,9 @@ void main() {
       // Exit fullscreen: portrait layout restored, bar below the
       // video again.
       await pumpPortrait(tester);
-      expect(find.byType(AppBar), findsOneWidget);
+      // b30: portrait nav bar is HaoNavBar (Cupertino), not a
+      // Material AppBar — the iOS batch replaced all 38 AppBars.
+      expect(find.byType(HaoNavBar), findsOneWidget);
       expect(find.byTooltip('刷新'), findsOneWidget);
       final videoRect2 =
           tester.getRect(find.byKey(const ValueKey('fake-video')));

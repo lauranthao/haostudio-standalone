@@ -70,7 +70,7 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
       appBar: HaoNavBar(
         title: '历史记录',
         scrollController: _scrollController,
-        actions: [if (history.isNotEmpty) HaoNavBarButton( onPressed: _confirmClear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),))],
+        actions: [if (history.isNotEmpty) HaoNavBarButton(tooltip: '清空历史记录', onPressed: _confirmClear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: history.isEmpty
           ? Center(

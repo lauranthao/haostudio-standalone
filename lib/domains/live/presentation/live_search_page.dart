@@ -234,7 +234,7 @@ class _LiveSearchPageState extends State<LiveSearchPage> {
       appBar: HaoNavBar(
         title: '搜索直播间',
         scrollController: _scrollController,
-        actions: [HaoNavBarButton( onPressed: _openLinkSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link))],
+        actions: [HaoNavBarButton(tooltip: '粘贴链接进房', onPressed: _openLinkSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link))],
       ),
       body: Column(
         children: [

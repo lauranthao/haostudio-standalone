@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
+import 'package:standalone/widgets/hao_nav_bar.dart';
 import 'package:standalone/core/models/live_models.dart';
 import 'package:standalone/core/native/now_playing.dart';
 import 'package:standalone/core/player/kernel/player_backend.dart';
@@ -485,7 +486,14 @@ void main() {
       expect(find.byType(ListTile), findsWidgets);
       await tester.tap(find.text('原画').last);
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      // b30: the sheet is a Cupertino modal popup since the iOS
+      // batch (showHaoSheet) — its pop transition is 335ms, and the
+      // tap gesture can take a frame or two to resolve before the
+      // pop even starts (probe: the row was still in the tree at
+      // +300ms, gone by +600ms). 700ms covers it with margin; the
+      // old 300ms/400ms waits were both marginal. pumpAndSettle is
+      // off the table here (the fullscreen barrage never settles).
+      await tester.pump(const Duration(milliseconds: 700));
       expect(find.text('原画'), findsOneWidget);
       // Back in fullscreen exits fullscreen first (canPop false — no
       // AppBar back button up here, so this is the system back via
@@ -501,7 +509,9 @@ void main() {
       await tester.pump();
       await tester.binding.handlePopRoute();
       await tester.pump();
-      expect(find.byType(AppBar), findsOneWidget);
+      // b30: portrait nav bar is HaoNavBar (Cupertino), not a
+      // Material AppBar — the iOS batch replaced all 38 AppBars.
+      expect(find.byType(HaoNavBar), findsOneWidget);
       expect(
         Get.find<FullscreenController>().isFullscreen.value,
         isFalse,

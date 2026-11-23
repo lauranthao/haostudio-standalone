@@ -59,7 +59,7 @@ class WallpaperPage extends StatelessWidget {
     return Scaffold(
       appBar: HaoNavBar(
         title: '壁纸',
-        actions: [HaoNavBarButton( onPressed: () => unawaited(_upload(context)),child: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),))],
+        actions: [HaoNavBarButton(tooltip: '上传壁纸', onPressed: () => unawaited(_upload(context)),child: Icon(Icons.add, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: Obx(() {
         final paths = controller.wallpaperPaths;

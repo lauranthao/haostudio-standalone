@@ -280,13 +280,13 @@ class _LiveHistoryPageState extends State<LiveHistoryPage> {
       appBar: HaoNavBar(
         title: '直播历史',
         scrollController: _scrollController,
-        actions: [HaoNavBarButton( onPressed: _refreshing ? null : _refreshStatuses,child: _refreshing
+        actions: [HaoNavBarButton(tooltip: '刷新在线状态', onPressed: _refreshing ? null : _refreshStatuses,child: _refreshing
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CupertinoActivityIndicator(),
                   )
-                : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh)), HaoNavBarButton( onPressed: all.isEmpty ? null : _confirmClear,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete_outline))],
+                : Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh)), HaoNavBarButton(tooltip: '清空历史记录', onPressed: all.isEmpty ? null : _confirmClear,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.delete_outline))],
       ),
       body: Column(
         children: [

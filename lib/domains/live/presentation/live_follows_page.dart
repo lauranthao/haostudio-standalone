@@ -365,7 +365,7 @@ class _LiveFollowsPageState extends State<LiveFollowsPage> {
       appBar: HaoNavBar(
         title: '我的关注',
         scrollController: _scrollController,
-        actions: [HaoNavBarButton( onPressed: _showVisibilitySheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.visibility_off_outlined))],
+        actions: [HaoNavBarButton(tooltip: '按平台显示', onPressed: _showVisibilitySheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.visibility_off_outlined))],
       ),
       body: Column(
         children: [

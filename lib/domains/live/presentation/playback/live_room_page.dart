@@ -2563,7 +2563,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ? null
               : HaoNavBar(
                 title: _room.title.isEmpty ? '直播间' : _room.title,
-                actions: [HaoNavBarButton( onPressed: _openToolsSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune)), HaoNavBarButton( onPressed: _openSwitchPanel,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz)), HaoNavBarButton( onPressed: () => _fullscreen.toggleFullscreen(),child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen))],
+                actions: [HaoNavBarButton(tooltip: '直播工具', onPressed: _openToolsSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune)), HaoNavBarButton(tooltip: '切换直播间', onPressed: _openSwitchPanel,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz)), HaoNavBarButton(tooltip: '全屏', onPressed: () => _fullscreen.toggleFullscreen(),child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen))],
               ),
           body: Column(
             children: [
