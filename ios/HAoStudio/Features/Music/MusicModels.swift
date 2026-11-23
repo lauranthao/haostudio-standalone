@@ -93,8 +93,25 @@ struct MusicSong: Equatable, Identifiable {
     var reasonArg: String
     /// Stored path of a local audio file, empty for remote songs.
     var localPath: String
+    /// Raw source id this song came from (`wy` / `tx` / `kg` /
+    /// `kw` / `mg`, or an LX script id `lx:…`). The badge reads
+    /// this, not `platform`: `platform` defaults unknown codes to
+    /// wy for ordering/identity, which would lie on the badge for
+    /// a script result (S3-C badge fix).
+    var sourceID: String
 
     var id: String { identityKey }
+
+    /// The platform the badge may show: the real platform when the
+    /// source id names one, nil when the platform is unknown (an
+    /// `lx:…` script result) — the row then hides the badge
+    /// instead of showing 网易. An empty source id means the song
+    /// was built directly with an explicit platform (favourites /
+    /// recent / local), so the platform field itself is the answer.
+    var badgePlatform: MusicPlatform? {
+        if sourceID.isEmpty { return platform }
+        return MusicPlatform.platformIfKnown(sourceID)
+    }
 
     init(
         songId: String = "",
@@ -107,7 +124,8 @@ struct MusicSong: Equatable, Identifiable {
         albumYear: Int = 0,
         reasonKey: String = "",
         reasonArg: String = "",
-        localPath: String = ""
+        localPath: String = "",
+        sourceID: String = ""
     ) {
         self.songId = songId
         self.title = title
@@ -120,9 +138,13 @@ struct MusicSong: Equatable, Identifiable {
         self.reasonKey = reasonKey
         self.reasonArg = reasonArg
         self.localPath = localPath
+        self.sourceID = sourceID
     }
 
     init(json: [String: Any]) {
+        // Old entries carry no sourceID: fall back to the stored
+        // platform code so their badges survive the migration.
+        let storedSourceID = MusicDict.string(json, "sourceID")
         self.init(
             songId: MusicDict.string(json, "songId"),
             title: MusicDict.string(json, "title"),
@@ -134,7 +156,9 @@ struct MusicSong: Equatable, Identifiable {
             albumYear: MusicDict.int(json, "albumYear"),
             reasonKey: MusicDict.string(json, "reasonKey"),
             reasonArg: MusicDict.string(json, "reasonArg"),
-            localPath: MusicDict.string(json, "localPath")
+            localPath: MusicDict.string(json, "localPath"),
+            sourceID: storedSourceID.isEmpty
+                ? MusicDict.string(json, "platform") : storedSourceID
         )
     }
 
@@ -150,6 +174,7 @@ struct MusicSong: Equatable, Identifiable {
             "albumYear": albumYear,
             "reasonKey": reasonKey,
             "reasonArg": reasonArg,
+            "sourceID": sourceID,
         ]
         if !localPath.isEmpty { dict["localPath"] = localPath }
         return dict
@@ -186,7 +211,8 @@ struct MusicSong: Equatable, Identifiable {
             album: track.album,
             cover: track.coverURL?.absoluteString ?? "",
             platform: MusicPlatform.fromSourceID(track.sourceID),
-            dur: track.duration.map { Int($0) } ?? 0
+            dur: track.duration.map { Int($0) } ?? 0,
+            sourceID: track.sourceID
         )
     }
 

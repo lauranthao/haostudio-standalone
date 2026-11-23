@@ -186,31 +186,3 @@ struct MusicQualitySheet: View {
         }
     }
 }
-
-// MARK: - Comments (read-only)
-
-struct MusicCommentsView: View {
-    @EnvironmentObject private var playerVM: MusicPlayerViewModel
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.haoTheme) private var theme
-
-    var body: some View {
-        NavigationStack {
-            VStack {
-                MusicEmptyState(
-                    icon: "text.bubble", title: "评论暂未接入",
-                    note: "评论是只读的（本应用没有登录，不能发评论）。评论接口在 LX 腿的待办里，接上后这里会显示歌曲评论。"
-                )
-                Spacer()
-            }
-            .background(theme.scaffoldBackground)
-            .navigationTitle(playerVM.currentSong?.title ?? "评论")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("完成") { dismiss() }
-                }
-            }
-        }
-    }
-}

@@ -36,6 +36,8 @@ struct MusicPlayerView: View {
     @State private var showQuality = false
     @State private var showEqualizer = false
     @State private var showComments = false
+    @State private var showAlbum = false
+    @State private var showArtist = false
     @State private var showAddToPlaylistSong: MusicSong?
     @State private var followPausedUntil = Date.distantPast
 
@@ -80,6 +82,24 @@ struct MusicPlayerView: View {
         .sheet(isPresented: $showQuality) { MusicQualitySheet() }
         .sheet(isPresented: $showEqualizer) { MusicEqualizerView() }
         .sheet(isPresented: $showComments) { MusicCommentsView() }
+        .sheet(isPresented: $showAlbum) {
+            if let song = playerVM.currentSong {
+                NavigationStack {
+                    MusicAlbumDetailView(album: AlbumSummary(
+                        id: "", name: song.album, artist: song.artist,
+                        platform: song.platform))
+                }
+            }
+        }
+        .sheet(isPresented: $showArtist) {
+            if let song = playerVM.currentSong {
+                NavigationStack {
+                    MusicArtistDetailView(artist: ArtistSummary(
+                        id: "", name: MusicAPIJSON.firstArtist(song.artist),
+                        platform: song.platform))
+                }
+            }
+        }
         .sheet(item: $showAddToPlaylistSong) { song in
             MusicAddToPlaylistSheet(song: song) { showAddToPlaylistSong = nil }
         }
@@ -457,10 +477,26 @@ struct MusicPlayerView: View {
                             showMore = false
                             showAddToPlaylistSong = song
                         }
+                        Button("下载") {
+                            showMore = false
+                            playerVM.downloadCurrent()
+                        }
                     }
                     Button("查看评论（只读）") {
                         showMore = false
                         showComments = true
+                    }
+                    if let song = playerVM.currentSong, !song.album.isEmpty {
+                        Button("查看专辑") {
+                            showMore = false
+                            showAlbum = true
+                        }
+                    }
+                    if let song = playerVM.currentSong, !song.artist.isEmpty {
+                        Button("查看歌手") {
+                            showMore = false
+                            showArtist = true
+                        }
                     }
                 }
                 Section("音质") {

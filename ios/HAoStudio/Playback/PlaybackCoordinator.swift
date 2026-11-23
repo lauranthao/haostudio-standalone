@@ -134,6 +134,24 @@ protocol TierReportingResolver {
     var lastResolvedTier: AudioQuality? { get }
 }
 
+/// A resolver that can drop cached play URLs (S2 leg B exposed
+/// `evictPlayUrl` on LXSourceResolver). The coordinator uses it to
+/// honour `excluding`: a URL that failed at playback must never be
+/// served from cache again on the fallback resolve. The method is
+/// keyed by (songId, platform, quality), not by URL, so the
+/// coordinator evicts every tier for the song — the failed URL
+/// may have come from a below-target tier (downgrade), and
+/// evicting only the target tier could leave the dead URL cached
+/// under the tier that actually served it.
+protocol PlayURLEvictingResolver {
+    func evictPlayUrl(songId: String, platform: MusicPlatform, quality: AudioQuality)
+}
+
+// LXSourceResolver already exposes exactly this method (S2 leg B);
+// this declaration only states the conformance, so the coordinator
+// can use it without knowing the concrete resolver class.
+extension LXSourceResolver: PlayURLEvictingResolver {}
+
 // MARK: - Player errors and driver contract (moved from
 // NativeMusicPlayer.swift at the S2 merge: the MusicLX SwiftPM test
 // target compiles this file without the iOS-only player file, so the
@@ -172,6 +190,31 @@ protocol MusicPlaybackDriver: AnyObject {
     func resume()
 }
 
+/// What PlaybackCoordinator needs from the VOD player (S3). The
+/// coordinator owns mutual exclusion (rule 1) and current-item
+/// bookkeeping; the video driver owns engines (MPV / IJK / AVPlayer
+/// via PlayerKernel), episode/line state and resume. URL resolution
+/// lives inside the video driver (CMS / Emby), never in this file.
+/// VOD never follows the music quality selector and never shows a
+/// quality button (rule 3). Reuses MusicPlayerError: it is a
+/// generic player error (timeout / no URL / load / seek failed),
+/// not music-specific despite the name.
+protocol VideoPlaybackDriver: AnyObject {
+    var currentEpisode: PlaybackItem? { get }
+    var isPlaying: Bool { get }
+    /// Resolve a playable URL for an episode. `excluding` lists URLs
+    /// that already failed for this request, so the resolver hands
+    /// out the next candidate instead of repeating one.
+    var resolveURL: ((PlaybackItem, [URL], @escaping (URL?) -> Void) -> Void)? { get set }
+    var onEpisodeStarted: ((PlaybackItem) -> Void)? { get set }
+    var onEpisodeFailed: ((PlaybackItem, MusicPlayerError) -> Void)? { get set }
+    func play(item: PlaybackItem)
+    func open(item: PlaybackItem, url: URL, completion: @escaping (Result<Void, MusicPlayerError>) -> Void)
+    func stop()
+    func resume()
+    func seek(to seconds: Double, completion: @escaping (Bool) -> Void)
+}
+
 /// Single-audio coordinator. One instance for the whole app
 /// (owned by HAoStudioApp, injected as an environment object).
 @MainActor
@@ -201,7 +244,7 @@ final class PlaybackCoordinator: ObservableObject {
     /// foundation behaviour below still applies.
     var musicDriver: MusicPlaybackDriver? {
         didSet {
-            musicDriver?.resolveURL = { [weak self] item, _, completion in
+            musicDriver?.resolveURL = { [weak self] item, excluding, completion in
                 guard let self = self else {
                     completion(nil, nil)
                     return
@@ -212,6 +255,26 @@ final class PlaybackCoordinator: ObservableObject {
                     return
                 }
                 if let resolver = self.resolver {
+                    // Honour `excluding` (S2 gap fix): drop every
+                    // failed URL from the resolver's cache BEFORE
+                    // re-resolving, so the fallback resolve never
+                    // gets the same dead URL back from cache. The
+                    // identity key is `platform|songId` (Flutter
+                    // identityKey convention, same parse as
+                    // LXSourceResolver.resolveFirstPlayable); an id
+                    // without a platform separator has nothing to
+                    // evict and resolves normally.
+                    if !excluding.isEmpty,
+                       let evicting = resolver as? PlayURLEvictingResolver {
+                        let parts = item.id.split(separator: "|", maxSplits: 1)
+                        if parts.count == 2,
+                           let platform = MusicPlatform(code: String(parts[0])) {
+                            let songId = String(parts[1])
+                            for quality in AudioQuality.allCases {
+                                evicting.evictPlayUrl(songId: songId, platform: platform, quality: quality)
+                            }
+                        }
+                    }
                     resolver.resolveFirstPlayable(for: item, targetQuality: self.targetQuality) { url in
                         let tier = (resolver as? TierReportingResolver)?.lastResolvedTier
                         DispatchQueue.main.async { completion(url, tier) }
@@ -224,6 +287,23 @@ final class PlaybackCoordinator: ObservableObject {
                 DispatchQueue.main.async { self?.currentItem = item }
             }
             musicDriver?.onTrackFailed = { [weak self] item, _ in
+                DispatchQueue.main.async {
+                    if self?.currentItem?.id == item.id { self?.currentItem = nil }
+                }
+            }
+        }
+    }
+
+    /// The VOD player driver, installed by the app entry once the
+    /// video slice exists. The coordinator only owns mutual exclusion
+    /// (rule 1) and current-item bookkeeping for VOD; URL resolution
+    /// lives inside the video driver (CMS / Emby), never in this file.
+    var vodDriver: VideoPlaybackDriver? {
+        didSet {
+            vodDriver?.onEpisodeStarted = { [weak self] item in
+                DispatchQueue.main.async { self?.currentItem = item }
+            }
+            vodDriver?.onEpisodeFailed = { [weak self] item, _ in
                 DispatchQueue.main.async {
                     if self?.currentItem?.id == item.id { self?.currentItem = nil }
                 }
@@ -263,7 +343,28 @@ final class PlaybackCoordinator: ObservableObject {
             currentItem = item
             return
         }
+        vodDriver?.stop()
         driver.stop()
+        driver.play(item: item)
+    }
+
+    /// Request VOD playback of an episode. The episode's
+    /// PlaybackItem id MUST be the stable resume key
+    /// (VideoResumeKey.key(title:year:) + episode name) so the
+    /// driver, history and resume all agree on identity. Stops
+    /// music first (rule 1), then lets the VOD driver resolve and
+    /// open. Tapping the episode that is already playing resumes
+    /// it instead of restarting.
+    func requestVodPlay(_ item: PlaybackItem) {
+        guard let driver = vodDriver else { return }
+        if let current = driver.currentEpisode, current.id == item.id {
+            if driver.isPlaying { return }
+            driver.resume()
+            currentItem = item
+            return
+        }
+        musicDriver?.stop()
+        currentItem = nil
         driver.play(item: item)
     }
 
@@ -272,6 +373,7 @@ final class PlaybackCoordinator: ObservableObject {
     /// current playback first).
     func stop() {
         musicDriver?.stop()
+        vodDriver?.stop()
         currentItem = nil
     }
 }

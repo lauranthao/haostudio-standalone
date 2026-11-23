@@ -32,12 +32,18 @@ struct AlbumDetail {
     let pic: String
     let artist: String
     let songs: [MusicTrack]
+    /// Publish time in milliseconds since epoch, 0 when unknown.
+    /// The album page shows "年份 + 音质"; the year derives from
+    /// this (Calendar year of the date). Kuwo has no publish date
+    /// in its workaround path, so it stays 0 there.
+    let publishTime: Int
 
-    init(name: String, pic: String = "", artist: String = "", songs: [MusicTrack] = []) {
+    init(name: String, pic: String = "", artist: String = "", songs: [MusicTrack] = [], publishTime: Int = 0) {
         self.name = name
         self.pic = pic
         self.artist = artist
         self.songs = songs
+        self.publishTime = publishTime
     }
 }
 

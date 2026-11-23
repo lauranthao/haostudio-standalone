@@ -352,6 +352,67 @@ final class MusicPlayerViewModel: ObservableObject {
         hapticTick()
     }
 
+    /// Download the current song (more sheet "下载" button, S3).
+    /// Resolves the playable URL at the target quality — the URL
+    /// cache makes this cheap while the song is playing — then
+    /// enqueues it on the shared DownloadEngine. On completion the
+    /// file is registered in the existing downloads index; the
+    /// engine itself never touches MusicLibraryStore. The quality
+    /// recorded is the tier actually resolved (Master honesty
+    /// gate), never just the target.
+    func downloadCurrent() {
+        guard let song = currentSong else { return }
+        if MusicLibraryStore.getDownloads().contains(where: { $0.key == song.identityKey }) {
+            showToast("已下载")
+            return
+        }
+        guard let resolver = coordinator.resolver else {
+            showToast("下载失败：无法解析播放地址")
+            return
+        }
+        let target = coordinator.targetQuality
+        resolver.resolveFirstPlayable(for: song.toPlaybackItem(), targetQuality: target) { [weak self] url in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard let url = url else {
+                    self.showToast("下载失败：找不到可播放的地址")
+                    return
+                }
+                let actualQuality = (resolver as? TierReportingResolver)?.lastResolvedTier ?? target
+                let ext = url.pathExtension.isEmpty ? "mp3" : url.pathExtension
+                let request = DownloadRequest(
+                    key: song.identityKey,
+                    title: "\(song.title) - \(song.artist)",
+                    sourceURL: url,
+                    fileName: "\(song.title) - \(song.artist).\(ext)",
+                    kind: .music,
+                    qualityCode: MusicLibraryStore.code(for: actualQuality)
+                )
+                DownloadEngine.shared.enqueue(request: request, completion: { info in
+                    switch info.state {
+                    case .completed:
+                        var downloads = MusicLibraryStore.getDownloads()
+                        downloads.removeAll { $0.key == song.identityKey }
+                        downloads.append(DownloadedSong(
+                            song: song,
+                            filePath: info.localRelativePath ?? "",
+                            sizeBytes: Int(info.downloadedBytes),
+                            downloadedAt: Int(Date().timeIntervalSince1970),
+                            qualityCode: MusicLibraryStore.code(for: actualQuality)
+                        ))
+                        MusicLibraryStore.saveDownloads(downloads)
+                        self.showToast("下载完成")
+                    case .failed:
+                        self.showToast("下载失败：\(info.errorMessage ?? "未知错误")")
+                    default:
+                        break
+                    }
+                })
+                self.showToast("已加入下载")
+            }
+        }
+    }
+
     func toggleLyrics() {
         showLyrics.toggle()
         hapticTick()

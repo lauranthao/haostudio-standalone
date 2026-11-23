@@ -69,6 +69,8 @@
 		000000000000000000000085 /* MusicHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000086 /* MusicHTTP.swift */; };
 		000000000000000000000087 /* MusicQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000088 /* MusicQuality.swift */; };
 		000000000000000000000089 /* MusicTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008A /* MusicTrack.swift */; };
+		0000000000000000000000E6 /* VideoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E7 /* VideoModels.swift */; };
+		0000000000000000000000E8 /* VideoServiceContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E9 /* VideoServiceContracts.swift */; };
 		00000000000000000000008B /* ResolverPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008C /* ResolverPolicy.swift */; };
 		00000000000000000000008D /* MusicAlbumAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008E /* MusicAlbumAPI.swift */; };
 		00000000000000000000008F /* MusicAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000090 /* MusicAPIModels.swift */; };
@@ -114,6 +116,39 @@
 		0000000000000000000000DF /* tongyi.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E0 /* tongyi.js */; };
 		0000000000000000000000E1 /* xinghai.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E2 /* xinghai.js */; };
 		0000000000000000000000E3 /* yuxi.js in Resources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E4 /* yuxi.js */; };
+		0000000000000000000000EB /* AVPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000EA /* AVPlayerBackend.swift */; };
+		0000000000000000000000ED /* CmsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000EC /* CmsClient.swift */; };
+		0000000000000000000000EF /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000EE /* Diagnostics.swift */; };
+		0000000000000000000000F1 /* DoubanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000F0 /* DoubanService.swift */; };
+		0000000000000000000000F3 /* DownloadEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000F2 /* DownloadEngine.swift */; };
+		0000000000000000000000F5 /* EmbyCategoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000F4 /* EmbyCategoryView.swift */; };
+		0000000000000000000000F7 /* EmbyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000F6 /* EmbyClient.swift */; };
+		0000000000000000000000F9 /* EmbyDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000F8 /* EmbyDetailView.swift */; };
+		0000000000000000000000FB /* EmbyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FA /* EmbyModels.swift */; };
+		0000000000000000000000FD /* EmbyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FC /* EmbyTabView.swift */; };
+		0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000FE /* IJKPlayerBackend.swift */; };
+		000000000000000000000101 /* MpvPlayerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000100 /* MpvPlayerBackend.swift */; };
+		000000000000000000000103 /* MusicAlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000102 /* MusicAlbumDetailView.swift */; };
+		000000000000000000000105 /* MusicArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000104 /* MusicArtistDetailView.swift */; };
+		000000000000000000000107 /* MusicChartsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000106 /* MusicChartsView.swift */; };
+		000000000000000000000109 /* MusicCommentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000108 /* MusicCommentsView.swift */; };
+		00000000000000000000010B /* PlayerKernel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010A /* PlayerKernel.swift */; };
+		00000000000000000000010D /* VideoCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010C /* VideoCapability.swift */; };
+		00000000000000000000010F /* VideoDataGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000010E /* VideoDataGateway.swift */; };
+		000000000000000000000111 /* VideoDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000110 /* VideoDetailView.swift */; };
+		000000000000000000000113 /* VideoDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000112 /* VideoDriver.swift */; };
+		000000000000000000000115 /* VideoFavsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000114 /* VideoFavsView.swift */; };
+		000000000000000000000117 /* VideoHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000116 /* VideoHistoryView.swift */; };
+		000000000000000000000119 /* VideoLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000118 /* VideoLibraryStore.swift */; };
+		00000000000000000000011B /* VideoPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011A /* VideoPlayerView.swift */; };
+		00000000000000000000011D /* VideoPosterCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011C /* VideoPosterCard.swift */; };
+		00000000000000000000011F /* VideoSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011E /* VideoSearchView.swift */; };
+		000000000000000000000121 /* VideoTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000120 /* VideoTabView.swift */; };
+		000000000000000000000123 /* VodDanmakuClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000122 /* VodDanmakuClient.swift */; };
+		000000000000000000000125 /* VodDanmakuLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* VodDanmakuLayer.swift */; };
+		000000000000000000000127 /* VodGestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* VodGestures.swift */; };
+		000000000000000000000129 /* VodPlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000128 /* VodPlayerViewModel.swift */; };
+		00000000000000000000012B /* VodSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* VodSettingsSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -164,6 +199,8 @@
 		000000000000000000000086 /* MusicHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicHTTP.swift; sourceTree = "<group>"; };
 		000000000000000000000088 /* MusicQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQuality.swift; sourceTree = "<group>"; };
 		00000000000000000000008A /* MusicTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicTrack.swift; sourceTree = "<group>"; };
+		0000000000000000000000E7 /* VideoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoModels.swift; sourceTree = "<group>"; };
+		0000000000000000000000E9 /* VideoServiceContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoServiceContracts.swift; sourceTree = "<group>"; };
 		00000000000000000000008C /* ResolverPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolverPolicy.swift; sourceTree = "<group>"; };
 		00000000000000000000008E /* MusicAlbumAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumAPI.swift; sourceTree = "<group>"; };
 		000000000000000000000090 /* MusicAPIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAPIModels.swift; sourceTree = "<group>"; };
@@ -209,6 +246,39 @@
 		0000000000000000000000E0 /* tongyi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = tongyi.js; sourceTree = "<group>"; };
 		0000000000000000000000E2 /* xinghai.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = xinghai.js; sourceTree = "<group>"; };
 		0000000000000000000000E4 /* yuxi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = yuxi.js; sourceTree = "<group>"; };
+		0000000000000000000000EA /* AVPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVPlayerBackend.swift; sourceTree = "<group>"; };
+		0000000000000000000000EC /* CmsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CmsClient.swift; sourceTree = "<group>"; };
+		0000000000000000000000EE /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Diagnostics.swift; sourceTree = "<group>"; };
+		0000000000000000000000F0 /* DoubanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubanService.swift; sourceTree = "<group>"; };
+		0000000000000000000000F2 /* DownloadEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadEngine.swift; sourceTree = "<group>"; };
+		0000000000000000000000F4 /* EmbyCategoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyCategoryView.swift; sourceTree = "<group>"; };
+		0000000000000000000000F6 /* EmbyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyClient.swift; sourceTree = "<group>"; };
+		0000000000000000000000F8 /* EmbyDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyDetailView.swift; sourceTree = "<group>"; };
+		0000000000000000000000FA /* EmbyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyModels.swift; sourceTree = "<group>"; };
+		0000000000000000000000FC /* EmbyTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyTabView.swift; sourceTree = "<group>"; };
+		0000000000000000000000FE /* IJKPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IJKPlayerBackend.swift; sourceTree = "<group>"; };
+		000000000000000000000100 /* MpvPlayerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpvPlayerBackend.swift; sourceTree = "<group>"; };
+		000000000000000000000102 /* MusicAlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumDetailView.swift; sourceTree = "<group>"; };
+		000000000000000000000104 /* MusicArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicArtistDetailView.swift; sourceTree = "<group>"; };
+		000000000000000000000106 /* MusicChartsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicChartsView.swift; sourceTree = "<group>"; };
+		000000000000000000000108 /* MusicCommentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicCommentsView.swift; sourceTree = "<group>"; };
+		00000000000000000000010A /* PlayerKernel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerKernel.swift; sourceTree = "<group>"; };
+		00000000000000000000010C /* VideoCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCapability.swift; sourceTree = "<group>"; };
+		00000000000000000000010E /* VideoDataGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDataGateway.swift; sourceTree = "<group>"; };
+		000000000000000000000110 /* VideoDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDetailView.swift; sourceTree = "<group>"; };
+		000000000000000000000112 /* VideoDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDriver.swift; sourceTree = "<group>"; };
+		000000000000000000000114 /* VideoFavsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoFavsView.swift; sourceTree = "<group>"; };
+		000000000000000000000116 /* VideoHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoHistoryView.swift; sourceTree = "<group>"; };
+		000000000000000000000118 /* VideoLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLibraryStore.swift; sourceTree = "<group>"; };
+		00000000000000000000011A /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerView.swift; sourceTree = "<group>"; };
+		00000000000000000000011C /* VideoPosterCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPosterCard.swift; sourceTree = "<group>"; };
+		00000000000000000000011E /* VideoSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSearchView.swift; sourceTree = "<group>"; };
+		000000000000000000000120 /* VideoTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTabView.swift; sourceTree = "<group>"; };
+		000000000000000000000122 /* VodDanmakuClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuClient.swift; sourceTree = "<group>"; };
+		000000000000000000000124 /* VodDanmakuLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuLayer.swift; sourceTree = "<group>"; };
+		000000000000000000000126 /* VodGestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodGestures.swift; sourceTree = "<group>"; };
+		000000000000000000000128 /* VodPlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodPlayerViewModel.swift; sourceTree = "<group>"; };
+		00000000000000000000012A /* VodSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodSettingsSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -270,8 +340,18 @@
 				000000000000000000000010 /* PlaceholderViews.swift */,
 			); path = App; sourceTree = "<group>"; };
 		00000000000000000000005F /* Playback */ = {isa = PBXGroup; children = (
-				000000000000000000000012 /* PlaybackCoordinator.swift */,
+				0000000000000000000000EA /* AVPlayerBackend.swift */,
+				0000000000000000000000EE /* Diagnostics.swift */,
+				0000000000000000000000FE /* IJKPlayerBackend.swift */,
+				000000000000000000000100 /* MpvPlayerBackend.swift */,
 				000000000000000000000076 /* NativeMusicPlayer.swift */,
+				000000000000000000000012 /* PlaybackCoordinator.swift */,
+				00000000000000000000010A /* PlayerKernel.swift */,
+				000000000000000000000112 /* VideoDriver.swift */,
+				000000000000000000000124 /* VodDanmakuLayer.swift */,
+				000000000000000000000126 /* VodGestures.swift */,
+				000000000000000000000128 /* VodPlayerViewModel.swift */,
+				00000000000000000000012A /* VodSettingsSheet.swift */,
 			); path = Playback; sourceTree = "<group>"; };
 		000000000000000000000060 /* Storage */ = {isa = PBXGroup; children = (
 				000000000000000000000014 /* LocalStore.swift */,
@@ -282,9 +362,11 @@
 				000000000000000000000016 /* SplashView.swift */,
 			); path = Splash; sourceTree = "<group>"; };
 		00000000000000000000006E /* Services */ = {isa = PBXGroup; children = (
+				00000000000000000000012D /* DownloadEngine */,
 				00000000000000000000006F /* LXEngine */,
-				000000000000000000000071 /* MusicResolvers */,
 				000000000000000000000072 /* MusicAPI */,
+				000000000000000000000071 /* MusicResolvers */,
+				0000000000000000000000E5 /* Video */,
 			); path = Services; sourceTree = "<group>"; };
 		00000000000000000000006F /* LXEngine */ = {isa = PBXGroup; children = (
 				000000000000000000000078 /* LXEngine.swift */,
@@ -295,6 +377,16 @@
 				000000000000000000000082 /* LXUserKeyStore.swift */,
 				000000000000000000000070 /* Scripts */,
 			); path = LXEngine; sourceTree = "<group>"; };
+		0000000000000000000000E5 /* Video */ = {isa = PBXGroup; children = (
+				0000000000000000000000EC /* CmsClient.swift */,
+				0000000000000000000000F0 /* DoubanService.swift */,
+				0000000000000000000000F6 /* EmbyClient.swift */,
+				0000000000000000000000FA /* EmbyModels.swift */,
+				00000000000000000000010C /* VideoCapability.swift */,
+				0000000000000000000000E7 /* VideoModels.swift */,
+				0000000000000000000000E9 /* VideoServiceContracts.swift */,
+				000000000000000000000122 /* VodDanmakuClient.swift */,
+		); path = Video; sourceTree = "<group>"; };
 		000000000000000000000070 /* Scripts */ = {isa = PBXGroup; children = (
 				0000000000000000000000CC /* feichangdao.js */,
 				0000000000000000000000CE /* gdstudio.js */,
@@ -329,8 +421,13 @@
 			); path = MusicAPI; sourceTree = "<group>"; };
 		000000000000000000000073 /* Features */ = {isa = PBXGroup; children = (
 				000000000000000000000074 /* Music */,
+				00000000000000000000012C /* Video */,
 			); path = Features; sourceTree = "<group>"; };
 		000000000000000000000074 /* Music */ = {isa = PBXGroup; children = (
+				000000000000000000000102 /* MusicAlbumDetailView.swift */,
+				000000000000000000000104 /* MusicArtistDetailView.swift */,
+				000000000000000000000106 /* MusicChartsView.swift */,
+				000000000000000000000108 /* MusicCommentsView.swift */,
 				00000000000000000000009E /* MusicDiscoveryViewModel.swift */,
 				0000000000000000000000A0 /* MusicDiscoveryViews.swift */,
 				0000000000000000000000A2 /* MusicEqualizer.swift */,
@@ -400,6 +497,23 @@
 				00000000000000000000005B /* Vendor */,
 				00000000000000000000005A /* Products */,
 			); sourceTree = "<group>"; };
+		00000000000000000000012C /* Video */ = {isa = PBXGroup; children = (
+				0000000000000000000000F4 /* EmbyCategoryView.swift */,
+				0000000000000000000000F8 /* EmbyDetailView.swift */,
+				0000000000000000000000FC /* EmbyTabView.swift */,
+				00000000000000000000010E /* VideoDataGateway.swift */,
+				000000000000000000000110 /* VideoDetailView.swift */,
+				000000000000000000000114 /* VideoFavsView.swift */,
+				000000000000000000000116 /* VideoHistoryView.swift */,
+				000000000000000000000118 /* VideoLibraryStore.swift */,
+				00000000000000000000011A /* VideoPlayerView.swift */,
+				00000000000000000000011C /* VideoPosterCard.swift */,
+				00000000000000000000011E /* VideoSearchView.swift */,
+				000000000000000000000120 /* VideoTabView.swift */,
+		); path = Video; sourceTree = "<group>"; };
+		00000000000000000000012D /* DownloadEngine */ = {isa = PBXGroup; children = (
+				0000000000000000000000F2 /* DownloadEngine.swift */,
+		); path = DownloadEngine; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -441,62 +555,97 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		000000000000000000000055 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
-				000000000000000000000001 /* HAoStudioApp.swift in Sources */,
-				000000000000000000000003 /* HaoTheme.swift in Sources */,
-				000000000000000000000005 /* ThemeStore.swift in Sources */,
+				0000000000000000000000EB /* AVPlayerBackend.swift in Sources */,
+				0000000000000000000000ED /* CmsClient.swift in Sources */,
+				0000000000000000000000EF /* Diagnostics.swift in Sources */,
+				0000000000000000000000F1 /* DoubanService.swift in Sources */,
+				0000000000000000000000F3 /* DownloadEngine.swift in Sources */,
+				0000000000000000000000F5 /* EmbyCategoryView.swift in Sources */,
+				0000000000000000000000F7 /* EmbyClient.swift in Sources */,
+				0000000000000000000000F9 /* EmbyDetailView.swift in Sources */,
+				0000000000000000000000FB /* EmbyModels.swift in Sources */,
+				0000000000000000000000FD /* EmbyTabView.swift in Sources */,
 				000000000000000000000007 /* Glass.swift in Sources */,
 				000000000000000000000009 /* GlassTabBar.swift in Sources */,
-				00000000000000000000000B /* MiniPlayerBar.swift in Sources */,
-				00000000000000000000000D /* MainTabView.swift in Sources */,
-				00000000000000000000000F /* PlaceholderViews.swift in Sources */,
-				000000000000000000000011 /* PlaybackCoordinator.swift in Sources */,
-				000000000000000000000013 /* LocalStore.swift in Sources */,
-				00000000000000000000006A /* MigrationStore.swift in Sources */,
+				000000000000000000000001 /* HAoStudioApp.swift in Sources */,
+				000000000000000000000003 /* HaoTheme.swift in Sources */,
+				0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */,
 				00000000000000000000006C /* KeychainStore.swift in Sources */,
-				000000000000000000000015 /* SplashView.swift in Sources */,
-				000000000000000000000075 /* NativeMusicPlayer.swift in Sources */,
 				000000000000000000000077 /* LXEngine.swift in Sources */,
 				000000000000000000000079 /* LXModels.swift in Sources */,
 				00000000000000000000007B /* LXPrelude.swift in Sources */,
 				00000000000000000000007D /* LXScriptFileStore.swift in Sources */,
 				00000000000000000000007F /* LXScriptStore.swift in Sources */,
-				000000000000000000000081 /* LXUserKeyStore.swift in Sources */,
 				000000000000000000000083 /* LXSourceResolver.swift in Sources */,
-				000000000000000000000085 /* MusicHTTP.swift in Sources */,
-				000000000000000000000087 /* MusicQuality.swift in Sources */,
-				000000000000000000000089 /* MusicTrack.swift in Sources */,
-				00000000000000000000008B /* ResolverPolicy.swift in Sources */,
-				00000000000000000000008D /* MusicAlbumAPI.swift in Sources */,
+				000000000000000000000081 /* LXUserKeyStore.swift in Sources */,
+				000000000000000000000013 /* LocalStore.swift in Sources */,
+				00000000000000000000000D /* MainTabView.swift in Sources */,
+				00000000000000000000006A /* MigrationStore.swift in Sources */,
+				00000000000000000000000B /* MiniPlayerBar.swift in Sources */,
+				000000000000000000000101 /* MpvPlayerBackend.swift in Sources */,
 				00000000000000000000008F /* MusicAPIModels.swift in Sources */,
 				000000000000000000000091 /* MusicAPITransport.swift in Sources */,
+				00000000000000000000008D /* MusicAlbumAPI.swift in Sources */,
+				000000000000000000000103 /* MusicAlbumDetailView.swift in Sources */,
 				000000000000000000000093 /* MusicArtistAPI.swift in Sources */,
+				000000000000000000000105 /* MusicArtistDetailView.swift in Sources */,
+				000000000000000000000107 /* MusicChartsView.swift in Sources */,
 				000000000000000000000095 /* MusicCommentsAPI.swift in Sources */,
-				000000000000000000000097 /* MusicLyricsAPI.swift in Sources */,
-				000000000000000000000099 /* MusicPlaylistImportAPI.swift in Sources */,
-				00000000000000000000009B /* MusicSearchAPI.swift in Sources */,
+				000000000000000000000109 /* MusicCommentsView.swift in Sources */,
 				00000000000000000000009D /* MusicDiscoveryViewModel.swift in Sources */,
 				00000000000000000000009F /* MusicDiscoveryViews.swift in Sources */,
 				0000000000000000000000A1 /* MusicEqualizer.swift in Sources */,
 				0000000000000000000000A3 /* MusicEqualizerView.swift in Sources */,
 				0000000000000000000000A5 /* MusicEqualizerViewModel.swift in Sources */,
+				000000000000000000000085 /* MusicHTTP.swift in Sources */,
 				0000000000000000000000A7 /* MusicHomeView.swift in Sources */,
 				0000000000000000000000A9 /* MusicHomeViewModel.swift in Sources */,
 				0000000000000000000000AB /* MusicLibraryStore.swift in Sources */,
 				0000000000000000000000AD /* MusicLibraryViewModel.swift in Sources */,
 				0000000000000000000000AF /* MusicLibraryViews.swift in Sources */,
 				0000000000000000000000B1 /* MusicLyrics.swift in Sources */,
+				000000000000000000000097 /* MusicLyricsAPI.swift in Sources */,
 				0000000000000000000000B3 /* MusicModels.swift in Sources */,
 				0000000000000000000000B5 /* MusicPlayerSheets.swift in Sources */,
 				0000000000000000000000B7 /* MusicPlayerView.swift in Sources */,
 				0000000000000000000000B9 /* MusicPlayerViewModel.swift in Sources */,
+				000000000000000000000099 /* MusicPlaylistImportAPI.swift in Sources */,
+				000000000000000000000087 /* MusicQuality.swift in Sources */,
 				0000000000000000000000BB /* MusicQueue.swift in Sources */,
 				0000000000000000000000BD /* MusicQueueView.swift in Sources */,
 				0000000000000000000000BF /* MusicRadio.swift in Sources */,
 				0000000000000000000000C1 /* MusicRowViews.swift in Sources */,
+				00000000000000000000009B /* MusicSearchAPI.swift in Sources */,
 				0000000000000000000000C3 /* MusicSearchMerge.swift in Sources */,
 				0000000000000000000000C5 /* MusicSearchView.swift in Sources */,
 				0000000000000000000000C7 /* MusicSearchViewModel.swift in Sources */,
 				0000000000000000000000C9 /* MusicSleepTimer.swift in Sources */,
+				000000000000000000000089 /* MusicTrack.swift in Sources */,
+				000000000000000000000075 /* NativeMusicPlayer.swift in Sources */,
+				00000000000000000000000F /* PlaceholderViews.swift in Sources */,
+				000000000000000000000011 /* PlaybackCoordinator.swift in Sources */,
+				00000000000000000000010B /* PlayerKernel.swift in Sources */,
+				00000000000000000000008B /* ResolverPolicy.swift in Sources */,
+				000000000000000000000015 /* SplashView.swift in Sources */,
+				000000000000000000000005 /* ThemeStore.swift in Sources */,
+				00000000000000000000010D /* VideoCapability.swift in Sources */,
+				00000000000000000000010F /* VideoDataGateway.swift in Sources */,
+				000000000000000000000111 /* VideoDetailView.swift in Sources */,
+				000000000000000000000113 /* VideoDriver.swift in Sources */,
+				000000000000000000000115 /* VideoFavsView.swift in Sources */,
+				000000000000000000000117 /* VideoHistoryView.swift in Sources */,
+				000000000000000000000119 /* VideoLibraryStore.swift in Sources */,
+				0000000000000000000000E6 /* VideoModels.swift in Sources */,
+				00000000000000000000011B /* VideoPlayerView.swift in Sources */,
+				00000000000000000000011D /* VideoPosterCard.swift in Sources */,
+				00000000000000000000011F /* VideoSearchView.swift in Sources */,
+				0000000000000000000000E8 /* VideoServiceContracts.swift in Sources */,
+				000000000000000000000121 /* VideoTabView.swift in Sources */,
+				000000000000000000000123 /* VodDanmakuClient.swift in Sources */,
+				000000000000000000000125 /* VodDanmakuLayer.swift in Sources */,
+				000000000000000000000127 /* VodGestures.swift in Sources */,
+				000000000000000000000129 /* VodPlayerViewModel.swift in Sources */,
+				00000000000000000000012B /* VodSettingsSheet.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

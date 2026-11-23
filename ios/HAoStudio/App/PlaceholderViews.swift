@@ -39,12 +39,9 @@ struct HomePlaceholderView: View {
     }
 }
 
-struct MoviesPlaceholderView: View {
-    var body: some View {
-        PlaceholderPage(title: "影视", note: "占位页 — 内容由后续 slice 填入。")
-    }
-}
-
+/// Live tab is a placeholder until S4; the movies placeholder was
+/// removed with the S3-C replacement (VideoTabView), not left as
+/// dead code — same rule S2-C applied to the music placeholder.
 struct LivePlaceholderView: View {
     var body: some View {
         PlaceholderPage(title: "直播", note: "占位页 — 内容由后续 slice 填入。")

@@ -30,6 +30,14 @@
 // `swift test`; their tests run via `xcodebuild test` on an iOS
 // Simulator destination once an Xcode test target exists — there
 // is deliberately none yet (see the note above about the pbxproj).
+//
+// S3: the video services (CMS / Douban / Emby / danmaku) and the
+// shared download engine are Foundation-only too, so they join
+// AppCore as whole directories. VideoLibraryStore.swift joins as
+// a single file (its home is Features/Video, outside the service
+// dirs) so its tests compile; no other Features file is claimed.
+// VideoPlayerTests (A leg, iOS-only driver tests) stays unwired
+// until S7 — it is not a SwiftPM target.
 
 import PackageDescription
 
@@ -66,7 +74,10 @@ let package = Package(
                 "Services/LXEngine",
                 "Services/MusicResolvers",
                 "Services/MusicAPI",
+                "Services/Video",
+                "Services/DownloadEngine",
                 "Playback/PlaybackCoordinator.swift",
+                "Features/Video/VideoLibraryStore.swift",
                 "Storage",
             ],
             linkerSettings: [
@@ -82,6 +93,22 @@ let package = Package(
             name: "MusicLXTests",
             dependencies: ["AppCore"],
             path: "Tests/MusicLXTests"
+        ),
+        // S3: video services (CMS / Douban / Emby / danmaku) and the
+        // shared download engine — tested against AppCore, which
+        // owns their sources (see the note above: one file, one
+        // target).
+        .testTarget(
+            name: "VideoServicesTests",
+            dependencies: ["AppCore"],
+            path: "Tests/VideoServicesTests"
+        ),
+        // S3: video feature stores (resume key, library store,
+        // music platform badge) — same AppCore dependency.
+        .testTarget(
+            name: "VideoFeaturesTests",
+            dependencies: ["AppCore"],
+            path: "Tests/VideoFeaturesTests"
         ),
     ]
 )

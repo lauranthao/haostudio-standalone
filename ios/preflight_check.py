@@ -109,13 +109,17 @@ check("1b. libmpv xcframework refs (18, build-time)", len(libmpv_refs) == 18, f"
 # --- 2. one target, no stale refs ---------------------------------------
 targets = re.findall(r"productType = \"com\.apple\.product-type\.application\"", pbx)
 check("2. exactly one app target", len(targets) == 1, f"{len(targets)} app targets")
+# Stale names from the old (pre-2.0) Swift app: any reference to them
+# must be gone. S3 reintroduces PlayerKernel / IJKPlayerBackend /
+# MpvPlayerBackend / AVPlayerBackend as NEW files (A leg), so those
+# four names are NOT stale anymore — checks 1 and 6 verify they
+# resolve to real files in the Sources phase. Do not re-add them
+# here unless the S3 files are deleted first.
 stale = [s for s in [_N_LYRICS, _N_VIEWCTRL + ".swift", _N_APPDEL + ".swift",
                      _N_SCENEDEL + ".swift", "NativePlayer" + "ViewController",
                      "updater" + ".swift",
-                     "PlayerKernel" + ".swift",
                      _N_META_CFG, "Lyrics" + "LiveActivity",
-                     "IJKPlayer" + "Backend",
-                     "MpvPlayer" + "Backend", "AVPlayer" + "Backend", "Podfile"]
+                     "Podfile"]
          if s in pbx]
 check("2b. no stale old-file references in pbxproj", not stale, str(stale))
 
@@ -182,7 +186,7 @@ check("4l. every Swift file ref resolves to a file on disk", not _missing,
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
-check("5. Swift file count (S2 = 56: 13 foundation + 43 music)", len(swift_files) == 56,
+check("5. Swift file count (S3 A+B+C = 91: 13 foundation + 47 music + 14 video + 11 player + 6 services)", len(swift_files) == 91,
       f"{len(swift_files)}: {[f.name for f in swift_files]}")
 for f in swift_files:
     s = f.read_text()
