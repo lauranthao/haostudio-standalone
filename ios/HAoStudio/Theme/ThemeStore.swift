@@ -153,6 +153,11 @@ final class ThemeStore: ObservableObject {
 
     private let defaults: UserDefaults
 
+    /// Observer for post-import re-read (S6): same contract as
+    /// SettingsStore.reloadFromDefaults — the backup engine posts
+    /// `.haoBackupImported` after a successful import.
+    private var backupImportedObserver: NSObjectProtocol?
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let savedTheme = defaults.string(forKey: Self.themeKey)
@@ -177,6 +182,45 @@ final class ThemeStore: ObservableObject {
             }
         } else {
             self.tabAccentHex = nil
+        }
+        // S6: re-read after a backup import (see reloadFromDefaults).
+        backupImportedObserver = NotificationCenter.default.addObserver(
+            forName: .haoBackupImported, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromDefaults()
+        }
+    }
+
+    /// Re-read theme state from UserDefaults (S6). Called after a
+    /// backup import posts `.haoBackupImported`. This mirrors the
+    /// reads in init — keep the two in sync (the reads stay inline
+    /// in init because the @Published vars have no default values
+    /// and Swift forbids calling a method before they are assigned).
+    /// Each didSet writes the same value back, so re-reading is
+    /// idempotent.
+    func reloadFromDefaults() {
+        let savedTheme = defaults.string(forKey: Self.themeKey)
+        themeID = HaoThemeID(rawValue: savedTheme ?? "") ?? .appleGlass
+        let savedMode = defaults.string(forKey: Self.modeKey)
+        appearance = HaoAppearance(rawValue: savedMode ?? "") ?? .system
+        if let savedIntensity = defaults.object(forKey: Self.glassIntensityKey) as? NSNumber {
+            glassIntensity = min(1.0, max(0.3, savedIntensity.doubleValue))
+        } else {
+            glassIntensity = 1.0
+        }
+        if let savedAccent = defaults.object(forKey: Self.tabAccentKey) as? NSNumber {
+            let raw = savedAccent.intValue
+            if raw == 0 {
+                tabAccentHex = nil
+            } else {
+                let clamped = Int(haoClampedAccentARGB(UInt32(truncatingIfNeeded: raw)))
+                tabAccentHex = clamped
+                if clamped != raw {
+                    defaults.set(clamped, forKey: Self.tabAccentKey)
+                }
+            }
+        } else {
+            tabAccentHex = nil
         }
     }
 

@@ -46,6 +46,11 @@ struct HAoStudioApp: App {
         let themeStore = ThemeStore()
         _themeStore = StateObject(wrappedValue: themeStore)
         _settingsStore = StateObject(wrappedValue: SettingsStore(themeStore: themeStore))
+        // S6: wire the backup engine + update checker behind the
+        // shared flow (B leg). The flow's rows stay inert ("尚未接入")
+        // until these two lines run.
+        BackupUpdateFlow.shared.engine = FileBackupEngine()
+        BackupUpdateFlow.shared.checker = DefaultUpdateChecker()
         let coordinator = PlaybackCoordinator()
         // S2: wire the music engine behind the coordinator. The LX
         // resolver answers resolveFirstPlayable; the player is the
@@ -82,12 +87,31 @@ struct HAoStudioApp: App {
     /// when the splash's spinner + subtitle path is used.
     @State private var splashReady = true
     @State private var showingSplash = true
+    /// S6: the launch-time automatic update check runs once per app
+    /// launch (the 20 h throttle lives in the checker itself).
+    @State private var didTriggerAutoUpdateCheck = false
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 MainTabView()
                     .preferredColorScheme(themeStore.appearance.preferredColorScheme)
+                    .onAppear {
+                        // S6: one launch-time automatic update check.
+                        // A newer build opens the same update sheet
+                        // as a manual check; silence (throttled, up
+                        // to date, skipped, offline) shows nothing.
+                        if !didTriggerAutoUpdateCheck {
+                            didTriggerAutoUpdateCheck = true
+                            if let checker = BackupUpdateFlow.shared.checker as? DefaultUpdateChecker {
+                                checker.checkAutoIfEnabled { result in
+                                    if let result = result {
+                                        BackupUpdateFlow.shared.updatePrompt = result
+                                    }
+                                }
+                            }
+                        }
+                    }
                 if showingSplash {
                     SplashView(isReady: $splashReady) {
                         showingSplash = false

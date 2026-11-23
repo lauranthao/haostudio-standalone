@@ -343,6 +343,10 @@ struct MyView: View {
                 Text("未找到旧版数据，可从备份文件导入。")
                     .font(.system(size: 14))
                     .foregroundStyle(theme.textSecondary)
+                Button("从备份文件导入") {
+                    BackupUpdateFlow.shared.beginImport()
+                }
+                .font(.system(size: 14))
                 Button("不再提示") {
                     MigrationStore.dismissMigrationNotice()
                     showMigrationNotice = false

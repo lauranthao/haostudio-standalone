@@ -195,6 +195,14 @@
 		000000000000000000000187 /* SourceManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000188 /* SourceManagementViews.swift */; };
 		000000000000000000000189 /* VideoEngineReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018A /* VideoEngineReporter.swift */; };
 		00000000000000000000018B /* WallpaperStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018C /* WallpaperStore.swift */; };
+		000000000000000000000191 /* BackupEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000192 /* BackupEngine.swift */; };
+		00000000000000000000018F /* BackupEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000190 /* BackupEnvelope.swift */; };
+		000000000000000000000193 /* ZipArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000194 /* ZipArchive.swift */; };
+		000000000000000000000195 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000196 /* UpdateChecker.swift */; };
+		000000000000000000000197 /* UpdateManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000198 /* UpdateManifest.swift */; };
+		000000000000000000000199 /* VersionCompare.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019A /* VersionCompare.swift */; };
+		00000000000000000000019B /* BackupUpdateLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019C /* BackupUpdateLogic.swift */; };
+		00000000000000000000019D /* BackupUpdateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000019E /* BackupUpdateViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -371,6 +379,14 @@
 		000000000000000000000188 /* SourceManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceManagementViews.swift; sourceTree = "<group>"; };
 		00000000000000000000018A /* VideoEngineReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEngineReporter.swift; sourceTree = "<group>"; };
 		00000000000000000000018C /* WallpaperStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperStore.swift; sourceTree = "<group>"; };
+		000000000000000000000192 /* BackupEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupEngine.swift; sourceTree = "<group>"; };
+		000000000000000000000190 /* BackupEnvelope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupEnvelope.swift; sourceTree = "<group>"; };
+		000000000000000000000194 /* ZipArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZipArchive.swift; sourceTree = "<group>"; };
+		000000000000000000000196 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		000000000000000000000198 /* UpdateManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManifest.swift; sourceTree = "<group>"; };
+		00000000000000000000019A /* VersionCompare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionCompare.swift; sourceTree = "<group>"; };
+		00000000000000000000019C /* BackupUpdateLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpdateLogic.swift; sourceTree = "<group>"; };
+		00000000000000000000019E /* BackupUpdateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupUpdateViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -457,11 +473,13 @@
 				000000000000000000000016 /* SplashView.swift */,
 			); path = Splash; sourceTree = "<group>"; };
 		00000000000000000000006E /* Services */ = {isa = PBXGroup; children = (
+				00000000000000000000018D /* Backup */,
 				00000000000000000000012D /* DownloadEngine */,
 				00000000000000000000006F /* LXEngine */,
 				000000000000000000000147 /* LiveSites */,
 				000000000000000000000072 /* MusicAPI */,
 				000000000000000000000071 /* MusicResolvers */,
+				00000000000000000000018E /* Update */,
 				0000000000000000000000E5 /* Video */,
 			); path = Services; sourceTree = "<group>"; };
 		000000000000000000000147 /* LiveSites */ = {isa = PBXGroup; children = (
@@ -487,6 +505,16 @@
 				00000000000000000000015B /* TarsCodec.swift */,
 				00000000000000000000015C /* TarsUniPacket.swift */,
 			); path = LiveSites; sourceTree = "<group>"; };
+		00000000000000000000018D /* Backup */ = {isa = PBXGroup; children = (
+				000000000000000000000192 /* BackupEngine.swift */,
+				000000000000000000000190 /* BackupEnvelope.swift */,
+				000000000000000000000194 /* ZipArchive.swift */,
+			); path = Backup; sourceTree = "<group>"; };
+		00000000000000000000018E /* Update */ = {isa = PBXGroup; children = (
+				000000000000000000000196 /* UpdateChecker.swift */,
+				000000000000000000000198 /* UpdateManifest.swift */,
+				00000000000000000000019A /* VersionCompare.swift */,
+			); path = Update; sourceTree = "<group>"; };
 		00000000000000000000006F /* LXEngine */ = {isa = PBXGroup; children = (
 				000000000000000000000078 /* LXEngine.swift */,
 				00000000000000000000007A /* LXModels.swift */,
@@ -545,6 +573,8 @@
 				000000000000000000000172 /* My */,
 			); path = Features; sourceTree = "<group>"; };
 		000000000000000000000172 /* My */ = {isa = PBXGroup; children = (
+				00000000000000000000019C /* BackupUpdateLogic.swift */,
+				00000000000000000000019E /* BackupUpdateViews.swift */,
 				000000000000000000000174 /* CacheManager.swift */,
 				000000000000000000000176 /* EmbyConfigView.swift */,
 				000000000000000000000178 /* EmbyConfigViewModel.swift */,
@@ -839,6 +869,14 @@
 				000000000000000000000187 /* SourceManagementViews.swift in Sources */,
 				000000000000000000000189 /* VideoEngineReporter.swift in Sources */,
 				00000000000000000000018B /* WallpaperStore.swift in Sources */,
+				000000000000000000000191 /* BackupEngine.swift in Sources */,
+				00000000000000000000018F /* BackupEnvelope.swift in Sources */,
+				000000000000000000000193 /* ZipArchive.swift in Sources */,
+				000000000000000000000195 /* UpdateChecker.swift in Sources */,
+				000000000000000000000197 /* UpdateManifest.swift in Sources */,
+				000000000000000000000199 /* VersionCompare.swift in Sources */,
+				00000000000000000000019B /* BackupUpdateLogic.swift in Sources */,
+				00000000000000000000019D /* BackupUpdateViews.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
