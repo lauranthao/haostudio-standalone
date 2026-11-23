@@ -252,7 +252,7 @@ final class LXSourceResolver: SourceResolver {
             let state = ResolveState(
                 tiers: AudioQuality.chain(from: quality),
                 requestedQuality: quality,
-                totalDeadline: Date().addingTimeInterval(totalBudget),
+                totalDeadline: Date().addingTimeInterval(self.totalBudget),
                 background: background)
             self.runTierPasses(
                 state: state, songId: songId, platform: platform,
