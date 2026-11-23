@@ -932,9 +932,15 @@ struct MigrationBackup {
         }
     }
 
+    /// Second-resolution alone is not unique: a failed attempt and
+    /// its immediate retry land in the same second, and the second
+    /// create() would die copying the snapshot onto the first
+    /// attempt's file (copyItem refuses an existing destination) —
+    /// the retry then reports "pre-write backup failed" and writes
+    /// nothing. The UUID suffix makes every attempt's folder unique.
     static func timestamp() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter.string(from: Date())
+        return formatter.string(from: Date()) + "-" + UUID().uuidString.prefix(8)
     }
 }
