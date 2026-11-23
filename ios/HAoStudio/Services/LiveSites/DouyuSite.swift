@@ -409,11 +409,11 @@ final class DouyuLiveSite: LiveSiteResolver {
     }
 
     /// show_status == 1, not a replay loop, title not starting with
-    ///.
+    /// 【回放】.
     static func isLiveRoomPayload(_ roomInfo: [String: Any]) -> Bool {
         LiveJSON.asInt(roomInfo["show_status"]) == 1
         && LiveJSON.asInt(roomInfo["videoLoop"])!= 1
-        &&!LiveJSON.asString(roomInfo["room_name"]).hasPrefix("")
+        &&!LiveJSON.asString(roomInfo["room_name"]).hasPrefix("【回放】")
     }
 
     static func parsePlayResponse(_ response: [String: Any]) throws -> [String: Any] {
