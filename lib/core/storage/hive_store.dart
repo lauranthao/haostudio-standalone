@@ -50,17 +50,27 @@ class HiveStore {
 
   static Box<dynamic> get box => _box;
 
-  static String getString(String key, String defaultValue) =>
-      _box.get(key) as String? ?? defaultValue;
+  static String getString(String key, String defaultValue) {
+    // Same trap as the DanmakuSettings getters (b30): a
+    // wrong-typed stored value must fall back, not throw.
+    final v = _box.get(key);
+    return v is String ? v : defaultValue;
+  }
 
-  static int getInt(String key, int defaultValue) =>
-      _box.get(key) as int? ?? defaultValue;
+  static int getInt(String key, int defaultValue) {
+    final v = _box.get(key);
+    return v is num ? v.toInt() : defaultValue;
+  }
 
-  static bool getBool(String key, bool defaultValue) =>
-      _box.get(key) as bool? ?? defaultValue;
+  static bool getBool(String key, bool defaultValue) {
+    final v = _box.get(key);
+    return v is bool ? v : defaultValue;
+  }
 
-  static double getDouble(String key, double defaultValue) =>
-      (_box.get(key) as num?)?.toDouble() ?? defaultValue;
+  static double getDouble(String key, double defaultValue) {
+    final v = _box.get(key);
+    return v is num ? v.toDouble() : defaultValue;
+  }
 
   static Future<void> put(String key, Object? value) => _box.put(key, value);
 

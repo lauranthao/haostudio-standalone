@@ -694,6 +694,80 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     );
   }
 
+  /// Genres present in the loaded movies + series (`type` is the
+  /// server's Genres joined with ' / '). Sorted, deduped; empty
+  /// when nothing is loaded yet, so the chips row hides itself.
+  List<String> get _genres {
+    final out = <String>{};
+    for (final item in [..._movies, ..._series]) {
+      for (final g in item.type.split(' / ')) {
+        final t = g.trim();
+        if (t.isNotEmpty) out.add(t);
+      }
+    }
+    return out.toList()..sort();
+  }
+
+  void _openFavoritesCategory() {
+    final client = _client;
+    if (client == null) return;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => EmbyCategoryPage(
+          client: client,
+          kind: EmbyCategoryKind.favorites,
+          watchedKeys: _watchedKeys,
+        ),
+      ),
+    );
+  }
+
+  void _openGenreCategory(String genre) {
+    final client = _client;
+    if (client == null) return;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => EmbyCategoryPage(
+          client: client,
+          kind: EmbyCategoryKind.genre,
+          genre: genre,
+          watchedKeys: _watchedKeys,
+        ),
+      ),
+    );
+  }
+
+  /// 分类 chips: 收藏 + 类型. The tab used to offer only 电影 /
+  /// 剧集 rails — no genre browsing, no favorites entry — even
+  /// though the server parses both. One horizontal row under the
+  /// library line; hidden until the first load lands.
+  Widget _buildCategoryChips(HaoTheme theme) {
+    final chips = <Widget>[
+      _CategoryChip(
+        label: '收藏',
+        icon: Icons.favorite,
+        onTap: _openFavoritesCategory,
+      ),
+      for (final g in _genres)
+        _CategoryChip(label: g, onTap: () => _openGenreCategory(g)),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < chips.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              chips[i],
+            ],
+            const SizedBox(width: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openSeriesCategory() {
     final client = _client;
     if (client == null) return;
@@ -724,10 +798,29 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     );
   }
 
-  Set<String> get _watchedKeys => _history
-      .where((e) => e.isFinished)
-      .map((e) => e.identityKey)
-      .toSet();
+  Set<String> get _watchedKeys {
+    final keys = _history
+        .where((e) => e.isFinished)
+        .map((e) => e.identityKey)
+        .toSet();
+    // Server-side played counts too (UserData.Played): a film
+    // finished on another device must show the ✓ here, not only
+    // when this phone's local history has it. The lists below
+    // are everything the tab has loaded; the category pages get
+    // the same set, so their badges agree with the rails.
+    for (final list in [
+      _movies,
+      _series,
+      _serverResume,
+      _nextUp,
+      _searchResults,
+    ]) {
+      for (final item in list) {
+        if (item.played) keys.add(item.identityKey);
+      }
+    }
+    return keys;
+  }
 
   // -- Build ---------------------------------------------------------------
 
@@ -902,6 +995,8 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                       ),
                     ),
                   ),
+                if (_movies.isNotEmpty || _series.isNotEmpty)
+                  _buildCategoryChips(theme),
                 if (_stale)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1181,6 +1276,49 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
 
 /// Section header — same values as the CMS home (_SectionHead in
 /// video_tab_page.dart): 20px/800 + "查看全部 ›".
+/// One 分类 chip (收藏 / a genre): pill, hairline border, accent
+/// heart for 收藏. Taps open the matching category page.
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.label, this.icon, required this.onTap});
+
+  final String label;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: theme.surfaceStrong,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: theme.hairline),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: theme.accent),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: theme.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionHead extends StatelessWidget {
   const _SectionHead({required this.title, this.onMore});
 
@@ -1358,14 +1496,26 @@ class _ResumeCard extends StatelessWidget {
                   color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(HaoRadius.large),
                   border: Border.all(color: theme.hairline),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (item.pic.isNotEmpty)
+                    // 16:9 card, 16:9 art: the server's Backdrop
+                    // when it has one — the 2:3 poster cropped
+                    // into this frame looked flat and cut off.
+                    if (item.backdrop.isNotEmpty || item.pic.isNotEmpty)
                       RefererImage(
-                        url: item.pic,
+                        url: item.backdrop.isNotEmpty
+                            ? item.backdrop
+                            : item.pic,
                         headers: imageHeaders,
                         fit: BoxFit.cover,
                         fallback: ColoredBox(
@@ -1544,14 +1694,23 @@ class _ContinueCard extends StatelessWidget {
                   color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(HaoRadius.large),
                   border: Border.all(color: theme.hairline),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (entry.pic.isNotEmpty)
+                    if (entry.backdrop.isNotEmpty || entry.pic.isNotEmpty)
                       RefererImage(
-                        url: entry.pic,
+                        url: entry.backdrop.isNotEmpty
+                            ? entry.backdrop
+                            : entry.pic,
                         headers: imageHeaders,
                         fit: BoxFit.cover,
                         fallback: ColoredBox(

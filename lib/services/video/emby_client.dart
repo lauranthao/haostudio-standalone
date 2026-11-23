@@ -818,6 +818,7 @@ class EmbyClient {
     int startIndex = 0,
     int limit = 50,
     CancelToken? cancelToken,
+    String? genres,
   }) =>
       _items(
         includeItemTypes: 'Movie,Video',
@@ -825,6 +826,7 @@ class EmbyClient {
         startIndex: startIndex,
         limit: limit,
         cancelToken: cancelToken,
+        genres: genres,
       );
 
   Future<EmbyItemsPage> series({
@@ -832,6 +834,7 @@ class EmbyClient {
     int startIndex = 0,
     int limit = 50,
     CancelToken? cancelToken,
+    String? genres,
   }) =>
       _items(
         includeItemTypes: 'Series',
@@ -839,6 +842,38 @@ class EmbyClient {
         startIndex: startIndex,
         limit: limit,
         cancelToken: cancelToken,
+        genres: genres,
+      );
+
+  /// Server-side favorites (UserData.IsFavorite) across movies
+  /// and series, SortName order. The tab page's 收藏 entry opens
+  /// this — favorites used to be parsed but had no UI at all.
+  Future<EmbyItemsPage> favorites({
+    int startIndex = 0,
+    int limit = 50,
+    CancelToken? cancelToken,
+  }) =>
+      _items(
+        includeItemTypes: 'Movie,Video,Series',
+        startIndex: startIndex,
+        limit: limit,
+        cancelToken: cancelToken,
+        filters: 'IsFavorite',
+      );
+
+  /// One genre across movies and series (Emby `Genres` filter).
+  Future<EmbyItemsPage> byGenre(
+    String genre, {
+    int startIndex = 0,
+    int limit = 50,
+    CancelToken? cancelToken,
+  }) =>
+      _items(
+        includeItemTypes: 'Movie,Video,Series',
+        startIndex: startIndex,
+        limit: limit,
+        cancelToken: cancelToken,
+        genres: genre,
       );
 
   Future<EmbyItemsPage> _items({
@@ -847,9 +882,13 @@ class EmbyClient {
     int startIndex = 0,
     int limit = 50,
     CancelToken? cancelToken,
+    String? genres,
+    String? filters,
   }) async {
     final query = <String, String>{
       if (libraryId != null && libraryId.isNotEmpty) 'parentId': libraryId,
+      if (genres != null && genres.isNotEmpty) 'Genres': genres,
+      if (filters != null && filters.isNotEmpty) 'Filters': filters,
       'IncludeItemTypes': includeItemTypes,
       'Recursive': 'true',
       'StartIndex': '$startIndex',
@@ -1339,6 +1378,9 @@ class EmbyClient {
     final tag = imageTags is Map<String, dynamic>
         ? (imageTags['Primary'] as String?)
         : null;
+    final backdropTag = imageTags is Map<String, dynamic>
+        ? (imageTags['Backdrop'] as String?)
+        : null;
     final genres = (json['Genres'] as List<dynamic>? ?? const [])
         .map((g) => g.toString())
         .where((g) => g.isNotEmpty)
@@ -1369,6 +1411,10 @@ class EmbyClient {
       pic: tag != null && tag.isNotEmpty
           ? imageUrl(id, maxWidth: 400, tag: tag)
           : '',
+      backdrop: backdropTag != null && backdropTag.isNotEmpty
+          ? imageUrl(id, maxWidth: 800, tag: backdropTag,
+              type: 'Backdrop')
+          : '',
       year: (json['ProductionYear'] ?? '').toString(),
       type: genres.join(' / '),
       score: rating is num ? _formatRating(rating) : '',
@@ -1392,6 +1438,9 @@ class EmbyClient {
     final tag = imageTags is Map<String, dynamic>
         ? (imageTags['Primary'] as String?)
         : null;
+    final backdropTag = imageTags is Map<String, dynamic>
+        ? (imageTags['Backdrop'] as String?)
+        : null;
     final genres = (json['Genres'] as List<dynamic>? ?? const [])
         .map((g) => g.toString())
         .where((g) => g.isNotEmpty)
@@ -1414,6 +1463,10 @@ class EmbyClient {
       name: (json['Name'] as String?) ?? '',
       pic: tag != null && tag.isNotEmpty
           ? imageUrl(id, maxWidth: 800, tag: tag)
+          : '',
+      backdrop: backdropTag != null && backdropTag.isNotEmpty
+          ? imageUrl(id, maxWidth: 800, tag: backdropTag,
+              type: 'Backdrop')
           : '',
       year: (json['ProductionYear'] ?? '').toString(),
       type: genres.join(' / '),

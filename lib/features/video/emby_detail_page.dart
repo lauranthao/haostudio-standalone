@@ -604,7 +604,7 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _CoverHero(
-                pic: m.pic,
+                pic: m.backdrop.isNotEmpty ? m.backdrop : m.pic,
                 imageHeaders: _client?.imageHeaders,
               ),
               Padding(
@@ -683,23 +683,11 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
                             .toList(),
                       ),
                     ],
-                    // Synopsis + cast: the server sends Overview and
-                    // People on every item, but the old page showed
-                    // m.remarks here — which Emby never sets — so the
-                    // synopsis, director and cast were fetched and
-                    // then never displayed. Same 14 secondary rows as
-                    // the CMS detail page (remarks → director).
-                    if (m.content.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        m.content,
-                        style: TextStyle(
-                          shadows: HaoTheme.legibilityShadows(context),
-                          color: theme.textSecondary,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+                    // Cast: the server sends People on every item.
+                    // The synopsis lives only at the bottom of the
+                    // page (expandable plainContent) — rendering
+                    // m.content here too showed the same Overview
+                    // twice (b30).
                     if (m.director.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
@@ -1220,7 +1208,10 @@ class _LoadingWithPreload extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _CoverHero(pic: preload.pic, imageHeaders: imageHeaders),
+        _CoverHero(
+          pic: preload.backdrop.isNotEmpty ? preload.backdrop : preload.pic,
+          imageHeaders: imageHeaders,
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
           child: Text(

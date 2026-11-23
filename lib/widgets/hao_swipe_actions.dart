@@ -144,29 +144,36 @@ class _HaoSwipeActionsState extends State<HaoSwipeActions>
           child: Stack(
             children: [
               // Action buttons, pinned to the trailing edge, revealed
-              // as the row slides left.
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: _actionsWidth,
-                child: Row(
-                  children: [
-                    for (final action in widget.actions)
-                      SizedBox(
-                        width: widget.actionWidth,
-                        height: double.infinity,
-                        child: _SwipeActionButton(
-                          action: action,
-                          onTap: () {
-                            _close();
-                            action.onTap();
-                          },
+              // as the row slides left. They are ONLY mounted while
+              // the row is open or being dragged: at rest (offset 0)
+              // the row sits on top of them, but the row is glass —
+              // translucent — so the grey/red buttons bleed through
+              // the row's right edge on every row (b30, liked list).
+              // Mounting them only while offset != 0 leaves nothing
+              // behind the glass at rest.
+              if (_offset != 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _actionsWidth,
+                  child: Row(
+                    children: [
+                      for (final action in widget.actions)
+                        SizedBox(
+                          width: widget.actionWidth,
+                          height: double.infinity,
+                          child: _SwipeActionButton(
+                            action: action,
+                            onTap: () {
+                              _close();
+                              action.onTap();
+                            },
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               Transform.translate(
                 offset: Offset(_offset, 0),
                 child: widget.child,

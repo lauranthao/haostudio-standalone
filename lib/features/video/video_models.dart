@@ -75,6 +75,7 @@ class VideoItem {
     required this.vodId,
     required this.name,
     this.pic = '',
+    this.backdrop = '',
     this.picAlt = '',
     this.year = '',
     this.type = '',
@@ -101,6 +102,7 @@ class VideoItem {
         vodId: (json['vodId'] as String?) ?? '',
         name: (json['name'] as String?) ?? '',
         pic: (json['pic'] as String?) ?? '',
+        backdrop: (json['backdrop'] as String?) ?? '',
         picAlt: (json['picAlt'] as String?) ?? '',
         year: (json['year'] as String?) ?? '',
         type: (json['type'] as String?) ?? '',
@@ -129,6 +131,7 @@ class VideoItem {
         'vodId': vodId,
         'name': name,
         'pic': pic,
+        'backdrop': backdrop,
         'picAlt': picAlt,
         'year': year,
         'type': type,
@@ -154,6 +157,10 @@ class VideoItem {
   final String vodId;
   final String name;
   final String pic;
+
+  /// 16:9 Backdrop 横幅剧照 (Emby ImageTags['Backdrop']); '' when the
+  /// server has none — callers fall back to [pic].
+  final String backdrop;
 
   /// CMS pic kept when Douban replaces [pic] (Douban poster wins).
   final String picAlt;
@@ -213,6 +220,7 @@ class VideoItem {
 
   VideoItem copyWith({
     String? pic,
+    String? backdrop,
     String? picAlt,
     String? score,
     String? type,
@@ -230,6 +238,7 @@ class VideoItem {
         vodId: vodId,
         name: name,
         pic: pic ?? this.pic,
+        backdrop: backdrop ?? this.backdrop,
         picAlt: picAlt ?? this.picAlt,
         year: year ?? this.year,
         type: type ?? this.type,
@@ -476,6 +485,7 @@ class VideoMeta {
   VideoMeta({
     required this.name,
     this.pic = '',
+    this.backdrop = '',
     this.picAlt = '',
     this.year = '',
     this.type = '',
@@ -493,6 +503,7 @@ class VideoMeta {
   factory VideoMeta.fromJson(Map<String, dynamic> json) => VideoMeta(
         name: (json['name'] as String?) ?? '',
         pic: (json['pic'] as String?) ?? '',
+        backdrop: (json['backdrop'] as String?) ?? '',
         picAlt: (json['picAlt'] as String?) ?? '',
         year: (json['year'] as String?) ?? '',
         type: (json['type'] as String?) ?? '',
@@ -512,6 +523,7 @@ class VideoMeta {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'name': name,
         'pic': pic,
+        'backdrop': backdrop,
         'picAlt': picAlt,
         'year': year,
         'type': type,
@@ -528,6 +540,10 @@ class VideoMeta {
 
   String name;
   String pic;
+
+  /// 16:9 Backdrop 横幅剧照 (Emby ImageTags['Backdrop']); '' when the
+  /// server has none — callers fall back to [pic].
+  String backdrop;
   String picAlt;
   String year;
   String type;
@@ -906,6 +922,7 @@ class WatchHistoryEntry {
     required this.vodId,
     required this.title,
     this.pic = '',
+    this.backdrop = '',
     this.picAlt = '',
     this.year = '',
     this.lineIdx = 0,
@@ -924,6 +941,7 @@ class WatchHistoryEntry {
         vodId: (json['vodId'] as String?) ?? '',
         title: (json['title'] as String?) ?? '',
         pic: (json['pic'] as String?) ?? '',
+        backdrop: (json['backdrop'] as String?) ?? '',
         picAlt: (json['picAlt'] as String?) ?? '',
         // Pre-P1-16 rows carry no year: '' means "unknown", and the
         // film key falls back to title-only for them (see filmKey).
@@ -948,6 +966,7 @@ class WatchHistoryEntry {
         'vodId': vodId,
         'title': title,
         'pic': pic,
+        'backdrop': backdrop,
         'picAlt': picAlt,
         'year': year,
         'lineIdx': lineIdx,
@@ -964,6 +983,10 @@ class WatchHistoryEntry {
   final String vodId;
   final String title;
   final String pic;
+
+  /// 16:9 Backdrop 横幅剧照 (Emby ImageTags['Backdrop']); '' when the
+  /// server has none — callers fall back to [pic].
+  final String backdrop;
   final String picAlt;
 
   /// Release year, copied from the VideoItem/VideoMeta that was

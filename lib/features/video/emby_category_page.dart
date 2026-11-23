@@ -18,12 +18,14 @@ import 'emby_detail_page.dart';
 import 'video_models.dart';
 import 'video_poster_card.dart';
 
-enum EmbyCategoryKind { movies, series }
+enum EmbyCategoryKind { movies, series, favorites, genre }
 
 extension EmbyCategoryKindLabel on EmbyCategoryKind {
   String get title => switch (this) {
         EmbyCategoryKind.movies => '电影',
         EmbyCategoryKind.series => '剧集',
+        EmbyCategoryKind.favorites => '收藏',
+        EmbyCategoryKind.genre => '类型',
       };
 }
 
@@ -32,6 +34,7 @@ class EmbyCategoryPage extends StatefulWidget {
     super.key,
     required this.client,
     required this.kind,
+    this.genre,
     this.libraryId,
     this.initialItems = const [],
     this.total = 0,
@@ -42,6 +45,9 @@ class EmbyCategoryPage extends StatefulWidget {
   final EmbyClient client;
 
   final EmbyCategoryKind kind;
+
+  /// Genre name when [kind] is [EmbyCategoryKind.genre].
+  final String? genre;
 
   /// Pinned library id (null = whole server, same as the rail).
   final String? libraryId;
@@ -107,6 +113,17 @@ class _EmbyCategoryPageState extends State<EmbyCategoryPage> {
         ),
       EmbyCategoryKind.series => widget.client.series(
           libraryId: widget.libraryId,
+          startIndex: startIndex,
+          limit: limit,
+          cancelToken: _pageToken,
+        ),
+      EmbyCategoryKind.favorites => widget.client.favorites(
+          startIndex: startIndex,
+          limit: limit,
+          cancelToken: _pageToken,
+        ),
+      EmbyCategoryKind.genre => widget.client.byGenre(
+          widget.genre ?? '',
           startIndex: startIndex,
           limit: limit,
           cancelToken: _pageToken,
@@ -192,7 +209,9 @@ class _EmbyCategoryPageState extends State<EmbyCategoryPage> {
     final ratio = colW / (colW * 3 / 2 + kVideoPosterCardTextHeight);
     return Scaffold(
       appBar: HaoNavBar(
-        title: widget.kind.title,
+        title: widget.kind == EmbyCategoryKind.genre
+            ? (widget.genre ?? '类型')
+            : widget.kind.title,
         scrollController: _scrollController,
       ),
       body: CustomScrollView(

@@ -191,7 +191,11 @@ class DanmakuSettings {
 
   static double fontSize({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuFontSize) as num?)?.toDouble();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuFontSize);
+    final v = raw is num ? raw.toDouble() : null;
     if (v == null) return defaultFontSize;
     return v.clamp(minFontSize, maxFontSize);
   }
@@ -207,7 +211,11 @@ class DanmakuSettings {
 
   static double opacity({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuOpacity) as num?)?.toDouble();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuOpacity);
+    final v = raw is num ? raw.toDouble() : null;
     if (v == null) return defaultOpacity;
     return v.clamp(minOpacity, maxOpacity);
   }
@@ -323,7 +331,11 @@ class DanmakuSettings {
 
   static int similarityThreshold({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuSimilarityThreshold) as num?)?.toInt();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuSimilarityThreshold);
+    final v = raw is num ? raw.toInt() : null;
     if (v == null) return defaultSimilarityThreshold;
     return v.clamp(minSimilarityThreshold, maxSimilarityThreshold);
   }
@@ -371,7 +383,11 @@ class DanmakuSettings {
 
   static int blockLongLength({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuBlockLongLength) as num?)?.toInt();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuBlockLongLength);
+    final v = raw is num ? raw.toInt() : null;
     if (v == null) return defaultBlockLongLength;
     return v.clamp(minBlockLongLength, maxBlockLongLength);
   }
@@ -502,7 +518,11 @@ class DanmakuSettings {
   /// 仅全屏飞弹幕生效. Stroke colour is fixed black (see HiveKeys).
   static double strokeWidth({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuStrokeWidth) as num?)?.toDouble();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuStrokeWidth);
+    final v = raw is num ? raw.toDouble() : null;
     if (v == null) return defaultStrokeWidth;
     return v.clamp(minStrokeWidth, maxStrokeWidth);
   }
@@ -524,7 +544,11 @@ class DanmakuSettings {
   /// speed control and playbackRate stays 1.0.
   static double speed({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuSpeed) as num?)?.toDouble();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuSpeed);
+    final v = raw is num ? raw.toDouble() : null;
     if (v == null) return defaultSpeed;
     return v.clamp(minSpeed, maxSpeed);
   }
@@ -545,7 +569,11 @@ class DanmakuSettings {
   /// to [enginePoolMaxSize] — see [flyingMaxVisibleCount]).
   static int maxCount({Box<dynamic>? box}) {
     final b = _safeBox(box);
-    final v = (b?.get(HiveKeys.danmakuMaxCount) as num?)?.toInt();
+    // Wrong-typed stored value (e.g. a String left by an old
+    // build) must fall back to the default, not throw: `as num?`
+    // throws TypeError and the page crashes on open (b30).
+    final raw = b?.get(HiveKeys.danmakuMaxCount);
+    final v = raw is num ? raw.toInt() : null;
     if (v == null) return defaultMaxCount;
     return v.clamp(minMaxCount, maxMaxCount);
   }
