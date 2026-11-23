@@ -72,8 +72,8 @@ struct MusicSongRow: View {
                         .foregroundStyle(isPlaying ? theme.accent : theme.textPrimary)
                         .lineLimit(1)
                     HStack(spacing: 6) {
-                        if showPlatformBadge {
-                            Text(song.platform.badgeName)
+                        if showPlatformBadge, let badge = song.badgePlatform {
+                            Text(badge.badgeName)
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(theme.textSecondary)
                                 .padding(.horizontal, 6)

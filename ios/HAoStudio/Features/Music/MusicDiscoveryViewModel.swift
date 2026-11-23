@@ -8,9 +8,9 @@
 //
 // Daily picks are cached per day (hao_daily.json); a missing day is
 // built from local data (most-played + top artists, seeded by day).
-// Plaza and charts need platform APIs that are NOT in the LX
-// contract — their pages show an honest empty state, never fake
-// rows (see the C-leg report).
+// Plaza needs a platform API that is NOT in the LX contract —
+// its page shows an honest empty state, never fake rows (see the
+// C-leg report). Charts moved to MusicChartsView.swift (S3-C).
 
 import SwiftUI
 

@@ -344,11 +344,20 @@ final class MusicSearchAPI {
         let album = MusicAPIJSON.asString(map["albumName"] ?? map["album"])
         let cover = MusicAPIJSON.asString(map["pic"] ?? map["cover"] ?? map["albumpic"])
         let duration = MusicAPIJSON.asDouble(map["duration"] ?? map["interval"])
+        // The track carries the REAL platform: a per-item signal
+        // in the script result wins (some scripts return items
+        // from another platform than requested); otherwise the
+        // platform the script was asked to search. Never a bare
+        // script id — the badge must show the platform, not the
+        // script (S3-C badge fix).
+        let itemPlatform = MusicAPIJSON.asString(
+            map["source"] ?? map["platform"] ?? map["sourceID"])
+        let resolved = MusicPlatform.platformIfKnown(itemPlatform) ?? platform
         return MusicTrack(
             id: id, title: title, artist: artist, album: album,
-            coverURL: URL(string: MusicText.coverHi(cover, platform: platform.rawValue)),
+            coverURL: URL(string: MusicText.coverHi(cover, platform: resolved.rawValue)),
             duration: duration > 0 ? duration : nil,
-            sourceID: platform.rawValue)
+            sourceID: resolved.rawValue)
     }
 
     // MARK: - Alt-platform lookup

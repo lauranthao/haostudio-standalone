@@ -21,7 +21,10 @@ enum MusicPlatform: String, CaseIterable {
     }
 
     /// Map a code to a platform, defaulting to wy for unknown codes
-    /// (Flutter fromCode behaviour).
+    /// (Flutter fromCode behaviour). ORDERING / IDENTITY ONLY: this
+    /// default must never drive the platform badge — an unknown
+    /// code (notably an LX script id, `lx:…`) is NOT NetEase. Use
+    /// platformIfKnown for anything the user sees.
     static func fromCode(_ code: String?) -> MusicPlatform {
         switch code {
         case "tx": return .tx
@@ -33,12 +36,27 @@ enum MusicPlatform: String, CaseIterable {
         }
     }
 
-    /// Map an LX/search `sourceID` to a platform for badges. Known
-    /// platform codes map directly; an LX script id (e.g. "lx:…") has
-    /// no platform signal, so it falls back to wy — the badge then
-    /// shows 网易, which is wrong for a script result. (Known gap:
-    /// the LX leg should carry the platform on MusicTrack if badges
-    /// must be exact for script results.)
+    /// The platform a source id REALLY names, or nil when it names
+    /// none. Known platform codes map directly; an LX script id
+    /// (`lx:…`) has no platform signal, so it maps to nil — the
+    /// badge is then hidden instead of lying about NetEase.
+    static func platformIfKnown(_ sourceID: String?) -> MusicPlatform? {
+        guard let code = sourceID, !code.isEmpty else { return nil }
+        if code.hasPrefix("lx:") { return nil }
+        switch code {
+        case "tx": return .tx
+        case "kg": return .kg
+        case "kw": return .kw
+        case "mg": return .mg
+        case "wy": return .wy
+        default: return nil
+        }
+    }
+
+    /// Map an LX/search `sourceID` to a platform for ordering.
+    /// Known platform codes map directly; an LX script id (e.g.
+    /// "lx:…") has no platform signal, so it falls back to wy —
+    /// ORDERING ONLY, never the badge (see platformIfKnown).
     static func fromSourceID(_ sourceID: String?) -> MusicPlatform {
         return fromCode(sourceID)
     }
@@ -87,6 +105,15 @@ struct MusicTrack: Equatable {
     let sourceID: String
 
     var platform: MusicPlatform? { MusicPlatform(code: sourceID) }
+
+    /// The platform this track really came from, when known.
+    /// Script (LX) results carry the platform the script searched
+    /// (trackFromScriptMap stamps it); a bare `lx:…` source id
+    /// carries no platform signal and yields nil here — the row
+    /// badge hides instead of showing 网易 for a script result.
+    var displayPlatform: MusicPlatform? {
+        MusicPlatform.platformIfKnown(sourceID)
+    }
 
     /// Resolver identity: `platform|songId` (Flutter `identityKey`).
     /// A track with an empty song id falls back to title+artist so

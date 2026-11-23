@@ -6,11 +6,13 @@
 //   from local data (most-played + top artists, seeded by day).
 // - Listen report: pure local aggregation of the listen log
 //   (Flutter ListenReport.compute).
-// - Plaza and charts need platform APIs that are NOT in the LX
-//   contract (playlist browsing / charts). Their pages show an
-//   honest empty state with the reason — no fake rows are invented.
-//   The plaza platform picker still works (it persists the choice
-//   for when the API lands).
+// - Plaza needs platform APIs that are NOT in the LX contract
+//   (playlist browsing). Its page shows an honest empty state
+//   with the reason — no fake rows are invented. The plaza
+//   platform picker still works (it persists the choice for when
+//   the API lands).
+// - Charts moved to MusicChartsView.swift (S3-C): NetEase toplist
+//   via the existing music API, no new protocol.
 
 import SwiftUI
 
@@ -96,25 +98,6 @@ struct MusicPlazaView: View {
         .navigationTitle("歌单广场")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { discoveryVM.reload() }
-    }
-}
-
-// MARK: - Charts
-
-struct MusicChartsView: View {
-    @Environment(\.haoTheme) private var theme
-
-    var body: some View {
-        VStack {
-            MusicEmptyState(
-                icon: "list.number", title: "排行榜暂未接入",
-                note: "榜单需要 LX 腿提供榜单接口（未在契约里），接上后这里列出各平台榜单。"
-            )
-            Spacer()
-        }
-        .background(theme.scaffoldBackground)
-        .navigationTitle("排行榜")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
