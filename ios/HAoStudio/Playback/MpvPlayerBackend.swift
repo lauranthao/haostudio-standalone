@@ -52,7 +52,7 @@ private final class MpvVideoView: UIView {
     var displayLayer: AVSampleBufferDisplayLayer? { layer as? AVSampleBufferDisplayLayer }
 }
 
-final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable {
+final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable, VodSubtitleAppearanceCapable, VodEnhancementCapable {
     var onEvent: ((VideoBackendEvent) -> Void)?
     var onVideoSize: ((CGSize) -> Void)?
 
@@ -187,20 +187,38 @@ final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable
         // Huya HLS segments carry a query string (xxx.ts?EXTINF=2.7);
         // FFmpeg's HLS demuxer blocks them without this.
         setOption(handle, "demuxer-lavf-allowed-extensions", "ALL")
+        // Low-memory mode (wiring leg B; Flutter LowMemoryMode /
+        // mpvBaseProperties): the low-end property set applies when
+        // the stored mode says so ("always" always, "never" never,
+        // "auto" on <= 4-core devices). Read at every open, so live
+        // + VOD both follow the current mode; a change while a VOD
+        // episode is playing re-opens it at its position (see
+        // VideoDriver.reopenEpisodeAtCurrentPosition). MPV only — Flutter's
+        // mode lives in the mpv table, IJK / AVPlayer are untouched.
+        let lowEnd = LowMemoryModeEffect.isEffective(
+            mode: UserDefaults.standard.string(forKey: SettingsStore.lowMemoryModeKey),
+            cpuCores: ProcessInfo.processInfo.processorCount)
         setOption(handle, "cache", "yes")
         setOption(handle, "cache-on-disk", "no")
         setOption(handle, "cache-secs", "30")
-        setOption(handle, "demuxer-max-bytes", "100663296")
-        setOption(handle, "demuxer-max-back-bytes", "8388608")
+        setOption(handle, "demuxer-max-bytes", lowEnd ? "41943040" : "100663296")
+        setOption(handle, "demuxer-max-back-bytes", lowEnd ? "5242880" : "8388608")
         setOption(handle, "demuxer-donate-buffer", "no")
         setOption(handle, "demuxer-readahead-secs", "8")
         setOption(handle, "demuxer-thread", "yes")
         setOption(handle, "cache-pause-wait", "4")
+        if lowEnd {
+            setOption(handle, "audio-buffer", "0.4")
+            setOption(handle, "stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2")
+        }
         // VOD NEVER drops frames. Live (S4) uses decoder+vo so a
         // lagging decoder stays live; VOD keeps every frame.
         setOption(handle, "framedrop", "no")
-        setOption(handle, "vd-lavc-o", "lowres=0")
-        setOption(handle, "vd-lavc-skiploopfilter", "default")
+        if lowEnd {
+            setOption(handle, "vd-lavc-threads", "2")
+        }
+        setOption(handle, "vd-lavc-o", lowEnd ? "lowres=1" : "lowres=0")
+        setOption(handle, "vd-lavc-skiploopfilter", lowEnd ? "nonref" : "default")
         setOption(handle, "network-timeout", "15")
         if let ua = headers["User-Agent"] { setOption(handle, "user-agent", ua) }
         if let referer = headers["Referer"] { setOption(handle, "http-header-fields", "Referer: \(referer)") }
@@ -253,11 +271,88 @@ final class MpvPlayerBackend: NSObject, VideoPlayerBackend, LiveAudioOnlyCapable
     /// S7-C: Flutter `setAudioOnly` — drop the video track, keep
     /// the audio flowing. mpv `video=no` stops video decoding /
     /// output; `video=auto` restores it. No-op before open (no
-    /// handle yet), mirroring play()/pause(). Live only — VOD
-    /// never calls this.
+    /// handle yet), mirroring play()/pause(). Live background
+    /// audio (S4) and VOD background audio (S7 wiring, the
+    /// `audioOnlyBackground` switch) share this one call.
     func setAudioOnly(_ audioOnly: Bool) {
         guard let handle = mpvHandle else { return }
         mpv_set_property_string(handle, "video", audioOnly ? "no" : "auto")
+    }
+
+    // MARK: - VOD subtitle appearance + enhancement (S7 wiring)
+
+    /// Set one property on the running player, defensively: a
+    /// refusal is ignored, never fatal — a decoration must never
+    /// break playback (same discipline as Flutter's
+    /// `_setPropertiesDefensively`). No-op before open.
+    private func setRuntimeProperty(_ name: String, _ value: String) {
+        guard let handle = mpvHandle else { return }
+        mpv_set_property_string(handle, name, value)
+    }
+
+    /// Flutter `setSubtitleAppearance`: mpv `sub-font-size` /
+    /// `sub-color` / `sub-pos`, runtime setProperty calls. The
+    /// values arrive already resolved from the tiers (see
+    /// `VodSubtitleAppearance.forTiers`). Applies to whatever
+    /// subtitle track mpv auto-selected; AVPlayer/IJK never reach
+    /// here (they do not conform to the capability protocol).
+    func setSubtitleAppearance(fontSize: Int, color: String, position: Double) {
+        setRuntimeProperty("sub-font-size", String(fontSize))
+        setRuntimeProperty("sub-color", color)
+        setRuntimeProperty("sub-pos", String(Int(position)))
+    }
+
+    /// Apply one resolved trio branch to the running player
+    /// (Flutter `setSuperResolution` / `setFrameInterpolation` /
+    /// `setSdrToHdr` on the running player, b30: 马上生效, no
+    /// reopen). Only the resolved branch runs — the driver
+    /// resolves first-branch-wins, so turning one branch on while
+    /// another is on cannot take effect until the other is off.
+    /// Turning a branch off restores the mpv defaults instead of
+    /// leaving the "on" values behind.
+    ///
+    /// Honest limits (same as Flutter's own comments):
+    /// - `.superResolution` is a NO-OP: no Anime4K shaders are
+    ///   bundled in this app, and `glsl-shaders` needs a GPU
+    ///   video output while this backend renders through the
+    ///   software render API (`vo=libmpv`). Nothing is mounted,
+    ///   nothing is faked — the switch stays a stored preference
+    ///   until shaders + a GPU vo land, with real-device
+    ///   verification.
+    /// - `.interpolation` / `.sdrToHdr` only guarantee the
+    ///   properties are SENT: `vo=libmpv` may silently disable
+    ///   interpolation, and inverse tone mapping is marked
+    ///   `vo=gpu-next` only. Whether the picture visibly changes
+    ///   on a real iPhone is 待真机验证.
+    func setVodEnhancement(_ branch: VodEnhancementBranch?) {
+        switch branch {
+        case .none:
+            setRuntimeProperty("video-sync", "audio")
+            setRuntimeProperty("interpolation", "no")
+            setRuntimeProperty("inverse-tone-mapping", "no")
+            setRuntimeProperty("tone-mapping", "bt.2390")
+            setRuntimeProperty("target-trc", "auto")
+            setRuntimeProperty("target-peak", "auto")
+        case .superResolution:
+            // No shaders bundled, no GPU vo: nothing to mount.
+            // Deliberately no property write here.
+            break
+        case .interpolation:
+            setRuntimeProperty("video-sync", "display-resample")
+            setRuntimeProperty("interpolation", "yes")
+            setRuntimeProperty("tscale", "oversample")
+            setRuntimeProperty("inverse-tone-mapping", "no")
+            setRuntimeProperty("tone-mapping", "bt.2390")
+            setRuntimeProperty("target-trc", "auto")
+            setRuntimeProperty("target-peak", "auto")
+        case .sdrToHdr:
+            setRuntimeProperty("inverse-tone-mapping", "yes")
+            setRuntimeProperty("tone-mapping", "spline")
+            setRuntimeProperty("target-trc", "pq")
+            setRuntimeProperty("target-peak", "1000")
+            setRuntimeProperty("video-sync", "audio")
+            setRuntimeProperty("interpolation", "no")
+        }
     }
 
     func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {

@@ -386,6 +386,13 @@ struct SettingsGroupsView: View {
         Section(header: sectionHeader(.music)) {
             if isExpanded(.music) {
                 Toggle("与其他音频同时播放", isOn: $settings.mixWithOthers)
+                    .onChange(of: settings.mixWithOthers) { _, newValue in
+                        // Wiring leg B: the switch is not storage-only
+                        // (Flutter calls AvMusicPlayer.applyMixWithOthers
+                        // on the toggle) — re-apply the session at once
+                        // so the playing track follows without restart.
+                        NativeMusicPlayer.shared.applyMixWithOthers(newValue)
+                    }
                 Toggle("启动时自动播放上次歌曲", isOn: $settings.autoResume)
                 Picker("播放音质", selection: $settings.musicQuality) {
                     ForEach(AudioQuality.allCases, id: \.self) { quality in
@@ -452,13 +459,16 @@ struct SettingsGroupsView: View {
                 footnote("显示 / 隐藏 / 拖动排序")
                 videoFitRow
                 Toggle("Anime4K 超分", isOn: $settings.superResolution)
-                footnote("仅 MPV，立即生效")
+                    .disabled(settings.interpolation || settings.sdrToHDR)
+                footnote("仅 MPV；三选一，互斥；着色器未打包，当前无实际效果")
                 Toggle("插帧", isOn: $settings.interpolation)
-                footnote("仅 MPV，立即生效")
+                    .disabled(settings.superResolution || settings.sdrToHDR)
+                footnote("仅 MPV，立即生效；三选一，互斥；真机效果待验证")
                 Toggle("SDR 转 HDR", isOn: $settings.sdrToHDR)
-                footnote("仅 MPV，立即生效")
+                    .disabled(settings.superResolution || settings.interpolation)
+                footnote("仅 MPV，立即生效；三选一，互斥；真机效果待验证")
                 Toggle("杜比视界 Profile 8 降级 HDR", isOn: $settings.dvP8Downgrade)
-                footnote("仅 MPV")
+                footnote("开：P8 可走系统播放器；关：P8 只走 MPV / IJK")
                 skipIntroRow
                 subtitleFontSizeRow
                 subtitleColorRow

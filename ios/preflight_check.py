@@ -186,7 +186,7 @@ check("4l. every Swift file ref resolves to a file on disk", not _missing,
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
-check("5. Swift file count (Home = 145: S7 144 + HomeViewModel.swift + HomeView.swift - PlaceholderViews.swift)", len(swift_files) == 145,
+check("5. Swift file count (home + wiring = 146: S7 144 + HomeViewModel.swift + HomeView.swift - PlaceholderViews.swift + VodPlaybackSettings.swift)", len(swift_files) == 146,
       f"{len(swift_files)}: {[f.name for f in swift_files]}")
 for f in swift_files:
     s = f.read_text()

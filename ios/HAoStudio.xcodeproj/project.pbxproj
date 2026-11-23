@@ -157,6 +157,7 @@
 		00000000000000000000011F /* VideoSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000011E /* VideoSearchView.swift */; };
 		000000000000000000000121 /* VideoTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000120 /* VideoTabView.swift */; };
 		000000000000000000000123 /* VodDanmakuClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000122 /* VodDanmakuClient.swift */; };
+		0000000000000000000001D9 /* VodPlaybackSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D8 /* VodPlaybackSettings.swift */; };
 		000000000000000000000125 /* VodDanmakuLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000124 /* VodDanmakuLayer.swift */; };
 		000000000000000000000127 /* VodGestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000126 /* VodGestures.swift */; };
 		00000000000000000000012B /* VodSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000012A /* VodSettingsSheet.swift */; };
@@ -210,6 +211,7 @@
 		0000000000000000000001AA /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001A9 /* SettingsStoreTests.swift */; };
 		0000000000000000000001AC /* SettingsTestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AB /* SettingsTestHelpers.swift */; };
 		0000000000000000000001AE /* VideoEngineReporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AD /* VideoEngineReporterTests.swift */; };
+		0000000000000000000001DB /* WiringBehaviourTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001DA /* WiringBehaviourTests.swift */; };
 		0000000000000000000001B0 /* MusicEqualizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001AF /* MusicEqualizerTests.swift */; };
 		0000000000000000000001B2 /* MusicLyricsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B1 /* MusicLyricsTests.swift */; };
 		0000000000000000000001B4 /* MusicQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B3 /* MusicQueueTests.swift */; };
@@ -359,6 +361,7 @@
 		00000000000000000000011E /* VideoSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSearchView.swift; sourceTree = "<group>"; };
 		000000000000000000000120 /* VideoTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTabView.swift; sourceTree = "<group>"; };
 		000000000000000000000122 /* VodDanmakuClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuClient.swift; sourceTree = "<group>"; };
+		0000000000000000000001D8 /* VodPlaybackSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodPlaybackSettings.swift; sourceTree = "<group>"; };
 		000000000000000000000124 /* VodDanmakuLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodDanmakuLayer.swift; sourceTree = "<group>"; };
 		000000000000000000000126 /* VodGestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodGestures.swift; sourceTree = "<group>"; };
 		00000000000000000000012A /* VodSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VodSettingsSheet.swift; sourceTree = "<group>"; };
@@ -412,6 +415,7 @@
 		0000000000000000000001A9 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001AB /* SettingsTestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTestHelpers.swift; sourceTree = "<group>"; };
 		0000000000000000000001AD /* VideoEngineReporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEngineReporterTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001DA /* WiringBehaviourTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiringBehaviourTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001AF /* MusicEqualizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEqualizerTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001B1 /* MusicLyricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLyricsTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001B3 /* MusicQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQueueTests.swift; sourceTree = "<group>"; };
@@ -571,6 +575,7 @@
 				0000000000000000000000E7 /* VideoModels.swift */,
 				0000000000000000000000E9 /* VideoServiceContracts.swift */,
 				000000000000000000000122 /* VodDanmakuClient.swift */,
+				0000000000000000000001D8 /* VodPlaybackSettings.swift */,
 		); path = Video; sourceTree = "<group>"; };
 		000000000000000000000070 /* Scripts */ = {isa = PBXGroup; children = (
 				0000000000000000000000CC /* feichangdao.js */,
@@ -745,6 +750,7 @@
 				0000000000000000000001A9 /* SettingsStoreTests.swift */,
 				0000000000000000000001AB /* SettingsTestHelpers.swift */,
 				0000000000000000000001AD /* VideoEngineReporterTests.swift */,
+				0000000000000000000001DA /* WiringBehaviourTests.swift */,
 			); path = SettingsUITests; sourceTree = "<group>"; };
 		0000000000000000000001C3 /* MusicFeaturesTests */ = {isa = PBXGroup; children = (
 				0000000000000000000001AF /* MusicEqualizerTests.swift */,
@@ -929,6 +935,7 @@
 				0000000000000000000000E8 /* VideoServiceContracts.swift in Sources */,
 				000000000000000000000121 /* VideoTabView.swift in Sources */,
 				000000000000000000000123 /* VodDanmakuClient.swift in Sources */,
+				0000000000000000000001D9 /* VodPlaybackSettings.swift in Sources */,
 				000000000000000000000125 /* VodDanmakuLayer.swift in Sources */,
 				000000000000000000000127 /* VodGestures.swift in Sources */,
 				00000000000000000000012B /* VodSettingsSheet.swift in Sources */,
@@ -984,6 +991,7 @@
 				0000000000000000000001AA /* SettingsStoreTests.swift in Sources */,
 				0000000000000000000001AC /* SettingsTestHelpers.swift in Sources */,
 				0000000000000000000001AE /* VideoEngineReporterTests.swift in Sources */,
+				0000000000000000000001DB /* WiringBehaviourTests.swift in Sources */,
 				0000000000000000000001B0 /* MusicEqualizerTests.swift in Sources */,
 				0000000000000000000001B2 /* MusicLyricsTests.swift in Sources */,
 				0000000000000000000001B4 /* MusicQueueTests.swift in Sources */,

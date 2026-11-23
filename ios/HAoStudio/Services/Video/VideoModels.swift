@@ -57,8 +57,34 @@ struct PlayEpisode: Codable, Equatable, Identifiable {
     /// Position inside its line (0-based). Display numbering uses
     /// this, never the parsed number inside `name`.
     let index: Int
+    /// Skip-intro/outro markers in seconds (Emby `Chapters`:
+    /// IntroStart / IntroEnd / CreditsStart, from the IntroSkip
+    /// plugin). Nil = the server returned no marker — never
+    /// invent one. CMS episodes carry no markers at all (only the
+    /// per-episode custom seconds in
+    /// `VodSkipIntroDurations`). Optional with defaults, so
+    /// stored / decoded episodes without these keys still decode.
+    let introStart: Double?
+    let introEnd: Double?
+    let creditsStart: Double?
 
     var id: String { "\(index)-\(name)" }
+
+    init(
+        name: String,
+        url: URL?,
+        index: Int,
+        introStart: Double? = nil,
+        introEnd: Double? = nil,
+        creditsStart: Double? = nil
+    ) {
+        self.name = name
+        self.url = url
+        self.index = index
+        self.introStart = introStart
+        self.introEnd = introEnd
+        self.creditsStart = creditsStart
+    }
 }
 
 /// One playback line （线路）: a named group of episodes from one

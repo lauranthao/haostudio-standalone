@@ -129,6 +129,27 @@ extension VideoPlayerBackend {
     var rejectedOptionNames: [String] { [] }
 }
 
+/// Runtime subtitle appearance (MPV only). A backend that
+/// cannot style subtitles (AVPlayer renders its own legible
+/// tracks, IJK exposes no styling API) simply does not conform
+/// and the driver no-ops through the `as?` cast — never a fake
+/// row, never a forced protocol method on engines that cannot
+/// do it. Values are the resolved mpv properties from
+/// `VodSubtitleAppearance` (sub-font-size / sub-color / sub-pos).
+protocol VodSubtitleAppearanceCapable: AnyObject {
+    func setSubtitleAppearance(fontSize: Int, color: String, position: Double)
+}
+
+/// Runtime VOD enhancement branch (MPV only). The driver applies
+/// the resolved trio branch (see `resolveVodEnhancement`); a
+/// backend that cannot do it does not conform. The super-resolution
+/// branch is a deliberate no-op on the MPV backend until Anime4K
+/// shaders are bundled — there is nothing to mount, so the method
+/// must not pretend.
+protocol VodEnhancementCapable: AnyObject {
+    func setVodEnhancement(_ branch: VodEnhancementBranch?)
+}
+
 // MARK: - Kernel
 
 enum PlayerKernel {
@@ -165,17 +186,25 @@ enum PlayerKernel {
     /// split picks the first engine (HEVC/DV/HLS/MP4 -> AVPlayer,
     /// FLV/MKV/ASS/multi-track -> MPV); an explicit user preference
     /// overrides the split but never the capability gate.
+    /// `dvDowngradeToHdr` is the persisted DV-P8 switch
+    /// (`SettingsStore.dvP8Downgrade`, default true): when off,
+    /// Dolby Vision profile 8 in an Apple container is NOT
+    /// admitted to AVPlayer and stays on the ffmpeg kernels. The
+    /// driver passes the live setting at every open; callers that
+    /// do not pass it keep the default-on behaviour.
     static func candidatesFor(
         url: URL,
         declaredFormat: String? = nil,
         hasAssSubtitles: Bool = false,
-        hasMultipleAudioTracks: Bool = false
+        hasMultipleAudioTracks: Bool = false,
+        dvDowngradeToHdr: Bool = true
     ) -> [VideoEngine] {
         return videoCandidatesFor(
             url: url, declaredFormat: declaredFormat,
             preferred: nil,
             hasAssSubtitles: hasAssSubtitles,
-            hasMultipleAudioTracks: hasMultipleAudioTracks
+            hasMultipleAudioTracks: hasMultipleAudioTracks,
+            dvDowngradeToHdr: dvDowngradeToHdr
         )
     }
 

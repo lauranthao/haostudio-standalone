@@ -76,7 +76,7 @@ struct HAoStudioApp: App {
         coordinator.liveDriver = liveDriver
         _coordinator = StateObject(wrappedValue: coordinator)
         _musicPlayer = StateObject(wrappedValue: MusicPlayerViewModel(coordinator: coordinator))
-        _videoPlayer = StateObject(wrappedValue: VideoPlayerViewModel(coordinator: coordinator))
+        _videoPlayer = StateObject(wrappedValue: VideoPlayerViewModel(coordinator: coordinator, settings: settingsStore))
         _livePlayer = StateObject(wrappedValue: LivePlayerViewModel(driver: liveDriver))
     }
 
@@ -133,8 +133,13 @@ struct HAoStudioApp: App {
                 switch newPhase {
                 case .background:
                     livePlayer.handleBackground()
+                    // S7 wiring: VOD background audio — the
+                    // audio-only switch keeps playing (video off),
+                    // otherwise VOD pauses on background.
+                    videoPlayer.handleBackground()
                 case .active:
                     livePlayer.handleForeground()
+                    videoPlayer.handleForeground()
                 case .inactive:
                     break
                 @unknown default:

@@ -35,6 +35,11 @@ final class VideoDetailViewModel: ObservableObject {
     @Published private(set) var isLoading = true
     @Published private(set) var isFavourite = false
     @Published private(set) var resume: ResumeInfo?
+    /// Whether this title has any watch history (S7 wiring: the
+    /// spoiler blur never applies to watched titles). Refreshed
+    /// on every load, so returning from the player un-blurs the
+    /// cover without reopening the page.
+    @Published private(set) var isWatched = false
     @Published var selectedLineIndex = 0
     @Published var selectedEpisodeIndex = 0
     @Published private(set) var downloadNote: String?
@@ -53,6 +58,7 @@ final class VideoDetailViewModel: ObservableObject {
         self.gateway = gateway
         self.isFavourite = VideoLibraryStore.isFavourite(item: item)
         self.resume = VideoLibraryStore.resumeInfo(title: item.title, year: item.year)
+        self.isWatched = VideoLibraryStore.historyEntry(title: item.title, year: item.year) != nil
     }
 
     var lines: [PlayLine] { detail?.lines ?? [] }
@@ -94,6 +100,7 @@ final class VideoDetailViewModel: ObservableObject {
             guard let self = self else { return }
             self.isLoading = false
             self.detail = loaded
+            self.isWatched = VideoLibraryStore.historyEntry(title: self.item.title, year: self.item.year) != nil
             if let resume = self.resume, let line = loaded?.firstPlayableLine {
                 self.selectedLineIndex = loaded?.lines.firstIndex(where: { $0.id == line.id }) ?? 0
                 if let index = line.episodes.firstIndex(where: { $0.name == resume.episodeName }) {
@@ -190,7 +197,18 @@ struct VideoDetailContentView: View {
     var onPlay: (Int, Int) -> Void
 
     @Environment(\.haoTheme) private var theme
+    @EnvironmentObject private var settingsStore: SettingsStore
     @State private var coverRevealed = false
+    /// Spoiler reveals (S7 wiring): per detail load, never
+    /// persisted — the next visit hides again (Flutter parity).
+    @State private var spoilerSynopsisRevealed = false
+    @State private var spoilerCoverRevealed = false
+
+    /// Spoiler blur for this title's cover (Flutter detail-page
+    /// parity: unwatched + switch on + not yet tapped).
+    private var isCoverBlurred: Bool {
+        spoilerCoverBlurred(blurUnwatched: settingsStore.blurUnwatchedPosters, watched: viewModel.isWatched, revealed: spoilerCoverRevealed)
+    }
 
     var body: some View {
         ScrollView {
@@ -251,6 +269,7 @@ struct VideoDetailContentView: View {
             .frame(height: 240)
             .clipped()
             .opacity(coverRevealed ? 1 : 0)
+            .blur(radius: isCoverBlurred ? 18 : 0)
             LinearGradient(
                 colors: [
                     theme.scaffoldBackground.opacity(0),
@@ -260,6 +279,26 @@ struct VideoDetailContentView: View {
                 startPoint: .top, endPoint: .bottom
             )
             .frame(height: 240)
+            // S7 wiring: spoiler blur — an unwatched title's cover
+            // is blurred until tapped (watched titles are never
+            // blurred; the cover is the only thumbnail that
+            // exists to blur).
+            if isCoverBlurred {
+                Button(action: { spoilerCoverRevealed = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eye")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("点按查看海报")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.6), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -364,10 +403,26 @@ struct VideoDetailContentView: View {
                     .lineLimit(2)
             }
             if let synopsis = meta.synopsis, !synopsis.isEmpty {
-                Text(synopsis)
-                    .font(.system(size: 14))
-                    .foregroundStyle(theme.textPrimary)
-                    .lineLimit(6)
+                // S7 wiring: spoiler hide — the synopsis is
+                // replaced by a placeholder until tapped (per
+                // detail load; the reveal never persists).
+                if spoilerSynopsisHidden(hideSynopsis: settingsStore.hideSynopsis, revealed: spoilerSynopsisRevealed) {
+                    Button(action: { spoilerSynopsisRevealed = true }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 14))
+                            Text("简介已隐藏（防剧透），点按查看")
+                                .font(.system(size: 14))
+                        }
+                        .foregroundStyle(theme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(synopsis)
+                        .font(.system(size: 14))
+                        .foregroundStyle(theme.textPrimary)
+                        .lineLimit(6)
+                }
             }
         }
     }
