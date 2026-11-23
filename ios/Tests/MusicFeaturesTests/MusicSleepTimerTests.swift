@@ -5,7 +5,7 @@
 
 import XCTest
 
-@testable import MusicFeatures
+@testable import HAoStudio
 
 final class MusicSleepTimerTests: XCTestCase {
     /// Fake clock holder so the timer's `now` closure sees advances.

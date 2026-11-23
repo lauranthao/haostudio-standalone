@@ -20,10 +20,6 @@ import Security
 /// `LiveHTTP.defaultFetcher`.
 typealias LiveDataFetcher = (URLRequest, @escaping (Data?, Int?, Error?) -> Void) -> Void
 
-/// One JSON fetch: the decoded object, or nil on any failure
-/// (transport, non-2xx, unparseable body). No exceptions escape.
-typealias LiveJSONFetcher = (URL, TimeInterval, @escaping ([String: Any]?) -> Void) -> Void
-
 enum LiveHTTP {
     /// Default request timeout, in SECONDS (P0-03: explicit unit,
     /// default 6 s, matching the Huya WUP client).

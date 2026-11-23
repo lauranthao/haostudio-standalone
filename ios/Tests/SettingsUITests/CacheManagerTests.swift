@@ -10,7 +10,7 @@
 import Foundation
 import XCTest
 
-@testable import AppCore
+@testable import HAoStudio
 
 final class CacheManagerTests: XCTestCase {
     private var docs: URL!

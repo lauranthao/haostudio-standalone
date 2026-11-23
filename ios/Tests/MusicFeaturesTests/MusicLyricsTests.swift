@@ -6,7 +6,7 @@
 
 import XCTest
 
-@testable import MusicFeatures
+@testable import HAoStudio
 
 final class MusicLyricsTests: XCTestCase {
     private var lines: [StoredLyricLine] {

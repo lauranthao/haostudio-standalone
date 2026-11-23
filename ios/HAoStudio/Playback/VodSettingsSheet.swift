@@ -46,7 +46,7 @@ struct VodSettingsState: Equatable {
 
     static func load(defaults: UserDefaults = .standard) -> VodSettingsState {
         var state = VodSettingsState()
-        if let fitRaw = defaults.string(forKey: "hao_vod_fit"),
+        if let fitRaw = defaults.string(forKey: "hao_vod_video_fit"),
            let fit = VideoFit(rawValue: fitRaw) {
             state.videoFit = fit
         }
@@ -65,7 +65,7 @@ struct VodSettingsState: Equatable {
     }
 
     func persist(defaults: UserDefaults = .standard) {
-        defaults.set(videoFit.rawValue, forKey: "hao_vod_fit")
+        defaults.set(videoFit.rawValue, forKey: "hao_vod_video_fit")
         defaults.set(playbackSpeed, forKey: "hao_vod_speed")
         defaults.set(danmakuEnabled, forKey: "hao_vod_danmaku")
         defaults.set(danmakuOpacity, forKey: "hao_vod_danmaku_opacity")

@@ -5,7 +5,7 @@
 
 import XCTest
 
-@testable import MusicFeatures
+@testable import HAoStudio
 
 final class MusicSearchMergeTests: XCTestCase {
     private func song(_ id: String, platform: MusicPlatform, title: String = "Song") -> MusicSong {
