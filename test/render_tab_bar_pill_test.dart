@@ -51,7 +51,10 @@ Future<void> _loadCjkFont() async {
 
 ThemeData _cjkTheme(ThemeData base) {
   final text = base.textTheme.apply(fontFamily: 'NotoSansSC');
-  return base.copyWith(textTheme: text);
+  return base.copyWith(
+    cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
+    textTheme: text,
+  );
 }
 
 class _EmptyCoverApi extends MusicApi {

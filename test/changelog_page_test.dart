@@ -42,6 +42,7 @@ ThemeData _cjkTheme(ThemeData base) {
   // not textTheme, so they stay tofu without these two overrides.
   final buttonStyle = base.textButtonTheme.style;
   return base.copyWith(
+    cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
     appBarTheme: base.appBarTheme.copyWith(
       titleTextStyle: base.appBarTheme.titleTextStyle

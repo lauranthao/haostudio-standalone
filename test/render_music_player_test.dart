@@ -53,6 +53,7 @@ ThemeData _cjkTheme(ThemeData base) {
   final text = base.textTheme.apply(fontFamily: 'NotoSansSC');
   final primary = base.primaryTextTheme.apply(fontFamily: 'NotoSansSC');
   return base.copyWith(
+    cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
     primaryTextTheme: primary,
     appBarTheme: base.appBarTheme.copyWith(

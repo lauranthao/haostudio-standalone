@@ -25,6 +25,7 @@
 import 'dart:ui';
 
 import 'hao_radius.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 /// The four HAo Studio themes. Visual style stays HAo Studio's own —
@@ -41,6 +42,31 @@ enum HaoThemeId {
 
   /// 极夜冰蓝 — polar-night ice blue.
   polarIce,
+}
+
+/// Cupertino text theme with [fontFamily] applied to every text
+/// slot (body, nav title, large title, tab label, action). Cupertino
+/// styles do NOT inherit from each other — setting only `textStyle`
+/// leaves the nav title in .SF Pro Text — so each slot is set
+/// explicitly, derived from the framework default so size, weight
+/// and colour are untouched. Used by the app theme (custom Beans
+/// font) and by golden tests (NotoSansSC, whose glyphs the Linux
+/// test env can render; .SF Pro Text has no CJK there).
+CupertinoThemeData haoCupertinoThemeWithFont(String fontFamily) {
+  final defaults = const CupertinoThemeData().textTheme;
+  return CupertinoThemeData(
+    textTheme: CupertinoTextThemeData(
+      textStyle: defaults.textStyle.copyWith(fontFamily: fontFamily),
+      navTitleTextStyle:
+          defaults.navTitleTextStyle.copyWith(fontFamily: fontFamily),
+      navLargeTitleTextStyle: defaults.navLargeTitleTextStyle
+          .copyWith(fontFamily: fontFamily),
+      tabLabelTextStyle:
+          defaults.tabLabelTextStyle.copyWith(fontFamily: fontFamily),
+      actionTextStyle:
+          defaults.actionTextStyle.copyWith(fontFamily: fontFamily),
+    ),
+  );
 }
 
 /// Frosted-glass + semantic colours for one theme/mode combination.
@@ -333,6 +359,17 @@ ThemeData _buildThemeData({
   return ThemeData(
     brightness: brightness,
     fontFamily: fontFamily,
+    // Cupertino surfaces (nav-bar titles, sheet buttons, dialogs)
+    // read CupertinoTheme, not the Material text theme — without
+    // this a custom Beans font never reaches them (b30: the iOS
+    // batch moved 38 AppBars + all sheets to Cupertino, so nav
+    // titles stayed in .SF Pro Text while everything else followed
+    // the app font; in the Linux test env .SF Pro has no CJK and
+    // renders tofu). Null font = no override: device behaviour
+    // unchanged, SF Pro + PingFang fallback as before.
+    cupertinoOverrideTheme: fontFamily == null
+        ? null
+        : haoCupertinoThemeWithFont(fontFamily),
     colorScheme: colorScheme,
     scaffoldBackgroundColor:
         backgroundActive ? Colors.transparent : scaffoldBackground,

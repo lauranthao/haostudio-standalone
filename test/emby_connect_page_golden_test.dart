@@ -41,6 +41,7 @@ ThemeData _cjkTheme(ThemeData base) {
   TextStyle cjkStyle(TextStyle? style) =>
       (style ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC');
   return base.copyWith(
+    cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: base.textTheme.apply(fontFamily: 'NotoSansSC'),
     primaryTextTheme:
         base.primaryTextTheme.apply(fontFamily: 'NotoSansSC'),
