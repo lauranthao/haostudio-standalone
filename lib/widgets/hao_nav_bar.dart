@@ -254,34 +254,37 @@ class _HaoCoverBackButtonState extends State<HaoCoverBackButton> {
     return Positioned(
       top: MediaQuery.of(context).padding.top + 8,
       left: 12,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: () {
-          HaoHaptics.tap();
-          if (widget.onPressed != null) {
-            widget.onPressed!();
-          } else {
-            Navigator.of(context).pop();
-          }
-        },
-        child: AnimatedOpacity(
-          opacity: _pressed ? 0.55 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: Color(0x66000000),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              CupertinoIcons.back,
-              shadows: HaoTheme.legibilityShadows(context),
-              color: CupertinoColors.white,
+      child: Tooltip(
+        message: '返回',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTap: () {
+            HaoHaptics.tap();
+            if (widget.onPressed != null) {
+              widget.onPressed!();
+            } else {
+              Navigator.of(context).pop();
+            }
+          },
+          child: AnimatedOpacity(
+            opacity: _pressed ? 0.55 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Color(0x66000000),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                CupertinoIcons.back,
+                shadows: HaoTheme.legibilityShadows(context),
+                color: CupertinoColors.white,
+              ),
             ),
           ),
         ),

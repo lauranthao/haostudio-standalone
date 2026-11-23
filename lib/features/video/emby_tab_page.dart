@@ -1498,13 +1498,7 @@ class _ResumeCard extends StatelessWidget {
                   color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(HaoRadius.large),
                   border: Border.all(color: theme.hairline),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: glassCardShadow(context),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
@@ -1612,13 +1606,7 @@ class _NextUpCard extends StatelessWidget {
                 color: theme.surfaceStrong,
                 borderRadius: BorderRadius.circular(HaoRadius.standard),
                 border: Border.all(color: theme.hairline),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                boxShadow: glassCardShadow(context),
               ),
               clipBehavior: Clip.antiAlias,
               child: Stack(
@@ -1696,13 +1684,7 @@ class _ContinueCard extends StatelessWidget {
                   color: theme.surfaceStrong,
                   borderRadius: BorderRadius.circular(HaoRadius.large),
                   border: Border.all(color: theme.hairline),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: glassCardShadow(context),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(

@@ -44,6 +44,21 @@ Future<void> _loadCjkFont() async {
   ).readAsBytes();
   iconLoader.addFont(Future.value(ByteData.view(iconBytes.buffer)));
   await iconLoader.load();
+  // CupertinoIcons (back chevron etc.): golden tests render Cupertino
+  // icons as tofu without this — the font is not loaded by default.
+  // Family must be the packaged name: the framework's CupertinoIcons
+  // IconData carries fontPackage 'cupertino_icons', so plain
+  // 'CupertinoIcons' does not match and still renders tofu.
+  final cupertinoLoader = FontLoader('packages/cupertino_icons/CupertinoIcons');
+  final cupertinoDir = Directory('/home/hatch/.pub-cache/hosted/pub.dev')
+      .listSync()
+      .whereType<Directory>()
+      .firstWhere((d) => d.path.split('/').last.startsWith('cupertino_icons-'));
+  final cupertinoBytes = await File(
+    '${cupertinoDir.path}/assets/CupertinoIcons.ttf',
+  ).readAsBytes();
+  cupertinoLoader.addFont(Future.value(ByteData.view(cupertinoBytes.buffer)));
+  await cupertinoLoader.load();
 }
 
 ThemeData _cjkTheme(ThemeData base) {

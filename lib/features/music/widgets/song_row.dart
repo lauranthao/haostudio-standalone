@@ -276,9 +276,11 @@ class SongRow extends StatelessWidget {
       return _withContextMenu(context, content);
     }
     // Glass row (Beans `SongCell` glassRow, SongCell.swift: glassRow
-    // branch: rowContent padded h10, glass RoundedRectangle radius 16;
-    // v padding 6 inside, rows spaced 8 apart in the list — here the
-    // 4pt vertical margin on each side gives the same 8pt gap).
+    // branch: rowContent padded h10, glass RoundedRectangle radius 16
+    // — mapped to HaoRadius.large (12) per lib/core/theme/hao_radius.dart
+    // (16 -> large); v padding 6 inside, rows spaced 8 apart in the
+    // list — here the 4pt vertical margin on each side gives the same
+    // 8pt gap).
     final content = GlassPressScale(
       pressedScale: 0.97,
       child: GlassCard(

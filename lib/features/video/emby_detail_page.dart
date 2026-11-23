@@ -1116,22 +1116,25 @@ class _CircleAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: active ? theme.accent : theme.hairline,
-            width: 1.5,
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: active ? theme.accent : theme.hairline,
+              width: 1.5,
+            ),
+            color: active ? theme.accentSoft : Colors.transparent,
           ),
-          color: active ? theme.accentSoft : Colors.transparent,
-        ),
-        child: Icon(
-          icon, shadows: HaoTheme.legibilityShadows(context), 
-          color: active ? theme.accent : theme.textSecondary,
+          child: Icon(
+            icon, shadows: HaoTheme.legibilityShadows(context), 
+            color: active ? theme.accent : theme.textSecondary,
+          ),
         ),
       ),
     );
