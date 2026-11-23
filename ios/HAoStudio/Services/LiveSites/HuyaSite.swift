@@ -1,0 +1,1063 @@
+// HAo Studio 2.0 — Huya live site (S4 leg B).
+//
+// Swift port of the Flutter `lib/shared/platforms/huya/huya_site.dart`
+// (room detail, qualities, getPlayUrl waterfall, anonymous identity,
+// lease math) + `huya_room_parser.dart` (balanced-brace HTML scrape)
+// + `huya_models.dart` (line / bit-rate / play descriptor) +
+// `huya_request_params.dart` + `huya_transport_policy.dart`
+// (line identity after refresh).
+//
+// Room detail: HTML scrape — GET `https://www.huya.com/<roomId>`,
+// `var TT_ROOM_DATA = {...}` + `stream: {...}`. The regexes LOCATE
+// the blobs; extraction then scans balanced braces so nested objects
+// are not truncated by the regex's non-greedy `}`.
+// Qualities come from `vMultiStreamInfo` (bitRate 0 = 原画; `4K`
+// excluded; never an invented fallback). Play URL:
+// `<cdnBase>/<streamName>.flv|m3u8?<antiCode>` with `codec=264`
+// appended when missing and `ratio` replaced by the bitrate
+// (removed for 原画). FLV prefers the native WUP token (~420 s)
+// then the web-template anti-code (~120 s) then a web WUP token;
+// the native token is NEVER reused for HLS. FLV uses
+// `sFlvAntiCode`, HLS `sHlsAntiCode`, never cross-used.
+//
+// Scope: room parse + room info + resolve only. Search, lists and
+// categories are not this leg's work and are not ported.
+//
+// Swift 5.0: completion handlers only, no async/await, no `any`.
+
+import Foundation
+
+// MARK: - Models
+
+enum HuyaLineType {
+    case flv
+    case hls
+}
+
+/// One CDN line (HuyaLineModel): one entry per (CDN, transport)
+/// pair in `gameStreamInfoList`. `baseUrl` is the CDN base
+/// (sFlvUrl / sHlsUrl); `cdnType` is the CDN name exactly as the
+/// server returns it (AL / TX / HS … — never hard-coded, server
+/// order is kept). `presenterUid` prefers the stream item's
+/// `presenterUid` and falls back to the room's topSid.
+struct HuyaLine {
+    var baseUrl: String
+    var lineType: HuyaLineType
+    var flvAntiCode: String
+    var hlsAntiCode: String
+    var streamName: String
+    var cdnType: String
+    var presenterUid: Int
+    /// Bitrate this line was last resolved for (carried by the
+    /// model upstream; the quality menu owns the requested bitrate).
+    var bitRate: Int
+
+    init(
+        baseUrl: String,
+        lineType: HuyaLineType,
+        flvAntiCode: String = "",
+        hlsAntiCode: String = "",
+        streamName: String = "",
+        cdnType: String = "",
+        presenterUid: Int = 0,
+        bitRate: Int = 0
+    ) {
+        self.baseUrl = baseUrl
+        self.lineType = lineType
+        self.flvAntiCode = flvAntiCode
+        self.hlsAntiCode = hlsAntiCode
+        self.streamName = streamName
+        self.cdnType = cdnType
+        self.presenterUid = presenterUid
+        self.bitRate = bitRate
+    }
+}
+
+/// One quality entry from `vMultiStreamInfo`. `bitRate` is the
+/// server's integer bitrate id; 0 = 原画.
+struct HuyaBitRate {
+    var bitRate: Int
+    var name: String
+
+    init(bitRate: Int, name: String) {
+        self.bitRate = bitRate
+        self.name = name
+    }
+}
+
+/// Play descriptor for one room snapshot. Stored in
+/// `LiveRoom.data` under the keys `lines` / `bitRates` /
+/// `isXingxiu` / `uid` (the same keys as the Flutter port); the
+/// arrays keep their typed values in memory.
+struct HuyaUrlData {
+    var lines: [HuyaLine]
+    var bitRates: [HuyaBitRate]
+    var uid: String
+    var isXingxiu: Bool
+
+    static let keyLines = "lines"
+    static let keyBitRates = "bitRates"
+    static let keyIsXingxiu = "isXingxiu"
+    static let keyUid = "uid"
+
+    init(lines: [HuyaLine] = [], bitRates: [HuyaBitRate] = [], uid: String = "", isXingxiu: Bool = false) {
+        self.lines = lines
+        self.bitRates = bitRates
+        self.uid = uid
+        self.isXingxiu = isXingxiu
+    }
+
+    func toDataMap() -> [String: Any] {
+        [
+            HuyaUrlData.keyLines: lines,
+            HuyaUrlData.keyBitRates: bitRates,
+            HuyaUrlData.keyIsXingxiu: isXingxiu,
+            HuyaUrlData.keyUid: uid
+        ]
+    }
+
+    /// Rebuild from a `LiveRoom.data` map; nil when the map is not
+    /// a Huya play descriptor (e.g. a room that was never detailed).
+    static func fromDataMap(_ data: [String: Any]?) -> HuyaUrlData? {
+        guard let data = data else {
+            return nil
+        }
+        guard let lines = data[keyLines] as? [HuyaLine], let bitRates = data[keyBitRates] as? [HuyaBitRate] else {
+            return nil
+        }
+        return HuyaUrlData(
+            lines: lines,
+            bitRates: bitRates,
+            uid: LiveJSON.asString(data[keyUid]),
+            isXingxiu: (data[keyIsXingxiu] as? Bool) == true
+        )
+    }
+}
+
+/// Danmaku credentials for a room, stored as a plain map in
+/// `LiveRoom.danmakuData` under `uid` / `topSid` / `subSid`.
+struct HuyaDanmakuArgs {
+    var uid: Int
+    var topSid: Int
+    var subSid: Int
+
+    static let keyUid = "uid"
+    static let keyTopSid = "topSid"
+    static let keySubSid = "subSid"
+
+    init(uid: Int = 0, topSid: Int = 0, subSid: Int = 0) {
+        self.uid = uid
+        self.topSid = topSid
+        self.subSid = subSid
+    }
+
+    func toDataMap() -> [String: Any] {
+        [
+            HuyaDanmakuArgs.keyUid: uid,
+            HuyaDanmakuArgs.keyTopSid: topSid,
+            HuyaDanmakuArgs.keySubSid: subSid
+        ]
+    }
+
+    static func fromDataMap(_ data: [String: Any]?) -> HuyaDanmakuArgs? {
+        guard let data = data else {
+            return nil
+        }
+        guard let uid = LiveJSON.asIntOrNil(data[keyUid]),
+              let topSid = LiveJSON.asIntOrNil(data[keyTopSid]),
+              let subSid = LiveJSON.asIntOrNil(data[keySubSid]) else {
+            return nil
+        }
+        return HuyaDanmakuArgs(uid: uid, topSid: topSid, subSid: subSid)
+    }
+}
+
+// MARK: - Request params
+
+enum HuyaRequestParams {
+    static let baseUrl = "https://www.huya.com"
+
+    static let kUserAgent = "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36 Edg/117.0.0.0"
+
+    static let hysdkUa = "HYSDK(Windows,30000002)_APP(pc_exe&7100004&official)_SDK(trans&2.40.0.6448)"
+
+    /// Regexes for the room-page HTML scrape (room detail is HTML,
+    /// not JSON).
+    static let roomDataRegex = "var\\s+TT_ROOM_DATA\\s*=\\s*(\\{[\\s\\S]*?\\})"
+    static let streamRegex = "stream:\\s*(\\{[\\s\\S]*?\\n\\s*\\})"
+
+    static var requestHeaders: [String: String] {
+        ["Origin": baseUrl, "Referer": baseUrl, "User-Agent": hysdkUa]
+    }
+
+    /// Randomly generates a Huya SDK UA, e.g.
+    /// `adr&13.1.0.3456&official&31`. A fixed UA is easier for risk
+    /// control to recognise, so a random platform / sub-version /
+    /// API level combination lowers the chance a signing request is
+    /// refused. `randomInt` supplies the draws so tests can pin
+    /// them; production passes the default.
+    static func randomSdkUserAgent(randomInt: (Int) -> Int = { Int.random(in: 0..<$0) }) -> String {
+        let platforms: [(name: String, version: String, hasApiLevel: Bool)] = [
+            (name: "adr", version: "13.1.0", hasApiLevel: true),
+            (name: "ios", version: "13.1.0", hasApiLevel: false),
+            (name: "huya_nftv", version: "2.6.10", hasApiLevel: true),
+            (name: "pc_exe", version: "7000000", hasApiLevel: false)
+        ]
+        let platform = platforms[randomInt(platforms.count)]
+        var version = platform.version
+        if platform.name == "adr" || platform.name == "huya_nftv" {
+            version = "\(version).\(randomInt(2000) + 3000)"
+        }
+        var ua = "\(platform.name)&\(version)&official"
+        if platform.hasApiLevel {
+            ua = "\(ua)&\(randomInt(9) + 28)"
+        }
+        return ua
+    }
+}
+
+// MARK: - Room parser (pure, fixture-testable)
+
+extension HuyaLiveSite {
+    /// Parses a Huya room page into a detailed `LiveRoom`.
+    ///
+    /// * `gameLiveInfo.state == 'ON'` (and not a replay) ⇒ live.
+    /// * Offline / replay rooms still return a room (isLive false,
+    ///   empty lines/bitRates) — never throws for "offline".
+    /// * Throws when the page carries no parseable TT_ROOM_DATA /
+    ///   stream blobs at all.
+    static func parseHuyaRoomPage(html: String, roomId: String) throws -> LiveRoom {
+        guard let roomData = extractJsonObject(html, pattern: HuyaRequestParams.roomDataRegex),
+              let streamJson = extractJsonObject(html, pattern: HuyaRequestParams.streamRegex) else {
+            throw LiveError.parseFailed("虎牙房间播放元数据不可用")
+        }
+        guard let streamDataList = streamJson["data"] as? [Any], !streamDataList.isEmpty,
+              let streamData = streamDataList[0] as? [String: Any] else {
+            throw LiveError.parseFailed("虎牙房间流数据不可用")
+        }
+        let gameLiveInfo = LiveJSON.asMap(streamData["gameLiveInfo"]) ?? [:]
+        let state = LiveJSON.asString(roomData["state"])
+        let isReplay = (roomData["isReplay"] as? Bool) == true
+        let isLiving = state == "ON" && !isReplay
+
+        var topSid = 0
+        var subSid = 0
+        var lines: [HuyaLine] = []
+        var bitRates: [HuyaBitRate] = []
+        if isLiving {
+            if let streamInfoList = streamData["gameStreamInfoList"] as? [Any], !streamInfoList.isEmpty {
+                if let first = streamInfoList[0] as? [String: Any] {
+                    topSid = LiveJSON.asInt(first["lChannelId"])
+                    subSid = LiveJSON.asInt(first["lSubChannelId"])
+                }
+                let lineTypes: [(key: String, type: HuyaLineType)] = [
+                    (key: "sFlvUrl", type: .flv),
+                    (key: "sHlsUrl", type: .hls)
+                ]
+                for item in streamInfoList {
+                    guard let item = item as? [String: Any] else {
+                        continue
+                    }
+                    for entry in lineTypes {
+                        let url = LiveJSON.asString(item[entry.key])
+                        if url.isEmpty {
+                            continue
+                        }
+                        lines.append(HuyaLine(
+                            baseUrl: url,
+                            lineType: entry.type,
+                            flvAntiCode: LiveJSON.asString(item["sFlvAntiCode"]),
+                            hlsAntiCode: LiveJSON.asString(item["sHlsAntiCode"]),
+                            streamName: LiveJSON.asString(item["sStreamName"]),
+                            cdnType: LiveJSON.asString(item["sCdnType"]),
+                            presenterUid: LiveJSON.asIntOrNil(item["presenterUid"]) ?? topSid
+                        ))
+                    }
+                }
+            }
+            if let multi = streamJson["vMultiStreamInfo"] as? [Any] {
+                for item in multi {
+                    guard let item = item as? [String: Any] else {
+                        continue
+                    }
+                    let name = LiveJSON.asString(item["sDisplayName"])
+                    if name.contains("HDR") {
+                        continue
+                    }
+                    bitRates.append(HuyaBitRate(
+                        bitRate: LiveJSON.asIntOrNil(item["iBitRate"]) ?? 0,
+                        name: name
+                    ))
+                }
+            }
+        }
+
+        let totalCount = LiveJSON.asString(gameLiveInfo["totalCount"]).trimmingCharacters(in: .whitespaces)
+        let userCount = LiveJSON.asString(gameLiveInfo["userCount"]).trimmingCharacters(in: .whitespaces)
+        let popularityString = totalCount.isEmpty ? userCount : totalCount
+        // Huya's room detail returns userCount and totalCount as the
+        // same multi-million popularity value — heat, not a concurrent
+        // head count.
+        let popularity = Int(popularityString) ?? 0
+        let danmakuUid = LiveJSON.asIntOrNil(gameLiveInfo["uid"]) ?? 0
+        let gid = LiveJSON.asIntOrNil(gameLiveInfo["gid"]) ?? 0
+
+        return LiveRoom(
+            roomId: roomId,
+            platform: .huya,
+            title: LiveJSON.asString(gameLiveInfo["introduction"]),
+            streamer: LiveJSON.asString(gameLiveInfo["nick"]),
+            avatar: LiveJSON.asString(gameLiveInfo["avatar180"]),
+            cover: LiveJSON.asString(gameLiveInfo["screenshot"]),
+            onlineCount: popularity,
+            isLive: isLiving,
+            link: LivePlatform.huya.roomLink(roomId: roomId),
+            data: HuyaUrlData(lines: lines, bitRates: bitRates, isXingxiu: gid == 1663).toDataMap(),
+            danmakuData: HuyaDanmakuArgs(uid: danmakuUid, topSid: topSid, subSid: subSid).toDataMap()
+        )
+    }
+
+    /// Quality menu from a room snapshot. Only rates the server
+    /// returned in `vMultiStreamInfo`: `4K` excluded, no invented
+    /// fallback, bitRate 0 = 原画. When the server returned no rates
+    /// at all but lines exist, a single 原画 entry is offered
+    /// (source quality needs no `ratio` param).
+    static func parseHuyaPlayQualities(lines: [HuyaLine], bitRates: [HuyaBitRate]) -> [LiveQuality] {
+        let rates = bitRates.isEmpty ? [HuyaBitRate(bitRate: 0, name: "原画")] : bitRates
+        var unique: [Int: HuyaBitRate] = [:]
+        for rate in rates {
+            if rate.bitRate < 0 || rate.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                continue
+            }
+            if rate.name == "4K" {
+                continue
+            }
+            if unique[rate.bitRate] == nil {
+                unique[rate.bitRate] = rate
+            }
+        }
+        let playbackLines = lines.map { line in
+            LiveLine(name: line.cdnType, format: line.lineType == .hls ? "hls" : "flv")
+        }
+        return unique.values
+            .map { rate in
+                LiveQuality(
+                    id: String(rate.bitRate),
+                    name: rate.name,
+                    sort: rate.bitRate == 0 ? 1 << 30 : rate.bitRate,
+                    lines: playbackLines
+                )
+            }
+            .sorted { $0.sort > $1.sort }
+    }
+
+    /// Locates a JSON object with `pattern` and extracts it with
+    /// balanced brace scanning (string-aware), so nested objects
+    /// survive. Falls back to the regex's first capture group when
+    /// the scan cannot run.
+    static func extractJsonObject(_ text: String, pattern: String) -> [String: Any]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range) else {
+            return nil
+        }
+        let matchStart = text.index(text.startIndex, offsetBy: match.range.location, limitedBy: text.endIndex) ?? text.endIndex
+        guard let braceAt = text[matchStart...].firstIndex(of: "{") else {
+            return nil
+        }
+        let raw: String?
+        if let end = balancedBraceEnd(text, openAt: braceAt) {
+            raw = String(text[braceAt...end])
+        } else if match.numberOfRanges >= 2, let captureRange = Range(match.range(at: 1), in: text) {
+            raw = String(text[captureRange])
+        } else {
+            raw = nil
+        }
+        guard let raw = raw, let data = raw.data(using: .utf8) else {
+            return nil
+        }
+        return LiveJSON.decodeObject(data)
+    }
+
+    /// Index of the `}` closing the `{` at `openAt`, or nil if
+    /// unbalanced. String literals (with `\"` escapes) are skipped
+    /// so braces inside strings do not affect depth.
+    static func balancedBraceEnd(_ text: String, openAt: String.Index) -> String.Index? {
+        let chars = Array(text[openAt...])
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (offset, ch) in chars.enumerated() {
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+                continue
+            }
+            if ch == "\"" {
+                inString = true
+            } else if ch == "{" {
+                depth += 1
+            } else if ch == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return text.index(openAt, offsetBy: offset)
+                }
+            }
+        }
+        return nil
+    }
+}
+
+// MARK: - Transport policy (line identity after refresh)
+
+/// Line identity rule: lines are identified by URL (CDN + port +
+/// media path + credential family), NEVER by index after a refresh
+/// — a refresh can reorder/filter the line list and a stale index
+/// silently switches the viewer to another CDN/format.
+enum HuyaTransportPolicy {
+    /// Picks the line index in the refreshed `urls` list that
+    /// corresponds to the previously playing `currentUrl`.
+    ///
+    /// Match order: same CDN + port + media path, preferring the
+    /// same format (FLV stays FLV) and the same credential family
+    /// (native FLV token stays native); when the broadcaster
+    /// restarted and the stream name rotated, fall back to same CDN
+    /// + format, then same format, then the first line. When
+    /// `advanceLine` is true (current line failed), the NEXT line in
+    /// the matched pool is returned instead of the match itself.
+    static func selectRefreshedLine(urls: [String], currentUrl: String?, currentLineIndex: Int, advanceLine: Bool) -> Int {
+        if urls.isEmpty {
+            return 0
+        }
+        let legacyIndex = max(0, min(currentLineIndex, urls.count - 1))
+        let fallback = advanceLine ? (legacyIndex + 1) % urls.count : legacyIndex
+        guard let current = currentUrl, let currentUri = mediaUri(current) else {
+            return fallback
+        }
+        let candidates = urls.map { mediaUri($0) }
+        let all = candidates.indices.filter { candidates[$0] != nil }
+        let isFlv = currentUri.path.lowercased().hasSuffix(".flv")
+        let sameFormat = all.filter { candidates[$0]!.path.lowercased().hasSuffix(".flv") == isFlv }
+        let wasNative = hasNativeFlvCredential(current)
+        let native = sameFormat.filter { hasNativeFlvCredential(urls[$0]) }
+        let pools: [[Int]] = wasNative ? [native, sameFormat, all] : [sameFormat, all]
+        for pool in pools {
+            if pool.isEmpty {
+                continue
+            }
+            func sameCdn(_ i: Int) -> Bool {
+                candidates[i]!.host == currentUri.host
+                    && normalizedPort(candidates[i]!) == normalizedPort(currentUri)
+                    && hasNativeFlvCredential(urls[i]) == wasNative
+            }
+            var position = -1
+            for (offset, i) in pool.enumerated() {
+                if sameCdn(i) && candidates[i]!.path == currentUri.path {
+                    position = offset
+                    break
+                }
+            }
+            if position < 0 {
+                for (offset, i) in pool.enumerated() {
+                    if sameCdn(i) {
+                        position = offset
+                        break
+                    }
+                }
+            }
+            if position < 0 {
+                return pool[0]
+            }
+            if !advanceLine {
+                return pool[position]
+            }
+            if pool.count > 1 {
+                return pool[(position + 1) % pool.count]
+            }
+            // The only native line failed: broaden to web FLV, then
+            // HLS, rather than retrying that same endpoint forever.
+        }
+        return fallback
+    }
+
+    /// Whether this URL is on the short (~100 s / 125 s) transport
+    /// lease. Native WUP FLV tokens outlive their credential in
+    /// long probes, so they are excluded; every web-template-signed
+    /// URL has the short lease.
+    static func hasShortTransportLease(_ url: String) -> Bool {
+        guard mediaUri(url) != nil else {
+            return false
+        }
+        return !hasNativeFlvCredential(url)
+    }
+
+    /// Native WUP FLV credential marker: FLV + ctype=huya_pc_exe +
+    /// t=100. Web-template-signed URLs carry ctype=huya_webh5 and
+    /// never match.
+    static func hasNativeFlvCredential(_ url: String) -> Bool {
+        guard let uri = URL(string: url),
+              let host = uri.host?.lowercased(),
+              (host == "huya.com" || host.hasSuffix(".huya.com")),
+              uri.path.lowercased().hasSuffix(".flv") else {
+            return false
+        }
+        let query = uri.query ?? ""
+        return LiveQuery.value(query, key: "ctype") == "huya_pc_exe"
+            && LiveQuery.value(query, key: "t") == "100"
+    }
+
+    private static func mediaUri(_ url: String) -> URL? {
+        guard let uri = URL(string: url),
+              let scheme = uri.scheme,
+              (scheme == "https" || scheme == "http"),
+              let host = uri.host?.lowercased(),
+              (host == "huya.com" || host.hasSuffix(".huya.com")) else {
+            return nil
+        }
+        let path = uri.path.lowercased()
+        guard path.hasSuffix(".flv") || path.hasSuffix(".m3u8") else {
+            return nil
+        }
+        return uri
+    }
+
+    private static func normalizedPort(_ uri: URL) -> Int {
+        if let port = uri.port {
+            return port
+        }
+        return uri.scheme == "https" ? 443 : 80
+    }
+}
+
+// MARK: - Site
+
+/// Huya resolver. Anonymous-only: no account cookie, no session
+/// machinery — the anonymous web identity comes from
+/// `POST https://udblgn.huya.com/web/anonymousLogin`, with a stable
+/// process-local fallback uid when that endpoint fails (the fallback
+/// is never cached, so the next acquisition retries the endpoint).
+final class HuyaLiveSite: LiveSiteResolver {
+    var platform: LivePlatform {
+        .huya
+    }
+
+    private let fetcher: LiveDataFetcher
+    private let wupClient: HuyaWupClient
+
+    private var anonymousViewerIdentity: HuyaViewerIdentity?
+    private var viewerIdentityInFlight = false
+    private var viewerIdentityCompletions: [(HuyaViewerIdentity) -> Void] = []
+    private let fallbackViewerUid: Int
+    private let viewerGuid: String
+
+    private var nativeTokenPending: [String: [(Result<HuyaCdnTokenLease, Error>) -> Void]] = [:]
+    private var webTokenPending: [String: [(Result<HuyaCdnTokenLease, Error>) -> Void]] = [:]
+
+    private var lastSignatureMillis: Int = 0
+    private var playbackTransportIssuedAt: [String: Date] = [:]
+    private var playbackTokenLeases: [String: HuyaCdnTokenLease] = [:]
+
+    init(fetcher: LiveDataFetcher? = nil, wupClient: HuyaWupClient? = nil) {
+        let resolvedFetcher = fetcher ?? LiveHTTP.defaultFetcher
+        self.fetcher = resolvedFetcher
+        self.wupClient = wupClient ?? HuyaWupClient(fetcher: resolvedFetcher)
+        self.fallbackViewerUid = HuyaLiveSite.createFallbackViewerUid()
+        self.viewerGuid = LiveCrypto.randomHex(count: 32)
+    }
+
+    func makeDanmakuTransport() -> LiveDanmakuTransport {
+        HuyaDanmaku(wupClient: wupClient)
+    }
+
+    // MARK: - Room info
+
+    func roomInfo(roomId: String, completion: @escaping (Result<LiveRoom, Error>) -> Void) {
+        let trimmed = roomId.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            completion(.failure(LiveError.invalidRoomId))
+            return
+        }
+        loadRoomDetail(roomId: trimmed) { result in
+            switch result {
+            case .success(let room):
+                completion(.success(room))
+            case .failure:
+                // UI path: a transient failure must not blank the
+                // card — return the room as offline.
+                completion(.success(LiveRoom(roomId: trimmed, platform: .huya, isLive: false, link: LivePlatform.huya.roomLink(roomId: trimmed))))
+            }
+        }
+    }
+
+    /// Strict room load: throws when the page carries no parseable
+    /// playback metadata (resolve must see the transient error,
+    /// never a disguised "offline").
+    private func loadRoomDetail(roomId: String, completion: @escaping (Result<LiveRoom, Error>) -> Void) {
+        guard let url = URL(string: "\(HuyaRequestParams.baseUrl)/\(roomId)") else {
+            completion(.failure(LiveError.parseFailed("虎牙房间地址无效")))
+            return
+        }
+        var headers = HuyaRequestParams.requestHeaders
+        headers["Accept"] = "text/html,application/xhtml+xml"
+        let request = LiveHTTP.getRequest(url: url, headers: headers)
+        fetcher(request) { data, _, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            guard let data = data, let html = String(data: data, encoding: .utf8), !html.isEmpty else {
+                completion(.failure(LiveError.emptyResponse))
+                return
+            }
+            do {
+                completion(.success(try HuyaLiveSite.parseHuyaRoomPage(html: html, roomId: roomId)))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    // MARK: - Resolve
+
+    func resolve(roomId: String, quality: LiveQuality?, completion: @escaping (Result<LivePlayUrlResolution, Error>) -> Void) {
+        let trimmed = roomId.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            completion(.failure(LiveError.invalidRoomId))
+            return
+        }
+        loadRoomDetail(roomId: trimmed) { result in
+            switch result {
+            case .success(let room):
+                if !room.isLive {
+                    completion(.failure(LiveError.offline))
+                    return
+                }
+                guard let data = HuyaUrlData.fromDataMap(room.data) else {
+                    completion(.failure(LiveError.parseFailed("虎牙房间没有播放描述")))
+                    return
+                }
+                let qualities = HuyaLiveSite.parseHuyaPlayQualities(lines: data.lines, bitRates: data.bitRates)
+                if qualities.isEmpty {
+                    completion(.failure(LiveError.offline))
+                    return
+                }
+                let requested = qualities.first { $0.id == quality?.id } ?? qualities[0]
+                let bitRate = Int(requested.id) ?? 0
+                self.resolveHuyaLines(data.lines, bitRate: bitRate) { resolved in
+                    if resolved.isEmpty {
+                        completion(.failure(LiveError.transportFailed("虎牙全部线路均不可用")))
+                        return
+                    }
+                    var filled = qualities
+                    let liveLines = resolved.map { item in
+                        LiveLine(name: item.line.cdnType, urls: [item.url], format: item.line.lineType == .hls ? "hls" : "flv")
+                    }
+                    var applied = requested
+                    if let index = filled.firstIndex(where: { $0.id == requested.id }) {
+                        filled[index].lines = liveLines
+                        applied = filled[index]
+                    }
+                    var refreshAt: Date?
+                    var invalidAt: Date?
+                    for item in resolved {
+                        if let value = self.playUrlRefreshAt(url: item.url), refreshAt == nil || value < refreshAt! {
+                            refreshAt = value
+                        }
+                        if let value = self.playUrlInvalidAt(url: item.url), invalidAt == nil || value < invalidAt! {
+                            invalidAt = value
+                        }
+                    }
+                    completion(.success(LivePlayUrlResolution.applying(applied, in: filled, refreshAt: refreshAt, invalidAt: invalidAt)))
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Resolves every line for one bitrate, serially (server order
+    /// kept, duplicates dropped, one bad token never discards the
+    /// healthy alternatives).
+    private func resolveHuyaLines(_ lines: [HuyaLine], bitRate: Int, completion: @escaping ([(line: HuyaLine, url: String)]) -> Void) {
+        var out: [(line: HuyaLine, url: String)] = []
+        var seen = Set<String>()
+        var remaining = lines
+        func next() {
+            if remaining.isEmpty {
+                completion(out)
+                return
+            }
+            let line = remaining.removeFirst()
+            self.getPlayUrl(line: line, bitRate: bitRate) { result in
+                switch result {
+                case .success(let url):
+                    if !url.isEmpty && seen.insert(url).inserted {
+                        out.append((line: line, url: url))
+                    }
+                    next()
+                case .failure:
+                    next()
+                }
+            }
+        }
+        next()
+    }
+
+    // MARK: - Play URL waterfall
+
+    /// Builds the signed play URL for one line at `bitRate`.
+    ///
+    /// FLV prefers the native WUP token (`getCdnTokenInfoEx`, ~420 s
+    /// lease) and falls back to the web-template anti-code (~120 s)
+    /// when WUP is unavailable; the native token is NEVER reused for
+    /// HLS. When the room's own FLV template cannot be signed, a
+    /// second WUP call with the anonymous web identity is tried
+    /// before giving up. FLV uses its `sFlvAntiCode`, HLS its
+    /// `sHlsAntiCode` — never cross-used. `ratio` is replaced with
+    /// the requested bitrate and removed for 原画 (bitRate 0);
+    /// `codec=264` is appended when missing.
+    func getPlayUrl(line: HuyaLine, bitRate: Int, completion: @escaping (Result<String, Error>) -> Void) {
+        if line.lineType == .flv {
+            attemptNativeFlv(line: line, bitRate: bitRate, completion: completion)
+            return
+        }
+        finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: line.hlsAntiCode.trimmingCharacters(in: .whitespaces), tokenLease: nil, signatureAlreadyBuilt: false, completion: completion)
+    }
+
+    private func attemptNativeFlv(line: HuyaLine, bitRate: Int, completion: @escaping (Result<String, Error>) -> Void) {
+        fetchNativeToken(line: line) { result in
+            switch result {
+            case .success(let lease):
+                if lease.isExpired(Date()) {
+                    self.attemptWebFlv(line: line, bitRate: bitRate, completion: completion)
+                    return
+                }
+                if line.presenterUid > 0 {
+                    self.signNative(line: line, bitRate: bitRate, lease: lease, uid: line.presenterUid, completion: completion)
+                } else {
+                    self.resolveViewerIdentity { viewer in
+                        self.signNative(line: line, bitRate: bitRate, lease: lease, uid: viewer.uid, completion: completion)
+                    }
+                }
+            case .failure:
+                self.attemptWebFlv(line: line, bitRate: bitRate, completion: completion)
+            }
+        }
+    }
+
+    private func signNative(line: HuyaLine, bitRate: Int, lease: HuyaCdnTokenLease, uid: Int, completion: @escaping (Result<String, Error>) -> Void) {
+        do {
+            let antiCode = try HuyaAntiCode.build(
+                stream: line.streamName,
+                viewerUid: uid,
+                antiCode: lease.antiCode,
+                now: monotonicNow(),
+                fallbackViewerUid: fallbackViewerUid
+            )
+            finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: antiCode, tokenLease: lease, signatureAlreadyBuilt: true, completion: completion)
+        } catch {
+            attemptWebFlv(line: line, bitRate: bitRate, completion: completion)
+        }
+    }
+
+    private func attemptWebFlv(line: HuyaLine, bitRate: Int, completion: @escaping (Result<String, Error>) -> Void) {
+        let roomFlvAntiCode = line.flvAntiCode.trimmingCharacters(in: .whitespaces)
+        let isLegacyStaticToken = LiveQuery.value(roomFlvAntiCode, key: "fm") == nil
+        if isLegacyStaticToken {
+            finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: roomFlvAntiCode, tokenLease: nil, signatureAlreadyBuilt: false, completion: completion)
+            return
+        }
+        resolveViewerIdentity { viewer in
+            do {
+                let antiCode = try HuyaAntiCode.build(
+                    stream: line.streamName,
+                    viewerUid: viewer.uid,
+                    antiCode: roomFlvAntiCode,
+                    now: self.monotonicNow(),
+                    fallbackViewerUid: self.fallbackViewerUid
+                )
+                self.finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: antiCode, tokenLease: nil, signatureAlreadyBuilt: true, completion: completion)
+            } catch {
+                self.fetchWebToken(line: line, viewer: viewer) { result in
+                    switch result {
+                    case .success(let lease):
+                        self.finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: lease.antiCode.trimmingCharacters(in: .whitespaces), tokenLease: lease, signatureAlreadyBuilt: false, completion: completion)
+                    case .failure:
+                        // Keep the (possibly unusable) template; the
+                        // empty / re-sign check below throws a clear
+                        // error instead of a stale token.
+                        self.finishGetPlayUrl(line: line, bitRate: bitRate, antiCode: roomFlvAntiCode, tokenLease: nil, signatureAlreadyBuilt: false, completion: completion)
+                    }
+                }
+            }
+        }
+    }
+
+    private func finishGetPlayUrl(line: HuyaLine, bitRate: Int, antiCode: String, tokenLease: HuyaCdnTokenLease?, signatureAlreadyBuilt: Bool, completion: @escaping (Result<String, Error>) -> Void) {
+        if antiCode.isEmpty {
+            let transport = line.lineType == .hls ? "HLS" : "FLV"
+            completion(.failure(LiveError.parseFailed("虎牙 \(transport) token 不可用")))
+            return
+        }
+        // The web fallback uses its anonymous viewer identity.
+        // Native WUP above has a separate request/signing contract;
+        // do not mix those identities.
+        if !signatureAlreadyBuilt && LiveQuery.value(antiCode, key: "fm") != nil {
+            resolveViewerIdentity { viewer in
+                do {
+                    let signed = try HuyaAntiCode.build(
+                        stream: line.streamName,
+                        viewerUid: viewer.uid,
+                        antiCode: antiCode,
+                        now: self.monotonicNow(),
+                        fallbackViewerUid: self.fallbackViewerUid
+                    )
+                    self.buildFinalUrl(line: line, bitRate: bitRate, antiCode: signed, tokenLease: tokenLease, completion: completion)
+                } catch {
+                    completion(.failure(error))
+                }
+            }
+            return
+        }
+        buildFinalUrl(line: line, bitRate: bitRate, antiCode: antiCode, tokenLease: tokenLease, completion: completion)
+    }
+
+    private func buildFinalUrl(line: HuyaLine, bitRate: Int, antiCode: String, tokenLease: HuyaCdnTokenLease?, completion: @escaping (Result<String, Error>) -> Void) {
+        var code = antiCode
+        let ext = line.lineType == .hls ? "m3u8" : "flv"
+        let cdnBase = HuyaAntiCode.secureCdnBase(line.baseUrl)
+        if LiveQuery.value(code, key: "codec") == nil {
+            code += "&codec=264"
+        }
+        // Huya reuses one anti-leech query for every quality.
+        // `ratio`, when already present, describes the URL captured
+        // from the page rather than the user's new selection. Always
+        // replace it for a transcode and remove it for source
+        // quality (bitRate 0).
+        code = HuyaAntiCode.replaceQueryParameter(code, key: "ratio", value: bitRate > 0 ? String(bitRate) : nil)
+        let url = "\(cdnBase)/\(line.streamName).\(ext)?\(code)"
+        // Current AntiCode templates encode the issue instant through
+        // seqid. Some legacy/static token families do not. Remember
+        // the connection issue instant for every URL built here so
+        // legacy lines stay on the same proactive hand-off path
+        // instead of waiting for EOF.
+        rememberTransportIssuedAt(url, issuedAt: HuyaAntiCode.signedSequenceIssuedAt(url) ?? Date())
+        if let lease = tokenLease {
+            rememberPlaybackTokenLease(url, lease: lease)
+        }
+        completion(.success(url))
+    }
+
+    // MARK: - Token fetching (in-flight dedup)
+
+    /// Shares one in-flight native token request per stream name.
+    /// Each consumer signs a new URL from the shared lease.
+    private func fetchNativeToken(line: HuyaLine, completion: @escaping (Result<HuyaCdnTokenLease, Error>) -> Void) {
+        let key = line.streamName
+        nativeTokenPending[key, default: []].append(completion)
+        if nativeTokenPending[key]!.count > 1 {
+            return
+        }
+        wupClient.fetchNativeCdnToken(line: line) { result in
+            let completions = self.nativeTokenPending.removeValue(forKey: key) ?? []
+            for item in completions {
+                item(result)
+            }
+        }
+    }
+
+    /// Shares one in-flight web-identity token request per viewer +
+    /// line + stream. Each consumer signs a new URL from the shared
+    /// lease.
+    private func fetchWebToken(line: HuyaLine, viewer: HuyaViewerIdentity, completion: @escaping (Result<HuyaCdnTokenLease, Error>) -> Void) {
+        let key = "\(viewer.uid)|\(line.baseUrl)|\(line.streamName)"
+        webTokenPending[key, default: []].append(completion)
+        if webTokenPending[key]!.count > 1 {
+            return
+        }
+        wupClient.fetchWebCdnToken(line: line, viewer: viewer) { result in
+            let completions = self.webTokenPending.removeValue(forKey: key) ?? []
+            for item in completions {
+                item(result)
+            }
+        }
+    }
+
+    // MARK: - Anonymous identity
+
+    /// Anonymous viewer identity from
+    /// `POST https://udblgn.huya.com/web/anonymousLogin`. Cached per
+    /// site instance; concurrent callers share the in-flight
+    /// request. When the endpoint fails, a stable process-local
+    /// fallback UID is used for that one acquisition and NOT cached,
+    /// so the next acquisition retries the official endpoint instead
+    /// of turning a brief outage into persistent 403s.
+    func resolveViewerIdentity(completion: @escaping (HuyaViewerIdentity) -> Void) {
+        if let cached = anonymousViewerIdentity {
+            completion(cached)
+            return
+        }
+        viewerIdentityCompletions.append(completion)
+        if viewerIdentityInFlight {
+            return
+        }
+        viewerIdentityInFlight = true
+        loadAnonymousViewerIdentity { identity in
+            self.viewerIdentityInFlight = false
+            if identity.uid != self.fallbackViewerUid {
+                self.anonymousViewerIdentity = identity
+            }
+            let completions = self.viewerIdentityCompletions
+            self.viewerIdentityCompletions = []
+            for item in completions {
+                item(identity)
+            }
+        }
+    }
+
+    private func loadAnonymousViewerIdentity(completion: @escaping (HuyaViewerIdentity) -> Void) {
+        guard let url = URL(string: "https://udblgn.huya.com/web/anonymousLogin") else {
+            completion(HuyaViewerIdentity(uid: fallbackViewerUid, guid: viewerGuid, isAnonymous: true))
+            return
+        }
+        let body: [String: Any] = ["appId": 5002, "byPass": 3, "context": "", "version": "2.4", "data": [:]]
+        let request = LiveHTTP.postJSONRequest(
+            url: url,
+            body: body,
+            headers: [
+                "User-Agent": HuyaRequestParams.kUserAgent,
+                "Accept": "*/*",
+                "Origin": "https://www.huya.com",
+                "Referer": "https://www.huya.com/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site"
+            ]
+        )
+        fetcher(request) { data, _, _ in
+            if let data = data,
+               let json = LiveJSON.decodeObject(data),
+               let dataMap = LiveJSON.asMap(json["data"]),
+               let uid = LiveJSON.asIntOrNil(dataMap["uid"]),
+               uid > 0 {
+                completion(HuyaViewerIdentity(uid: uid, guid: self.viewerGuid, isAnonymous: true))
+            } else {
+                completion(HuyaViewerIdentity(uid: self.fallbackViewerUid, guid: self.viewerGuid, isAnonymous: true))
+            }
+        }
+    }
+
+    /// `yyuid` from an account cookie (kept for when a cookie store
+    /// exists; this port is anonymous-only and never calls it).
+    static func parseViewerUidFromCookie(_ cookie: String) -> Int? {
+        let pattern = "(?:^|;\\s*)yyuid=(\\d+)(?:;|$)"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: cookie, options: [], range: NSRange(cookie.startIndex..., in: cookie)),
+              match.numberOfRanges >= 2,
+              let uidRange = Range(match.range(at: 1), in: cookie),
+              let uid = Int(cookie[uidRange]), uid > 0 else {
+            return nil
+        }
+        return uid
+    }
+
+    private static func createFallbackViewerUid() -> Int {
+        let offset = Int.random(in: 0..<1000000) * 100000 + Int.random(in: 0..<100000)
+        return 1400000000000 + offset
+    }
+
+    // MARK: - Lease math
+
+    /// Wall clock strictly increasing per signature (upstream
+    /// guard: two URLs signed in the same millisecond would share a
+    /// seqid).
+    private func monotonicNow() -> Date {
+        let wallMillis = Int(Date().timeIntervalSince1970 * 1000)
+        let currentMillis = wallMillis > lastSignatureMillis ? wallMillis : lastSignatureMillis + 1
+        lastSignatureMillis = currentMillis
+        return Date(timeIntervalSince1970: TimeInterval(currentMillis) / 1000)
+    }
+
+    private func rememberTransportIssuedAt(_ url: String, issuedAt: Date) {
+        if playbackTransportIssuedAt.count >= 64 && playbackTransportIssuedAt[url] == nil, let first = playbackTransportIssuedAt.keys.first {
+            playbackTransportIssuedAt.removeValue(forKey: first)
+        }
+        playbackTransportIssuedAt[url] = issuedAt
+    }
+
+    private func rememberedTransportIssuedAt(_ url: String) -> Date? {
+        // Keep a past deadline authoritative. Removing it exactly at
+        // expiry would reveal the much later wsTime bound and
+        // incorrectly make a dead URL look healthy again.
+        playbackTransportIssuedAt[url]
+    }
+
+    private func rememberPlaybackTokenLease(_ url: String, lease: HuyaCdnTokenLease) {
+        let now = Date()
+        playbackTokenLeases = playbackTokenLeases.filter { !$0.value.isExpired(now) }
+        if playbackTokenLeases.count >= 32 && playbackTokenLeases[url] == nil, let first = playbackTokenLeases.keys.first {
+            playbackTokenLeases.removeValue(forKey: first)
+        }
+        playbackTokenLeases[url] = lease
+    }
+
+    private func playbackTokenLease(for url: String) -> HuyaCdnTokenLease? {
+        // Keep an expired entry until the next URL is registered.
+        // Forgetting it at the exact expiry instant would make the
+        // longer wsTime bound appear valid again and postpone a
+        // recovery that is already due.
+        playbackTokenLeases[url]
+    }
+
+    private static func earliest(_ first: Date?, _ second: Date?) -> Date? {
+        if let first = first, let second = second {
+            return first < second ? first : second
+        }
+        return first ?? second
+    }
+
+    /// Proactive refresh deadline for one URL: earliest of (wsTime
+    /// expiry − 30 s), the native token lease's refreshAt, and
+    /// (transport issue + 100 s). The transport terms apply ONLY to
+    /// short-lease (web-template) URLs — native-token FLV URLs have
+    /// no 100 s / 125 s transport bound. Nil when no expiry can be
+    /// derived.
+    func playUrlRefreshAt(url: String) -> Date? {
+        let current = Date()
+        let signedInvalidAt = HuyaAntiCode.signedUrlInvalidAt(url)
+        let tokenLease = playbackTokenLease(for: url)
+        let transportIssuedAt = HuyaTransportPolicy.hasShortTransportLease(url)
+            ? (HuyaAntiCode.signedSequenceIssuedAt(url) ?? rememberedTransportIssuedAt(url))
+            : nil
+        let transportInvalidAt = transportIssuedAt?.addingTimeInterval(HuyaAntiCode.transportInvalidAgeSeconds)
+        let invalidAt = HuyaLiveSite.earliest(HuyaLiveSite.earliest(signedInvalidAt, tokenLease?.invalidAt), transportInvalidAt)
+        guard invalidAt != nil else {
+            return nil
+        }
+        let signatureRefreshAt = signedInvalidAt?.addingTimeInterval(-HuyaAntiCode.signatureRefreshLeadSeconds)
+        let transportRefreshAt = transportIssuedAt?.addingTimeInterval(HuyaAntiCode.transportRefreshAgeSeconds)
+        let refreshAt = HuyaLiveSite.earliest(HuyaLiveSite.earliest(signatureRefreshAt, tokenLease?.refreshAt), transportRefreshAt) ?? current
+        return refreshAt > current ? refreshAt : current
+    }
+
+    /// Hard expiry for one URL: earliest of (wsTime + 5 min), the
+    /// native token lease's invalidAt, and (transport issue + 125 s
+    /// — web template URLs only). Nil when no expiry can be derived.
+    func playUrlInvalidAt(url: String) -> Date? {
+        let tokenLease = playbackTokenLease(for: url)
+        let transportIssuedAt = HuyaTransportPolicy.hasShortTransportLease(url)
+            ? (HuyaAntiCode.signedSequenceIssuedAt(url) ?? rememberedTransportIssuedAt(url))
+            : nil
+        return HuyaLiveSite.earliest(
+            HuyaLiveSite.earliest(HuyaAntiCode.signedUrlInvalidAt(url), tokenLease?.invalidAt),
+            transportIssuedAt?.addingTimeInterval(HuyaAntiCode.transportInvalidAgeSeconds)
+        )
+    }
+}
