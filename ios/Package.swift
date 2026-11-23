@@ -33,6 +33,10 @@ import PackageDescription
 
 let package = Package(
     name: "HAoStudioTests",
+    // MusicLX target covers the whole HAoStudio dir, which holds
+    // Base.lproj; SwiftPM requires a default localization once a
+    // target has localized resources (build #17 failed without it).
+    defaultLocalization: "en",
     targets: [
         .target(
             name: "MigrationCore",
