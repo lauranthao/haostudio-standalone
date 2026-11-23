@@ -15,16 +15,16 @@
 // content swap); this file owns only the bar itself.
 //
 // Glass:
-// - iOS 26+: the system tab bar is Liquid Glass. The glass is applied
-//   explicitly as UITabBarAppearance.backgroundEffect = UIGlassEffect()
-//   — the UIKit spelling of SwiftUI's .glassEffect. No custom opaque
+// - iOS 26+: the system tab bar is Liquid Glass from its default
+//   background (configureWithDefaultBackground()). No effect is assigned
+//   explicitly: UITabBarAppearance.backgroundEffect only accepts
+//   UIBlurEffect, so a glass effect cannot go there. No custom opaque
 //   background is painted over it: a custom background would overlay
 //   and kill the glass (Apple: "Any custom backgrounds and appearances
 //   you use in these elements might overlay or interfere with Liquid
 //   Glass"). isTranslucent stays true for the same reason.
 // - iOS 17–25: configureWithDefaultBackground() — the classic
-//   translucent frosted-glass bar. Deployment target is 17.0, so every
-//   iOS 26 API below is behind #available(iOS 26.0, *).
+//   translucent frosted-glass bar. Deployment target is 17.0.
 //
 // Selection pill (UITabBar.selectionIndicatorImage):
 // - Solid #E4E4E4 in light mode, solid #3A3A3C in dark mode.
@@ -133,21 +133,15 @@ private struct SystemTabBar: UIViewRepresentable {
     }
 
     /// Bar background: glass on iOS 26, classic blur below.
+    ///
+    /// No explicit effect is assigned: `UITabBarAppearance.backgroundEffect`
+    /// only accepts `UIBlurEffect` (assigning `UIGlassEffect()` fails to
+    /// compile), and the system tab bar on iOS 26 already renders with
+    /// Liquid Glass from its default background. No backgroundColor and
+    /// no backgroundImage are set — either would paint over the glass.
     private static func configureAppearance(for tabBar: UITabBar) {
         let appearance = UITabBarAppearance()
-        if #available(iOS 26.0, *) {
-            // Liquid Glass is the system tab-bar material on iOS 26.
-            // configureWithDefaultBackground() keeps the system
-            // background; the explicit UIGlassEffect below is the UIKit
-            // spelling of SwiftUI's .glassEffect. No backgroundColor and
-            // no backgroundImage are set — either would paint over the
-            // glass.
-            appearance.configureWithDefaultBackground()
-            appearance.backgroundEffect = UIGlassEffect()
-        } else {
-            // iOS 17–25: classic frosted glass (translucent blur).
-            appearance.configureWithDefaultBackground()
-        }
+        appearance.configureWithDefaultBackground()
         tabBar.standardAppearance = appearance
         tabBar.scrollEdgeAppearance = appearance
     }

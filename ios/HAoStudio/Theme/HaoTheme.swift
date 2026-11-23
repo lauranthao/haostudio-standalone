@@ -185,6 +185,22 @@ struct HaoThemePalette {
                 liveRed: liveRed, glassBlurSigma: 24,
                 scaffoldBackground: Color(hex: 0x050B12),
                 colorScheme: .dark, tabSelected: .white)
+        default:
+            // Unreachable in practice — ColorScheme is a struct, so the
+            // compiler cannot prove the 8 cases exhaustive. Fall back to
+            // the appleGlass light palette.
+            return HaoThemePalette(
+                accent: .black, onAccent: .white,
+                accentSoft: Color.black.opacity(0.14),
+                surface: Color.white.opacity(0.55),
+                surfaceStrong: Color.white.opacity(0.68),
+                surfaceSolid: .white,
+                hairline: Color.black.opacity(0.08),
+                textPrimary: Color(hex: 0x1C1C1E), textSecondary: Color(hex: 0x3A3A3C),
+                textMuted: Color(hex: 0x6B6B70),
+                liveRed: liveRed, glassBlurSigma: 24,
+                scaffoldBackground: Color(hex: 0xF2F2F7),
+                colorScheme: .light, tabSelected: .black)
         }
     }
 }

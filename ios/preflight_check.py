@@ -287,6 +287,12 @@ check("10b. glassEffect with iOS 26 @available fallback",
       ".glassEffect" in (APP_DIR / "App/Glass.swift").read_text()
       and "#available(iOS 26.0, *)" in (APP_DIR / "App/Glass.swift").read_text()
       and ".ultraThinMaterial" in (APP_DIR / "App/Glass.swift").read_text())
+# --- 10c. backgroundEffect never takes UIGlassEffect ----------------------
+# (2026-11-23: Codemagic build #12 failed — UITabBarAppearance.
+# backgroundEffect is UIBlurEffect, UIGlassEffect does not compile there.
+# iOS 26's system tab bar is glass from its default background.)
+check("10c. no UIGlassEffect assigned to backgroundEffect",
+      "backgroundEffect = UIGlassEffect()" not in (APP_DIR / "App/GlassTabBar.swift").read_text())
 
 print()
 if failures:
