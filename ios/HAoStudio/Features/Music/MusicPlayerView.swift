@@ -261,8 +261,8 @@ struct MusicPlayerView: View {
 
     private var qualityBadge: some View {
         Group {
-            if let actual = playerVM.actualQuality {
-                Text(MusicLibraryStore.badgeLabel(for: actual))
+            if let label = playerVM.qualityBadgeLabel {
+                Text(label)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 10)

@@ -52,6 +52,19 @@ final class MusicPlayerViewModel: ObservableObject {
     /// The tier ACTUALLY playing, or nil before the first report.
     /// The badge shows this, never the target tier (Master honesty).
     @Published private(set) var actualQuality: AudioQuality?
+    /// Local-file badge text (S7-A): the player reports no tier for
+    /// local files (the resolver is bypassed), so the tier is derived
+    /// from the file itself — "本地" when the file proves no tier.
+    /// Nil for remote songs and when there is nothing honest to show.
+    @Published private(set) var localQualityLabel: String?
+
+    /// Badge text under the cover: the ACTUAL tier when the player
+    /// reports one, else the local-file derivation. The view reads
+    /// this (not actualQuality) so a local file never shows a blank.
+    var qualityBadgeLabel: String? {
+        if let actual = actualQuality { return MusicLibraryStore.badgeLabel(for: actual) }
+        return localQualityLabel
+    }
 
     // MARK: - Lyrics
 
@@ -133,6 +146,18 @@ final class MusicPlayerViewModel: ObservableObject {
         }
         observePlayer()
         observeCoordinator()
+        // Sleep wall-clock deadline, second net (S7-A): the 1 s
+        // ticker can stall while the app is backgrounded (runloop
+        // suspended). Position updates keep flowing while audio
+        // plays (see observePlayer), and this fires when the app
+        // returns to the foreground with playback paused — both
+        // re-check the deadline, so a timer never sleeps past its
+        // stop time. The view model lives for the app lifetime, so
+        // the observer is never removed; the closure holds self
+        // weakly and checkFire is a no-op without a deadline.
+        _ = NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.sleepTimer.checkFire()
+        }
     }
 
     // MARK: - Observation
@@ -151,6 +176,12 @@ final class MusicPlayerViewModel: ObservableObject {
         }.store(in: &cancellables)
         player.$position.sink { [weak self] value in
             guard let self = self else { return }
+            // Sleep wall-clock deadline (S7-A): the 1 s ticker can
+            // stall while the app is backgrounded, but position
+            // updates keep flowing while audio plays — re-check the
+            // deadline here so a timer never sleeps past its stop
+            // time. checkFire is a no-op without a deadline.
+            self.sleepTimer.checkFire()
             // Position wrapped backwards by > 5 s on the same track:
             // a natural completion (single-loop replay).
             if value < self.lastPosition - 5 {
@@ -180,7 +211,9 @@ final class MusicPlayerViewModel: ObservableObject {
             self?.playbackSpeed = value
         }.store(in: &cancellables)
         player.$actualQuality.sink { [weak self] value in
-            self?.actualQuality = value
+            guard let self = self else { return }
+            self.actualQuality = value
+            self.refreshLocalQualityBadge()
         }.store(in: &cancellables)
     }
 
@@ -224,6 +257,35 @@ final class MusicPlayerViewModel: ObservableObject {
         loadLyrics(for: song)
         heardTrackKey = song.identityKey
         heardSeconds = 0
+        refreshLocalQualityBadge()
+    }
+
+    /// Derive the player badge for a local file (S7-A). Remote songs
+    /// report their tier through the player; local files never do
+    /// (the resolver is bypassed), so the label comes from the file
+    /// itself — probe off the main thread, publish on it, and drop
+    /// the result if the track changed meanwhile. A reported tier
+    /// always wins over the derivation.
+    private func refreshLocalQualityBadge() {
+        guard actualQuality == nil,
+              let song = currentSong, !song.localPath.isEmpty
+        else {
+            localQualityLabel = nil
+            return
+        }
+        let path = song.localPath
+        let key = song.identityKey
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let label = localFileQualityLabel(for: URL(fileURLWithPath: path))
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                guard self.actualQuality == nil,
+                      self.currentSong?.identityKey == key,
+                      self.currentSong?.localPath == path
+                else { return }
+                self.localQualityLabel = label
+            }
+        }
     }
 
     // MARK: - Playback actions

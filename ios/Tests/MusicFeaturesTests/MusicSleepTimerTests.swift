@@ -154,4 +154,38 @@ final class MusicSleepTimerTests: XCTestCase {
         XCTAssertEqual(sleepRemainingText(61), "1:01")
         XCTAssertEqual(sleepRemainingText(3599), "59:59")
     }
+
+    // MARK: - S7-A: sleep status text (sheet footer)
+
+    func testSleepStatusTextWallClock() {
+        XCTAssertEqual(
+            sleepStatusText(option: .min30, remainingText: "29:59", tracksCompleted: 0, trackTarget: 3),
+            "正在倒计时：29:59。到时暂停播放。"
+        )
+        XCTAssertEqual(
+            sleepStatusText(option: .custom, remainingText: "5:00", tracksCompleted: 0, trackTarget: 3),
+            "正在倒计时：5:00。到时暂停播放。"
+        )
+    }
+
+    func testSleepStatusTextCompletionModes() {
+        // Completion modes have no clock: the footer must name what
+        // they wait for, never print an empty countdown (S7-A fix).
+        XCTAssertEqual(
+            sleepStatusText(option: .currentTrackEnd, remainingText: "", tracksCompleted: 0, trackTarget: 3),
+            "播完本首后停止。"
+        )
+        XCTAssertEqual(
+            sleepStatusText(option: .afterNTracks, remainingText: "", tracksCompleted: 2, trackTarget: 3),
+            "播完 3 首后停止（已播完 2 首）。"
+        )
+        XCTAssertEqual(
+            sleepStatusText(option: .queueEnd, remainingText: "", tracksCompleted: 0, trackTarget: 3),
+            "到歌单结束时停止。"
+        )
+        XCTAssertEqual(
+            sleepStatusText(option: .off, remainingText: "", tracksCompleted: 0, trackTarget: 3),
+            ""
+        )
+    }
 }
