@@ -182,7 +182,7 @@ check("4l. every Swift file ref resolves to a file on disk", not _missing,
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
-check("5. Swift file count (S3 seam = 58: 13 foundation + 43 music + 2 video)", len(swift_files) == 58,
+check("5. Swift file count (S3 B leg = 64: 13 foundation + 43 music + 2 video + 6 new: CmsClient, DoubanService, EmbyClient, EmbyModels, VodDanmakuClient, DownloadEngine)", len(swift_files) == 64,
       f"{len(swift_files)}: {[f.name for f in swift_files]}")
 for f in swift_files:
     s = f.read_text()
