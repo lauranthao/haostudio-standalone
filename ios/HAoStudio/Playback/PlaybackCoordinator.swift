@@ -91,6 +91,16 @@ struct PlaybackItem: Identifiable, Equatable {
 
     var subtitle: String { artist ?? kindSubtitle }
 
+    init(id: String, kind: PlaybackKind, title: String, artist: String?,
+         coverURL: URL? = nil, localFileURL: URL? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.artist = artist
+        self.coverURL = coverURL
+        self.localFileURL = localFileURL
+    }
+
     private var kindSubtitle: String {
         switch kind {
         case .music: return "音乐"
