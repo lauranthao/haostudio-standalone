@@ -17,6 +17,7 @@
 // tab view, owns what keeps playing across tabs).
 
 import SwiftUI
+import UIKit
 
 enum HaoTab: String, CaseIterable, Identifiable {
     case home
@@ -52,6 +53,7 @@ enum HaoTab: String, CaseIterable, Identifiable {
 struct MainTabView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @EnvironmentObject private var coordinator: PlaybackCoordinator
+    @EnvironmentObject private var settingsStore: SettingsStore
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedTab: HaoTab = .home
@@ -67,13 +69,13 @@ struct MainTabView: View {
         // every tab immediately with no restart.
         let palette = themeStore.palette(for: colorScheme)
         ZStack {
-            palette.scaffoldBackground.ignoresSafeArea()
+            backgroundLayer(palette: palette)
             tabContent
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: HaoLayout.floatingStackSpacing) {
                 MiniPlayerBar(onTapFullPlayer: { showingFullPlayer = true })
-                GlassTabBar(items: tabBarItems, selection: $selectedTab)
+                GlassTabBar(items: tabBarItems, selection: $selectedTab, tabAccent: settingsStore.tabAccentColor)
                     .padding(.horizontal, HaoLayout.tabBarHorizontalMargin)
             }
             .padding(.bottom, HaoLayout.tabBarBottomMargin)
@@ -99,6 +101,47 @@ struct MainTabView: View {
         .environment(\.haoTheme, palette)
     }
 
+    /// Scaffold background, three-layer priority (S5-C):
+    /// wallpaper > background color > theme scaffold. A wallpaper
+    /// that cannot be loaded falls through to the next layer.
+    @ViewBuilder
+    private func backgroundLayer(palette: HaoThemePalette) -> some View {
+        let wallpaper = wallpaperImage()
+        switch MyBackgroundColor.kind(
+            wallpaperEnabled: settingsStore.wallpaperEnabled,
+            wallpaperAvailable: wallpaper != nil,
+            bgColorEnabled: settingsStore.bgColorEnabled,
+            bgColorHex: settingsStore.bgColorHex
+        ) {
+        case .wallpaper:
+            if let wallpaper = wallpaper {
+                Image(uiImage: wallpaper)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+            } else {
+                palette.scaffoldBackground.ignoresSafeArea()
+            }
+        case .color:
+            if let bgColor = MyBackgroundColor.color(fromHex: settingsStore.bgColorHex) {
+                bgColor.ignoresSafeArea()
+            } else {
+                palette.scaffoldBackground.ignoresSafeArea()
+            }
+        case .theme:
+            palette.scaffoldBackground.ignoresSafeArea()
+        }
+    }
+
+    /// The wallpaper image when enabled and loadable, nil otherwise.
+    private func wallpaperImage() -> UIImage? {
+        guard settingsStore.wallpaperEnabled,
+              let wallpaperURL = settingsStore.wallpaperBackgroundURL else {
+            return nil
+        }
+        return UIImage(contentsOfFile: wallpaperURL.path)
+    }
+
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
@@ -106,7 +149,7 @@ struct MainTabView: View {
         case .music: MusicHomeView()
         case .movies: VideoTabView()
         case .live: LiveTabView()
-        case .my: MyPlaceholderView()
+        case .my: MyView()
         }
     }
 

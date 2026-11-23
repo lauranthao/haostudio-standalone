@@ -1,0 +1,242 @@
+// HAo Studio 2.0 — settings tests (S5, leg A).
+//
+// iOS-only, same treatment as S3's VideoPlayerTests: NOT wired
+// into `ios/Package.swift` (this leg does not edit it). SettingsStore
+// / ThemeStore are @MainActor ObservableObjects with SwiftUI
+// (Color) and UIKit state, so `swift test` on a macOS runner
+// cannot compile this target. S7 wires a `SettingsTests` Xcode
+// test target (run with `xcodebuild test` against an iOS simulator
+// destination); the target compiles the `Features/My` sources
+// directly and imports AppCore for the storage / player types.
+//
+// Isolation (same pattern as MigrationStoreTests): every test
+// uses a fresh UserDefaults suite (UUID) and a fresh temporary
+// Documents directory; nothing touches the real defaults, the
+// real Documents dir, or the real Keychain.
+
+import Foundation
+import XCTest
+
+@testable import AppCore
+
+@MainActor
+final class SettingsStoreTests: XCTestCase {
+    private var docs: URL!
+    private var defaults: UserDefaults!
+    private var suiteName: String!
+    private var themeStore: ThemeStore!
+    private var settings: SettingsStore!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "com.haostudio.settings.tests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        docs = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hao-settings-tests-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+        themeStore = ThemeStore(defaults: defaults)
+        settings = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+    }
+
+    override func tearDown() {
+        if let docs = docs {
+            try? FileManager.default.removeItem(at: docs)
+        }
+        if let suiteName = suiteName {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        super.tearDown()
+    }
+
+    // MARK: - Defaults (Flutter baseline)
+
+    func testDefaultsMatchFlutterBaseline() {
+        XCTAssertEqual(settings.musicQuality, .hiRes)
+        XCTAssertTrue(settings.hapticsEnabled)
+        XCTAssertFalse(settings.mixWithOthers)
+        XCTAssertFalse(settings.autoResume)
+        XCTAssertTrue(settings.autoUpdateCheck)
+        XCTAssertTrue(settings.autoNextEpisode)
+        XCTAssertEqual(settings.doubleTapSeconds, 10)
+        XCTAssertFalse(settings.dialogueBoost)
+        XCTAssertFalse(settings.hideSynopsis)
+        XCTAssertFalse(settings.blurUnwatchedPosters)
+        XCTAssertFalse(settings.audioOnlyBackground)
+        XCTAssertEqual(settings.videoFit, .aspectFit)
+        XCTAssertFalse(settings.superResolution)
+        XCTAssertFalse(settings.interpolation)
+        XCTAssertFalse(settings.sdrToHDR)
+        XCTAssertTrue(settings.dvP8Downgrade)
+        XCTAssertEqual(settings.skipIntroMode, "off")
+        XCTAssertEqual(settings.skipIntroLabel, "关")
+        XCTAssertEqual(settings.subtitleFontSize, "medium")
+        XCTAssertEqual(settings.subtitleColor, "white")
+        XCTAssertEqual(settings.subtitlePosition, "bottom")
+        XCTAssertEqual(settings.lowMemoryMode, "auto")
+        XCTAssertFalse(settings.cellularDowngrade)
+        XCTAssertFalse(settings.normalizationEnabled)
+        XCTAssertEqual(settings.normalizationStrength, 1)
+        XCTAssertFalse(settings.wallpaperEnabled)
+        XCTAssertEqual(settings.wallpaperCurrent, "")
+        XCTAssertTrue(settings.wallpaperPaths.isEmpty)
+        XCTAssertNil(settings.wallpaperBackgroundURL)
+        XCTAssertFalse(settings.bgColorEnabled)
+        XCTAssertEqual(settings.bgColorHex, "")
+        XCTAssertEqual(settings.nickname, "")
+        XCTAssertEqual(settings.glassIntensity, 1.0)
+        XCTAssertNil(settings.tabAccentHex)
+        XCTAssertNil(settings.accentOverrideHex)
+        XCTAssertTrue(settings.sectionExpanded("engine"))
+    }
+
+    // MARK: - Persistence round-trip
+
+    func testMusicQualityPersistsAndReloads() {
+        settings.musicQuality = .flac
+        XCTAssertEqual(defaults.string(forKey: "musicQuality"), "flac")
+        let reloaded = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(reloaded.musicQuality, .flac)
+    }
+
+    func testHapticsGoesThroughMusicLibraryStore() {
+        settings.hapticsEnabled = false
+        XCTAssertFalse(MusicLibraryStore.hapticsEnabled(defaults: defaults))
+        XCTAssertFalse(defaults.bool(forKey: "hapticsEnabled"))
+        let reloaded = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertFalse(reloaded.hapticsEnabled)
+    }
+
+    func testNicknamePersists() {
+        settings.nickname = "阿皓"
+        XCTAssertEqual(defaults.string(forKey: "hao_profile_nickname"), "阿皓")
+        XCTAssertEqual(ProfileStore.loadNickname(defaults: defaults), "阿皓")
+    }
+
+    func testSectionExpandedPersistsPerSection() {
+        settings.setSectionExpanded(false, for: "engine")
+        XCTAssertFalse(settings.sectionExpanded("engine"))
+        XCTAssertTrue(settings.sectionExpanded("playback"))
+        XCTAssertFalse(defaults.bool(forKey: "settingsSectionExpanded_engine"))
+    }
+
+    // MARK: - Clamps and fallbacks
+
+    func testNormalizationStrengthClampsToZeroTwo() {
+        settings.normalizationStrength = 5
+        XCTAssertEqual(settings.normalizationStrength, 2)
+        XCTAssertEqual(defaults.integer(forKey: "hao_music_normalization_strength"), 2)
+        settings.normalizationStrength = -1
+        XCTAssertEqual(settings.normalizationStrength, 0)
+    }
+
+    func testDoubleTapSecondsClampsToFiveThirty() {
+        settings.doubleTapSeconds = 100
+        XCTAssertEqual(settings.doubleTapSeconds, 30)
+        settings.doubleTapSeconds = 1
+        XCTAssertEqual(settings.doubleTapSeconds, 5)
+    }
+
+    func testUnknownSkipIntroModeFallsBackToOff() {
+        settings.skipIntroMode = "bogus"
+        XCTAssertEqual(settings.skipIntroMode, "off")
+        defaults.set("bogus", forKey: "hao_vod_skip_intro_mode")
+        let reloaded = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(reloaded.skipIntroMode, "off")
+    }
+
+    func testUnknownStoredQualityFallsBackToHiRes() {
+        defaults.set("bogus", forKey: "musicQuality")
+        let reloaded = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(reloaded.musicQuality, .hiRes)
+    }
+
+    func testSkipIntroLabelsMatchFlutter() {
+        XCTAssertEqual(SettingsStore.skipIntroLabels["off"], "关")
+        XCTAssertEqual(SettingsStore.skipIntroLabels["manual"], "手动")
+        XCTAssertEqual(SettingsStore.skipIntroLabels["auto3s"], "自动延时 3 秒")
+        XCTAssertEqual(SettingsStore.skipIntroLabels["autoNow"], "自动立即")
+    }
+
+    // MARK: - Engine-key bridge (videoPlayerKey -> hao_video_player_key)
+
+    func testLegacyVideoPlayerKeyAdoptedOnce() {
+        defaults.set("ijk", forKey: "videoPlayerKey")
+        XCTAssertNil(defaults.object(forKey: "hao_video_player_key"))
+        let bridged = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(bridged.enginePreference, .ijk)
+        // Adopted into the Swift key, exactly once.
+        XCTAssertEqual(defaults.string(forKey: "hao_video_player_key"), "ijk")
+        let again = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(again.enginePreference, .ijk)
+    }
+
+    func testSwiftEngineKeyWinsOverLegacy() {
+        defaults.set("avplayer", forKey: "hao_video_player_key")
+        defaults.set("ijk", forKey: "videoPlayerKey")
+        let store = SettingsStore(defaults: defaults, themeStore: themeStore, documentsURL: docs)
+        XCTAssertEqual(store.enginePreference, .avplayer)
+        XCTAssertEqual(defaults.string(forKey: "hao_video_player_key"), "avplayer")
+    }
+
+    func testEnginePreferencePersistsToSwiftKey() {
+        settings.enginePreference = .mpv
+        XCTAssertEqual(defaults.string(forKey: "hao_video_player_key"), "mpv")
+        XCTAssertNil(defaults.object(forKey: "videoPlayerKey"))
+    }
+
+    // MARK: - Theme forwarding (one owner: ThemeStore)
+
+    func testGlassIntensityForwardsToThemeStore() {
+        settings.glassIntensity = 0.5
+        XCTAssertEqual(themeStore.glassIntensity, 0.5)
+        XCTAssertEqual(defaults.double(forKey: "hao_glass_intensity"), 0.5)
+        themeStore.glassIntensity = 0.8
+        XCTAssertEqual(settings.glassIntensity, 0.8)
+    }
+
+    func testGlassIntensityClampsToPointThreeOne() {
+        settings.glassIntensity = 0.1
+        XCTAssertEqual(themeStore.glassIntensity, 0.3)
+        settings.glassIntensity = 2.0
+        XCTAssertEqual(themeStore.glassIntensity, 1.0)
+    }
+
+    func testTabAccentAndOverrideShareOneKey() {
+        // Stored with opacity (0x80 red); the theme override is
+        // the opaque form of the same stored int — no second key.
+        settings.tabAccentHex = Int(0x80FF0000)
+        XCTAssertEqual(themeStore.tabAccentHex, Int(0x80FF0000))
+        XCTAssertEqual(defaults.integer(forKey: "hao_tabbar_accent"), Int(0x80FF0000))
+        XCTAssertNil(defaults.object(forKey: "hao_accent_override"))
+        XCTAssertEqual(settings.accentOverrideHex, Int(0xFFFF0000))
+        XCTAssertNotNil(settings.tabAccentColor)
+    }
+
+    func testClearingAccentRestoresDefault() {
+        settings.tabAccentHex = Int(0xFF000000)
+        XCTAssertNotNil(settings.accentOverrideHex)
+        settings.tabAccentHex = nil
+        XCTAssertNil(settings.accentOverrideHex)
+        XCTAssertNil(defaults.object(forKey: "hao_tabbar_accent"))
+    }
+
+    // MARK: - Wallpaper background URL
+
+    func testWallpaperBackgroundURLNeedsEnabledCurrentAndFile() {
+        let data = SettingsTestImages.pngData()
+        let name = WallpaperStore.importImage(data: data, documentsURL: docs)
+        XCTAssertNotNil(name)
+        settings.reloadWallpapers()
+        XCTAssertEqual(settings.wallpaperPaths.count, 1)
+        settings.wallpaperCurrent = name ?? ""
+        // Switch off: no background.
+        XCTAssertNil(settings.wallpaperBackgroundURL)
+        settings.wallpaperEnabled = true
+        let url = settings.wallpaperBackgroundURL
+        XCTAssertNotNil(url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url!.path))
+        // Missing file: no background.
+        settings.wallpaperCurrent = "wallpapers/gone.jpg"
+        XCTAssertNil(settings.wallpaperBackgroundURL)
+    }
+}

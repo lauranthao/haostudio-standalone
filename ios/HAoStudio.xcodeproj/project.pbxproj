@@ -182,6 +182,19 @@
 		00000000000000000000016F /* LiveModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015A /* LiveModels.swift */; };
 		000000000000000000000170 /* TarsCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015B /* TarsCodec.swift */; };
 		000000000000000000000171 /* TarsUniPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000015C /* TarsUniPacket.swift */; };
+		000000000000000000000173 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000174 /* CacheManager.swift */; };
+		000000000000000000000175 /* EmbyConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000176 /* EmbyConfigView.swift */; };
+		000000000000000000000177 /* EmbyConfigViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000178 /* EmbyConfigViewModel.swift */; };
+		000000000000000000000179 /* EmbyImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000017A /* EmbyImageLoader.swift */; };
+		00000000000000000000017B /* EmbyPosterImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000017C /* EmbyPosterImage.swift */; };
+		00000000000000000000017D /* MyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000017E /* MyView.swift */; };
+		00000000000000000000017F /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000180 /* ProfileStore.swift */; };
+		000000000000000000000181 /* SettingsGroupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000182 /* SettingsGroupsView.swift */; };
+		000000000000000000000183 /* SettingsLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000184 /* SettingsLogic.swift */; };
+		000000000000000000000185 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000186 /* SettingsStore.swift */; };
+		000000000000000000000187 /* SourceManagementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000188 /* SourceManagementViews.swift */; };
+		000000000000000000000189 /* VideoEngineReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018A /* VideoEngineReporter.swift */; };
+		00000000000000000000018B /* WallpaperStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000018C /* WallpaperStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -345,6 +358,19 @@
 		00000000000000000000015A /* LiveModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveModels.swift; sourceTree = "<group>"; };
 		00000000000000000000015B /* TarsCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TarsCodec.swift; sourceTree = "<group>"; };
 		00000000000000000000015C /* TarsUniPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TarsUniPacket.swift; sourceTree = "<group>"; };
+		000000000000000000000174 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
+		000000000000000000000176 /* EmbyConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyConfigView.swift; sourceTree = "<group>"; };
+		000000000000000000000178 /* EmbyConfigViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyConfigViewModel.swift; sourceTree = "<group>"; };
+		00000000000000000000017A /* EmbyImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyImageLoader.swift; sourceTree = "<group>"; };
+		00000000000000000000017C /* EmbyPosterImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyPosterImage.swift; sourceTree = "<group>"; };
+		00000000000000000000017E /* MyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyView.swift; sourceTree = "<group>"; };
+		000000000000000000000180 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
+		000000000000000000000182 /* SettingsGroupsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsGroupsView.swift; sourceTree = "<group>"; };
+		000000000000000000000184 /* SettingsLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsLogic.swift; sourceTree = "<group>"; };
+		000000000000000000000186 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		000000000000000000000188 /* SourceManagementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceManagementViews.swift; sourceTree = "<group>"; };
+		00000000000000000000018A /* VideoEngineReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEngineReporter.swift; sourceTree = "<group>"; };
+		00000000000000000000018C /* WallpaperStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -516,7 +542,23 @@
 				000000000000000000000074 /* Music */,
 				00000000000000000000012C /* Video */,
 				000000000000000000000134 /* Live */,
+				000000000000000000000172 /* My */,
 			); path = Features; sourceTree = "<group>"; };
+		000000000000000000000172 /* My */ = {isa = PBXGroup; children = (
+				000000000000000000000174 /* CacheManager.swift */,
+				000000000000000000000176 /* EmbyConfigView.swift */,
+				000000000000000000000178 /* EmbyConfigViewModel.swift */,
+				00000000000000000000017A /* EmbyImageLoader.swift */,
+				00000000000000000000017C /* EmbyPosterImage.swift */,
+				00000000000000000000017E /* MyView.swift */,
+				000000000000000000000180 /* ProfileStore.swift */,
+				000000000000000000000182 /* SettingsGroupsView.swift */,
+				000000000000000000000184 /* SettingsLogic.swift */,
+				000000000000000000000186 /* SettingsStore.swift */,
+				000000000000000000000188 /* SourceManagementViews.swift */,
+				00000000000000000000018A /* VideoEngineReporter.swift */,
+				00000000000000000000018C /* WallpaperStore.swift */,
+			); path = My; sourceTree = "<group>"; };
 		000000000000000000000074 /* Music */ = {isa = PBXGroup; children = (
 				000000000000000000000102 /* MusicAlbumDetailView.swift */,
 				000000000000000000000104 /* MusicArtistDetailView.swift */,
@@ -784,6 +826,19 @@
 				00000000000000000000016F /* LiveModels.swift in Sources */,
 				000000000000000000000170 /* TarsCodec.swift in Sources */,
 				000000000000000000000171 /* TarsUniPacket.swift in Sources */,
+				000000000000000000000173 /* CacheManager.swift in Sources */,
+				000000000000000000000175 /* EmbyConfigView.swift in Sources */,
+				000000000000000000000177 /* EmbyConfigViewModel.swift in Sources */,
+				000000000000000000000179 /* EmbyImageLoader.swift in Sources */,
+				00000000000000000000017B /* EmbyPosterImage.swift in Sources */,
+				00000000000000000000017D /* MyView.swift in Sources */,
+				00000000000000000000017F /* ProfileStore.swift in Sources */,
+				000000000000000000000181 /* SettingsGroupsView.swift in Sources */,
+				000000000000000000000183 /* SettingsLogic.swift in Sources */,
+				000000000000000000000185 /* SettingsStore.swift in Sources */,
+				000000000000000000000187 /* SourceManagementViews.swift in Sources */,
+				000000000000000000000189 /* VideoEngineReporter.swift in Sources */,
+				00000000000000000000018B /* WallpaperStore.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

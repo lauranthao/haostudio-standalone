@@ -30,6 +30,12 @@ struct HAoStudioApp: App {
     /// its init takes the live driver, mirroring the VOD view
     /// model shape.
     @StateObject private var livePlayer: LivePlayerViewModel
+    /// S5-A: one shared settings store for the whole app (Settings
+    /// page, theme overrides, engine preference). Built with the
+    /// themeStore above — the ThemeStore is created first and
+    /// handed in, so theme-owned state has exactly one owner (see
+    /// SettingsStore.swift).
+    @StateObject private var settingsStore: SettingsStore
 
     init() {
         // S1: the snapshot migration runs before anything reads
@@ -37,7 +43,9 @@ struct HAoStudioApp: App {
         // theme and preferences. It is synchronous, idempotent, and
         // skips quietly when there is no snapshot to migrate from.
         _ = MigrationStore.runIfNeeded()
-        _themeStore = StateObject(wrappedValue: ThemeStore())
+        let themeStore = ThemeStore()
+        _themeStore = StateObject(wrappedValue: themeStore)
+        _settingsStore = StateObject(wrappedValue: SettingsStore(themeStore: themeStore))
         let coordinator = PlaybackCoordinator()
         // S2: wire the music engine behind the coordinator. The LX
         // resolver answers resolveFirstPlayable; the player is the
@@ -87,6 +95,7 @@ struct HAoStudioApp: App {
                 }
             }
             .environmentObject(themeStore)
+            .environmentObject(settingsStore)
             .environmentObject(coordinator)
             .environmentObject(musicPlayer)
             .environmentObject(videoPlayer)

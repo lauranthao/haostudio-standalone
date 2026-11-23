@@ -82,6 +82,14 @@ let package = Package(
                 "Playback/LiveRoomSession.swift",
                 "Features/Video/VideoLibraryStore.swift",
                 "Features/Live/LiveLibraryStore.swift",
+                // S5: settings pure logic (Foundation-only) — the
+                // SettingsTests target covers it under `swift
+                // test`. The SwiftUI settings files in the same
+                // directory are NOT in AppCore (they need the app
+                // target); their tests live unwired in
+                // Tests/SettingsUITests/ until the S7 Xcode test
+                // target, same as MusicFeaturesTests.
+                "Features/My/SettingsLogic.swift",
                 "Storage",
             ],
             linkerSettings: [
@@ -129,6 +137,17 @@ let package = Package(
             name: "LiveFeaturesTests",
             dependencies: ["AppCore"],
             path: "Tests/LiveFeaturesTests"
+        ),
+        // S5: settings pure logic only (SettingsLogic.swift, the
+        // one Foundation-only file in Features/My). The iOS-only
+        // settings tests (SettingsStore / Emby / cache / My tab)
+        // live in Tests/SettingsUITests/ and stay unwired until
+        // the S7 Xcode test target — same treatment as
+        // MusicFeaturesTests / VideoPlayerTests.
+        .testTarget(
+            name: "SettingsTests",
+            dependencies: ["AppCore"],
+            path: "Tests/SettingsTests"
         ),
     ]
 )

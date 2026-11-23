@@ -1,0 +1,467 @@
+// HAo Studio 2.0 — My tab (S5-C leg).
+//
+// Profile + my entries + membership note + old-data notice +
+// settings groups (B leg). All rows are local data; there is no
+// login interface anywhere in this app, and no entry leads to a
+// page that does not exist.
+//
+// Entry wiring (counts are synchronous store reads, empty = 0):
+// - 我的歌单 → MyPlaylistsView (new, this file: no playlist-list
+//   view existed in the baseline; detail page is reused)
+// - 音乐收藏 → MusicFavouritesView (reuse)
+// - 最近播放 → MyRecentPlaysView (new, this file: no recent view
+//   existed in the baseline)
+// - 我的下载 → MusicDownloadsView (reuse)
+// - 影视收藏 → VideoFavsView (reuse)
+// - 影视历史 → VideoHistoryView (reuse)
+// - 我的关注 → LiveFollowsView (reuse; onSelect opens the room)
+// - 直播历史 → LiveHistoryView (reuse; onSelect opens the room)
+//
+// Pure helpers (MyEntryCounts / MyBackgroundColor /
+// MyBackgroundKind) are static funcs in this file so
+// SettingsTests can cover them without I/O or networking.
+
+import PhotosUI
+import SwiftUI
+import UIKit
+
+// MARK: - Entry counts (pure, unit-tested)
+
+/// The eight My-tab entry counts. Built from arrays so the
+/// counting rule itself is unit-testable; `reload()` is the only
+/// place that touches the stores.
+struct MyEntryCounts: Equatable {
+    var playlists: Int = 0
+    var favourites: Int = 0
+    var recent: Int = 0
+    var downloads: Int = 0
+    var videoFavourites: Int = 0
+    var videoHistory: Int = 0
+    var liveFollows: Int = 0
+    var liveHistory: Int = 0
+
+    static func make(
+        playlists: [UserPlaylist],
+        favourites: [MusicSong],
+        recent: [MusicSong],
+        downloads: [DownloadedSong],
+        videoFavourites: [VideoItem],
+        videoHistory: [VideoHistoryEntry],
+        liveFollows: [LiveFollowedRoom],
+        liveHistory: [LiveHistoryEntry]
+    ) -> MyEntryCounts {
+        return MyEntryCounts(
+            playlists: playlists.count,
+            favourites: favourites.count,
+            recent: recent.count,
+            downloads: downloads.count,
+            videoFavourites: videoFavourites.count,
+            videoHistory: videoHistory.count,
+            liveFollows: liveFollows.count,
+            liveHistory: liveHistory.count
+        )
+    }
+
+    /// Reload all eight counts from the stores. Every read here
+    /// is synchronous; an empty store reads as 0, never as a
+    /// placeholder number.
+    static func reload() -> MyEntryCounts {
+        return make(
+            playlists: MusicLibraryStore.getLists(),
+            favourites: MusicLibraryStore.favSongs(),
+            recent: MusicLibraryStore.getRecent(),
+            downloads: MusicLibraryStore.getDownloads(),
+            videoFavourites: VideoLibraryStore.favourites(),
+            videoHistory: VideoLibraryStore.history(),
+            liveFollows: LiveLibraryStore.follows(),
+            liveHistory: LiveLibraryStore.history()
+        )
+    }
+}
+
+// MARK: - Background (pure, unit-tested)
+
+/// Which scaffold-background layer wins.
+enum MyBackgroundKind: Equatable {
+    case wallpaper
+    case color
+    case theme
+}
+
+enum MyBackgroundColor {
+    /// Parse #RRGGBB only (a leading "#" is optional, surrounding
+    /// whitespace is ignored). Anything else is nil — an invalid
+    /// hex never paints a wrong colour.
+    static func color(fromHex hex: String) -> Color? {
+        var text = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("#") {
+            text.removeFirst()
+        }
+        guard text.count == 6 else { return nil }
+        guard let value = UInt32(text, radix: 16) else { return nil }
+        return Color(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255
+        )
+    }
+
+    /// Background priority: wallpaper (enabled + loadable) >
+    /// background colour (enabled + valid #RRGGBB) > theme
+    /// scaffold. A layer that is off or unusable falls through
+    /// to the next one; nothing here invents a colour.
+    static func kind(
+        wallpaperEnabled: Bool,
+        wallpaperAvailable: Bool,
+        bgColorEnabled: Bool,
+        bgColorHex: String
+    ) -> MyBackgroundKind {
+        if wallpaperEnabled && wallpaperAvailable {
+            return .wallpaper
+        }
+        if bgColorEnabled && color(fromHex: bgColorHex) != nil {
+            return .color
+        }
+        return .theme
+    }
+}
+
+// MARK: - My tab
+
+struct MyView: View {
+    @Environment(\.haoTheme) private var theme
+    @FocusState private var nicknameFocused: Bool
+
+    @State private var nickname: String = ProfileStore.loadNickname()
+    @State private var avatarImage: UIImage?
+    @State private var avatarPickerItem: PhotosPickerItem?
+    @State private var counts = MyEntryCounts()
+    @State private var selectedLiveRoom: LiveRoom?
+    @State private var showMembershipAlert = false
+    @State private var showMigrationNotice = MigrationStore.migrationNoticeNeeded()
+
+    var body: some View {
+        NavigationStack {
+            List {
+                profileSection
+                entriesSection
+                membershipSection
+                migrationSection
+                settingsSection
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(theme.scaffoldBackground)
+            .navigationTitle("我的")
+            .navigationDestination(item: $selectedLiveRoom) { room in
+                LiveRoomView(room: room, playlist: [room])
+            }
+            .onAppear {
+                counts = MyEntryCounts.reload()
+                avatarImage = MyView.loadAvatarImage()
+            }
+            .onChange(of: avatarPickerItem) { _, item in
+                guard let item = item else { return }
+                Task { @MainActor in
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        ProfileStore.saveAvatar(data: data)
+                        avatarImage = image
+                    }
+                    avatarPickerItem = nil
+                }
+            }
+            .onChange(of: nicknameFocused) { _, focused in
+                if !focused {
+                    saveNickname()
+                }
+            }
+            .alert("会员功能不在 2.0 范围内", isPresented: $showMembershipAlert) {
+                Button("知道了", role: .cancel) { }
+            } message: {
+                Text("会员系统不在 2.0 的范围内，后续版本再提供。")
+            }
+        }
+    }
+
+    // MARK: - Profile
+
+    private var profileSection: some View {
+        Section("个人资料") {
+            HStack(spacing: 16) {
+                PhotosPicker(selection: $avatarPickerItem, matching: .images) {
+                    avatarView
+                }
+                .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("未设置昵称", text: $nickname)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .focused($nicknameFocused)
+                        .onSubmit {
+                            saveNickname()
+                        }
+                    Text("本地账号，不登录")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+            if avatarImage != nil {
+                Button("删除头像", role: .destructive) {
+                    deleteAvatar()
+                }
+                .font(.system(size: 14))
+            }
+        }
+    }
+
+    private var avatarView: some View {
+        Group {
+            if let avatarImage = avatarImage {
+                Image(uiImage: avatarImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Circle()
+                    .fill(theme.surfaceStrong)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+            }
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(Circle())
+        .contextMenu {
+            if avatarImage != nil {
+                Button("删除头像", role: .destructive) {
+                    deleteAvatar()
+                }
+            }
+        }
+    }
+
+    private func saveNickname() {
+        let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        nickname = trimmed
+        ProfileStore.saveNickname(trimmed)
+    }
+
+    private func deleteAvatar() {
+        ProfileStore.deleteAvatar()
+        avatarImage = nil
+    }
+
+    /// The avatar file (A leg contract: Documents/profile/avatar.jpg).
+    /// Read directly so the display never depends on a stale image.
+    private static func loadAvatarImage() -> UIImage? {
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let url = documents.appendingPathComponent("profile/avatar.jpg")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    // MARK: - My entries
+
+    private var entriesSection: some View {
+        Section("我的") {
+            NavigationLink(destination: MyPlaylistsView()) {
+                entryRow(title: "我的歌单", count: counts.playlists)
+            }
+            NavigationLink(destination: MusicFavouritesView()) {
+                entryRow(title: "音乐收藏", count: counts.favourites)
+            }
+            NavigationLink(destination: MyRecentPlaysView()) {
+                entryRow(title: "最近播放", count: counts.recent)
+            }
+            NavigationLink(destination: MusicDownloadsView()) {
+                entryRow(title: "我的下载", count: counts.downloads)
+            }
+            NavigationLink(destination: VideoFavsView()) {
+                entryRow(title: "影视收藏", count: counts.videoFavourites)
+            }
+            NavigationLink(destination: VideoHistoryView()) {
+                entryRow(title: "影视历史", count: counts.videoHistory)
+            }
+            NavigationLink(destination: LiveFollowsView(onSelect: openLiveRoom)) {
+                entryRow(title: "我的关注", count: counts.liveFollows)
+            }
+            NavigationLink(destination: LiveHistoryView(onSelect: openLiveRoom)) {
+                entryRow(title: "直播历史", count: counts.liveHistory)
+            }
+        }
+    }
+
+    private func entryRow(title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(theme.textPrimary)
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 14))
+                .foregroundStyle(theme.textSecondary)
+        }
+    }
+
+    /// Enter a live room from follows/history: record history
+    /// first (same as LiveTabView.openRoom), then navigate.
+    private func openLiveRoom(_ room: LiveRoom) {
+        LiveLibraryStore.recordHistory(
+            platform: room.platform.rawValue, roomId: room.roomId,
+            title: room.title, nick: room.streamer, cover: room.cover)
+        counts = MyEntryCounts.reload()
+        selectedLiveRoom = room
+    }
+
+    // MARK: - Membership
+
+    private var membershipSection: some View {
+        Section("会员") {
+            Button(action: { showMembershipAlert = true }) {
+                HStack {
+                    Text("会员")
+                        .foregroundStyle(theme.textPrimary)
+                    Spacer()
+                    Text("会员系统不在 2.0 范围内")
+                        .font(.system(size: 13))
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Old data notice (moved verbatim from MyPlaceholderView)
+
+    @ViewBuilder
+    private var migrationSection: some View {
+        if showMigrationNotice {
+            Section("旧版数据") {
+                Text("未找到旧版数据，可从备份文件导入。")
+                    .font(.system(size: 14))
+                    .foregroundStyle(theme.textSecondary)
+                Button("不再提示") {
+                    MigrationStore.dismissMigrationNotice()
+                    showMigrationNotice = false
+                }
+                .font(.system(size: 14))
+            }
+        }
+    }
+
+    // MARK: - Settings (B leg)
+
+    private var settingsSection: some View {
+        SettingsGroupsView()
+    }
+}
+
+// MARK: - Playlist list (new: no playlist-list view existed)
+
+/// Minimal read-only playlist list. Rows open the existing
+/// MusicPlaylistDetailView; nothing here creates, renames or
+/// deletes (the detail page already owns those actions).
+private struct MyPlaylistsView: View {
+    @State private var lists: [UserPlaylist] = MusicLibraryStore.getLists()
+
+    @Environment(\.haoTheme) private var theme
+
+    var body: some View {
+        Group {
+            if lists.isEmpty {
+                MusicEmptyState(
+                    icon: "music.note.list", title: "还没有歌单",
+                    note: "在音乐里新建歌单，这里会列出来。")
+            } else {
+                List {
+                    ForEach(lists) { list in
+                        NavigationLink(destination: MusicPlaylistDetailView(listId: list.id)) {
+                            HStack(spacing: 12) {
+                                MusicCoverView(urlString: list.cover, size: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(list.name.isEmpty ? "未命名歌单" : list.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(theme.textPrimary)
+                                        .lineLimit(1)
+                                    Text("\(list.trackCount) 首")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(theme.textSecondary)
+                                }
+                            }
+                        }
+                        .listRowBackground(theme.scaffoldBackground)
+                        .listRowSeparatorTint(theme.hairline)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(theme.scaffoldBackground)
+        .navigationTitle("我的歌单")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            lists = MusicLibraryStore.getLists()
+        }
+    }
+}
+
+// MARK: - Recent plays (new: no recent view existed)
+
+/// Minimal read-only recent list. Tap plays through the shared
+/// music player view model (same as MusicFavouritesView); the
+/// store is only read, never written, here.
+private struct MyRecentPlaysView: View {
+    @EnvironmentObject private var playerVM: MusicPlayerViewModel
+
+    @State private var recent: [MusicSong] = MusicLibraryStore.getRecent()
+
+    @Environment(\.haoTheme) private var theme
+
+    var body: some View {
+        Group {
+            if recent.isEmpty {
+                MusicEmptyState(
+                    icon: "clock", title: "还没有最近播放",
+                    note: "播过的歌曲会出现在这里，点一下就能再播。")
+            } else {
+                List {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { index, song in
+                        Button(action: {
+                            playerVM.play(song: song, in: recent, startAt: index)
+                        }) {
+                            HStack(spacing: 12) {
+                                MusicCoverView(urlString: song.cover, size: 48)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(song.title.isEmpty ? "未知歌曲" : song.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(theme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(song.artist.isEmpty ? "未知歌手" : song.artist)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(theme.textSecondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(theme.scaffoldBackground)
+                        .listRowSeparatorTint(theme.hairline)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(theme.scaffoldBackground)
+        .navigationTitle("最近播放")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            recent = MusicLibraryStore.getRecent()
+        }
+    }
+}
