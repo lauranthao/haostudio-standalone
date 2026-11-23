@@ -162,6 +162,31 @@ protocol MusicPlaybackDriver: AnyObject {
     func resume()
 }
 
+/// What PlaybackCoordinator needs from the VOD player (S3). The
+/// coordinator owns mutual exclusion (rule 1) and current-item
+/// bookkeeping; the video driver owns engines (MPV / IJK / AVPlayer
+/// via PlayerKernel), episode/line state and resume. URL resolution
+/// lives inside the video driver (CMS / Emby), never in this file.
+/// VOD never follows the music quality selector and never shows a
+/// quality button (rule 3). Reuses MusicPlayerError: it is a
+/// generic player error (timeout / no URL / load / seek failed),
+/// not music-specific despite the name.
+protocol VideoPlaybackDriver: AnyObject {
+    var currentEpisode: PlaybackItem? { get }
+    var isPlaying: Bool { get }
+    /// Resolve a playable URL for an episode. `excluding` lists URLs
+    /// that already failed for this request, so the resolver hands
+    /// out the next candidate instead of repeating one.
+    var resolveURL: ((PlaybackItem, [URL], @escaping (URL?) -> Void) -> Void)? { get set }
+    var onEpisodeStarted: ((PlaybackItem) -> Void)? { get set }
+    var onEpisodeFailed: ((PlaybackItem, MusicPlayerError) -> Void)? { get set }
+    func play(item: PlaybackItem)
+    func open(item: PlaybackItem, url: URL, completion: @escaping (Result<Void, MusicPlayerError>) -> Void)
+    func stop()
+    func resume()
+    func seek(to seconds: Double, completion: @escaping (Bool) -> Void)
+}
+
 /// Single-audio coordinator. One instance for the whole app
 /// (owned by HAoStudioApp, injected as an environment object).
 @MainActor
@@ -221,6 +246,23 @@ final class PlaybackCoordinator: ObservableObject {
         }
     }
 
+    /// The VOD player driver, installed by the app entry once the
+    /// video slice exists. The coordinator only owns mutual exclusion
+    /// (rule 1) and current-item bookkeeping for VOD; URL resolution
+    /// lives inside the video driver (CMS / Emby), never in this file.
+    var vodDriver: VideoPlaybackDriver? {
+        didSet {
+            vodDriver?.onEpisodeStarted = { [weak self] item in
+                DispatchQueue.main.async { self?.currentItem = item }
+            }
+            vodDriver?.onEpisodeFailed = { [weak self] item, _ in
+                DispatchQueue.main.async {
+                    if self?.currentItem?.id == item.id { self?.currentItem = nil }
+                }
+            }
+        }
+    }
+
     static let targetQualityKey = "musicQuality"
 
     private let defaults: UserDefaults
@@ -253,7 +295,28 @@ final class PlaybackCoordinator: ObservableObject {
             currentItem = item
             return
         }
+        vodDriver?.stop()
         driver.stop()
+        driver.play(item: item)
+    }
+
+    /// Request VOD playback of an episode. The episode's
+    /// PlaybackItem id MUST be the stable resume key
+    /// (VideoResumeKey.key(title:year:) + episode name) so the
+    /// driver, history and resume all agree on identity. Stops
+    /// music first (rule 1), then lets the VOD driver resolve and
+    /// open. Tapping the episode that is already playing resumes
+    /// it instead of restarting.
+    func requestVodPlay(_ item: PlaybackItem) {
+        guard let driver = vodDriver else { return }
+        if let current = driver.currentEpisode, current.id == item.id {
+            if driver.isPlaying { return }
+            driver.resume()
+            currentItem = item
+            return
+        }
+        musicDriver?.stop()
+        currentItem = nil
         driver.play(item: item)
     }
 
@@ -262,6 +325,7 @@ final class PlaybackCoordinator: ObservableObject {
     /// current playback first).
     func stop() {
         musicDriver?.stop()
+        vodDriver?.stop()
         currentItem = nil
     }
 }

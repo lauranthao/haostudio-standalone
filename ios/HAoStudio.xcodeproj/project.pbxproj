@@ -69,6 +69,8 @@
 		000000000000000000000085 /* MusicHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000086 /* MusicHTTP.swift */; };
 		000000000000000000000087 /* MusicQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000088 /* MusicQuality.swift */; };
 		000000000000000000000089 /* MusicTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008A /* MusicTrack.swift */; };
+		0000000000000000000000E6 /* VideoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E7 /* VideoModels.swift */; };
+		0000000000000000000000E8 /* VideoServiceContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000000E9 /* VideoServiceContracts.swift */; };
 		00000000000000000000008B /* ResolverPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008C /* ResolverPolicy.swift */; };
 		00000000000000000000008D /* MusicAlbumAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000008E /* MusicAlbumAPI.swift */; };
 		00000000000000000000008F /* MusicAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000090 /* MusicAPIModels.swift */; };
@@ -164,6 +166,8 @@
 		000000000000000000000086 /* MusicHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicHTTP.swift; sourceTree = "<group>"; };
 		000000000000000000000088 /* MusicQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicQuality.swift; sourceTree = "<group>"; };
 		00000000000000000000008A /* MusicTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicTrack.swift; sourceTree = "<group>"; };
+		0000000000000000000000E7 /* VideoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoModels.swift; sourceTree = "<group>"; };
+		0000000000000000000000E9 /* VideoServiceContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoServiceContracts.swift; sourceTree = "<group>"; };
 		00000000000000000000008C /* ResolverPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolverPolicy.swift; sourceTree = "<group>"; };
 		00000000000000000000008E /* MusicAlbumAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAlbumAPI.swift; sourceTree = "<group>"; };
 		000000000000000000000090 /* MusicAPIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAPIModels.swift; sourceTree = "<group>"; };
@@ -285,6 +289,7 @@
 				00000000000000000000006F /* LXEngine */,
 				000000000000000000000071 /* MusicResolvers */,
 				000000000000000000000072 /* MusicAPI */,
+				0000000000000000000000E5 /* Video */,
 			); path = Services; sourceTree = "<group>"; };
 		00000000000000000000006F /* LXEngine */ = {isa = PBXGroup; children = (
 				000000000000000000000078 /* LXEngine.swift */,
@@ -295,6 +300,10 @@
 				000000000000000000000082 /* LXUserKeyStore.swift */,
 				000000000000000000000070 /* Scripts */,
 			); path = LXEngine; sourceTree = "<group>"; };
+		0000000000000000000000E5 /* Video */ = {isa = PBXGroup; children = (
+				0000000000000000000000E7 /* VideoModels.swift */,
+				0000000000000000000000E9 /* VideoServiceContracts.swift */,
+		); path = Video; sourceTree = "<group>"; };
 		000000000000000000000070 /* Scripts */ = {isa = PBXGroup; children = (
 				0000000000000000000000CC /* feichangdao.js */,
 				0000000000000000000000CE /* gdstudio.js */,
@@ -465,6 +474,8 @@
 				000000000000000000000085 /* MusicHTTP.swift in Sources */,
 				000000000000000000000087 /* MusicQuality.swift in Sources */,
 				000000000000000000000089 /* MusicTrack.swift in Sources */,
+				0000000000000000000000E6 /* VideoModels.swift in Sources */,
+				0000000000000000000000E8 /* VideoServiceContracts.swift in Sources */,
 				00000000000000000000008B /* ResolverPolicy.swift in Sources */,
 				00000000000000000000008D /* MusicAlbumAPI.swift in Sources */,
 				00000000000000000000008F /* MusicAPIModels.swift in Sources */,
