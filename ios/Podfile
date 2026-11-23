@@ -1,0 +1,23 @@
+# HAo Studio 2.0 — CocoaPods (S3 player slice).
+#
+# Only IJKMediaFramework: IJK (FFmpeg) is the one engine that decodes
+# FLV — AVPlayer cannot, and MPV covers the rest. One pod, static
+# linkage (vendored static framework, same as the old Swift app).
+# Platform is 17.0: the 2.0 deployment target (chen 2026-11-23),
+# not the old app's 15.0.
+#
+# Codemagic's "Install CocoaPods dependencies" step skips when there
+# is no Podfile and runs `pod install` when there is one; the build
+# step then uses HAoStudio.xcworkspace when it exists. Whether the
+# 0.1.5 tag source is still fetchable is UNVERIFIED (S0 note) — the
+# CI build is the arbiter; if it fails, the IJK backend falls back
+# to MPV/AVPlayer via the kernel ladder, it does not block the build
+# by itself.
+platform :ios, '17.0'
+
+target 'HAoStudio' do
+  # Static linkage: IJKMediaFramework is a vendored static framework.
+  use_frameworks! :linkage => :static
+
+  pod 'IJKMediaFramework', :git => 'https://github.com/lauranthao/IJKMediaFramework.git', :tag => '0.1.5'
+end
