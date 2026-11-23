@@ -1,0 +1,606 @@
+// HAo Studio 2.0 — video player tests (S3, leg A).
+//
+// iOS-only, same treatment as S2's MusicPlayerTests: NOT wired
+// into `ios/Package.swift` (this leg does not edit it). S7 wires
+// a `VideoPlayerTests` Xcode test target (run with `xcodebuild
+// test` against an iOS simulator destination, or an equivalent
+// iOS-capable run — `swift test` on a macOS runner cannot compile
+// this target: UIKit / AVFoundation). The S7 target compiles the
+// `HAoStudio/Playback` video sources directly, EXCEPT
+// `PlaybackCoordinator.swift` (owned by AppCore — build #18,
+// 2026-11-23: one source file, one target; never list a file
+// AppCore already owns), and imports AppCore for the
+// Services/Video types + coordinator contracts (Leg B adds
+// Services/Video to AppCore; no separate VideoServices target).
+//
+// The driver is driven through a fake backend and a fake
+// resolver, never real engines: the open timeout uses a short
+// injected interval, the watchdog uses an injected clock, and no
+// test waits real 4 s / 12 s / 10 s.
+
+import Foundation
+import XCTest
+
+@testable import AppCore
+
+// MARK: - Fakes
+
+/// Controllable stand-in for a VideoPlayerBackend. Open/seek
+/// behaviour is a queue: each open pops the next entry, so a test
+/// can say "AVPlayer fails, MPV succeeds".
+final class FakeVideoBackend: VideoPlayerBackend {
+    let engine: VideoEngine
+    var onEvent: ((VideoBackendEvent) -> Void)?
+    var onVideoSize: ((CGSize) -> Void)?
+
+    var isPlaying: Bool = false
+    var currentTime: Double = 0
+    var duration: Double = 100
+    var isPrepared: Bool = false
+    var playbackRate: Double = 1
+    var hardwareDecode: VideoHardwareDecodeState = .unknown
+    var rejectedOptionNames: [String] = []
+
+    var openResults: [Bool] = [true]
+    var openedURLs: [URL] = []
+    var openCount = 0
+    var shutdownCount = 0
+    var seekCalls: [Double] = []
+    /// What the seek completion reports.
+    var seekSucceeds: Bool = true
+    /// Where the playhead lands after a seek (nil: the target).
+    var seekLandsAt: Double?
+
+    init(engine: VideoEngine) {
+        self.engine = engine
+    }
+
+    var view: UIView { UIView() }
+
+    func setVideoFit(_ fit: VideoFit) {}
+
+    func open(url: URL, headers: [String: String], completion: @escaping (Bool) -> Void) {
+        openedURLs.append(url)
+        openCount += 1
+        let ok = openResults.isEmpty ? true : openResults.removeFirst()
+        isPrepared = ok
+        isPlaying = ok
+        if ok { onEvent?(.prepared) }
+        completion(ok)
+    }
+
+    func play() { isPlaying = true }
+    func pause() { isPlaying = false }
+
+    func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {
+        seekCalls.append(seconds)
+        if seekSucceeds {
+            currentTime = seekLandsAt ?? seconds
+        }
+        completion(seekSucceeds)
+    }
+
+    func shutdown() {
+        shutdownCount += 1
+        isPlaying = false
+        isPrepared = false
+    }
+}
+
+/// One fake backend per engine, in order: each `makeBackend`
+/// call pops the next fake for that engine, so a test can say
+/// "the first AVPlayer open fails, the second succeeds".
+final class FakeBackendFactory {
+    var fakes: [VideoEngine: [FakeVideoBackend]] = [:]
+
+    func makeBackend(engine: VideoEngine) -> VideoPlayerBackend {
+        if var queue = fakes[engine], !queue.isEmpty {
+            let fake = queue.removeFirst()
+            fakes[engine] = queue
+            return fake
+        }
+        return FakeVideoBackend(engine: engine)
+    }
+}
+
+/// Controllable stand-in for VideoPlayURLResolver.
+final class FakeVideoResolver: VideoPlayURLResolver {
+    var urlsToReturn: [URL?] = []
+    var receivedExcluding: [[URL]] = []
+
+    func resolvePlayURL(
+        detail: VideoDetail,
+        episode: PlayEpisode,
+        line: PlayLine,
+        excluding: [URL],
+        completion: @escaping (URL?) -> Void
+    ) {
+        receivedExcluding.append(excluding)
+        let url = urlsToReturn.isEmpty ? nil : urlsToReturn.removeFirst()
+        completion(url)
+    }
+}
+
+// MARK: - Shared fixtures
+
+func makeTestDetail() -> (detail: VideoDetail, line: PlayLine, episode: PlayEpisode) {
+    let item = VideoItem(id: "1", title: "Test Movie", coverURL: nil, year: "2024", typeName: nil, remarks: nil, sourceId: nil)
+    let episode1 = PlayEpisode(name: "第01集", url: nil, index: 0)
+    let episode2 = PlayEpisode(name: "第02集", url: nil, index: 1)
+    let line = PlayLine(name: "线路1", episodes: [episode1, episode2])
+    let detail = VideoDetail(item: item, lines: [line], meta: nil)
+    return (detail, line, episode1)
+}
+
+// MARK: - Watchdog
+
+final class VodStallWatchdogTests: XCTestCase {
+    func testWarnAt4FailAt12() {
+        let watchdog = VodStallWatchdog()
+        var now = Date()
+        watchdog.now = { now }
+        watchdog.resetForNewEpisode()
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .none)
+        now = now.addingTimeInterval(3)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .none)
+        now = now.addingTimeInterval(2)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .warn)
+        // Warn fires once per stall episode.
+        now = now.addingTimeInterval(1)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .none)
+        now = now.addingTimeInterval(7)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .failed)
+    }
+
+    func testMovementResetsClock() {
+        let watchdog = VodStallWatchdog()
+        var now = Date()
+        watchdog.now = { now }
+        watchdog.resetForNewEpisode()
+        now = now.addingTimeInterval(5)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: true), .warn)
+        XCTAssertEqual(watchdog.tick(position: 1, duration: 100, isPlaying: true), .none)
+        now = now.addingTimeInterval(5)
+        XCTAssertEqual(watchdog.tick(position: 1, duration: 100, isPlaying: true), .warn)
+    }
+
+    func testFrozenAtEndAdvancesInsteadOfFailing() {
+        let watchdog = VodStallWatchdog()
+        var now = Date()
+        watchdog.now = { now }
+        watchdog.resetForNewEpisode()
+        _ = watchdog.tick(position: 100, duration: 100, isPlaying: true)
+        now = now.addingTimeInterval(13)
+        XCTAssertEqual(watchdog.tick(position: 100, duration: 100, isPlaying: true), .atEnd)
+    }
+
+    func testPausedNeverWarns() {
+        let watchdog = VodStallWatchdog()
+        var now = Date()
+        watchdog.now = { now }
+        watchdog.resetForNewEpisode()
+        now = now.addingTimeInterval(20)
+        XCTAssertEqual(watchdog.tick(position: 0, duration: 100, isPlaying: false), .none)
+    }
+}
+
+// MARK: - Recovery ladder
+
+final class VideoRecoveryLadderTests: XCTestCase {
+    func testFirstSuccessWins() {
+        let callsBox = CallsBox()
+        let ladder = VideoRecoveryLadder(
+            engines: [.mpv, .avplayer],
+            urls: [URL(string: "https://a.b/1.mp4")!],
+            attempt: { engine, url, completion in
+                callsBox.calls.append((engine, url))
+                completion(engine == .avplayer)
+            }
+        )
+        let exp = expectation(description: "ladder completes")
+        ladder.run { winner in
+            XCTAssertEqual(winner?.0, .avplayer)
+            XCTAssertEqual(callsBox.calls.count, 2)
+            XCTAssertEqual(ladder.status, .completed)
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+    }
+
+    func testEachPairTriedOnceThenExhausted() {
+        let callsBox = CallsBox()
+        let ladder = VideoRecoveryLadder(
+            engines: [.mpv, .ijk],
+            urls: [URL(string: "https://a.b/1.mp4")!, URL(string: "https://a.b/2.mp4")!],
+            attempt: { engine, url, completion in
+                callsBox.calls.append((engine, url))
+                completion(false)
+            }
+        )
+        let exp = expectation(description: "ladder exhausts")
+        ladder.run { winner in
+            XCTAssertNil(winner)
+            XCTAssertEqual(callsBox.calls.count, 4)
+            XCTAssertEqual(ladder.status, .exhausted)
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+        // A second run tries nothing: every pair is already spent.
+        let exp2 = expectation(description: "second run exhausts at once")
+        ladder.run { winner in
+            XCTAssertNil(winner)
+            XCTAssertEqual(callsBox.calls.count, 4)
+            exp2.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+        // Healthy playback resets the budget: pairs are tryable again.
+        ladder.resetBudget()
+        let exp3 = expectation(description: "run after reset retries")
+        ladder.run { winner in
+            XCTAssertNil(winner)
+            XCTAssertEqual(callsBox.calls.count, 8)
+            exp3.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+    }
+}
+
+private final class CallsBox {
+    var calls: [(VideoEngine, URL)] = []
+}
+
+// MARK: - Gesture math + FPS math + diagnostics
+
+final class VodGestureMathTests: XCTestCase {
+    func testDoubleTapSeekSides() {
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 10, width: 300), -10)
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 290, width: 300), 10)
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 150, width: 300), 0)
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 10, width: 0), 0)
+    }
+
+    func testLongPressSpeedIsVodOnly() {
+        XCTAssertEqual(VodGestureMath.longPressSpeed(isPressing: true, isVod: true), 2.0)
+        XCTAssertNil(VodGestureMath.longPressSpeed(isPressing: true, isVod: false))
+        XCTAssertNil(VodGestureMath.longPressSpeed(isPressing: false, isVod: true))
+    }
+
+    func testGestureStateGatesLive() {
+        let state = VodGestureState()
+        state.isVod = false
+        var changed: [Bool] = []
+        state.onLongPressSpeedChanged = { changed.append($0) }
+        state.longPressBegan()
+        XCTAssertFalse(state.isLongPressSpeeding)
+        XCTAssertTrue(changed.isEmpty)
+        state.isVod = true
+        state.longPressBegan()
+        XCTAssertTrue(state.isLongPressSpeeding)
+        XCTAssertEqual(changed, [true])
+        state.longPressEnded()
+        XCTAssertFalse(state.isLongPressSpeeding)
+        XCTAssertEqual(changed, [true, false])
+    }
+}
+
+final class VideoFpsMathTests: XCTestCase {
+    func testFps() {
+        XCTAssertEqual(VideoFpsMath.fps(frameCount: 60, over: 1.0), 60)
+        XCTAssertEqual(VideoFpsMath.fps(frameCount: 30, over: 0.5), 60)
+        XCTAssertEqual(VideoFpsMath.fps(frameCount: 0, over: 0), 0)
+    }
+
+    func testDroppedFrames() {
+        // 60 fps expected interval is 1/60; an interval over 1.5x
+        // counts as a dropped frame.
+        XCTAssertEqual(VideoFpsMath.droppedFrames(intervals: [1.0 / 60, 1.0 / 60], expectedInterval: 1.0 / 60), 0)
+        XCTAssertEqual(VideoFpsMath.droppedFrames(intervals: [1.0 / 60, 0.05], expectedInterval: 1.0 / 60), 1)
+    }
+}
+
+final class VideoDiagnosticsTests: XCTestCase {
+    func testHardwareDecodeLabels() {
+        XCTAssertEqual(VideoHardwareDecodeState.software.label, "软解中")
+        XCTAssertTrue(VideoHardwareDecodeState.software.isSoftware)
+        XCTAssertFalse(VideoHardwareDecodeState.hardware(decoder: "videotoolbox").isSoftware)
+        XCTAssertTrue(VideoHardwareDecodeState.hardware(decoder: "videotoolbox").isVerifiedHardware)
+        XCTAssertFalse(VideoHardwareDecodeState.assumedHardware(decoder: "videotoolbox").isVerifiedHardware)
+        XCTAssertTrue(VideoHardwareDecodeState.assumedHardware(decoder: "videotoolbox").label.contains("未验证"))
+    }
+
+    func testSummarySpellsOutSoftwareDecode() {
+        let diag = VideoPlaybackDiagnostics(
+            engine: .mpv, hardwareDecode: .software, rejectedOptionNames: ["framedrop"],
+            fps: 24, droppedFrames: 2, facts: nil, fellBackForSoftwareDecode: false
+        )
+        XCTAssertTrue(diag.summaryLine.contains("软解中"))
+        XCTAssertTrue(diag.detailLines.contains { $0.contains("被拒属性") })
+        let fellBack = VideoPlaybackDiagnostics(
+            engine: .avplayer, hardwareDecode: .hardware(decoder: "VideoToolbox"),
+            rejectedOptionNames: [], fps: 60, droppedFrames: 0, facts: nil, fellBackForSoftwareDecode: true
+        )
+        XCTAssertTrue(fellBack.summaryLine.contains("已切系统播放器"))
+    }
+
+    func testDanmakuColorParsing() {
+        // Color has no Equatable conformance, so this is a smoke
+        // test: every input (empty, malformed, valid) must parse
+        // without crashing and return a colour.
+        _ = Color.danmakuColor(hex: "")
+        _ = Color.danmakuColor(hex: "zzz")
+        _ = Color.danmakuColor(hex: "ff0000")
+        _ = Color.danmakuColor(hex: "00ff00")
+    }
+}
+
+// MARK: - Danmaku layer state
+
+/// Controllable stand-in for VodDanmakuProvider.
+final class FakeDanmakuProvider: VodDanmakuProvider {
+    var items: [DanmakuItem]
+
+    init(items: [DanmakuItem]) {
+        self.items = items
+    }
+
+    func fetchDanmaku(for episode: PlayEpisode, completion: @escaping ([DanmakuItem]) -> Void) {
+        completion(items)
+    }
+}
+
+final class VodDanmakuLayerStateTests: XCTestCase {
+    func testLoadWithNilProviderLeavesEmpty() {
+        let state = VodDanmakuLayerState()
+        state.load(for: PlayEpisode(name: "第01集", url: nil, index: 0), provider: nil)
+        XCTAssertTrue(state.items.isEmpty)
+        XCTAssertTrue(state.visibleItems(at: 10).isEmpty)
+    }
+
+    func testVisibleWindow() {
+        let state = VodDanmakuLayerState()
+        let provider = FakeDanmakuProvider(items: [
+            DanmakuItem(text: "scrolling fresh", timeSeconds: 10, colorHex: "", isTop: false),
+            DanmakuItem(text: "scrolling stale", timeSeconds: 2, colorHex: "", isTop: false),
+            DanmakuItem(text: "top fresh", timeSeconds: 10, colorHex: "", isTop: true),
+            DanmakuItem(text: "top stale", timeSeconds: 5, colorHex: "", isTop: true),
+        ])
+        state.load(for: PlayEpisode(name: "第01集", url: nil, index: 0), provider: provider)
+        let checked = expectation(description: "items loaded")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let visible = state.visibleItems(at: 12).map { $0.item.text }
+            XCTAssertTrue(visible.contains("scrolling fresh"))
+            XCTAssertFalse(visible.contains("scrolling stale"))
+            XCTAssertTrue(visible.contains("top fresh"))
+            XCTAssertFalse(visible.contains("top stale"))
+            checked.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+    }
+
+    func testReloadingSameEpisodeIsNoop() {
+        let state = VodDanmakuLayerState()
+        let provider = FakeDanmakuProvider(items: [
+            DanmakuItem(text: "one", timeSeconds: 1, colorHex: "", isTop: false),
+        ])
+        let episode = PlayEpisode(name: "第01集", url: nil, index: 0)
+        state.load(for: episode, provider: provider)
+        state.load(for: episode, provider: provider)
+        let checked = expectation(description: "items loaded once")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            XCTAssertEqual(state.items.count, 1)
+            checked.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+    }
+}
+
+// MARK: - Driver with fakes
+
+final class VideoDriverTests: XCTestCase {
+    private func makeDriver(
+        factory: FakeBackendFactory,
+        resolver: FakeVideoResolver
+    ) -> VideoDriver {
+        let driver = VideoDriver()
+        driver.makeBackend = { factory.makeBackend(engine: $0) }
+        driver.playURLResolver = resolver
+        driver.openTimeoutInterval = 5
+        return driver
+    }
+
+    func testPlayStartsEpisode() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let resolver = FakeVideoResolver()
+        let url = URL(string: "https://a.b/movie.mp4")!
+        resolver.urlsToReturn = [url]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEpisode?.id, VideoResumeKey.episodeId(title: "Test Movie", year: "2024", episodeName: "第01集"))
+        XCTAssertEqual(driver.currentEngine, .avplayer)
+        XCTAssertTrue(driver.isPlaying)
+    }
+
+    func testEngineFallbackOnOpenFailure() {
+        // MP4: candidates are AVPlayer, MPV, IJK. AVPlayer fails,
+        // MPV succeeds — the driver plays on MPV, never an error.
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let failingAV = FakeVideoBackend(engine: .avplayer)
+        failingAV.openResults = [false]
+        let goodMPV = FakeVideoBackend(engine: .mpv)
+        factory.fakes = [.avplayer: [failingAV], .mpv: [goodMPV]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started on MPV")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .mpv)
+        XCTAssertEqual(failingAV.openCount, 1)
+        XCTAssertEqual(goodMPV.openCount, 1)
+        XCTAssertEqual(goodMPV.shutdownCount, 0)
+        XCTAssertEqual(failingAV.shutdownCount, 1)
+    }
+
+    func testFailedURLIsNeverRetried() {
+        // The first URL fails on every engine; the fallback resolve
+        // must receive it in `excluding` and hand out a fresh URL.
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let deadURL = URL(string: "https://a.b/dead.mp4")!
+        let freshURL = URL(string: "https://a.b/fresh.mp4")!
+        // Every backend fails the dead URL (all three engines).
+        for engine in VideoEngine.allCases {
+            let fake = FakeVideoBackend(engine: engine)
+            fake.openResults = [false]
+            factory.fakes[engine] = [fake]
+        }
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [deadURL, freshURL]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started on fresh URL")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(resolver.receivedExcluding.count, 2)
+        XCTAssertEqual(resolver.receivedExcluding[1], [deadURL])
+    }
+
+    func testSoftwareDecodeFallsBackToAVPlayer() {
+        // 4K HEVC MP4: AVPlayer fails transiently, MPV opens but
+        // reads back software decode -> the driver reopens on
+        // AVPlayer at the same position.
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let failingAV = FakeVideoBackend(engine: .avplayer)
+        failingAV.openResults = [false]
+        let softMPV = FakeVideoBackend(engine: .mpv)
+        softMPV.hardwareDecode = .software
+        let goodAV = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [failingAV, goodAV], .mpv: [softMPV]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4?hao_container=mp4&hao_vcodec=hevc&hao_width=3840&hao_height=2160")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started on AVPlayer after fallback")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .avplayer)
+        XCTAssertTrue(driver.diagnostics.fellBackForSoftwareDecode)
+        XCTAssertEqual(goodAV.openCount, 1)
+        XCTAssertEqual(softMPV.shutdownCount, 1)
+    }
+
+    func testSoftwareDecodeOfMkvStaysPutAndIsLabelled() {
+        // 4K HEVC MKV: MPV opens soft, but AVPlayer cannot play
+        // MKV — the driver stays on MPV and labels it "软解中".
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let softMPV = FakeVideoBackend(engine: .mpv)
+        softMPV.hardwareDecode = .software
+        factory.fakes = [.mpv: [softMPV]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mkv?hao_container=mkv&hao_vcodec=hevc&hao_width=3840&hao_height=2160")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started on MPV")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .mpv)
+        XCTAssertFalse(driver.diagnostics.fellBackForSoftwareDecode)
+        XCTAssertTrue(driver.diagnostics.hardwareDecode.isSoftware)
+        XCTAssertTrue(driver.diagnostics.summaryLine.contains("软解中"))
+    }
+
+    func testSeekFailureRollsBackToActualPosition() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let backend = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [backend]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        backend.currentTime = 5
+        backend.seekSucceeds = false
+        let seekDone = expectation(description: "seek reports failure")
+        driver.seek(to: 30) { ok in
+            XCTAssertFalse(ok)
+            seekDone.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.position, 5)
+    }
+
+    func testStopSavesBreakpoint() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let backend = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [backend]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        // Simulate playback progress through the position timer.
+        backend.currentTime = 120
+        let saved = expectation(description: "breakpoint saved")
+        driver.onBreakpointSaved = { info in
+            XCTAssertEqual(info.episodeName, "第01集")
+            XCTAssertEqual(info.episodeIndex, 0)
+            XCTAssertEqual(info.positionSeconds, 120, accuracy: 1)
+            XCTAssertEqual(info.key, "Test Movie-2024")
+            saved.fulfill()
+        }
+        // The 0.5 s position timer publishes the backend position.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            driver.stop()
+        }
+        waitForExpectations(timeout: 3)
+        XCTAssertNil(driver.currentEpisode)
+    }
+
+    func testLineSwitchKeepsPosition() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let backend = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [backend]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [
+            URL(string: "https://a.b/movie.mp4")!,
+            URL(string: "https://a.b/movie-line2.mp4")!,
+        ]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        // Move to 60 s (seek succeeds on the fake), then switch line:
+        // the new open must resume at 60, not from 0.
+        let sought = expectation(description: "seek landed")
+        driver.seek(to: 60) { ok in
+            XCTAssertTrue(ok)
+            sought.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+        let line2 = PlayLine(name: "线路2", episodes: line.episodes)
+        driver.switchLine(to: line2)
+        // The resume seek on the new backend targets ~60.
+        let resumed = expectation(description: "resumed on new line")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            XCTAssertTrue(backend.seekCalls.contains { abs($0 - 60) <= 2.0 })
+            resumed.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+    }
+}
