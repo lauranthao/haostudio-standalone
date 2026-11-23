@@ -54,6 +54,25 @@ protocol VideoPlayerEngine: AnyObject {
     func pause()
     func resume()
     func stop()
+    /// S7 wiring: the 影视播放器 settings the core applies.
+    /// Enhancement / subtitle appearance take effect live and
+    /// are kept for the next open; `setAudioOnly` drops the video
+    /// track (MPV only — other engines no-op);
+    /// `reopenAtCurrentPosition` reopens a DV-P8 stream at its
+    /// position when the downgrade switch flipped (false when
+    /// nothing changed routing, so the caller reopens nothing).
+    func applyVodEnhancement(_ branch: VodEnhancementBranch?)
+    func setSubtitleAppearance(_ appearance: VodSubtitleAppearance)
+    func setAudioOnly(_ audioOnly: Bool)
+    @discardableResult
+    func reopenAtCurrentPosition() -> Bool
+    /// Re-open the current episode at its current position (the
+    /// low-memory mode change path — the mpv property set is fixed
+    /// at open). No-op when nothing is open. (Named
+    /// `reopenEpisodeAtCurrentPosition`, not
+    /// `reopenAtCurrentPosition`: A leg owns the latter name on the
+    /// driver for DV-P8 routing only.)
+    func reopenEpisodeAtCurrentPosition()
 }
 
 @MainActor
@@ -85,8 +104,29 @@ final class VideoPlayerViewModel: ObservableObject {
     private var didAutoAdvance = false
     private var lastSavedPosition = 0.0
 
-    init(coordinator: PlaybackCoordinator) {
+    /// Skip-intro state (S7 wiring). The pill label is published
+    /// for the view; the pure state machine owns the countdown and
+    /// the once-per-episode auto flags.
+    private var skipState = VodSkipIntroState()
+    private var skipEpisodeIdentity: String?
+    @Published private(set) var skipIntroPill: String?
+    @Published private(set) var skipCreditsPill = false
+
+    /// The shared settings store (S7 wiring). Nil in tests that
+    /// construct the view model without one — every read below
+    /// falls back to the Flutter default, so behaviour is
+    /// identical with or without it.
+    private let appSettings: SettingsStore?
+
+    /// The driver behind the engine (or the coordinator's when
+    /// the engine is not attached yet — same object).
+    private var vodDriver: VideoDriver? {
+        (engine as? VideoDriver) ?? (coordinator.vodDriver as? VideoDriver)
+    }
+
+    init(coordinator: PlaybackCoordinator, settings: SettingsStore? = nil) {
         self.coordinator = coordinator
+        self.appSettings = settings
     }
 
     deinit {
@@ -119,11 +159,89 @@ final class VideoPlayerViewModel: ObservableObject {
     /// — A-leg known gap), so those two rows persist only.
     func applySettings() {
         settings.persist()
+        pushVodSettingsToDriver()
         guard let engine = engine else { return }
         engine.setSpeed(settings.playbackSpeed)
         engine.setVideoFit(settings.videoFit)
         danmaku.isEnabled = settings.danmakuEnabled
         danmaku.opacity = settings.danmakuOpacity
+    }
+
+    /// Push the 影视播放器 settings into the driver (S7 wiring).
+    /// Called on engine attach (via applySettings) and on open, so
+    /// a value changed while the player was closed still lands
+    /// before the first frame. The driver stores them and applies
+    /// to the backend live + at every open.
+    func pushVodSettingsToDriver() {
+        pushDvP8ToDriver()
+        pushEnhancementToDriver()
+        pushSubtitleAppearanceToDriver()
+    }
+
+    private func pushDvP8ToDriver() {
+        let value = appSettings?.dvP8Downgrade ?? true
+        lastAppliedDvP8Downgrade = value
+        vodDriver?.dvP8Downgrade = value
+    }
+
+    private func pushEnhancementToDriver() {
+        let branch = resolveVodEnhancement(
+            superResolution: appSettings?.superResolution ?? false,
+            interpolation: appSettings?.interpolation ?? false,
+            sdrToHdr: appSettings?.sdrToHDR ?? false
+        )
+        vodDriver?.applyVodEnhancement(branch)
+    }
+
+    private func pushSubtitleAppearanceToDriver() {
+        let appearance = VodSubtitleAppearance.forTiers(
+            fontSize: appSettings?.subtitleFontSize ?? "medium",
+            color: appSettings?.subtitleColor ?? "white",
+            position: appSettings?.subtitlePosition ?? "bottom"
+        )
+        vodDriver?.setSubtitleAppearance(appearance)
+    }
+
+    /// Last DV-P8 value pushed to the driver. The settings page
+    /// can flip it while the player is open; the view calls this
+    /// on change (Flutter `_onPlaybackSettingsChanged` parity:
+    /// only an AVPlayer-backed P8 stream reopens — on MPV/IJK the
+    /// switch changes no decode parameter, so no re-open).
+    private var lastAppliedDvP8Downgrade = true
+
+    func applyDvP8DowngradeIfChanged() {
+        let current = appSettings?.dvP8Downgrade ?? true
+        guard current != lastAppliedDvP8Downgrade else { return }
+        lastAppliedDvP8Downgrade = current
+        vodDriver?.dvP8Downgrade = current
+        _ = vodDriver?.reopenAtCurrentPosition()
+    }
+
+    /// Double-tap seek (S7 wiring): left third back, right third
+    /// forward by the persisted step; middle third is not a seek.
+    /// The step comes from the caller (the view reads the live
+    /// setting), so a settings change applies to the next
+    /// double-tap without reattaching the engine.
+    func doubleTapSeek(atX x: CGFloat, width: CGFloat, seconds: Int) {
+        let delta = VodGestureMath.seekDelta(x: x, width: width, seconds: Double(seconds))
+        guard delta != 0 else { return }
+        let target = resolveDoubleTapSeek(position: position, duration: duration, forward: delta > 0, seconds: abs(delta))
+        seek(to: target)
+    }
+
+    /// Re-open the current episode at its position (low-memory mode
+    /// change while playing — Flutter
+    /// native_video_player_page._reopenAtCurrentPosition). The
+    /// engine path re-opens through the driver; the seam path (no
+    /// engine attached) goes through the driver's own reopen, whose
+    /// context was set by open(). No-op when no episode is open.
+    func reopenEpisodeAtCurrentPosition() {
+        guard detail != nil, currentEpisode != nil else { return }
+        if let engine = engine {
+            engine.reopenEpisodeAtCurrentPosition()
+        } else {
+            (coordinator.vodDriver as? VideoDriver)?.reopenEpisodeAtCurrentPosition()
+        }
     }
 
     /// Seam path only (engine not attached): the driver's resolver
@@ -179,6 +297,12 @@ final class VideoPlayerViewModel: ObservableObject {
         // layer no-ops on a re-load of the same episode.
         danmakuProvider = VodDanmakuClient(title: detail.item.title, year: detail.item.year ?? "")
         danmaku.load(for: episode, provider: danmakuProvider)
+        // S7 wiring: the 影视播放器 settings land before the first
+        // frame (the driver stores them and applies at open).
+        pushVodSettingsToDriver()
+        skipIntroPill = nil
+        skipCreditsPill = false
+        skipEpisodeIdentity = nil
         if let engine = engine {
             engine.play(
                 detail: detail, lineIndex: lineIndex, episodeIndex: episodeIndex,
@@ -210,6 +334,8 @@ final class VideoPlayerViewModel: ObservableObject {
         episodeIndex = index
         didAutoAdvance = false
         position = 0
+        skipIntroPill = nil
+        skipCreditsPill = false
         if let engine = engine {
             engine.playEpisode(lineIndex: lineIndex, episodeIndex: index, startPositionSeconds: 0)
         } else if let episode = currentEpisode, let line = currentLine {
@@ -354,6 +480,105 @@ final class VideoPlayerViewModel: ObservableObject {
                 playNextEpisode()
             }
         }
+        // Skip-intro / skip-credits check (S7 wiring, every tick).
+        checkSkipPoints()
+    }
+
+    /// One skip check, driven by the position poll (every 0.5 s).
+    /// The mode is read live from SettingsStore, so a settings
+    /// change applies to the episode already playing. The window
+    /// resolves once per episode (Emby chapter markers, else the
+    /// per-episode custom seconds).
+    private func checkSkipPoints() {
+        guard let episode = currentEpisode, let detail = detail else {
+            skipIntroPill = nil
+            skipCreditsPill = false
+            return
+        }
+        let identity = "\(lineIndex)-\(episodeIndex)-\(episode.name)"
+        if identity != skipEpisodeIdentity {
+            skipEpisodeIdentity = identity
+            skipState.resetForEpisode(window: skipWindow(for: detail, episode: episode), creditsStart: episode.creditsStart)
+        }
+        let mode = VodSkipIntroMode.fromStored(appSettings?.skipIntroMode ?? "off")
+        let action = skipState.check(position: position, duration: duration, mode: mode, isPlaying: isPlaying, elapsed: 0.5)
+        switch action {
+        case .none:
+            skipIntroPill = nil
+            skipCreditsPill = false
+        case .showIntroPill(let countdown):
+            if let countdown = countdown {
+                skipIntroPill = "跳过片头 \(countdown)s"
+            } else {
+                skipIntroPill = "跳过片头"
+            }
+            skipCreditsPill = false
+        case .skipIntro(let target):
+            skipIntroPill = nil
+            skipCreditsPill = false
+            seek(to: target)
+        case .showCreditsPill:
+            skipCreditsPill = true
+        case .advanceNextEpisode:
+            skipIntroPill = nil
+            skipCreditsPill = false
+            advanceToNextEpisodeForCredits()
+        }
+    }
+
+    /// Resolve one episode's intro window: Emby chapter markers
+    /// first, else the per-episode custom seconds (CMS).
+    private func skipWindow(for detail: VideoDetail, episode: PlayEpisode) -> VodSkipWindow? {
+        let custom = VodSkipIntroDurations.customSeconds(title: detail.item.title, episodeName: episode.name)
+        return resolveIntroWindow(introStart: episode.introStart, introEnd: episode.introEnd, customSeconds: custom)
+    }
+
+    /// The intro pill tap: seek to the end of the intro window now.
+    func skipIntroNow() {
+        guard let episode = currentEpisode, let detail = detail,
+              let window = skipWindow(for: detail, episode: episode) else { return }
+        skipIntroPill = nil
+        seek(to: window.end)
+    }
+
+    /// The credits pill tap: advance when there is a next episode,
+    /// else let the episode play out to its natural end (no end
+    /// card is forced here).
+    func skipCreditsNow() {
+        skipCreditsPill = false
+        advanceToNextEpisodeForCredits()
+    }
+
+    private func advanceToNextEpisodeForCredits() {
+        guard hasNextEpisode else { return }
+        playNextEpisode()
+    }
+
+    /// App backgrounded (S7 wiring, Flutter lifecycle parity):
+    /// audio-only on → drop to audio-only and keep playing; off →
+    /// pause (and stay paused on return — never surprise audio,
+    /// never background data burn). No engine attached, no-op.
+    func handleBackground() {
+        guard let engine = engine else { return }
+        if appSettings?.audioOnlyBackground ?? false {
+            engine.setAudioOnly(true)
+            return
+        }
+        if isPlaying {
+            engine.pause()
+            isPlaying = false
+        }
+    }
+
+    /// App foregrounded: restore the video track when the
+    /// audio-only switch is on (playback never stopped); when it
+    /// is off and the background paused us, stay paused — the user
+    /// resumes with the play button.
+    func handleForeground() {
+        guard let engine = engine else { return }
+        if appSettings?.audioOnlyBackground ?? false {
+            engine.setAudioOnly(false)
+        }
     }
 
     private func saveCurrentPosition() {
@@ -378,6 +603,7 @@ final class VideoPlayerViewModel: ObservableObject {
 struct VideoPlayerView: View {
     @EnvironmentObject private var videoPlayer: VideoPlayerViewModel
     @EnvironmentObject private var coordinator: PlaybackCoordinator
+    @EnvironmentObject private var settingsStore: SettingsStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var controlsVisible = true
@@ -405,6 +631,22 @@ struct VideoPlayerView: View {
                 .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
                     videoPlayer.setDoubleSpeed(pressing)
                 }, perform: {})
+                // S7 wiring: double-tap seek (left third back,
+                // right third forward, middle third no seek — the
+                // two single taps underneath toggle the controls
+                // twice, i.e. net zero, so a middle double-tap is
+                // a no-op like Flutter's). The step is read live
+                // from SettingsStore. Simultaneous so the existing
+                // tap / long-press behaviour is untouched.
+                .simultaneousGesture(
+                    SpatialTapGesture(count: 2).onEnded { value in
+                        videoPlayer.doubleTapSeek(
+                            atX: value.location.x,
+                            width: UIScreen.main.bounds.width,
+                            seconds: settingsStore.doubleTapSeconds
+                        )
+                    }
+                )
             if controlsVisible {
                 VStack(spacing: 0) {
                     topBar
@@ -437,6 +679,35 @@ struct VideoPlayerView: View {
                         }
                 }
             }
+            // S7 wiring: skip-intro / skip-credits pills. Shown
+            // regardless of controlsVisible — the auto3s countdown
+            // is time-sensitive, and a tap seeks at once.
+            if videoPlayer.skipIntroPill != nil || videoPlayer.skipCreditsPill {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        if let pill = videoPlayer.skipIntroPill {
+                            Button(pill) { videoPlayer.skipIntroNow() }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.7), in: Capsule())
+                                .buttonStyle(.plain)
+                        }
+                        if videoPlayer.skipCreditsPill {
+                            Button("跳过片尾") { videoPlayer.skipCreditsNow() }
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.black.opacity(0.7), in: Capsule())
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.bottom, 120)
+                }
+            }
         }
         .onAppear {
             VideoOrientation.lockLandscape()
@@ -457,6 +728,39 @@ struct VideoPlayerView: View {
         }
         .onChange(of: videoPlayer.settings) { _, _ in
             videoPlayer.applySettings()
+        }
+        // S7 wiring: the 影视播放器 settings apply live to the
+        // episode already playing (no restart, no re-open —
+        // except the DV-P8 switch, which reopens an
+        // AVPlayer-backed P8 stream at its position).
+        .onChange(of: settingsStore.subtitleFontSize) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.subtitleColor) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.subtitlePosition) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.superResolution) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.interpolation) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.sdrToHDR) { _, _ in
+            videoPlayer.applySettings()
+        }
+        .onChange(of: settingsStore.dvP8Downgrade) { _, _ in
+            videoPlayer.applyDvP8DowngradeIfChanged()
+        }
+        .onChange(of: settingsStore.lowMemoryMode) { _, _ in
+            // Wiring leg B: the mpv property set is fixed at open,
+            // so a mode change while an episode is playing re-opens
+            // it at its position (Flutter's player-page listener).
+            // Fires only while this view is mounted; a change made
+            // while no episode is open applies at the next open.
+            videoPlayer.reopenEpisodeAtCurrentPosition()
         }
         .statusBarHidden(true)
     }

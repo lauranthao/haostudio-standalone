@@ -946,7 +946,7 @@ final class NativeMusicPlayer: NSObject, ObservableObject, MusicPlaybackDriver {
         engineBRef.onTimeUpdate = { [weak self] pos, dur in self?.handleTimeUpdate(pos: pos, duration: dur, engine: engineBRef) }
         equalizer.onLoudnessMeasured = { [weak self] key, lufs in self?.noteMeasuredLoudness(key, lufs) }
         loadLoudnessCache()
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+        applyMixWithOthers(defaults.bool(forKey: SettingsStore.mixWithOthersKey))
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
         ) { [weak self] note in self?.handleInterruption(note) }
@@ -961,6 +961,20 @@ final class NativeMusicPlayer: NSObject, ObservableObject, MusicPlaybackDriver {
     }
 
     // MARK: - Helpers
+
+    /// Apply the "与其他音频同时播放" preference to the audio
+    /// session (Flutter `AvMusicPlayer.applyMixWithOthers`):
+    /// category .playback, mode .default, [.mixWithOthers] when
+    /// on, no options when off, then setActive(true). Called at
+    /// init with the stored value and from the settings toggle,
+    /// so a change takes effect on the playing track — no restart.
+    /// Music-player only, like Flutter: the video / live drivers
+    /// set their own session when they open.
+    func applyMixWithOthers(_ mix: Bool) {
+        let options: AVAudioSession.CategoryOptions = mix ? [.mixWithOthers] : []
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: options)
+        try? AVAudioSession.sharedInstance().setActive(true, options: [])
+    }
 
     private func ensureMain(_ work: @escaping () -> Void) {
         if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }

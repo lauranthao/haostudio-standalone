@@ -144,6 +144,23 @@ final class MusicPlayerViewModel: ObservableObject {
                 loadLyrics(for: song, fetchIfMissing: false)
             }
         }
+        // Auto-resume (wiring leg B; Flutter
+        // music_player_controller onInit): when the "启动时自动播放
+        // 上次歌曲" switch is on, start the restored queue at its
+        // restored index once per launch. Deferred to the next
+        // runloop turn (Flutter's post-frame callback) so init
+        // finishes before playback starts. The resume POSITION is
+        // NOT applied: Swift never saves the kill-time position
+        // (MusicLibraryStore.saveResume has no writer), so the
+        // track starts at 0 — see the wiring report.
+        if AutoResumeDecision.resumeIndex(
+            autoResumeEnabled: UserDefaults.standard.bool(forKey: SettingsStore.autoResumeKey),
+            queueCount: queue.tracks.count,
+            currentIndex: queue.index) != nil {
+            DispatchQueue.main.async { [weak self] in
+                self?.startPlayback()
+            }
+        }
         observePlayer()
         observeCoordinator()
         // Sleep wall-clock deadline, second net (S7-A): the 1 s

@@ -245,7 +245,7 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(subtitlePosition, forKey: Self.subtitlePositionKey) }
     }
 
-    /// Low-memory mode: "auto" / "on" / "off" (Flutter
+    /// Low-memory mode: "auto" / "always" / "never" (Flutter
     /// `LowMemoryMode`, default "auto").
     @Published var lowMemoryMode: String {
         didSet { defaults.set(lowMemoryMode, forKey: Self.lowMemoryModeKey) }
@@ -432,7 +432,7 @@ final class SettingsStore: ObservableObject {
         self.subtitlePosition = defaults.string(forKey: Self.subtitlePositionKey) ?? "bottom"
         self.lowMemoryMode = defaults.string(forKey: Self.lowMemoryModeKey) ?? "auto"
 
-        self.cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: false)
+        self.cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: true)
 
         self.wallpaperEnabled = SettingsStore.boolValue(defaults, key: Self.wallpaperEnabledKey, default: false)
         self.wallpaperCurrent = defaults.string(forKey: Self.wallpaperCurrentKey) ?? ""
@@ -494,7 +494,7 @@ final class SettingsStore: ObservableObject {
         subtitlePosition = defaults.string(forKey: Self.subtitlePositionKey) ?? "bottom"
         lowMemoryMode = defaults.string(forKey: Self.lowMemoryModeKey) ?? "auto"
 
-        cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: false)
+        cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: true)
 
         wallpaperEnabled = SettingsStore.boolValue(defaults, key: Self.wallpaperEnabledKey, default: false)
         wallpaperCurrent = defaults.string(forKey: Self.wallpaperCurrentKey) ?? ""

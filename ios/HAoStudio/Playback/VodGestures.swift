@@ -36,19 +36,21 @@ enum VodGestureConfig {
 
 /// Pure gesture math, so tests can drive it without a view.
 /// `seekDelta` is the signed seek for a double-tap at `x` in a
-/// view of `width`: left third -10 s, right third +10 s, middle 0
+/// view of `width`: left third -N s, right third +N s, middle 0
 /// (middle double-tap is not a seek — it falls through to the
-/// single-tap control toggle). `longPressSpeed` is 2.0 only when
+/// single-tap control toggle). N is the persisted double-tap step
+/// (SettingsStore.doubleTapSeconds, default 10 — Flutter
+/// `vodDoubleTapSeekSeconds`). `longPressSpeed` is 2.0 only when
 /// the press is held AND the player is VOD; anything else is nil
 /// (no speed change).
 enum VodGestureMath {
-    static func seekDelta(x: CGFloat, width: CGFloat) -> Double {
+    static func seekDelta(x: CGFloat, width: CGFloat, seconds: Double = VodGestureConfig.doubleTapSeekSeconds) -> Double {
         guard width > 0 else { return 0 }
         if x < width * VodGestureConfig.sideTapFraction {
-            return -VodGestureConfig.doubleTapSeekSeconds
+            return -seconds
         }
         if x > width * (1 - VodGestureConfig.sideTapFraction) {
-            return VodGestureConfig.doubleTapSeekSeconds
+            return seconds
         }
         return 0
     }

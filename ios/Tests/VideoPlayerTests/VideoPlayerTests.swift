@@ -601,3 +601,244 @@ final class VideoDriverTests: XCTestCase {
         waitForExpectations(timeout: 2)
     }
 }
+
+// MARK: - S7 wiring: VOD settings (leg A)
+
+/// Controllable stand-in for a backend WITH the VOD wiring
+/// capabilities (the MPV shape): records subtitle appearance,
+/// enhancement branch and audio-only calls so the driver tests
+/// can assert forwarding without a real engine.
+final class CapableFakeBackend: VideoPlayerBackend, VodSubtitleAppearanceCapable, VodEnhancementCapable, LiveAudioOnlyCapable {
+    let engine: VideoEngine
+    var onEvent: ((VideoBackendEvent) -> Void)?
+    var onVideoSize: ((CGSize) -> Void)?
+
+    var isPlaying: Bool = false
+    var currentTime: Double = 0
+    var duration: Double = 100
+    var isPrepared: Bool = false
+    var playbackRate: Double = 1
+    var hardwareDecode: VideoHardwareDecodeState = .unknown
+    var rejectedOptionNames: [String] = []
+
+    var subtitleCalls: [VodSubtitleAppearance] = []
+    var enhancementCalls: [VodEnhancementBranch?] = []
+    var audioOnlyCalls: [Bool] = []
+
+    init(engine: VideoEngine) {
+        self.engine = engine
+    }
+
+    var view: UIView { UIView() }
+
+    func setVideoFit(_ fit: VideoFit) {}
+
+    func open(url: URL, headers: [String: String], completion: @escaping (Bool) -> Void) {
+        isPrepared = true
+        isPlaying = true
+        onEvent?(.prepared)
+        completion(true)
+    }
+
+    func play() { isPlaying = true }
+    func pause() { isPlaying = false }
+
+    func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {
+        currentTime = seconds
+        completion(true)
+    }
+
+    func shutdown() {
+        isPlaying = false
+        isPrepared = false
+    }
+
+    func setSubtitleAppearance(fontSize: Int, color: String, position: Double) {
+        subtitleCalls.append(VodSubtitleAppearance(fontSize: fontSize, color: color, position: position))
+    }
+
+    func setVodEnhancement(_ branch: VodEnhancementBranch?) {
+        enhancementCalls.append(branch)
+    }
+
+    func setAudioOnly(_ audioOnly: Bool) {
+        audioOnlyCalls.append(audioOnly)
+    }
+}
+
+final class VodWiringDriverTests: XCTestCase {
+    private func makeDriver(
+        factory: FakeBackendFactory,
+        resolver: FakeVideoResolver
+    ) -> VideoDriver {
+        let driver = VideoDriver()
+        driver.makeBackend = { factory.makeBackend(engine: $0) }
+        driver.playURLResolver = resolver
+        driver.openTimeoutInterval = 5
+        return driver
+    }
+
+    /// Dolby Vision profile 8 in an Apple container (Emby
+    /// `hao_*` markers), the only stream the DV-P8 switch routes.
+    private func p8URL() -> URL {
+        URL(string: "https://a.b/movie.mp4?hao_container=mp4&hao_dv=1&hao_dvprofile=8")!
+    }
+
+    func testDvP8DowngradeOnAdmitsAVPlayerForP8() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [p8URL()]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        driver.dvP8Downgrade = true
+        var attempted: [VideoEngine] = []
+        let previousMake = driver.makeBackend
+        driver.makeBackend = { engine in
+            attempted.append(engine)
+            return previousMake(engine)
+        }
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(attempted.first, .avplayer)
+        XCTAssertEqual(driver.currentEngine, .avplayer)
+    }
+
+    func testDvP8DowngradeOffKeepsP8OnFfmpeg() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [p8URL()]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        driver.dvP8Downgrade = false
+        var attempted: [VideoEngine] = []
+        let previousMake = driver.makeBackend
+        driver.makeBackend = { engine in
+            attempted.append(engine)
+            return previousMake(engine)
+        }
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(attempted.first, .mpv)
+        XCTAssertEqual(driver.currentEngine, .mpv)
+    }
+
+    func testDvP8ReopenSwitchesP8ToMpv() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [p8URL(), p8URL()]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        driver.dvP8Downgrade = true
+        let startedTwice = expectation(description: "episode started twice")
+        startedTwice.expectedFulfillmentCount = 2
+        var starts = 0
+        driver.onEpisodeStarted = { _ in
+            starts += 1
+            if starts == 1 {
+                driver.dvP8Downgrade = false
+                XCTAssertTrue(driver.reopenAtCurrentPosition())
+            }
+            startedTwice.fulfill()
+        }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(driver.currentEngine, .mpv)
+    }
+
+    func testReopenAtCurrentPositionNoopsForNonP8() {
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let backend = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [backend]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertFalse(driver.reopenAtCurrentPosition())
+        XCTAssertEqual(backend.openCount, 1)
+    }
+
+    func testSubtitleAndEnhancementAppliedAtOpenAndLive() {
+        let (detail, line, episode) = makeTestDetail()
+        let backend = CapableFakeBackend(engine: .avplayer)
+        let driver = VideoDriver()
+        driver.makeBackend = { _ in backend }
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        driver.playURLResolver = resolver
+        driver.openTimeoutInterval = 5
+        // Set before the backend exists: stored, applied at open.
+        driver.applyVodEnhancement(.interpolation)
+        driver.setSubtitleAppearance(VodSubtitleAppearance(fontSize: 70, color: "#FFFF00", position: 50.0))
+        XCTAssertEqual(driver.currentEnhancement, .interpolation)
+        XCTAssertEqual(driver.currentSubtitleAppearance, VodSubtitleAppearance(fontSize: 70, color: "#FFFF00", position: 50.0))
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(backend.enhancementCalls, [.interpolation])
+        XCTAssertEqual(backend.subtitleCalls, [VodSubtitleAppearance(fontSize: 70, color: "#FFFF00", position: 50.0)])
+        // Live toggle: applied at once, no reopen.
+        driver.applyVodEnhancement(nil)
+        driver.setSubtitleAppearance(.default)
+        XCTAssertEqual(backend.enhancementCalls, [.interpolation, nil])
+        XCTAssertEqual(backend.subtitleCalls, [VodSubtitleAppearance(fontSize: 70, color: "#FFFF00", position: 50.0), .default])
+    }
+
+    func testAudioOnlyForwardedToCapableBackend() {
+        let (detail, line, episode) = makeTestDetail()
+        let backend = CapableFakeBackend(engine: .mpv)
+        let driver = VideoDriver()
+        driver.makeBackend = { _ in backend }
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        driver.playURLResolver = resolver
+        driver.openTimeoutInterval = 5
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        driver.setAudioOnly(true)
+        XCTAssertTrue(driver.isAudioOnly)
+        XCTAssertEqual(backend.audioOnlyCalls, [true])
+        driver.setAudioOnly(false)
+        XCTAssertFalse(driver.isAudioOnly)
+        XCTAssertEqual(backend.audioOnlyCalls, [true, false])
+    }
+
+    func testAudioOnlyNoopsOnIncapableBackend() {
+        // The AVPlayer/IJK shape: no capability, the flag is still
+        // stored and nothing crashes (their audio keeps playing in
+        // background natively).
+        let (detail, line, episode) = makeTestDetail()
+        let factory = FakeBackendFactory()
+        let backend = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.avplayer: [backend]]
+        let resolver = FakeVideoResolver()
+        resolver.urlsToReturn = [URL(string: "https://a.b/movie.mp4")!]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "episode started")
+        driver.onEpisodeStarted = { _ in started.fulfill() }
+        driver.playEpisode(detail: detail, line: line, episode: episode)
+        waitForExpectations(timeout: 2)
+        driver.setAudioOnly(true)
+        XCTAssertTrue(driver.isAudioOnly)
+    }
+}
+
+final class VodGestureStepTests: XCTestCase {
+    func testDoubleTapSeekUsesConfiguredStep() {
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 10, width: 300, seconds: 30), -30)
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 290, width: 300, seconds: 30), 30)
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 150, width: 300, seconds: 30), 0)
+        // The default is still the 10 s step (existing callers).
+        XCTAssertEqual(VodGestureMath.seekDelta(x: 10, width: 300), -10)
+    }
+}

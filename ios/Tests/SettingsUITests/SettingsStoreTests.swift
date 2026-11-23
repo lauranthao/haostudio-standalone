@@ -73,7 +73,10 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings.subtitleColor, "white")
         XCTAssertEqual(settings.subtitlePosition, "bottom")
         XCTAssertEqual(settings.lowMemoryMode, "auto")
-        XCTAssertFalse(settings.cellularDowngrade)
+        // Flutter default is ON (liveCellularDowngradeEnabled
+        // defaults true); the Swift default was false before the
+        // wiring leg — fixed here.
+        XCTAssertTrue(settings.cellularDowngrade)
         XCTAssertFalse(settings.normalizationEnabled)
         XCTAssertEqual(settings.normalizationStrength, 1)
         XCTAssertFalse(settings.wallpaperEnabled)

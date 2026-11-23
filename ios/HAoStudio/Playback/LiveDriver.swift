@@ -137,6 +137,12 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
     private var lastFps: Double = 0
     private var lastDroppedFrames: Int = 0
 
+    /// Settings storage for the cellular-downgrade switch (test
+    /// seam: tests point this at an isolated suite; production is
+    /// `.standard`). The switch reads through the SettingsStore key
+    /// — no second key.
+    var defaults: UserDefaults = .standard
+
     override init() {
         super.init()
         // Resolution lives inside this driver: the closure hands out
@@ -321,6 +327,57 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         }
     }
 
+    // MARK: - Cellular downgrade (wiring leg B)
+
+    /// The switch's stored value (Flutter default ON: a fresh
+    /// install downgrades on cellular until the user turns it off).
+    private var cellularDowngradeEnabled: Bool {
+        if defaults.object(forKey: SettingsStore.cellularDowngradeKey) == nil { return true }
+        return defaults.bool(forKey: SettingsStore.cellularDowngradeKey)
+    }
+
+    /// Entry-quality target for an initial resolution: the index
+    /// into `resolution.qualities` to open instead of the resolved
+    /// (best) tier, or nil when the resolved tier already applies.
+    /// "Preferred" is the resolved tier: Swift never persisted a
+    /// preferred quality (`preferResolution` has no reader), so the
+    /// best tier is the preference the ceiling caps. Wi-Fi /
+    /// unknown and a switched-off downgrade both return nil.
+    private func cellularDowngradeTarget(resolution: LivePlayUrlResolution) -> Int? {
+        guard cellularDowngradeEnabled else { return nil }
+        guard LiveDriver.detectNetworkType() == .cellular else { return nil }
+        let names = resolution.qualities.map { $0.name }
+        guard let applied = resolution.quality,
+              let appliedIndex = resolution.qualities.firstIndex(where: { $0.id == applied.id }) else { return nil }
+        let target = LiveCellularDowngrade.entryQualityIndex(
+            qualityNames: names, preferredIndex: appliedIndex, network: .cellular)
+        return target == appliedIndex ? nil : target
+    }
+
+    /// Current transport from the OS interface list (Flutter
+    /// `detectNetworkType`: en0 = Wi-Fi, pdp_ip0 = cellular).
+    /// `interfaceNames` is a test seam: production passes nothing
+    /// and the names come from getifaddrs.
+    static func detectNetworkType(interfaceNames: [String]? = nil) -> LiveNetworkType {
+        let names = interfaceNames ?? LiveDriver.interfaceNames()
+        return LiveCellularDowngrade.classifyInterfaces(names)
+    }
+
+    /// Interface names from getifaddrs. Empty (never a downgrade)
+    /// when the list cannot be read.
+    private static func interfaceNames() -> [String] {
+        var names: [String] = []
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let current = cursor {
+            names.append(String(cString: current.pointee.ifa_name))
+            cursor = current.pointee.ifa_next
+        }
+        return names
+    }
+
     // MARK: - Play / open
 
     /// Play a room: stop what this driver is doing, resolve the
@@ -363,6 +420,29 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
                     self.isLoading = false
                     self.pendingItem = nil
                     self.onRoomFailed?(item, .noPlayableURL)
+                    return
+                }
+                // Cellular downgrade (wiring leg B; Flutter
+                // live_room_page _loadRoom): on mobile data with the
+                // switch on, cap the entry quality at the cellular
+                // ceiling （超清及以下） before opening. The capped
+                // tier is requested through the session (a failed
+                // cap rolls back and the original URL still opens).
+                if let target = self.cellularDowngradeTarget(resolution: resolution) {
+                    self.session.requestQualityChange(to: resolution.qualities[target]) { [weak self] ok in
+                        guard let self = self else { return }
+                        self.ensureMain {
+                            guard self.pendingItem?.id == item.id else { return }
+                            if ok {
+                                self.currentQuality = self.session.currentQuality
+                            } else {
+                                self.currentQuality = resolution.quality
+                            }
+                            self.currentLineIndex = 0
+                            let openURL = self.session.recovery?.currentUrl ?? url
+                            self.attemptOpen(item: item, url: openURL, tried: [openURL], freshRounds: 2)
+                        }
+                    }
                     return
                 }
                 self.currentQuality = resolution.quality

@@ -156,7 +156,161 @@ enum SettingsOptionLists {
     }
 }
 
-// MARK: - Normalisation strength label
+// MARK: - Low-memory mode effect (wiring leg B)
+//
+// Flutter `LowMemoryMode.isEffective` (mpv_properties.dart):
+// auto = on when the device has <= 4 CPU cores, always = on,
+// never = off. The stored string is "auto" / "always" /
+// "never"; anything else (including a legacy value) reads as
+// auto. `cpuCores` is a test seam — production passes
+// `ProcessInfo.processInfo.processorCount`.
+enum LowMemoryModeEffect {
+    static func normalizedMode(_ raw: String?) -> String {
+        guard let raw = raw,
+              SettingsOptionLists.isValidLowMemoryMode(raw) else { return "auto" }
+        return raw
+    }
+
+    static func isEffective(mode: String?, cpuCores: Int) -> Bool {
+        switch normalizedMode(mode) {
+        case "always":
+            return true
+        case "never":
+            return false
+        default:
+            return cpuCores <= 4
+        }
+    }
+}
+
+// MARK: - Live cellular downgrade (wiring leg B)
+//
+// Pure port of Flutter `lib/domains/live/live_network_quality.dart`
+// (build 29, item 3 + D 组): on mobile data the live entry quality
+// is capped at the cellular ceiling ("超清" when the room offers
+// it, else the lowest quality above 流畅, else the lowest quality
+// outright — never 原画/蓝光 on mobile data); on Wi-Fi / unknown
+// the preferred quality applies unchanged. This only sets the
+// ENTRY quality: the user can still switch up manually in the room.
+//
+// Network classification copies Flutter's interface-name heuristic
+// (no connectivity dependency in either codebase): iOS names its
+// interfaces `en0` (Wi-Fi) and `pdp_ip0` (cellular); Android uses
+// `wlan0` / `rmnet*`. An unclassifiable list reads as unknown and
+// never downgrades. The entry decision itself takes quality NAMES
+// (LiveQuality.name — server labels, matched exactly like
+// Flutter's `q.quality == label`) so it stays independent of any
+// one platform's tier ids.
+enum LiveNetworkType: Equatable {
+    case wifi
+    case cellular
+    case unknown
+}
+
+enum LiveCellularDowngrade {
+    /// Cellular ceiling, by label (first match wins).
+    static let cellularCeilingLabels = ["超清", "高清", "流畅"]
+
+    /// The switch's stored value: nil (never written) means ON —
+    /// Flutter `liveCellularDowngradeEnabled()` defaults true.
+    static func enabled(stored: Bool?) -> Bool {
+        stored ?? true
+    }
+
+    /// Classify one interface name. Case-insensitive; nil when
+    /// unclassifiable.
+    static func classifyInterfaceName(_ name: String) -> LiveNetworkType? {
+        let lower = name.lowercased()
+        if lower.hasPrefix("en") || lower.hasPrefix("wlan") {
+            return .wifi
+        }
+        if lower.hasPrefix("pdp_ip") || lower.hasPrefix("rmnet") {
+            return .cellular
+        }
+        return nil
+    }
+
+    /// Classify a list of interface names: cellular wins over
+    /// Wi-Fi when both are present, Wi-Fi wins over unknown,
+    /// unknown when nothing classifies.
+    static func classifyInterfaces(_ names: [String]) -> LiveNetworkType {
+        var sawWifi = false
+        for name in names {
+            if classifyInterfaceName(name) == .cellular { return .cellular }
+            if classifyInterfaceName(name) == .wifi { sawWifi = true }
+        }
+        return sawWifi ? .wifi : .unknown
+    }
+
+    /// Entry-quality index for `qualityNames` on `network`,
+    /// starting from the user's `preferredIndex`. Wi-Fi / unknown:
+    /// preferred unchanged. Cellular: capped at the ceiling label
+    /// when present, else at the middle tier (never the top tier),
+    /// else the lowest quality.
+    static func entryQualityIndex(
+        qualityNames: [String],
+        preferredIndex: Int,
+        network: LiveNetworkType
+    ) -> Int {
+        guard !qualityNames.isEmpty else { return 0 }
+        let preferred = min(max(preferredIndex, 0), qualityNames.count - 1)
+        guard network == .cellular else { return preferred }
+        for label in cellularCeilingLabels {
+            if let at = qualityNames.firstIndex(of: label) { return at }
+        }
+        if qualityNames.count >= 3 { return qualityNames.count / 2 }
+        return qualityNames.count - 1
+    }
+
+    /// Target quality index when the cellular-downgrade switch
+    /// flips mid-room (Flutter `cellularDowngradeTargetIndex`),
+    /// or nil when no switch is needed. Wi-Fi / unknown: nil.
+    /// Turning it ON caps at the cellular ceiling — but never
+    /// switches UP: a room already below the ceiling stays put.
+    /// Turning it OFF restores the preferred quality. Both paths
+    /// are no-ops when the target already equals the current
+    /// quality, so a flip that changes nothing never re-opens
+    /// the stream.
+    static func cellularDowngradeTargetIndex(
+        qualityNames: [String],
+        currentIndex: Int,
+        preferredIndex: Int,
+        network: LiveNetworkType,
+        enabled: Bool
+    ) -> Int? {
+        guard !qualityNames.isEmpty else { return nil }
+        guard network == .cellular else { return nil }
+        let current = min(max(currentIndex, 0), qualityNames.count - 1)
+        let target: Int
+        if enabled {
+            let ceiling = entryQualityIndex(
+                qualityNames: qualityNames, preferredIndex: 0, network: .cellular)
+            target = ceiling > current ? ceiling : current
+        } else {
+            target = min(max(preferredIndex, 0), qualityNames.count - 1)
+        }
+        return target == current ? nil : target
+    }
+}
+
+// MARK: - Auto-resume decision (wiring leg B)
+//
+// Flutter `music_player_controller.dart` onInit: when the
+// "启动时自动播放上次歌曲" switch is on, the restored queue
+// plays once per launch at its restored index. The decision is
+// pure (the view model supplies the stored switch + the restored
+// queue); nil means "do not auto-play".
+enum AutoResumeDecision {
+    static func resumeIndex(
+        autoResumeEnabled: Bool,
+        queueCount: Int,
+        currentIndex: Int
+    ) -> Int? {
+        guard autoResumeEnabled, queueCount > 0 else { return nil }
+        return min(max(currentIndex, 0), queueCount - 1)
+    }
+}
+
 
 /// 0...2 strength slider label: weak / medium / strong.
 /// Boundaries: under 0.75 is weak, under 1.5 is medium.

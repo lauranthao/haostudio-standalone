@@ -160,6 +160,31 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
     /// setting when the settings UI lands.
     var autoAdvanceToNextEpisode = true
 
+    /// DV-P8 downgrade switch (SettingsStore.dvP8Downgrade,
+    /// default true). The view model pushes the live setting
+    /// before each open; `open()` reads it at candidate time, so
+    /// a mid-play toggle only takes effect through
+    /// `reopenAtCurrentPosition` (AVPlayer-backed P8 streams).
+    var dvP8Downgrade: Bool = true
+
+    /// Audio-only state (SettingsStore.audioOnlyBackground,
+    /// applied on background only). Remembered across backend
+    /// swaps, so an auto-advance while backgrounded stays
+    /// audio-only; cleared on stop / release. A backend without
+    /// the capability (AVPlayer/IJK) no-ops — their audio keeps
+    /// playing in background natively.
+    private(set) var isAudioOnly: Bool = false
+
+    /// Resolved enhancement branch, kept for the next open.
+    /// Applied live to the running backend and re-applied after
+    /// every open (ladder swap / reopen), so a toggle never waits
+    /// for the next episode. Nil = no branch (mpv defaults).
+    private(set) var currentEnhancement: VodEnhancementBranch?
+
+    /// Resolved subtitle appearance, kept for the next open.
+    /// Same live + re-apply discipline as the enhancement branch.
+    private(set) var currentSubtitleAppearance: VodSubtitleAppearance = .default
+
     let watchdog = VodStallWatchdog()
 
     /// Current detail/line/episode context. Set by `configure`
@@ -332,6 +357,31 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
         ensureMain { self.startNewPlayback(item: item) }
     }
 
+    /// Re-open the current episode at its current position, on the
+    /// same line (wiring leg B; Flutter
+    /// native_video_player_page._reopenAtCurrentPosition). The mpv
+    /// property set — including the low-memory mode — is fixed at
+    /// open, so a mode change while playing only reaches the
+    /// running episode via a re-open. Same shape as switchLine,
+    /// minus the line switch, so the same-item guard in play()
+    /// cannot swallow it. No-op when nothing is open (stop() clears
+    /// currentEpisode).
+    ///
+    /// Name note: A leg already owns `reopenAtCurrentPosition()
+    /// -> Bool` on this driver (DV-P8 routing only — it reopens
+    /// nothing on a non-P8 stream). This method is the unconditional
+    /// position reopen, so it carries its own name; the coordinator
+    /// may unify the two into one Flutter-parity reopen (gate at
+    /// the DV-P8 call site, not inside).
+    func reopenEpisodeAtCurrentPosition() {
+        guard let detail = currentDetail, let item = currentEpisode,
+              let line = currentLine,
+              let episode = line.episode(at: currentEpisodeIndex) else { return }
+        let resumeAt = position
+        configure(detail: detail, line: line, episode: episode, resumeFrom: resumeAt)
+        ensureMain { self.startNewPlayback(item: item) }
+    }
+
     /// Play the episode at `index` in the current line, from the
     /// start. Returns false when the index is out of range.
     @discardableResult
@@ -464,7 +514,7 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
             }
             self.openTimeoutWork = timeoutWork
             DispatchQueue.main.asyncAfter(deadline: .now() + self.openTimeoutInterval, execute: timeoutWork)
-            let engines = PlayerKernel.candidatesFor(url: url)
+            let engines = PlayerKernel.candidatesFor(url: url, dvDowngradeToHdr: dvP8Downgrade)
             let ladder = VideoRecoveryLadder(engines: engines, urls: [url], attempt: { [weak self] engine, attemptURL, attemptCompletion in
                 guard let self = self else {
                     attemptCompletion(false)
@@ -607,6 +657,21 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
         isLoading = false
         backend.play()
         if let rate = currentRate { backend.playbackRate = rate }
+        // S7 wiring: re-apply the stored VOD settings to the
+        // backend that just opened. A toggle made before the
+        // backend existed lands here, and a ladder swap / reopen
+        // re-applies instead of silently resetting to defaults.
+        // Audio-only is re-applied so an auto-advance while
+        // backgrounded stays audio-only.
+        if isAudioOnly, let capable = backend as? LiveAudioOnlyCapable {
+            capable.setAudioOnly(true)
+        }
+        if let branch = currentEnhancement, let capable = backend as? VodEnhancementCapable {
+            capable.setVodEnhancement(branch)
+        }
+        if let capable = backend as? VodSubtitleAppearanceCapable {
+            capable.setSubtitleAppearance(fontSize: currentSubtitleAppearance.fontSize, color: currentSubtitleAppearance.color, position: currentSubtitleAppearance.position)
+        }
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
             try AVAudioSession.sharedInstance().setActive(true, options: [])
@@ -702,6 +767,67 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
         }
     }
 
+    /// Drop to audio-only / restore video (S7 wiring: the
+    /// `audioOnlyBackground` switch, applied on background and
+    /// restored on foreground). The flag is remembered and
+    /// re-applied after a ladder backend swap; a backend without
+    /// the capability (AVPlayer/IJK) no-ops — the audio keeps
+    /// playing in background natively there.
+    func setAudioOnly(_ audioOnly: Bool) {
+        ensureMain {
+            self.isAudioOnly = audioOnly
+            if let capable = self.backend as? LiveAudioOnlyCapable {
+                capable.setAudioOnly(audioOnly)
+            }
+        }
+    }
+
+    /// Apply one resolved enhancement branch, live to the running
+    /// backend and stored for the next open. Nil restores the mpv
+    /// defaults on the running backend.
+    func applyVodEnhancement(_ branch: VodEnhancementBranch?) {
+        ensureMain {
+            self.currentEnhancement = branch
+            if let backend = self.backend, let capable = backend as? VodEnhancementCapable {
+                capable.setVodEnhancement(branch)
+            }
+        }
+    }
+
+    /// Apply the resolved subtitle appearance, live to the running
+    /// backend and stored for the next open.
+    func setSubtitleAppearance(_ appearance: VodSubtitleAppearance) {
+        ensureMain {
+            self.currentSubtitleAppearance = appearance
+            if let backend = self.backend, let capable = backend as? VodSubtitleAppearanceCapable {
+                capable.setSubtitleAppearance(fontSize: appearance.fontSize, color: appearance.color, position: appearance.position)
+            }
+        }
+    }
+
+    /// Reopen the current episode at the current position — the
+    /// mechanism for settings that only take effect at open (DV P8
+    /// routing; Flutter `_reopenAtCurrentPosition` parity). Only
+    /// an AVPlayer-backed Dolby Vision profile 8 stream can change
+    /// engines mid-playback; on any other stream the switch
+    /// changes no routing, so this returns false and reopens
+    /// nothing. A failed reopen stops playback (this driver tears
+    /// the backend down before resolving, unlike Flutter's
+    /// swap-on-first-frame) — the caller only uses it for a
+    /// settings toggle the user just made, never silently.
+    @discardableResult
+    func reopenAtCurrentPosition() -> Bool {
+        guard currentEngine == .avplayer,
+              let item = currentEpisode,
+              let facts = currentURLFacts(),
+              facts.dolbyVision, facts.dvProfile == 8 else {
+            return false
+        }
+        startPosition = max(0, position)
+        ensureMain { self.startNewPlayback(item: item) }
+        return true
+    }
+
     /// Stop everything and clear the current episode. Saves the
     /// breakpoint first (a stop is never a lost resume). The
     /// coordinator clears `currentItem` alongside; this driver
@@ -719,6 +845,7 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
             self.playRequested = false
             self.stallFailed = false
             self.stallWarning = false
+            self.isAudioOnly = false
             self.pendingItem = nil
             self.backend?.pause()
             self.backend?.shutdown()
@@ -754,6 +881,7 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
             self.fpsSampler.stop()
             self.playRequested = false
             self.stallFailed = false
+            self.isAudioOnly = false
             self.pendingItem = nil
             self.backend?.pause()
             self.backend?.shutdown()

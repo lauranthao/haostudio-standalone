@@ -1030,7 +1030,10 @@ final class EmbyClient {
             PlayEpisode(
                 name: episode.item.title.isEmpty ? "第 \(index + 1) 集" : episode.item.title,
                 url: URL(string: streamUrl(episode.item.id, episode.facts)),
-                index: index
+                index: index,
+                introStart: episode.markers?.introStart,
+                introEnd: episode.markers?.introEnd,
+                creditsStart: episode.markers?.creditsStart
             )
         }
     }
@@ -1070,9 +1073,6 @@ final class EmbyClient {
         if type == "Movie" || type == "Episode" || type == "Video" {
             let episodeName = type == "Episode" ? EmbyClient.episodeDisplayName(item) : "正片"
             let markers = EmbySkipMarkers.fromChapters(item["Chapters"])
-            _ = markers // Swift's PlayEpisode carries no skip-marker
-            // fields (seam gap — see the leg report); the markers
-            // are parsed and available on EmbyEpisode, not here.
             guard let stream = URL(string: streamUrl(itemId: itemId, facts: facts)) else {
                 completion(.failure(.other("这部影片在 Emby 里打不开")))
                 return
@@ -1080,7 +1080,7 @@ final class EmbyClient {
             let videoItem = toVideoItem(item)
             let detail = VideoDetail(
                 item: videoItem,
-                lines: [PlayLine(name: "直链", episodes: [PlayEpisode(name: episodeName, url: stream, index: 0)])],
+                lines: [PlayLine(name: "直链", episodes: [PlayEpisode(name: episodeName, url: stream, index: 0, introStart: markers?.introStart, introEnd: markers?.introEnd, creditsStart: markers?.creditsStart)])],
                 meta: meta
             )
             completion(.success(detail))
