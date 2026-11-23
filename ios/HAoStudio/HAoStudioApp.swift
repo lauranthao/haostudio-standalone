@@ -12,6 +12,11 @@ import SwiftUI
 struct HAoStudioApp: App {
     @StateObject private var themeStore: ThemeStore
     @StateObject private var coordinator: PlaybackCoordinator
+    /// S2-C: one shared music player view model for the whole app
+    /// (home, mini player, full player all observe the same queue
+    /// and playback state). Created here, next to the coordinator
+    /// it observes — never one instance per page.
+    @StateObject private var musicPlayer: MusicPlayerViewModel
 
     init() {
         // S1: the snapshot migration runs before anything reads
@@ -20,7 +25,9 @@ struct HAoStudioApp: App {
         // skips quietly when there is no snapshot to migrate from.
         _ = MigrationStore.runIfNeeded()
         _themeStore = StateObject(wrappedValue: ThemeStore())
-        _coordinator = StateObject(wrappedValue: PlaybackCoordinator())
+        let coordinator = PlaybackCoordinator()
+        _coordinator = StateObject(wrappedValue: coordinator)
+        _musicPlayer = StateObject(wrappedValue: MusicPlayerViewModel(coordinator: coordinator))
     }
 
     /// The splash covers the first frame; it fades out at 1.5s
@@ -44,6 +51,7 @@ struct HAoStudioApp: App {
             }
             .environmentObject(themeStore)
             .environmentObject(coordinator)
+            .environmentObject(musicPlayer)
         }
     }
 }

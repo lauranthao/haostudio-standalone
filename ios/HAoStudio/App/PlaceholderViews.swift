@@ -51,11 +51,8 @@ struct LivePlaceholderView: View {
     }
 }
 
-struct MusicPlaceholderView: View {
-    var body: some View {
-        PlaceholderPage(title: "音乐", note: "占位页 — 内容由后续 slice 填入。")
-    }
-}
+/// Music tab is real since S2-C (MusicHomeView); its placeholder was
+/// removed with the replacement, not left as dead code.
 
 /// My tab = the settings page. The theme + appearance pickers are real
 /// and functional in the foundation slice (they drive the ThemeStore);
