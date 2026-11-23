@@ -1,0 +1,316 @@
+// HAo Studio 2.0 — live driver tests (S4, leg A).
+//
+// iOS-only, same treatment as S3's VideoPlayerTests: NOT wired
+// into `ios/Package.swift` (this leg does not edit it). S7 wires
+// a `VideoPlayerTests` Xcode test target (run with `xcodebuild
+// test` against an iOS simulator destination — `swift test` on a
+// macOS runner cannot compile this target: UIKit / AVFoundation).
+// The S7 target compiles the `HAoStudio/Playback` live sources
+// directly (LiveDriver, LiveRoomSession, LivePlayerViewModel),
+// EXCEPT `PlaybackCoordinator.swift` (owned by AppCore — build #18,
+// 2026-11-23: one source file, one target; never list a file
+// AppCore already owns), and imports AppCore for the
+// Services/Video types + coordinator contracts.
+//
+// The driver is driven through a fake backend (shared with
+// VideoPlayerTests.swift: FakeVideoBackend / FakeBackendFactory —
+// NOT redefined here) and a fake resolver, never real engines: the
+// open timeout uses a short injected interval, and no test waits
+// real 4 s / 12 s / 10 s. The stall watchdog itself is covered by
+// LiveRoomSessionTests (Foundation-only); these tests cover the
+// driver around it: engine selection, ladder fallback, the fresh
+// path, the no-seek rule, audio-only flag, and stop.
+
+import Foundation
+import XCTest
+
+@testable import AppCore
+
+// MARK: - Fakes
+
+/// Controllable stand-in for LiveSiteResolver. Resolutions are a
+/// queue: each resolve pops the next entry.
+final class LiveDriverFakeResolver: LiveSiteResolver {
+    var resolutionsToReturn: [LivePlayUrlResolution?] = []
+    var resolveCount = 0
+
+    func resolve(roomId: String, completion: @escaping (LivePlayUrlResolution?) -> Void) {
+        resolveCount += 1
+        let resolution = resolutionsToReturn.isEmpty ? nil : resolutionsToReturn.removeFirst()
+        completion(resolution)
+    }
+}
+
+/// A backend whose open never answers (for the 10 s timeout path).
+final class HangingLiveBackend: VideoPlayerBackend {
+    let engine: VideoEngine
+    var onEvent: ((VideoBackendEvent) -> Void)?
+    var onVideoSize: ((CGSize) -> Void)?
+
+    var isPlaying: Bool = false
+    var currentTime: Double = 0
+    var duration: Double = 0
+    var isPrepared: Bool = false
+    var playbackRate: Double = 1
+    var hardwareDecode: VideoHardwareDecodeState = .unknown
+
+    init(engine: VideoEngine) {
+        self.engine = engine
+    }
+
+    var view: UIView {
+        return UIView()
+    }
+
+    func setVideoFit(_ fit: VideoFit) {}
+
+    func open(url: URL, headers: [String: String], completion: @escaping (Bool) -> Void) {}
+
+    func play() {}
+
+    func pause() {}
+
+    func seek(to seconds: Double, completion: @escaping (Bool) -> Void) {
+        completion(false)
+    }
+
+    func shutdown() {}
+}
+
+// MARK: - Driver tests
+
+final class LiveDriverTests: XCTestCase {
+    private func makeRoom() -> LiveRoom {
+        return LiveRoom(roomId: "123", platform: "huya", title: "测试直播间", streamer: "主播", onlineCount: 100, coverURL: nil, isLive: true)
+    }
+
+    private func makeResolution(urls: [URL], quality: LiveQuality? = nil) -> LivePlayUrlResolution {
+        let lines = urls.enumerated().map { index, url in
+            LiveLine(name: "线路\(index + 1)", urls: [url])
+        }
+        return LivePlayUrlResolution(lines: lines, formats: [], qualities: [], quality: quality, issuedAt: nil, refreshAt: nil, invalidAt: nil)
+    }
+
+    private func makeDriver(factory: FakeBackendFactory, resolver: LiveDriverFakeResolver) -> LiveDriver {
+        let driver = LiveDriver()
+        driver.makeBackend = { factory.makeBackend(engine: $0) }
+        driver.openTimeoutInterval = 5
+        driver.configure(room: makeRoom(), resolver: resolver)
+        return driver
+    }
+
+    private func playRoom(driver: LiveDriver, started: XCTestExpectation) {
+        driver.onRoomStarted = { _ in started.fulfill() }
+        driver.play(item: LiveDriver.playbackItem(room: makeRoom()))
+    }
+
+    func testPlayOpensFlvOnMpvNeverAvPlayer() {
+        // FLV: candidates are MPV, IJK — AVPlayer has no FLV
+        // demuxer and must never appear in the candidate list, let
+        // alone be opened.
+        let factory = FakeBackendFactory()
+        let mpv = FakeVideoBackend(engine: .mpv)
+        let ijk = FakeVideoBackend(engine: .ijk)
+        let avplayer = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.mpv: [mpv], .ijk: [ijk], .avplayer: [avplayer]]
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "room started")
+        playRoom(driver: driver, started: started)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .mpv)
+        XCTAssertEqual(mpv.openCount, 1)
+        XCTAssertEqual(avplayer.openCount, 0)
+        XCTAssertEqual(ijk.openCount, 0)
+        XCTAssertTrue(driver.isPlaying)
+        XCTAssertEqual(driver.currentRoom?.kind, .live)
+    }
+
+    func testPlayOpensHlsOnAvPlayer() {
+        // HLS: the capability split puts AVPlayer first
+        // (VideoToolbox hard decode).
+        let factory = FakeBackendFactory()
+        let avplayer = FakeVideoBackend(engine: .avplayer)
+        let mpv = FakeVideoBackend(engine: .mpv)
+        factory.fakes = [.avplayer: [avplayer], .mpv: [mpv]]
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [makeResolution(urls: [URL(string: "https://tx.hls.huya.com/room/1.m3u8")!])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "room started")
+        playRoom(driver: driver, started: started)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .avplayer)
+        XCTAssertEqual(avplayer.openCount, 1)
+        XCTAssertEqual(mpv.openCount, 0)
+    }
+
+    func testEngineFallbackOnOpenFailure() {
+        // FLV: MPV fails, IJK succeeds — the driver plays on IJK,
+        // never an error, never AVPlayer.
+        let factory = FakeBackendFactory()
+        let failingMPV = FakeVideoBackend(engine: .mpv)
+        failingMPV.openResults = [false]
+        let goodIJK = FakeVideoBackend(engine: .ijk)
+        let avplayer = FakeVideoBackend(engine: .avplayer)
+        factory.fakes = [.mpv: [failingMPV], .ijk: [goodIJK], .avplayer: [avplayer]]
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "room started on IJK")
+        playRoom(driver: driver, started: started)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentEngine, .ijk)
+        XCTAssertEqual(failingMPV.openCount, 1)
+        XCTAssertEqual(goodIJK.openCount, 1)
+        XCTAssertEqual(failingMPV.shutdownCount, 1)
+        XCTAssertEqual(avplayer.openCount, 0)
+    }
+
+    func testPlayWithoutResolutionFails() {
+        let factory = FakeBackendFactory()
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [nil]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let failed = expectation(description: "room failed")
+        var failure: MusicPlayerError?
+        driver.onRoomFailed = { _, error in
+            failure = error
+            failed.fulfill()
+        }
+        driver.play(item: LiveDriver.playbackItem(room: makeRoom()))
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(failure, .noPlayableURL)
+        XCTAssertNil(driver.currentRoom)
+    }
+
+    func testPlayWithoutConfigureFails() {
+        let driver = LiveDriver()
+        driver.openTimeoutInterval = 5
+        let failed = expectation(description: "room failed")
+        var failure: MusicPlayerError?
+        driver.onRoomFailed = { _, error in
+            failure = error
+            failed.fulfill()
+        }
+        driver.play(item: LiveDriver.playbackItem(room: makeRoom()))
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(failure, .noPlayableURL)
+    }
+
+    func testOpenTimeoutIsAStreamError() {
+        // Every capable engine hangs: the 10 s open timeout (here
+        // 0.2 s) must fire exactly like a stream error, and the
+        // fallback resolve must get the dead URL in `excluding` and
+        // have nothing else to hand out.
+        let factory = FakeBackendFactory()
+        factory.fakes = [
+            .mpv: [HangingLiveBackend(engine: .mpv)],
+            .ijk: [HangingLiveBackend(engine: .ijk)],
+        ]
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        driver.openTimeoutInterval = 0.2
+        let failed = expectation(description: "room failed on timeout")
+        var failure: MusicPlayerError?
+        driver.onRoomFailed = { _, error in
+            failure = error
+            failed.fulfill()
+        }
+        driver.play(item: LiveDriver.playbackItem(room: makeRoom()))
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(failure, .timeout)
+        XCTAssertNil(driver.currentRoom)
+    }
+
+    func testLiveSeekAlwaysFails() {
+        // Live is real-time: there is nothing to seek to, and the
+        // driver must say so instead of pretending a seek landed.
+        let driver = LiveDriver()
+        var result: Bool?
+        driver.seek(to: 60) { result = $0 }
+        XCTAssertEqual(result, false)
+    }
+
+    func testSetAudioOnlyRecordsFlag() {
+        let driver = LiveDriver()
+        driver.setAudioOnly(true)
+        XCTAssertTrue(driver.isAudioOnly)
+        driver.setAudioOnly(false)
+        XCTAssertFalse(driver.isAudioOnly)
+    }
+
+    func testLineSwitchOpensNewLine() {
+        let factory = FakeBackendFactory()
+        let resolver = LiveDriverFakeResolver()
+        let firstURL = URL(string: "https://tx.flv.huya.com/room/1.flv")!
+        let secondURL = URL(string: "https://al.flv.huya.com/room/1.flv")!
+        resolver.resolutionsToReturn = [makeResolution(urls: [firstURL, secondURL])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        var startCount = 0
+        let startedOnce = expectation(description: "room started")
+        driver.onRoomStarted = { _ in
+            startCount += 1
+            if startCount == 1 {
+                startedOnce.fulfill()
+            }
+        }
+        driver.play(item: LiveDriver.playbackItem(room: makeRoom()))
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentLineIndex, 0)
+        let startedTwice = expectation(description: "room restarted on new line")
+        driver.onRoomStarted = { _ in
+            startCount += 1
+            if startCount == 2 {
+                startedTwice.fulfill()
+            }
+        }
+        XCTAssertTrue(driver.switchLine(to: 1))
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentLineIndex, 1)
+        XCTAssertFalse(driver.switchLine(to: 5))
+    }
+
+    func testQualitySwitchMismatchKeepsOldQuality() {
+        // P0-09: the re-parse comes back for the OLD quality, so
+        // the switch rolls back and the room keeps playing.
+        let factory = FakeBackendFactory()
+        let hd = LiveQuality(id: "1080p", name: "蓝光")
+        let sd = LiveQuality(id: "720p", name: "高清")
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [
+            makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!], quality: hd),
+            makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!], quality: hd),
+        ]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "room started")
+        playRoom(driver: driver, started: started)
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(driver.currentQuality, hd)
+        let switched = expectation(description: "quality switch answered")
+        var switchResult: Bool?
+        driver.switchQuality(to: sd) { ok in
+            switchResult = ok
+            switched.fulfill()
+        }
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(switchResult, false)
+        XCTAssertEqual(driver.currentQuality, hd)
+    }
+
+    func testStopClearsRoom() {
+        let factory = FakeBackendFactory()
+        let resolver = LiveDriverFakeResolver()
+        resolver.resolutionsToReturn = [makeResolution(urls: [URL(string: "https://tx.flv.huya.com/room/1.flv")!])]
+        let driver = makeDriver(factory: factory, resolver: resolver)
+        let started = expectation(description: "room started")
+        playRoom(driver: driver, started: started)
+        waitForExpectations(timeout: 2)
+        XCTAssertTrue(driver.isPlaying)
+        driver.stop()
+        XCTAssertNil(driver.currentRoom)
+        XCTAssertFalse(driver.isPlaying)
+        XCTAssertFalse(driver.isAudioOnly)
+    }
+}
