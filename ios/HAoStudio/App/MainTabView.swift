@@ -79,7 +79,14 @@ struct MainTabView: View {
             .padding(.bottom, HaoLayout.tabBarBottomMargin)
         }
         .fullScreenCover(isPresented: $showingFullPlayer) {
-            FullPlayerPlaceholderView()
+            // S2-C: a music item opens the real full player; other
+            // kinds keep the foundation placeholder until their
+            // slices land (video S3 / live S4).
+            if coordinator.currentItem?.kind == .music {
+                MusicPlayerView()
+            } else {
+                FullPlayerPlaceholderView()
+            }
         }
         .environment(\.haoTheme, palette)
     }
@@ -88,7 +95,7 @@ struct MainTabView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .home: HomePlaceholderView()
-        case .music: MusicPlaceholderView()
+        case .music: MusicHomeView()
         case .movies: MoviesPlaceholderView()
         case .live: LivePlaceholderView()
         case .my: MyPlaceholderView()

@@ -1,0 +1,478 @@
+// HAo Studio 2.0 — music player view model (S2-C leg).
+//
+// Owns the music queue, the player-page state and the wiring between
+// the UI and the contract engines:
+//
+// - playback: queue -> NativeMusicPlayer.setQueue + coordinator
+//   .requestPlay (the player leg's resolver resolves the first
+//   playable URL serially, fastest first). This leg NEVER calls
+//   player.open directly and never resolves URLs itself.
+// - same-track tap does NOT replay: playing + same track = no-op,
+//   paused + same track = resume.
+// - state mirror: isPlaying / position / duration / playMode /
+//   playbackSpeed / actualQuality are read from the player's
+//   @Published state (Combine), never invented locally.
+// - seek failure rolls the progress bar back to the player's actual
+//   position and shows a toast (P0-05: seek must never silently lie).
+// - sleep timer: wall-clock modes pause via the timer; completion
+//   modes (current-track-end / queue-end / after-N-tracks) are
+//   detected from track-change + position-wrap signals (see below).
+// - lyrics: cache first (hao_lyrics.json), then MusicLyricsAPI;
+//   the active line follows the position with the user's offset.
+//
+// Completion detection (no completion hook exists in the contract):
+// a natural completion is observed as (a) currentItem changing to a
+// DIFFERENT track that this view model did not ask for, (b) the
+// position wrapping backwards while the track stays the same
+// (single-loop replay), or (c) playback stopping at the end of the
+// track. Manual actions set `expectedItemId` first, so they are not
+// mistaken for completions. A 2 s dedupe window keeps one completion
+// from being counted twice. This is best-effort: if the player leg
+// later adds a completion callback, these heuristics should be
+// replaced by it (see the C-leg report).
+
+import Combine
+import SwiftUI
+import UIKit
+
+@MainActor
+final class MusicPlayerViewModel: ObservableObject {
+    // MARK: - Queue + current track
+
+    @Published private(set) var queue = MusicQueue(tracks: [], index: 0)
+    @Published private(set) var currentSong: MusicSong?
+
+    // MARK: - Playback state (mirrored from the player)
+
+    @Published private(set) var isPlaying = false
+    @Published private(set) var position: Double = 0
+    @Published private(set) var duration: Double = 0
+    @Published private(set) var playMode: MusicQueueMode = .sequential
+    @Published private(set) var playbackSpeed: Double = 1.0
+    /// The tier ACTUALLY playing, or nil before the first report.
+    /// The badge shows this, never the target tier (Master honesty).
+    @Published private(set) var actualQuality: AudioQuality?
+
+    // MARK: - Lyrics
+
+    @Published private(set) var showLyrics = false
+    @Published private(set) var lyrics: [LyricsLine] = []
+    @Published private(set) var lyricsLoaded = false
+    @Published private(set) var activeLyricIndex = -1
+    @Published var lyricOffsetMs: Int {
+        didSet {
+            MusicLibraryStore.setLyricOffsetMs(lyricOffsetMs)
+            updateActiveLyric()
+        }
+    }
+
+    // MARK: - Sleep timer
+
+    @Published private(set) var sleepActive = false
+    @Published private(set) var sleepRemainingText = ""
+    let sleepTimer: MusicSleepTimer
+
+    // MARK: - Seek + toast
+
+    /// Scrub position in seconds while the user drags the bar;
+    /// nil when not dragging. While set, the bar fill and the
+    /// elapsed label follow the finger instead of the player's
+    /// position stream (which would fight the drag), and the seek
+    /// itself fires once on drag end.
+    @Published var scrubSeconds: Double?
+    @Published private(set) var toast: String?
+
+    // MARK: - Favourite
+
+    @Published private(set) var isCurrentFav = false
+
+    private let player = NativeMusicPlayer.shared
+    private let coordinator: PlaybackCoordinator
+    private var cancellables = Set<AnyCancellable>()
+    private var toastTimer: Timer?
+    private var expectedItemId: String?
+    private var lastPosition: Double = 0
+    private var wasPlaying = false
+    private var lastCompletionKey = ""
+    private var lastCompletionAt = Date.distantPast
+    private var heardSeconds: Double = 0
+    private var heardTrackKey = ""
+
+    init(coordinator: PlaybackCoordinator) {
+        self.coordinator = coordinator
+        self.lyricOffsetMs = MusicLibraryStore.lyricOffsetMs()
+        self.playMode = MusicQueueMode.fromCode(MusicLibraryStore.playModeCode())
+        self.playbackSpeed = MusicLibraryStore.speed()
+        self.sleepTimer = MusicSleepTimer(onFire: { [weak self] in
+            guard let self = self else { return }
+            self.player.pause()
+            self.sleepActive = false
+            self.sleepRemainingText = ""
+        }, onChanged: { [weak self] in
+            guard let self = self else { return }
+            self.sleepActive = self.sleepTimer.isActive
+            self.sleepRemainingText = self.sleepTimer.remainingText
+        })
+        // Restore the persisted queue (the player restores playback
+        // state itself; this only restores the queue list + index).
+        // Lyrics are NOT fetched here: only the cache is read, so
+        // launch does no network for a restored song.
+        let saved = MusicLibraryStore.getQueue()
+        if !saved.songs.isEmpty {
+            queue = MusicQueue.fromQueueData(saved)
+            currentSong = queue.current
+            if let song = currentSong {
+                isCurrentFav = MusicLibraryStore.isFav(song)
+                loadLyrics(for: song, fetchIfMissing: false)
+            }
+        }
+        observePlayer()
+        observeCoordinator()
+    }
+
+    // MARK: - Observation
+
+    private func observePlayer() {
+        player.$isPlaying.sink { [weak self] value in
+            guard let self = self else { return }
+            let was = self.wasPlaying
+            self.isPlaying = value
+            self.wasPlaying = value
+            // Playback stopped at the end of the track (not a user
+            // pause mid-track): a natural completion.
+            if was && !value && self.duration > 0 && self.position >= self.duration - 1.0 {
+                if let song = self.currentSong { self.noteNaturalCompletion(completed: song) }
+            }
+        }.store(in: &cancellables)
+        player.$position.sink { [weak self] value in
+            guard let self = self else { return }
+            // Position wrapped backwards by > 5 s on the same track:
+            // a natural completion (single-loop replay).
+            if value < self.lastPosition - 5 {
+                if let song = self.currentSong { self.noteNaturalCompletion(completed: song) }
+            }
+            self.lastPosition = value
+            if self.scrubSeconds == nil {
+                self.position = value
+                if let song = self.currentSong {
+                    if self.heardTrackKey != song.identityKey {
+                        self.heardTrackKey = song.identityKey
+                        self.heardSeconds = 0
+                    }
+                    self.heardSeconds = value
+                }
+            }
+            self.updateActiveLyric()
+        }.store(in: &cancellables)
+        player.$duration.sink { [weak self] value in
+            self?.duration = value
+        }.store(in: &cancellables)
+        player.$playMode.sink { [weak self] mode in
+            guard let self = self else { return }
+            self.playMode = MusicQueueMode.fromContract(mode)
+        }.store(in: &cancellables)
+        player.$playbackSpeed.sink { [weak self] value in
+            self?.playbackSpeed = value
+        }.store(in: &cancellables)
+        player.$actualQuality.sink { [weak self] value in
+            self?.actualQuality = value
+        }.store(in: &cancellables)
+    }
+
+    private func observeCoordinator() {
+        coordinator.$currentItem.sink { [weak self] item in
+            self?.handleCurrentItemChanged(item)
+        }.store(in: &cancellables)
+    }
+
+    private func handleCurrentItemChanged(_ item: PlaybackItem?) {
+        guard let item = item else { return }
+        // Same track (e.g. a replay): nothing to re-sync.
+        if let current = currentSong,
+           current.songId == item.id || current.identityKey == item.id {
+            expectedItemId = nil
+            return
+        }
+        // A change to a track this view model did not ask for is a
+        // natural completion of the previous track.
+        if expectedItemId != item.id, let previous = currentSong {
+            noteNaturalCompletion(completed: previous)
+        }
+        expectedItemId = nil
+        if let index = queue.tracks.firstIndex(where: { $0.songId == item.id || $0.identityKey == item.id }) {
+            queue.index = index
+        }
+        if let song = queue.current, song.songId == item.id || song.identityKey == item.id {
+            setCurrentSong(song)
+        } else {
+            // The player is playing something outside this queue
+            // (another leg started it): show it, do not rewrite the
+            // queue.
+            let song = MusicSong(songId: item.id, title: item.title, artist: item.artist ?? "")
+            setCurrentSong(song)
+        }
+    }
+
+    private func setCurrentSong(_ song: MusicSong) {
+        currentSong = song
+        isCurrentFav = MusicLibraryStore.isFav(song)
+        loadLyrics(for: song)
+        heardTrackKey = song.identityKey
+        heardSeconds = 0
+    }
+
+    // MARK: - Playback actions
+
+    /// Play `song`. When `tracks` is given it becomes the queue and
+    /// `song` plays from its position in it; otherwise the queue is
+    /// just this song. A same-track tap does NOT replay: playing +
+    /// same track = no-op, paused + same track = resume.
+    func play(song: MusicSong, in tracks: [MusicSong]? = nil, startAt: Int? = nil) {
+        if queue.isCurrentTrack(song) {
+            if !isPlaying { player.play() }
+            return
+        }
+        if let tracks = tracks {
+            let start = startAt ?? tracks.firstIndex(where: { $0.identityKey == song.identityKey }) ?? 0
+            queue = MusicQueue(tracks: tracks, index: min(max(0, start), max(0, tracks.count - 1)))
+        } else {
+            queue = MusicQueue(tracks: [song], index: 0)
+        }
+        expectedItemId = song.songId.isEmpty ? song.identityKey : song.songId
+        startPlayback()
+        hapticTick()
+    }
+
+    /// Play a whole list from the top (e.g. 播放全部).
+    func playAll(_ tracks: [MusicSong]) {
+        guard let first = tracks.first else { return }
+        play(song: first, in: tracks, startAt: 0)
+    }
+
+    /// Play a downloaded / local song. The resolver (player leg)
+    /// looks the file up by song id in the downloads / local index;
+    /// this leg passes the same setQueue + requestPlay as remote.
+    func playLocal(song: MusicSong) {
+        play(song: song, in: [song], startAt: 0)
+    }
+
+    private func startPlayback() {
+        guard let current = queue.current else { return }
+        player.setQueue(queue.toPlaybackItems(), startAt: queue.index)
+        coordinator.requestPlay(current.toPlaybackItem())
+        setCurrentSong(current)
+        MusicLibraryStore.addRecent(current)
+        MusicLibraryStore.saveQueue(queue.toQueueData())
+    }
+
+    func togglePlayPause() {
+        player.toggle()
+        hapticTick()
+    }
+
+    func next() {
+        let nextIndex = queue.nextIndex(mode: playMode, auto: false)
+        if nextIndex >= 0 {
+            let nextSong = queue.tracks[nextIndex]
+            expectedItemId = nextSong.songId.isEmpty ? nextSong.identityKey : nextSong.songId
+        }
+        player.next()
+        hapticTick()
+    }
+
+    func previous() {
+        let prevIndex = queue.prevIndex(mode: playMode)
+        if prevIndex >= 0 {
+            let prevSong = queue.tracks[prevIndex]
+            expectedItemId = prevSong.songId.isEmpty ? prevSong.identityKey : prevSong.songId
+        }
+        player.previous()
+        hapticTick()
+    }
+
+    func cycleMode() {
+        let next = playMode.next
+        playMode = next
+        MusicLibraryStore.setPlayModeCode(next.code)
+        player.setMode(next.toContract())
+        hapticTick()
+    }
+
+    func setSpeed(_ value: Double) {
+        let clamped = min(2.0, max(0.6, value))
+        playbackSpeed = clamped
+        MusicLibraryStore.setSpeed(clamped)
+        player.setSpeed(clamped)
+    }
+
+    func setTargetQuality(_ quality: AudioQuality) {
+        coordinator.targetQuality = quality
+        MusicLibraryStore.setTargetQualityCode(MusicLibraryStore.code(for: quality))
+    }
+
+    /// Seek to an absolute position (seconds). On failure the bar
+    /// rolls back to the player's actual position + a toast.
+    func seek(to seconds: Double) {
+        let target = min(max(0, seconds), max(0, duration))
+        scrubSeconds = nil
+        let accepted = player.seek(to: target) { [weak self] ok in
+            guard let self = self else { return }
+            if !ok { self.handleSeekFailed() }
+        }
+        if !accepted { handleSeekFailed() }
+    }
+
+    private func handleSeekFailed() {
+        position = player.position
+        showToast("seek 失败，已回到实际位置")
+    }
+
+    func showToast(_ text: String) {
+        toast = text
+        toastTimer?.invalidate()
+        toastTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+            self?.toast = nil
+        }
+    }
+
+    func toggleFavourite() {
+        guard let song = currentSong else { return }
+        isCurrentFav = MusicLibraryStore.toggleFav(song)
+        hapticTick()
+    }
+
+    func toggleLyrics() {
+        showLyrics.toggle()
+        hapticTick()
+    }
+
+    // MARK: - Lyrics
+
+    private func loadLyrics(for song: MusicSong, fetchIfMissing: Bool = true) {
+        lyricsLoaded = false
+        lyrics = []
+        activeLyricIndex = -1
+        if let cached = MusicLibraryStore.cachedLyrics(for: song.identityKey) {
+            lyrics = MusicLyrics.toContractLines(cached)
+            lyricsLoaded = true
+            updateActiveLyric()
+            return
+        }
+        guard fetchIfMissing else {
+            lyricsLoaded = true
+            return
+        }
+        let track = MusicTrack(
+            id: song.songId, title: song.title, artist: song.artist,
+            album: song.album, coverURL: song.cover, duration: song.dur,
+            sourceID: song.platform.rawValue
+        )
+        MusicLyricsAPI.fetchLyrics(for: track) { [weak self] result in
+            guard let self = self else { return }
+            guard let result = result else {
+                self.lyricsLoaded = true
+                return
+            }
+            // Only keep the result if the song is still current.
+            guard self.currentSong?.identityKey == song.identityKey else { return }
+            self.lyrics = result.lines
+            self.lyricsLoaded = true
+            let stored = result.lines.map { StoredLyricLine(t: $0.time, text: $0.text) }
+            MusicLibraryStore.putLyrics(stored, for: song.identityKey)
+            self.updateActiveLyric()
+        }
+    }
+
+    private func updateActiveLyric() {
+        guard !lyrics.isEmpty else {
+            activeLyricIndex = -1
+            return
+        }
+        activeLyricIndex = MusicLyrics.activeIndex(
+            lines: lyrics, position: position, offsetMs: lyricOffsetMs
+        )
+    }
+
+    // MARK: - Sleep timer + completion bookkeeping
+
+    /// One naturally-completed track: listen log (heard >= 5 s) +
+    /// sleep completion modes. Deduplicated per track within 2 s.
+    private func noteNaturalCompletion(completed: MusicSong) {
+        let key = completed.identityKey
+        let now = Date()
+        if key == lastCompletionKey && now.timeIntervalSince(lastCompletionAt) < 2 {
+            return
+        }
+        lastCompletionKey = key
+        lastCompletionAt = now
+        if heardTrackKey == key && heardSeconds >= 5 {
+            MusicLibraryStore.recordListenEvent(ListenEvent(
+                json: [
+                    "songId": completed.songId,
+                    "title": completed.title,
+                    "artist": completed.artist,
+                    "platform": completed.platform.rawValue,
+                    "cover": completed.cover,
+                    "dur": Int(heardSeconds),
+                    "totalDur": completed.dur,
+                    "at": Int(Date().timeIntervalSince1970 * 1000),
+                ]
+            ))
+        }
+        if sleepTimer.noteTrackCompleted() {
+            player.pause()
+            sleepTimer.cancel()
+            return
+        }
+        if sleepTimer.isCurrentTrackEnd {
+            player.pause()
+            sleepTimer.cancel()
+            return
+        }
+        if sleepTimer.isQueueEnd {
+            let index = queue.tracks.firstIndex(where: { $0.identityKey == key }) ?? queue.index
+            if musicNextTrackIndex(mode: playMode, current: index, length: queue.tracks.count, auto: true) == -1 {
+                player.pause()
+                sleepTimer.cancel()
+                return
+            }
+        }
+    }
+
+    // MARK: - Queue management (queue sheet)
+
+    func playFromQueue(at index: Int) {
+        guard index >= 0 && index < queue.tracks.count else { return }
+        let song = queue.tracks[index]
+        queue.index = index
+        expectedItemId = song.songId.isEmpty ? song.identityKey : song.songId
+        startPlayback()
+    }
+
+    func removeFromQueue(at index: Int) {
+        let wasCurrent = index == queue.index
+        queue.remove(at: index)
+        MusicLibraryStore.saveQueue(queue.toQueueData())
+        if wasCurrent {
+            player.pause()
+            coordinator.stop()
+            currentSong = queue.current
+        }
+    }
+
+    func clearQueue() {
+        queue.clear()
+        MusicLibraryStore.saveQueue(queue.toQueueData())
+        player.pause()
+        coordinator.stop()
+        currentSong = nil
+    }
+
+    // MARK: - Haptics
+
+    /// Light tap feedback, only when the `hapticsEnabled` switch is on.
+    func hapticTick() {
+        guard MusicLibraryStore.hapticsEnabled() else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
