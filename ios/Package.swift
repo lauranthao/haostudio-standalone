@@ -12,7 +12,17 @@
 // with `swift test` from ios/, which Codemagic runs as a step
 // before xcodebuild. No app code changes are needed to test.
 //
-// S2: the LX engine / resolvers / music API (module MusicLX) are
+// One target, not two: S1 had a MigrationCore target (whole
+// Storage dir) and S2 added a MusicLX target that also listed
+// Storage/LocalStore.swift + Storage/KeychainStore.swift. SwiftPM
+// forbids one file in two targets, so build #18 failed with
+// "target 'MusicLX' has overlapping sources" on exactly those two
+// files. The merge keeps every file in exactly one target —
+// AppCore — and both test suites import it. (A later slice that
+// needs testable sources must add them to AppCore or to a new
+// target that claims no file AppCore already has.)
+//
+// S2: the LX engine / resolvers / music API (module AppCore) are
 // macOS-safe (Foundation + JavaScriptCore + CryptoKit + Security
 // only), so their tests run here. The player (MusicCore) and the
 // feature UI (MusicFeatures) import iOS-only frameworks
@@ -20,54 +30,38 @@
 // `swift test`; their tests run via `xcodebuild test` on an iOS
 // Simulator destination once an Xcode test target exists — there
 // is deliberately none yet (see the note above about the pbxproj).
-//
-// MusicLX sources: the three Services dirs plus the three files
-// they depend on outside Services — PlaybackCoordinator.swift
-// (PlaybackItem, AudioQuality, SourceResolver, the driver contract)
-// and Storage/LocalStore.swift + Storage/KeychainStore.swift
-// (documents dir + Keychain user keys). The driver contract lives
-// in PlaybackCoordinator.swift (not the player file) exactly so
-// this target does not pull in the iOS-only player.
 
 import PackageDescription
 
 let package = Package(
     name: "HAoStudioTests",
-    // MusicLX target covers the whole HAoStudio dir, which holds
+    // AppCore covers the whole HAoStudio dir, which holds
     // Base.lproj; SwiftPM requires a default localization once a
     // target has localized resources (build #17 failed without it).
     defaultLocalization: "en",
     targets: [
         .target(
-            name: "MigrationCore",
-            path: "HAoStudio/Storage",
-            linkerSettings: [
-                .linkedFramework("Security"),
-            ]
-        ),
-        .testTarget(
-            name: "MigrationCoreTests",
-            dependencies: ["MigrationCore"],
-            path: "Tests/MigrationCoreTests"
-        ),
-        .target(
-            name: "MusicLX",
+            name: "AppCore",
             path: "HAoStudio",
             sources: [
                 "Services/LXEngine",
                 "Services/MusicResolvers",
                 "Services/MusicAPI",
                 "Playback/PlaybackCoordinator.swift",
-                "Storage/LocalStore.swift",
-                "Storage/KeychainStore.swift",
+                "Storage",
             ],
             linkerSettings: [
                 .linkedFramework("Security"),
             ]
         ),
         .testTarget(
+            name: "MigrationCoreTests",
+            dependencies: ["AppCore"],
+            path: "Tests/MigrationCoreTests"
+        ),
+        .testTarget(
             name: "MusicLXTests",
-            dependencies: ["MusicLX"],
+            dependencies: ["AppCore"],
             path: "Tests/MusicLXTests"
         ),
     ]

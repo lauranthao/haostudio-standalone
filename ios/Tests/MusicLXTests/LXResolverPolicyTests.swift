@@ -9,7 +9,7 @@
 import Foundation
 import XCTest
 
-@testable import MusicLX
+@testable import AppCore
 
 final class LXResolverPolicyTests: XCTestCase {
     private var docs: URL!
