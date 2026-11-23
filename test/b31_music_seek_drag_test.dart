@@ -26,8 +26,76 @@ import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/features/music/av_music_player.dart';
 import 'package:standalone/features/music/music_player_controller.dart';
 import 'package:standalone/features/music/music_player_sheet.dart';
+import 'package:standalone/services/music/music_api.dart';
 import 'package:standalone/services/music/music_models.dart';
+import 'package:standalone/services/music/music_quality.dart';
+import 'package:standalone/services/music/music_resolvers.dart';
 import 'package:standalone/services/music/play_mode.dart';
+
+/// No alt platform ever (the recovery under test must come from the
+/// next candidate, not from an alt lookup).
+class _SeekFakeApi extends MusicApi {
+  @override
+  Future<Song?> findAltPlatform(
+    String title,
+    String artist,
+    MusicPlatform excludePf,
+    String album, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async =>
+      null;
+
+  @override
+  Future<List<LyricLine>> lyrics(Song song) async => [];
+}
+
+String _seekUrl(String id, int n) => 'https://example.com/$id-$n.mp3';
+
+/// Every resolve hands out two candidates for the same song (the
+/// first URL is the one whose seek will fail).
+class _SeekScriptedResolvers extends MusicResolvers {
+  @override
+  Future<PlayUrlResult?> resolvePlayUrl(
+    String songId,
+    MusicPlatform platform,
+    AudioQuality quality,
+    String title, {
+    Set<String> excludeJobs = const <String>{},
+    String artist = '',
+    bool background = false,
+    Duration totalBudget = const Duration(seconds: 8),
+  }) async {
+    if (background) return null;
+    return PlayUrlResult(
+      url: _seekUrl(songId, 1),
+      candidates: [_seekUrl(songId, 1), _seekUrl(songId, 2)],
+      quality: AudioQuality.hires,
+      via: 'test',
+    );
+  }
+
+  @override
+  void evictPlayUrl(
+    String songId,
+    MusicPlatform platform,
+    AudioQuality quality,
+  ) {}
+}
+
+MusicPlayerController _seekRecoveryController({
+  required _SeekFakePlayer a,
+  required _SeekFakePlayer b,
+  Duration seekLanding = const Duration(milliseconds: 300),
+}) =>
+    Get.put(
+      MusicPlayerController(
+        api: _SeekFakeApi(),
+        resolvers: _SeekScriptedResolvers(),
+        playerA: a,
+        playerB: b,
+        seekLandingTimeout: seekLanding,
+      ),
+    );
 
 /// No-load controller: records seeks, never resolves/loads audio
 /// (same pattern as music_player_layout_test's _NoLoadController).
@@ -56,17 +124,27 @@ class _RecordSeeksController extends MusicPlayerController {
 /// Fake AVPlayer: records seeks, drives its streams by hand.
 class _SeekFakePlayer extends AvMusicPlayer {
   final List<Duration> seeks = [];
+  final List<String> openedUrls = [];
   final positionCtrl = StreamController<Duration>.broadcast();
   final durationCtrl = StreamController<Duration>.broadcast();
   final playingCtrl = StreamController<bool>.broadcast();
   final errorCtrl = StreamController<String>.broadcast();
   final completedCtrl = StreamController<bool>.broadcast();
 
+  /// Upcoming seeks to swallow: recorded, but nothing is emitted on
+  /// the position stream — the silent native failure chen reported
+  /// (an expired URL whose seek the native player refuses without
+  /// an error). A swallowed seek is spent after one use.
+  var refuseSeeks = 0;
+
   @override
   AvMusicPlayerStreams get stream => _SeekFakeStreams(this);
 
   @override
-  Future<bool> open(String url, {bool play = true}) async => true;
+  Future<bool> open(String url, {bool play = true}) async {
+    openedUrls.add(url);
+    return true;
+  }
 
   @override
   Future<bool> preload(String url) async => true;
@@ -89,6 +167,10 @@ class _SeekFakePlayer extends AvMusicPlayer {
   @override
   Future<void> seek(Duration position) async {
     seeks.add(position);
+    if (refuseSeeks > 0) {
+      refuseSeeks--;
+      return;
+    }
     positionCtrl.add(position);
   }
 
@@ -235,6 +317,85 @@ void main() {
       await c.seek(const Duration(seconds: 100));
       expect(a.seeks, [const Duration(seconds: 100)]);
       expect(c.position.value, const Duration(seconds: 100));
+      c.stopStallWatchdogForTest();
+    });
+  });
+
+  group('controller: a seek the native player never lands', () {
+    Song song() => Song(
+          songId: '1',
+          title: 'Test Song',
+          artist: 'Test Artist',
+          album: 'Test Album',
+          cover: '',
+          platform: MusicPlatform.wy,
+          dur: 200,
+        );
+
+    test('recovers on the next candidate at the seek target', () async {
+      final a = _SeekFakePlayer()..refuseSeeks = 1;
+      final b = _SeekFakePlayer()..refuseSeeks = 1;
+      final c = _seekRecoveryController(a: a, b: b);
+      await c.playQueue([song()], 0);
+      expect(a.openedUrls, [_seekUrl('1', 1)]);
+      a.durationCtrl.add(const Duration(seconds: 200));
+      // The song plays from the old spot while the seek fails: the
+      // position keeps advancing, so the generic stall check (which
+      // only fires on a FROZEN position) never sees it — the seek
+      // target is the only witness. Let the 10 s event land before
+      // the seek, or its delivery races the optimistic position.
+      a.positionCtrl.add(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(c.position.value, const Duration(seconds: 10));
+      await c.seek(const Duration(seconds: 100));
+      expect(a.seeks, [const Duration(seconds: 100)]);
+      expect(c.position.value, const Duration(seconds: 100));
+      for (var i = 11; i <= 13; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        // Once the recovery opens the next candidate, the old URL's
+        // position events stop in reality too — feeding them after
+        // the recovery would clobber the recovered position.
+        if (a.openedUrls.length > 1) break;
+        a.positionCtrl.add(Duration(seconds: i));
+      }
+      // Past the 300 ms landing budget + a 500 ms tick: the recovery
+      // opens the next candidate and re-applies the seek on it (the
+      // second seek lands — refuseSeeks was spent on the first).
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(a.openedUrls, [_seekUrl('1', 1), _seekUrl('1', 2)]);
+      expect(
+        a.seeks,
+        [
+          const Duration(seconds: 100),
+          const Duration(seconds: 100),
+        ],
+        reason: 'the seek is re-applied on the recovered URL',
+      );
+      expect(c.position.value, const Duration(seconds: 100));
+      expect(c.loadError.value, isNull);
+      c.stopStallWatchdogForTest();
+    });
+
+    test('a landed seek never triggers the recovery', () async {
+      final a = _SeekFakePlayer();
+      final b = _SeekFakePlayer();
+      final c = _seekRecoveryController(a: a, b: b);
+      await c.playQueue([song()], 0);
+      a.durationCtrl.add(const Duration(seconds: 200));
+      a.positionCtrl.add(const Duration(seconds: 10));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await c.seek(const Duration(seconds: 100));
+      // The fake seek emits 100 s, so the landing check clears the
+      // target. Keep the position advancing so the generic stall
+      // check stays quiet too.
+      for (var i = 101; i <= 103; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        a.positionCtrl.add(Duration(seconds: i));
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(a.openedUrls, [_seekUrl('1', 1)]);
+      expect(a.seeks, [const Duration(seconds: 100)]);
+      expect(c.loadError.value, isNull);
       c.stopStallWatchdogForTest();
     });
   });

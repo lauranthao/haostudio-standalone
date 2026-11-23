@@ -73,6 +73,12 @@ class MusicPlayerController extends GetxController
     // can use short budgets instead of waiting 10/15 s.
     this.loadStallTimeout = const Duration(seconds: 10),
     this.midPlayStallTimeout = const Duration(seconds: 15),
+    // Seek-landing budget (build 31 — see [_stallTick]): a seek the
+    // native player never lands (dead/expired URL — the native seek
+    // fails silently and the position stream keeps reporting the old
+    // spot) is recovered after [seekLandingTimeout] by re-resolving
+    // the same song on the next candidate at the seek target.
+    this.seekLandingTimeout = const Duration(seconds: 5),
   })  : _api = api ?? MusicApi(),
         _resolvers = resolvers ?? MusicResolvers(),
         _nowPlayingOverride = nowPlaying,
@@ -95,6 +101,7 @@ class MusicPlayerController extends GetxController
   /// Stall watchdog budgets — see the constructor.
   final Duration loadStallTimeout;
   final Duration midPlayStallTimeout;
+  final Duration seekLandingTimeout;
 
   /// Offline downloads (M-P0-5): the player checks this before
   /// resolving a remote URL, so a downloaded song plays from disk.
@@ -281,6 +288,17 @@ class MusicPlayerController extends GetxController
   /// start so a stale intent never leaks into a later song.
   var _pendingPause = false;
   Duration? _pendingSeek;
+
+  /// A user seek already issued to the native player, awaiting proof
+  /// it landed (build 31 — see [_stallTick]): the native seek fails
+  /// silently on a dead/expired URL, so the only evidence is the
+  /// position stream. A native position within [_seekLandedTolerance]
+  /// of the target clears it; past [seekLandingTimeout] without
+  /// landing, the tick recovers by re-resolving the same song at the
+  /// target. Cleared at every [_loadCurrent] start (a new load
+  /// supersedes the old song's seek).
+  Duration? _seekTarget;
+  DateTime? _seekIssuedAt;
 
   /// The user moved the position since this song opened (public
   /// [seek] only — internal seeks never set it). The kill-saved
@@ -797,6 +815,14 @@ class MusicPlayerController extends GetxController
     _posSub = player.stream.position.listen((p) {
       if (identical(player, _active)) {
         position.value = p;
+        // Seek-landing proof (build 31): the native position came
+        // within tolerance of an issued user seek, so the seek
+        // landed — clear the watch (see [_stallTick]).
+        if (_seekTarget != null &&
+            (p - _seekTarget!).abs() <= _seekLandedTolerance) {
+          _seekTarget = null;
+          _seekIssuedAt = null;
+        }
         _maybeStartEarlyCrossfade(p);
         // A-B loop (build 29): at/past B, jump back to A. The seek
         // is idempotent — a stale position event after the seek just
@@ -849,6 +875,18 @@ class MusicPlayerController extends GetxController
   Duration _lastSeenDuration = Duration.zero;
   var _progressSeenForTrack = false;
 
+  /// A native position this close to an issued seek counts as
+  /// landed (the stream reports the position the seek produced,
+  /// plus the seconds played since the seek was issued).
+  static const _seekLandedTolerance = Duration(seconds: 2);
+
+  /// Record a user seek issued to the native player, so the
+  /// position stream can prove it landed (see [_stallTick]).
+  void _noteSeekIssued(Duration pos) {
+    _seekTarget = pos;
+    _seekIssuedAt = DateTime.now();
+  }
+
   void _startStallTimerIfNeeded() {
     _stallTimer ??= Timer.periodic(
       const Duration(milliseconds: 500),
@@ -885,6 +923,29 @@ class MusicPlayerController extends GetxController
     final now = DateTime.now();
     final pos = position.value;
     final dur = duration.value;
+    // Seek-landing deadline (build 31 — chen: dragging the progress
+    // bar "也不加载了"): a failed native seek is invisible to the
+    // generic stall check below, because the song keeps PLAYING from
+    // the old spot — the position keeps moving, so the movement
+    // check never fires. The seek target is the only witness: if it
+    // has not landed within [seekLandingTimeout], the URL is dead
+    // (expired link — the native seek fails silently and the stream
+    // keeps reporting the old spot). Recover exactly like a play
+    // failure, but keep the seek target: the next candidate opens
+    // at the position the user asked for instead of skipping the
+    // track. Checked before the movement check on purpose — a
+    // moving position must not mask an unlanded seek.
+    if (_seekTarget != null &&
+        _seekIssuedAt != null &&
+        now.difference(_seekIssuedAt!) > seekLandingTimeout) {
+      final target = _seekTarget!;
+      _seekTarget = null;
+      _seekIssuedAt = null;
+      _lastProgressAt = null;
+      _pendingSeek = target;
+      unawaited(_onPlayError(auto: _lastLoadAuto, gen: _playGen));
+      return;
+    }
     // Any movement restarts the clock: the track is alive.
     if (pos != _lastSeenPosition || dur != _lastSeenDuration) {
       _lastSeenPosition = pos;
@@ -1231,6 +1292,8 @@ class MusicPlayerController extends GetxController
     _earlyCrossfadeStarted = false;
     _pendingPause = false;
     _pendingSeek = null;
+    _seekTarget = null;
+    _seekIssuedAt = null;
     _pendingRealDuration = null;
     _userSeekedSinceOpen = false;
     // The badge shows the tier asked for until this song's real tier
@@ -1522,6 +1585,7 @@ class MusicPlayerController extends GetxController
     if (seekTarget != null) {
       _userSeekedSinceOpen = true;
       position.value = seekTarget;
+      _noteSeekIssued(seekTarget);
       await _active.seek(seekTarget);
     }
     if (pausePending) {
@@ -1784,6 +1848,13 @@ class MusicPlayerController extends GetxController
     if (_candidateIdx + 1 < _candidates.length) {
       _candidateIdx++;
       await _openOn(_active, _candidates[_candidateIdx], auto: auto, gen: gen);
+      // A seek the user made while this load was resolving (or a
+      // failed seek being recovered — see [_stallTick]) must land on
+      // the new URL too: _openOn does not apply pending intents
+      // (only _loadCurrent and the alt branch do), so without this
+      // the pending seek was silently dropped and the track
+      // restarted from 0.
+      await _applyPendingIntents(gen);
       return;
     }
     final song = currentSong;
@@ -2351,6 +2422,7 @@ class MusicPlayerController extends GetxController
     // seeks on displayDuration, which is > 0 from song metadata
     // even when nothing is playing). Same guard as play/pause.
     if (!_playersReady) return;
+    _noteSeekIssued(pos);
     await _active.seek(pos);
     _noteStallBaseline();
   }
