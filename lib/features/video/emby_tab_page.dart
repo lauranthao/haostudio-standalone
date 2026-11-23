@@ -38,9 +38,12 @@ import '../../widgets/hao_search_field.dart';
 import '../../services/video/emby_client.dart';
 import '../../services/video/emby_models.dart';
 import '../settings/video_sources_page.dart';
+import 'emby_category_page.dart';
 import 'emby_detail_page.dart';
+import 'video_history_page.dart';
 import 'video_history_store.dart';
 import 'video_models.dart';
+import 'video_poster_card.dart';
 import 'widgets/referer_image.dart';
 
 /// Series ids that may feed a NextUp lookup from LOCAL history
@@ -121,6 +124,12 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
   bool _seriesLoadingMore = false;
   String? _movieLibId;
   String? _tvLibId;
+
+  /// Libraries the server reported + per-library item counts, for
+  /// the inventory line under the search box (build 30 audit §17):
+  /// chen matches what the app found against his server.
+  List<EmbyLibrary> _libraries = [];
+  Map<String, int> _libraryCounts = {};
 
   /// Server-side resume (GET /Items/Resume) + per-series next-up
   /// (GET /Shows/NextUp), 1.1.6. [_resumeFromServer] is true only
@@ -302,38 +311,53 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
         : null;
 
     // Movie and series loads are independent: one failing must not
-    // kill the other row.
+    // kill the other row. A failed rail keeps its old rows but marks
+    // the page stale (build 30 audit §17) — before, a failure was
+    // silent and the page looked complete with half the content.
+    // Depth is preserved too: a refresh re-fetches as many rows as
+    // the user had already loaded via "加载更多", instead of
+    // shrinking the list back to the first 60.
     List<VideoItem> movies = _movies;
     List<VideoItem> series = _series;
     var moviesTotal = _moviesTotal;
     var seriesTotal = _seriesTotal;
+    var moviesFailed = false;
+    var seriesFailed = false;
     try {
       final page = await client.movies(
         libraryId: movieLibId,
-        limit: 60,
+        limit: _movies.length > 60 ? _movies.length : 60,
         cancelToken: token,
       );
       movies = page.items;
       moviesTotal = page.totalCount;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
+      moviesFailed = true;
     } on EmbyException catch (_) {
-      movies = _movies;
+      moviesFailed = true;
     }
     try {
       final page = await client.series(
         libraryId: tvLibId,
-        limit: 60,
+        limit: _series.length > 60 ? _series.length : 60,
         cancelToken: token,
       );
       series = page.items;
       seriesTotal = page.totalCount;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
+      seriesFailed = true;
     } on EmbyException catch (_) {
-      series = _series;
+      seriesFailed = true;
     }
     if (!mounted) return;
+    // Both rails failed and there is nothing to show: say so, with
+    // a retry, instead of the misleading 'Emby 片库是空的'.
+    if (moviesFailed && seriesFailed && movies.isEmpty && series.isEmpty) {
+      _fail('Emby 影片加载失败，下拉重试');
+      return;
+    }
     setState(() {
       _movies = movies;
       _series = series;
@@ -341,14 +365,56 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
       _seriesTotal = seriesTotal;
       _movieLibId = movieLibId;
       _tvLibId = tvLibId;
+      _libraries = libraries;
       _history = VideoHistoryStore.getAll()
           .where((e) => e.sourceKey == EmbyClient.sourceId)
           .toList();
       _phase = _EmbyPhase.ready;
-      _stale = false;
+      _stale = moviesFailed || seriesFailed;
     });
     unawaited(_saveCache());
     unawaited(_loadServerResume(client, token));
+    unawaited(_loadLibraryCounts(client, libraries, token));
+  }
+
+  /// Per-library counts for the inventory line (best-effort): one
+  /// Limit-1 query per library; a failure leaves that library's
+  /// count out instead of failing the page.
+  Future<void> _loadLibraryCounts(
+    EmbyClient client,
+    List<EmbyLibrary> libraries,
+    CancelToken token,
+  ) async {
+    final counts = <String, int>{};
+    for (final lib in libraries) {
+      if (token.isCancelled || !mounted) return;
+      try {
+        counts[lib.id] = await client.libraryItemCount(
+          lib.id,
+          includeItemTypes: _countTypesFor(lib),
+          cancelToken: token,
+        );
+      } catch (_) {
+        // Best-effort: the library still shows, without a count.
+      }
+    }
+    if (mounted) setState(() => _libraryCounts = counts);
+  }
+
+  /// What a library's inventory count counts: films (+ loose videos)
+  /// for a movies library, series for a tv library, both for mixed;
+  /// everything for any other kind (music/photos/…).
+  static String? _countTypesFor(EmbyLibrary lib) {
+    switch (lib.collectionType) {
+      case 'movies':
+        return 'Movie,Video';
+      case 'tvshows':
+        return 'Series';
+      case 'mixed':
+        return 'Movie,Video,Series';
+      default:
+        return null;
+    }
   }
 
   /// Server resume + next-up rails (1.1.6, best-effort): a server
@@ -608,6 +674,56 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
     );
   }
 
+  /// Full category lists (build 30 audit §18): the rails are only a
+  /// preview — the whole category lives on its own page (Infuse
+  /// grid, paginated, total shown).
+  void _openMoviesCategory() {
+    final client = _client;
+    if (client == null) return;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => EmbyCategoryPage(
+          client: client,
+          kind: EmbyCategoryKind.movies,
+          libraryId: _movieLibId,
+          initialItems: _movies,
+          total: _moviesTotal,
+          watchedKeys: _watchedKeys,
+        ),
+      ),
+    );
+  }
+
+  void _openSeriesCategory() {
+    final client = _client;
+    if (client == null) return;
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) => EmbyCategoryPage(
+          client: client,
+          kind: EmbyCategoryKind.series,
+          libraryId: _tvLibId,
+          initialItems: _series,
+          total: _seriesTotal,
+          watchedKeys: _watchedKeys,
+        ),
+      ),
+    );
+  }
+
+  /// "继续观看" full list: the history page, Emby rows only (build
+  /// 30 audit §16 — "emby是emby的 影视源是影视源的"). The
+  /// server-resume row itself is server data; its full list is the
+  /// local Emby history (every playback on this phone writes one).
+  void _openResumeHistory() {
+    Navigator.of(context).push(
+      CupertinoPageRoute<void>(
+        builder: (_) =>
+            const VideoHistoryPage(sourceKey: EmbyClient.sourceId),
+      ),
+    );
+  }
+
   Set<String> get _watchedKeys => _history
       .where((e) => e.isFinished)
       .map((e) => e.identityKey)
@@ -764,6 +880,28 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                     ),
                   ),
                 ),
+                // Library inventory (build 30 audit §17): what the
+                // app found on the server, so chen can match it
+                // against his library at a glance. Counts arrive
+                // one query per library, best-effort — a library
+                // without a count yet still shows its name.
+                if (_libraries.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Text(
+                      '媒体库：${_libraries.map((l) {
+                        final count = _libraryCounts[l.id];
+                        return count == null
+                            ? l.name
+                            : '${l.name}（$count）';
+                      }).join(' · ')}',
+                      style: TextStyle(
+                        color: theme.textSecondary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 if (_stale)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -800,7 +938,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                 // one row — the server is the source of truth across
                 // devices, local is the offline fallback.
                 if (_resumeFromServer && _serverResume.isNotEmpty) ...[
-                  _SectionHead(title: '继续观看', onMore: null),
+                  _SectionHead(title: '继续观看', onMore: _openResumeHistory),
                   SizedBox(
                     height: 186,
                     child: ListView.builder(
@@ -821,7 +959,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                     ),
                   ),
                 ] else if (_history.isNotEmpty) ...[
-                  _SectionHead(title: '继续观看', onMore: null),
+                  _SectionHead(title: '继续观看', onMore: _openResumeHistory),
                   SizedBox(
                     height: 186,
                     child: ListView.builder(
@@ -887,7 +1025,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                   ),
                 ],
                 if (_movies.isNotEmpty) ...[
-                  _SectionHead(title: '电影', count: _movies.length),
+                  _SectionHead(title: '电影', onMore: _openMoviesCategory),
                   _PosterRow(
                     items: _movies,
                     watchedKeys: _watchedKeys,
@@ -903,7 +1041,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                     ),
                 ],
                 if (_series.isNotEmpty) ...[
-                  _SectionHead(title: '剧集', count: _series.length),
+                  _SectionHead(title: '剧集', onMore: _openSeriesCategory),
                   _PosterRow(
                     items: _series,
                     watchedKeys: _watchedKeys,
@@ -1011,7 +1149,7 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
                               itemCount: _searchResults.length,
                               itemBuilder: (context, i) {
                                 final item = _searchResults[i];
-                                return _EmbyPosterCard(
+                                return EmbyPosterCard(
                                   item: item,
                                   imageHeaders: _client?.imageHeaders,
                                   isWatched:
@@ -1042,12 +1180,11 @@ class _EmbyTabPageState extends State<EmbyTabPage> {
 }
 
 /// Section header — same values as the CMS home (_SectionHead in
-/// video_tab_page.dart): 20px/800 + "count ›".
+/// video_tab_page.dart): 20px/800 + "查看全部 ›".
 class _SectionHead extends StatelessWidget {
-  const _SectionHead({required this.title, this.count, this.onMore});
+  const _SectionHead({required this.title, this.onMore});
 
   final String title;
-  final int? count;
   final VoidCallback? onMore;
 
   @override
@@ -1072,7 +1209,7 @@ class _SectionHead extends StatelessWidget {
             GestureDetector(
               onTap: onMore,
               child: Text(
-                count != null ? '$count ›' : '查看全部 ›',
+                '查看全部 ›',
                 style: TextStyle(
                   color: theme.textMuted,
                   fontSize: 14,
@@ -1115,7 +1252,7 @@ class _PosterRow extends StatelessWidget {
             padding: const EdgeInsets.only(right: 12),
             child: SizedBox(
               width: 112,
-              child: _EmbyPosterCard(
+              child: EmbyPosterCard(
                 item: item,
                 imageHeaders: imageHeaders,
                 isWatched: watchedKeys.contains(item.identityKey),
@@ -1134,155 +1271,6 @@ class _PosterRow extends StatelessWidget {
 /// 2:3 poster, radius standard, title 13/600, meta 12, count badge
 /// (dark pill, 11/600, top-right), watched ✓ (20px dark circle,
 /// top-left), missing artwork = theme tile + ▶ glyph.
-class _EmbyPosterCard extends StatelessWidget {
-  const _EmbyPosterCard({
-    required this.item,
-    this.imageHeaders,
-    this.isWatched = false,
-    this.onTap,
-  });
-
-  final VideoItem item;
-  final Map<String, String>? imageHeaders;
-  final bool isWatched;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = HaoTheme.of(context);
-    final total = int.tryParse(item.total) ?? 0;
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 2 / 3,
-            child: Container(
-              decoration: BoxDecoration(
-                color: theme.surfaceStrong,
-                borderRadius: BorderRadius.circular(HaoRadius.standard),
-                border: Border.all(color: theme.hairline),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (item.pic.isNotEmpty)
-                    RefererImage(
-                      url: item.pic,
-                      headers: imageHeaders,
-                      fit: BoxFit.cover,
-                      fallback: _MissingArtwork(theme: theme),
-                    )
-                  else
-                    _MissingArtwork(theme: theme),
-                  if (isWatched)
-                    const Positioned(
-                      top: 6,
-                      left: 6,
-                      child: _WatchedMark(),
-                    ),
-                  if (total > 1)
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xA6000000),
-                          borderRadius:
-                              BorderRadius.circular(HaoRadius.standard),
-                        ),
-                        child: Text(
-                          '$total 集',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            item.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: theme.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            [
-              if (item.year.isNotEmpty) item.year,
-              if (item.type.isNotEmpty) item.type,
-            ].join(' · '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: theme.textMuted,
-              fontSize: 12,
-              height: 1.25,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MissingArtwork extends StatelessWidget {
-  const _MissingArtwork({required this.theme});
-
-  final HaoTheme theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: theme.surfaceStrong,
-      child: Center(
-        child: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted, size: 36),
-      ),
-    );
-  }
-}
-
-class _WatchedMark extends StatelessWidget {
-  const _WatchedMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: const BoxDecoration(
-        color: Color(0xA6000000),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(Icons.check, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white, size: 13),
-    );
-  }
-}
-
 /// "Load more" footer under a paginated row (1.1.6): shows how
 /// many are displayed out of the server total, so the 60-item
 /// first page is never a silent truncation.
@@ -1434,7 +1422,7 @@ class _ResumeCard extends StatelessWidget {
   }
 }
 
-/// Next-up episode card — same geometry as [_EmbyPosterCard] (112
+/// Next-up episode card — same geometry as [EmbyPosterCard] (112
 /// wide, 2:3 tile, title 13/600, meta 12). The tile is the
 /// episode's own poster when the server has one, else the same
 /// missing-artwork tile; the title is the series name and the meta
@@ -1489,10 +1477,10 @@ class _NextUpCard extends StatelessWidget {
                       url: item.pic,
                       headers: imageHeaders,
                       fit: BoxFit.cover,
-                      fallback: _MissingArtwork(theme: theme),
+                      fallback: EmbyMissingArtwork(theme: theme),
                     )
                   else
-                    _MissingArtwork(theme: theme),
+                    EmbyMissingArtwork(theme: theme),
                 ],
               ),
             ),

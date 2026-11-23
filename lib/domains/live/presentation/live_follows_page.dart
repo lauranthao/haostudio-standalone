@@ -577,8 +577,11 @@ class _TabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
     // Glass capsule: selection is carried by the accent border +
-    // accent bold text (the old accentSoft fill is the glass fill now
-    // — a second fill under the glass would hide the blur).
+    // textPrimary bold text (the old accentSoft fill is the glass
+    // fill now — a second fill under the glass would hide the blur).
+    // Selected text is textPrimary, not accent: dark appleGlass
+    // accent (#76767A) is dimmer than textSecondary, so accent
+    // selected text reads dimmer than the unselected chips.
     return GlassCard(
       radius: 999,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -596,7 +599,7 @@ class _TabButton extends StatelessWidget {
             '$label ($count)',
             style: TextStyle(
               shadows: HaoTheme.legibilityShadows(context),
-              color: selected ? theme.accent : theme.textSecondary,
+              color: selected ? theme.textPrimary : theme.textSecondary,
               fontSize: 14,
               fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
@@ -636,7 +639,7 @@ class _PlatformChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         labelStyle: TextStyle(
           shadows: HaoTheme.legibilityShadows(context),
-          color: selected ? theme.accent : theme.textSecondary,
+          color: selected ? theme.textPrimary : theme.textSecondary,
           fontSize: 13,
           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
         ),

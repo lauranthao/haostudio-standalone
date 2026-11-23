@@ -136,6 +136,23 @@ class _SplashPageState extends State<SplashPage>
     });
   }
 
+  // Reduce Motion: skip the choreography. The entrance tweens all
+  // end by t = 0.833, so jumping there shows the finished logo and
+  // leaves only the 300 ms fade-out to AppShell — a fade instead of
+  // a 1.8 s rise / scale / breathe. Runs before the first build
+  // (didChangeDependencies), so no entrance frame ever flashes.
+  bool _reduceMotionJumped = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_reduceMotionJumped &&
+        MediaQuery.of(context).disableAnimations) {
+      _reduceMotionJumped = true;
+      _controller.value = 0.833;
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();

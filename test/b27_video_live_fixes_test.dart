@@ -545,11 +545,17 @@ ThemeData _cjkTheme(ThemeData base) {
     chipTheme: base.chipTheme.copyWith(
       labelStyle: cjkStyle(base.chipTheme.labelStyle),
     ),
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: cjkButton(base.elevatedButtonTheme.style),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: cjkButton(base.outlinedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: cjkButton(base.filledButtonTheme.style),
     ),
     textButtonTheme: TextButtonThemeData(
       style: cjkButton(base.textButtonTheme.style),

@@ -40,6 +40,14 @@ Future<void> _loadCjkFont() async {
 ThemeData _cjkTheme(ThemeData base) {
   TextStyle cjkStyle(TextStyle? style) =>
       (style ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC');
+  ButtonStyle cjkButton(ButtonStyle? style) {
+    final resolved = style?.textStyle?.resolve({});
+    return (style ?? const ButtonStyle()).copyWith(
+      textStyle: WidgetStatePropertyAll(
+        cjkStyle(resolved),
+      ),
+    );
+  }
   return base.copyWith(
     cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: base.textTheme.apply(fontFamily: 'NotoSansSC'),
@@ -64,6 +72,16 @@ ThemeData _cjkTheme(ThemeData base) {
           ),
         ),
       ),
+    ),
+
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: cjkButton(base.textButtonTheme.style),
     ),
     inputDecorationTheme: base.inputDecorationTheme.copyWith(
       hintStyle: cjkStyle(base.inputDecorationTheme.hintStyle),

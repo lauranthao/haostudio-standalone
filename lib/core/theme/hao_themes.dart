@@ -517,6 +517,7 @@ ThemeData _buildThemeData({
         ),
         textStyle: WidgetStateProperty.all(
           TextStyle(
+            fontFamily: fontFamily,
             fontSize: 16,
             fontWeight: FontWeight.w600,
             shadows: legibility,
@@ -544,6 +545,7 @@ ThemeData _buildThemeData({
         ),
         textStyle: WidgetStateProperty.all(
           TextStyle(
+            fontFamily: fontFamily,
             fontSize: 14,
             fontWeight: FontWeight.w600,
             shadows: legibility,
@@ -556,6 +558,7 @@ ThemeData _buildThemeData({
         foregroundColor: WidgetStateProperty.all(accent),
         textStyle: WidgetStateProperty.all(
           TextStyle(
+            fontFamily: fontFamily,
             fontSize: 15,
             fontWeight: FontWeight.w600,
             shadows: legibility,
@@ -582,11 +585,13 @@ ThemeData _buildThemeData({
         borderSide: BorderSide(color: accent, width: 1.5),
       ),
       hintStyle: TextStyle(
+        fontFamily: fontFamily,
         color: textMuted,
         fontSize: 14,
         shadows: legibility,
       ),
       labelStyle: TextStyle(
+        fontFamily: fontFamily,
         color: textSecondary,
         fontSize: 14,
         shadows: legibility,

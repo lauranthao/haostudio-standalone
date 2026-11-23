@@ -41,6 +41,21 @@ ThemeData _cjkTheme(ThemeData base) {
   // AppBar title and TextButton text inherit their own theme slots,
   // not textTheme, so they stay tofu without these two overrides.
   final buttonStyle = base.textButtonTheme.style;
+
+  // Button themes carry their own textStyle WITHOUT a fontFamily, and
+  // a button's DefaultTextStyle shadows the ambient one — so button
+  // labels would render in the Ahem test font (tofu) unless the
+  // family is forced here too. On a real device the system font
+  // covers them; this is test-only.
+  ButtonStyle cjkButton(ButtonStyle? style) {
+    final resolved = style?.textStyle?.resolve({});
+    return (style ?? const ButtonStyle()).copyWith(
+      textStyle: WidgetStatePropertyAll(
+        (resolved ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC'),
+      ),
+    );
+  }
+
   return base.copyWith(
     cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
@@ -57,6 +72,16 @@ ThemeData _cjkTheme(ThemeData base) {
           );
         }),
       ),
+    ),
+
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
     ),
   );
 }

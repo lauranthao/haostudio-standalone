@@ -51,9 +51,36 @@ Future<void> _loadCjkFont() async {
 
 ThemeData _cjkTheme(ThemeData base) {
   final text = base.textTheme.apply(fontFamily: 'NotoSansSC');
+
+  // Button themes carry their own textStyle WITHOUT a fontFamily, and
+  // a button's DefaultTextStyle shadows the ambient one — so button
+  // labels would render in the Ahem test font (tofu) unless the
+  // family is forced here too. On a real device the system font
+  // covers them; this is test-only.
+  ButtonStyle cjkButton(ButtonStyle? style) {
+    final resolved = style?.textStyle?.resolve({});
+    return (style ?? const ButtonStyle()).copyWith(
+      textStyle: WidgetStatePropertyAll(
+        (resolved ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC'),
+      ),
+    );
+  }
+
   return base.copyWith(
     cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: cjkButton(base.textButtonTheme.style),
+    ),
   );
 }
 
@@ -194,7 +221,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.drag(find.byType(ListView), const Offset(0, -1000));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 800));
   }

@@ -32,6 +32,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -181,7 +182,7 @@ void main() {
       // Theme-coloured on the scaffold (light mode): white icons
       // would be invisible on the white page background.
       final theme = HaoTheme.of(tester.element(find.byType(LiveRoomPage)));
-      final refreshIcon = tester.widget<Icon>(find.byIcon(Icons.refresh));
+      final refreshIcon = tester.widget<Icon>(find.byIcon(CupertinoIcons.refresh));
       expect(refreshIcon.color, theme.textPrimary);
       expect(refreshIcon.color, isNot(Colors.white));
 

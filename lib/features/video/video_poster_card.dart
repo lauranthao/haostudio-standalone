@@ -262,3 +262,159 @@ double _cellRatio(double gridWidth) {
   final colW = (gridWidth - 2 * 12) / 3;
   return colW / (colW * 3 / 2 + kVideoPosterCardTextHeight);
 }
+
+/// Emby poster card — same geometry as [VideoPosterCard] (2:3
+/// poster, 13/600 title, 12 muted meta line, dark "N 集" pill,
+/// watched ✓ top-left), plus the auth headers Emby images need
+/// ([EmbyClient.imageHeaders] — the key rides a header, never the
+/// URL). Lives here so the Emby tab page and the Emby category page
+/// share one card instead of drifting apart.
+class EmbyPosterCard extends StatelessWidget {
+  const EmbyPosterCard({
+    super.key,
+    required this.item,
+    this.imageHeaders,
+    this.isWatched = false,
+    this.onTap,
+  });
+
+  final VideoItem item;
+  final Map<String, String>? imageHeaders;
+  final bool isWatched;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    final total = int.tryParse(item.total) ?? 0;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 2 / 3,
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.surfaceStrong,
+                borderRadius: BorderRadius.circular(HaoRadius.standard),
+                border: Border.all(color: theme.hairline),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.10),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (item.pic.isNotEmpty)
+                    RefererImage(
+                      url: item.pic,
+                      headers: imageHeaders,
+                      fit: BoxFit.cover,
+                      fallback: EmbyMissingArtwork(theme: theme),
+                    )
+                  else
+                    EmbyMissingArtwork(theme: theme),
+                  if (isWatched)
+                    const Positioned(
+                      top: 6,
+                      left: 6,
+                      child: _EmbyWatchedMark(),
+                    ),
+                  if (total > 1)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xA6000000),
+                          borderRadius:
+                              BorderRadius.circular(HaoRadius.standard),
+                        ),
+                        child: Text(
+                          '$total 集',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            [
+              if (item.year.isNotEmpty) item.year,
+              if (item.type.isNotEmpty) item.type,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.textMuted,
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EmbyMissingArtwork extends StatelessWidget {
+  const EmbyMissingArtwork({super.key, required this.theme});
+
+  final HaoTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: theme.surfaceStrong,
+      child: Center(
+        child: Icon(Icons.play_arrow, shadows: HaoTheme.legibilityShadows(context),  color: theme.textMuted, size: 36),
+      ),
+    );
+  }
+}
+
+class _EmbyWatchedMark extends StatelessWidget {
+  const _EmbyWatchedMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        color: Color(0xA6000000),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.check, shadows: HaoTheme.legibilityShadows(context),  color: Colors.white, size: 13),
+    );
+  }
+}

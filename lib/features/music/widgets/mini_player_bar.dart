@@ -228,6 +228,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                       const SizedBox(width: 4),
                       _MiniControl(
                         buttonKey: const ValueKey('mini-mode'),
+                        label: '播放模式',
                         icon: playModeIcon(player.mode),
                         size: 14,
                         color: theme.textSecondary,
@@ -238,6 +239,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                       ),
                       const SizedBox(width: 4),
                       _MiniControl(
+                        label: '上一首',
                         icon: Icons.skip_previous,
                         size: 14,
                         color: theme.textSecondary,
@@ -248,6 +250,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                       ),
                       const SizedBox(width: 4),
                       _MiniControl(
+                        label: player.isPlaying.value ? '暂停' : '播放',
                         icon: player.isPlaying.value
                             ? Icons.pause
                             : Icons.play_arrow,
@@ -260,6 +263,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                       ),
                       const SizedBox(width: 4),
                       _MiniControl(
+                        label: '下一首',
                         icon: Icons.skip_next,
                         size: 14,
                         color: theme.textSecondary,
@@ -283,16 +287,20 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
 class _MiniControl extends StatelessWidget {
   const _MiniControl({
     this.buttonKey,
+    required this.label,
     required this.icon,
     required this.size,
     required this.color,
     required this.onPressed,
   });
 
-  /// Key on the IconButton itself (tests find the mode control this way:
-  /// no tooltip — Tooltip needs an Overlay ancestor and the overlay
-  /// placement sits above the root Navigator, where there is none).
+  /// Key on the IconButton itself (tests find the mode control this way).
+  /// VoiceOver label via Semantics, NOT IconButton.tooltip: Tooltip
+  /// needs an Overlay ancestor and this bar sits above the root
+  /// Navigator, where there is none — a tooltip here would throw
+  /// "No Overlay widget found" at runtime.
   final Key? buttonKey;
+  final String label;
   final IconData icon;
   final double size;
   final Color color;
@@ -300,14 +308,18 @@ class _MiniControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: IconButton(
-        key: buttonKey,
-        icon: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: size, color: color),
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
+    return Semantics(
+      label: label,
+      button: true,
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: IconButton(
+          key: buttonKey,
+          icon: Icon(shadows: HaoTheme.legibilityShadows(context), icon, size: size, color: color),
+          padding: EdgeInsets.zero,
+          onPressed: onPressed,
+        ),
       ),
     );
   }

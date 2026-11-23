@@ -78,8 +78,14 @@ ThemeData _cjkTheme(ThemeData base) {
       titleTextStyle: cjkStyle(base.dialogTheme.titleTextStyle),
       contentTextStyle: cjkStyle(base.dialogTheme.contentTextStyle),
     ),
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
     filledButtonTheme: FilledButtonThemeData(
       style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
     ),
     textButtonTheme: TextButtonThemeData(
       style: cjkButton(base.textButtonTheme.style),

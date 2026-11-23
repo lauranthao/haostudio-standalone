@@ -22,6 +22,7 @@ import 'package:hive_ce/hive_ce.dart';
 import 'package:standalone/core/storage/hive_store.dart';
 import 'package:standalone/core/theme/hao_themes.dart';
 import 'package:standalone/core/theme/haptics.dart';
+import 'package:standalone/features/video/emby_category_page.dart';
 import 'package:standalone/features/video/emby_detail_page.dart';
 import 'package:standalone/features/video/emby_tab_page.dart';
 import 'package:standalone/services/video/emby_client.dart';
@@ -96,6 +97,9 @@ ThemeData _cjkTheme(ThemeData base) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
     ),
     textButtonTheme: TextButtonThemeData(
       style: cjkButton(base.textButtonTheme.style),
@@ -333,6 +337,27 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
+  Future<void> pumpCategory(WidgetTester tester, ThemeData theme) async {
+    setPhoneSize(tester);
+    final page = await _cannedClient().movies(libraryId: 'lib-m');
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        home: EmbyCategoryPage(
+          client: _cannedClient(),
+          kind: EmbyCategoryKind.movies,
+          libraryId: 'lib-m',
+          initialItems: page.items,
+          total: page.totalCount,
+        ),
+      ),
+    );
+    await pumpUntilFound(tester, find.text('共 2 部'));
+    expect(find.text('流浪地球2'), findsWidgets);
+    expect(find.text('奥本海默'), findsWidgets);
+  }
+
   ThemeData light() =>
       _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).light);
   ThemeData dark() => _cjkTheme(HaoThemes.of(HaoThemeId.appleGlass).dark);
@@ -382,6 +407,25 @@ void main() {
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/emby_detail_dark.png'),
+    );
+  });
+
+  // Category full list (§18): golden files do not exist yet — the
+  // parent generates them after inspecting the testImage renders
+  // (same flow as the other goldens in this file).
+  testWidgets('render emby category light', (tester) async {
+    await pumpCategory(tester, light());
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/emby_category_light.png'),
+    );
+  });
+
+  testWidgets('render emby category dark', (tester) async {
+    await pumpCategory(tester, dark());
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/emby_category_dark.png'),
     );
   });
 }

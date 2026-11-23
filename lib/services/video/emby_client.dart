@@ -766,7 +766,11 @@ class EmbyClient {
 
   // -- Libraries -------------------------------------------------------
 
-  /// GET /Users/{userId}/Views, keeping only movies/tvshows.
+  /// GET /Users/{userId}/Views — ALL libraries, not just movies/tv
+  /// (build 30 audit §17: the old movies/tvshows-only filter hid
+  /// mixed/music/homevideo libraries from the tab page's inventory
+  /// line, so chen could not see what the app had found. Pin
+  /// resolution still matches by type — see _pickLibrary).
   Future<List<EmbyLibrary>> libraries({CancelToken? cancelToken}) async {
     final json = await _getJson(
       _apiUrl('/Users/${config.userId}/Views'),
@@ -775,13 +779,40 @@ class EmbyClient {
     final items = (json['Items'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(EmbyLibrary.fromJson)
-        .where((l) => l.id.isNotEmpty && (l.isMovieLibrary || l.isTvLibrary))
+        .where((l) => l.id.isNotEmpty)
         .toList();
     return items;
   }
 
+  /// Count items under one library (Limit 1 — only TotalRecordCount
+  /// is read). Used by the tab page's library inventory line so chen
+  /// can match what the app found against his server.
+  Future<int> libraryItemCount(
+    String libraryId, {
+    String? includeItemTypes,
+    CancelToken? cancelToken,
+  }) async {
+    final query = <String, String>{
+      'parentId': libraryId,
+      'Recursive': 'true',
+      'StartIndex': '0',
+      'Limit': '1',
+      if (includeItemTypes != null && includeItemTypes.isNotEmpty)
+        'IncludeItemTypes': includeItemTypes,
+    };
+    final json = await _getJson(
+      _apiQuery('/Users/${config.userId}/Items', query),
+      cancelToken: cancelToken,
+    );
+    return (json['TotalRecordCount'] as num?)?.toInt() ?? 0;
+  }
+
   // -- Items -----------------------------------------------------------
 
+  /// Movies rail (build 30 audit §17): 'Video' as well as 'Movie' —
+  /// loose video files the server never matched to a movie carry
+  /// Type 'Video' and were invisible before. Trailers / extras are
+  /// their own types ('Trailer' / 'Extra'), so they stay out.
   Future<EmbyItemsPage> movies({
     String? libraryId,
     int startIndex = 0,
@@ -789,7 +820,7 @@ class EmbyClient {
     CancelToken? cancelToken,
   }) =>
       _items(
-        includeItemTypes: 'Movie',
+        includeItemTypes: 'Movie,Video',
         libraryId: libraryId,
         startIndex: startIndex,
         limit: limit,
@@ -844,7 +875,7 @@ class EmbyClient {
   }) async {
     final url = _apiQuery('/Users/${config.userId}/Items', <String, String>{
       'searchTerm': query,
-      'IncludeItemTypes': 'Movie,Series,Episode',
+      'IncludeItemTypes': 'Movie,Series,Episode,Video',
       'Recursive': 'true',
       'StartIndex': '$startIndex',
       'Limit': '$limit',
@@ -1194,7 +1225,10 @@ class EmbyClient {
     final type = (item['Type'] as String?) ?? '';
     final meta = _toVideoMeta(item);
     final facts = EmbyStreamFacts.fromMediaSources(item['MediaSources']);
-    if (type == 'Movie' || type == 'Episode') {
+    // 'Video' plays like a movie: one loose file, one direct line
+    // (build 30 audit §17 — otherwise a Video card would open an
+    // empty detail that only throws '打不开').
+    if (type == 'Movie' || type == 'Episode' || type == 'Video') {
       final epName = type == 'Episode'
           ? _episodeDisplayName(item)
           : '正片';
@@ -1203,7 +1237,9 @@ class EmbyClient {
         source: sourceId,
         vodId: itemId,
         meta: meta,
-        mediaType: type,
+        // A loose 'Video' file is a single film: report it as a
+        // movie so the player treats it as one (no 下一集 lookup).
+        mediaType: type == 'Video' ? 'Movie' : type,
         lines: [
           PlayLine(name: '直链', episodes: [
             PlayEpisode(
@@ -1272,8 +1308,16 @@ class EmbyClient {
     final items = (json['Items'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .where((m) {
+          // Playable video types only (build 30 audit §17): 'Video'
+          // is a loose video file — visible in the movies rail now.
+          // 'Trailer' / 'Extra' / 'BoxSet' stay out: trailers and
+          // extras are not films, and a BoxSet has no playable
+          // detail yet (it needs a children listing page first).
           final t = (m['Type'] as String?) ?? '';
-          return t == 'Movie' || t == 'Series' || t == 'Episode';
+          return t == 'Movie' ||
+              t == 'Series' ||
+              t == 'Episode' ||
+              t == 'Video';
         })
         .map(_toVideoItem)
         .toList();

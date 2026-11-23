@@ -365,39 +365,40 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   Widget build(BuildContext context) {
     // No themeController here (build 29 B组): the rows moved into
     // _appearanceRows/_videoRows, which re-derive theme + controller
-    // themselves; build() only needs `theme` for the 设置 title.
+    // The hand-written 34 bold header (chen 2026-11-21) is now the
+    // native CupertinoSliverNavigationBar (build 30 audit): 34 bold
+    // at rest, collapsing to the 17 semibold middle title on scroll.
+    // The sliver bar owns the status-bar inset, so the list no
+    // longer carries it (the old top padding is gone); the scroll
+    // controller is unchanged (tab-tap scroll-to-top still drives it).
     final theme = HaoTheme.of(context);
     return Obx(() => Scaffold(
-      // No AppBar (chen 2026-11-21, screenshot): the title is a big
-      // bold header at the top-left of the list, like his 我的片库
-      // screenshot — not a small top-bar title. Apple Large Title:
-      // 34 bold (build-29 typography, was 26 w800 — 26 is not an
-      // Apple text style). The title carries the status-bar inset
-      // itself (MediaQuery), so the page needs no AppBar and no
-      // SafeArea.
-      body: ListView(
+      body: CustomScrollView(
         controller: _scrollController,
         // Bottom padding 34, not 40 (build 29 B组): the last section
         // carries 6px breathing room inside its clip (see
         // HaoCollapsibleSection), so 34 + 6 keeps the total page height
         // — and every scroll offset — exactly as before.
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 34),
-        children: [
-          Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + 8,
-              bottom: 12,
-            ),
-            child: Text(
+        slivers: [
+          CupertinoSliverNavigationBar(
+            // Only largeTitle — no middle (see music_tab_page:
+            // passing both shows two titles at rest).
+            largeTitle: Text(
               '设置',
               style: TextStyle(
-                color: theme.textPrimary,
-                fontSize: 34,
-                fontWeight: FontWeight.w700,
                 shadows: HaoTheme.legibilityShadows(context),
+                color: theme.textPrimary,
               ),
             ),
+            backgroundColor: theme.surface,
+            border: Border(
+              bottom: BorderSide(color: theme.hairline, width: 0.5),
+            ),
           ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 34),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
           HaoCollapsibleSection(
             title: '外观',
             expanded: _sectionExpanded['appearance'] ?? true,
@@ -446,6 +447,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             onToggle: () => _toggleSection('about'),
             children: _aboutRows(context),
           ),
+              ]),
+            ),
+          ),
         ],
       ),
     ));
@@ -493,7 +497,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                           fontWeight: FontWeight.w600,
                           color:
                               themeController.themeId.value == id
-                                  ? theme.accent
+                                  ? theme.textPrimary
                                   : theme.textSecondary,
                           shadows:
                               HaoTheme.legibilityShadows(context),
@@ -823,7 +827,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: _musicNormalizationStrength == entry.key
-                        ? HaoTheme.of(context).accent
+                        ? HaoTheme.of(context).textPrimary
                         : HaoTheme.of(context).textSecondary,
                     shadows: HaoTheme.legibilityShadows(context),
                   ),
@@ -923,7 +927,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                     if (selected)
                       Icon(
                         CupertinoIcons.checkmark,
-                        color: theme.accent,
+                        color: theme.textPrimary,
                         size: 20,
                         shadows: HaoTheme.legibilityShadows(context),
                       ),
@@ -1614,8 +1618,16 @@ class _BackgroundSwatches extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: color,
+                      // Unselected ring is a fixed mid-grey
+                      // (iOS system grey): the old hairline (text
+                      // colour 8%) vanished on same-colour cards —
+                      // white presets on a light card, black presets
+                      // on a dark card. Selected keeps the 2px
+                      // accent ring.
                       border: Border.all(
-                        color: selected ? theme.accent : theme.hairline,
+                        color: selected
+                            ? theme.accent
+                            : const Color(0xFF8E8E93),
                         width: selected ? 2 : 1,
                       ),
                     ),
@@ -1623,7 +1635,14 @@ class _BackgroundSwatches extends StatelessWidget {
                         ? Icon(
                             Icons.check,
                             size: 16,
-                            color: hex == '#FFFFFF' || hex == '#F2F2F7'
+                            // Check colour by luminance, not a
+                            // two-preset allowlist: the light
+                            // pastels (#FAF6EC / #EFFAF6) also need
+                            // a dark check, not a white one.
+                            color: ThemeData.estimateBrightnessForColor(
+                                      color,
+                                    ) ==
+                                    Brightness.light
                                 ? Colors.black
                                 : Colors.white,
                             shadows: HaoTheme.legibilityShadows(context),
@@ -1895,7 +1914,7 @@ class _PlaybackPanel extends StatelessWidget {
                         equalizerEnabled ? '已开启' : '已关闭',
                         style: TextStyle(
                           color: equalizerEnabled
-                              ? theme.accent
+                              ? theme.textPrimary
                               : theme.textSecondary,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -2135,7 +2154,13 @@ class _QualityChip extends StatelessWidget {
                 Text(
                   quality.label,
                   style: TextStyle(
-                    color: selected ? theme.accent : theme.textPrimary,
+                    // Selected text is textPrimary, not accent: in
+                    // dark appleGlass the accent (#76767A) is dimmer
+                    // than textPrimary, so accent selected text reads
+                    // DIMMER than the unselected chips — the selection
+                    // signal is inverted. The chip background, border
+                    // and check still mark the selection.
+                    color: theme.textPrimary,
                     fontSize: 13,
                     fontWeight: selected
                         ? FontWeight.w600
@@ -2148,7 +2173,7 @@ class _QualityChip extends StatelessWidget {
                   Icon(
                     Icons.check,
                     size: 9,
-                    color: theme.accent,
+                    color: theme.textPrimary,
                     shadows: HaoTheme.legibilityShadows(context),
                   ),
                 ],

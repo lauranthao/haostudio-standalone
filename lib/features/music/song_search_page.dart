@@ -611,7 +611,7 @@ class _SongSearchPageState extends State<SongSearchPage> {
                 Expanded(
                   child: HaoSearchField(
                     controller: _queryController,
-                    hintText: '搜索歌曲 / 歌手…',
+                    hintText: '歌曲 / 歌手',
                     onSubmitted: (_) {
                       HaoHaptics.tap();
                       _search();

@@ -24,6 +24,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:hive_ce/hive_ce.dart';
@@ -768,7 +769,7 @@ void main() {
         watching: 99,
       );
       await pumpRoom(tester, playlist: [other]);
-      await tester.tap(find.byIcon(Icons.swap_horiz));
+      await tester.tap(find.byIcon(CupertinoIcons.arrow_2_squarepath));
       await pumpFor(tester, const Duration(milliseconds: 500));
       expect(find.text('切换直播间'), findsOneWidget);
       expect(find.text('关注'), findsOneWidget);

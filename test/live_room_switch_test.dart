@@ -21,6 +21,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -157,7 +158,7 @@ void main() {
   /// "当前列表" group (the first match — later switches also list the
   /// room in the history group below it).
   Future<void> switchTo(WidgetTester tester, String target) async {
-    await tester.tap(find.byIcon(Icons.swap_horiz));
+    await tester.tap(find.byIcon(CupertinoIcons.arrow_2_squarepath));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await settle(tester);
@@ -237,7 +238,7 @@ void main() {
       // nav bar is HaoNavBar (Cupertino), not a Material AppBar.
       final appBarFullscreen = find.descendant(
         of: find.byType(HaoNavBar),
-        matching: find.byIcon(Icons.fullscreen),
+        matching: find.byIcon(CupertinoIcons.fullscreen),
       );
       expect(appBarFullscreen, findsOneWidget);
       await tester.tap(appBarFullscreen);
@@ -254,7 +255,7 @@ void main() {
       // button and centre double-taps both miss their targets here),
       // so an exit assertion would test the harness, not the product.
       expect(find.byTooltip('退出全屏'), findsOneWidget);
-      expect(find.byIcon(Icons.fullscreen_exit), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.fullscreen_exit), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       await drainHiveWrites(tester);

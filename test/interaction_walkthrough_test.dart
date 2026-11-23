@@ -236,12 +236,12 @@ void main() {
       // tap is followed by pump() + pump(300ms)).
       await tester.pump(const Duration(milliseconds: 300));
       // Search page opened (its field hint), home behind it.
-      expect(find.text('搜索歌曲 / 歌手…'), findsOneWidget);
+      expect(find.text('歌曲 / 歌手'), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('搜索歌曲 / 歌手…'), findsNothing);
+      expect(find.text('歌曲 / 歌手'), findsNothing);
       expect(find.text('搜歌'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

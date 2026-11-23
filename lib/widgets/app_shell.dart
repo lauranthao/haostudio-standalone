@@ -376,8 +376,15 @@ class _AppleTabBarFallback extends StatelessWidget {
               final cellW = width / _items.length;
               return Stack(
                 children: [
+                  // Reduce Motion: the pill jumps to the new tab
+                  // instantly (duration zero) instead of sliding on
+                  // the 600 ms bouncy curve. On iOS the native
+                  // UITabBar owns the pill and follows the system
+                  // setting itself; this is the off-iOS fallback.
                   AnimatedPositioned(
-                    duration: const Duration(milliseconds: 600),
+                    duration: MediaQuery.of(context).disableAnimations
+                        ? Duration.zero
+                        : const Duration(milliseconds: 600),
                     curve: Curves.elasticOut,
                     left: currentIndex * cellW + 4,
                     top: (_barHeight - _pillHeight) / 2,

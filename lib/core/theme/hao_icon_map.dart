@@ -31,6 +31,22 @@
 //   播放器设计的一部分，只换主导航图标，控制字形留后批。
 // - 其余约 280 处 `Icons.`：按页分批换，换一处核对一处 golden。
 
+// Swapped in the audit-fix batch (2026-11-23, build 30):
+// | Icons.swap_horiz      | CupertinoIcons.arrow_2_squarepath | 直播间导航栏 live_room_page.dart:2566 |
+// | Icons.fullscreen      | CupertinoIcons.fullscreen         | 直播间导航栏 + 控制条 live_room_page  |
+// | Icons.fullscreen_exit | CupertinoIcons.fullscreen_exit    | 直播间控制条 live_room_page.dart:1924 |
+// | Icons.pause           | CupertinoIcons.pause              | 直播间控制条 live_room_page.dart:1827 |
+// | Icons.play_arrow      | CupertinoIcons.play_arrow         | 直播间控制条 live_room_page.dart:1827 |
+// | Icons.refresh         | CupertinoIcons.refresh            | 直播间控制条 live_room_page.dart:1837 |
+// | Icons.chat_bubble_outline | CupertinoIcons.chat_bubble      | 直播间控制条 live_room_page.dart:1847 |
+// | Icons.chat_bubble     | CupertinoIcons.chat_bubble_fill   | 直播间控制条 live_room_page.dart:1847 |
+// | Icons.lock_open       | CupertinoIcons.lock_open          | 直播间控制条 live_room_page.dart:1912 |
+// (Icons.settings was already mapped in A 组；直播间控制条复用同一映射。)
+// Not swapped here: the drag HUD brightness/volume icons
+// (live_room_page.dart:1794-1798) — transient gesture feedback, not
+// controls — and the music player's three big white triangles, which
+// are chen's custom design, never touched.
+//
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -53,4 +69,13 @@ final Map<IconData, IconData> haoCupertinoIconMap = {
   Icons.chevron_right: CupertinoIcons.chevron_right,
   Icons.delete_outline: CupertinoIcons.delete,
   Icons.clear: CupertinoIcons.clear,
+  Icons.swap_horiz: CupertinoIcons.arrow_2_squarepath,
+  Icons.fullscreen: CupertinoIcons.fullscreen,
+  Icons.fullscreen_exit: CupertinoIcons.fullscreen_exit,
+  Icons.pause: CupertinoIcons.pause,
+  Icons.play_arrow: CupertinoIcons.play_arrow,
+  Icons.refresh: CupertinoIcons.refresh,
+  Icons.chat_bubble_outline: CupertinoIcons.chat_bubble,
+  Icons.chat_bubble: CupertinoIcons.chat_bubble_fill,
+  Icons.lock_open: CupertinoIcons.lock_open,
 };

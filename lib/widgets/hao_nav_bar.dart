@@ -74,6 +74,19 @@ class HaoNavBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize =>
       Size.fromHeight(_barHeight + (largeTitle ? _largeTitleHeight : 0));
 
+  /// Trailing widget for the Cupertino bar. A single action is passed
+  /// through unwrapped: wrapping it in a Row makes the nav-bar hero
+  /// flight measure a fractional content width (text button) and lay
+  /// the flight Row out 0.82px too narrow — a RenderFlex overflow on
+  /// every push of a page with a text trailing (Emby 备用线路).
+  Widget? get _trailing {
+    if (trailing != null) return trailing;
+    final a = actions;
+    if (a == null || a.isEmpty) return null;
+    if (a.length == 1) return a.single;
+    return Row(mainAxisSize: MainAxisSize.min, children: a);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.ofOrDefault(context);
@@ -98,14 +111,7 @@ class HaoNavBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
             leading: leading,
-            trailing:
-                trailing ??
-                (actions == null
-                    ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: actions!,
-                      )),
+            trailing: _trailing,
             automaticallyImplyLeading: automaticallyImplyLeading,
             backgroundColor: backgroundColor ?? theme.surface,
             border: Border(
@@ -120,14 +126,7 @@ class HaoNavBar extends StatelessWidget implements PreferredSizeWidget {
               style: titleStyle,
             ),
             leading: leading,
-            trailing:
-                trailing ??
-                (actions == null
-                    ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: actions!,
-                      )),
+            trailing: _trailing,
             automaticallyImplyLeading: automaticallyImplyLeading,
             backgroundColor: backgroundColor ?? theme.surface,
             border: Border(

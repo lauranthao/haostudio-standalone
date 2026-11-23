@@ -12,11 +12,12 @@
 // groups); 高级设置 is the shared HaoCollapsibleSection; the
 // reminder row ends in a value + chevron, not the unfold_more
 // glyph; the submit button uses the theme default (no 52pt
-// override). The top AppBar is untouched — the nav-bar unification
-// lives in the b30-ios branch.
+// override). The top bar is HaoNavBar now (b30 audit: the last two
+// Material AppBars on this page).
 //
 // Layout follows the reference, top to bottom:
-// - App bar: ✕ close left, title 添加/编辑 Emby, paste action right.
+// - App bar: HaoNavBar (auto back chevron), title 添加/编辑 Emby,
+//   paste action right.
 // - Emby logo tile + live name + "媒体库、元数据与播放进度".
 // - Form group: 名称 / 备注 / 地址 / 端口（默认 8,096) / 路径
 //   （可留空，如 /emby) / HTTPS 开关（HTTP 连接） / 用户名 /
@@ -51,6 +52,7 @@ import '../../core/theme/hao_themes.dart';
 import '../../services/video/emby_client.dart';
 import '../../services/video/emby_models.dart';
 import '../../widgets/glass_dialog.dart';
+import '../../widgets/hao_nav_bar.dart';
 import '../../widgets/hao_toast.dart';
 import '../../widgets/native_switch.dart';
 import '../../widgets/settings_ui.dart';
@@ -518,25 +520,16 @@ class _EmbyConnectPageState extends State<EmbyConnectPage> {
       // background for legibility — the wallpaper stays on the other
       // pages, untouched.
       backgroundColor: theme.scaffoldBackground,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: Icon(
-            Icons.close,
-            shadows: HaoTheme.legibilityShadows(context),
-          ),
-          tooltip: '关闭',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(isEdit ? '编辑 Emby' : '添加 Emby'),
-        centerTitle: true,
+      appBar: HaoNavBar(
+        title: isEdit ? '编辑 Emby' : '添加 Emby',
         actions: [
-          IconButton(
-            icon: Icon(
+          HaoNavBarButton(
+            tooltip: '从剪贴板粘贴地址',
+            onPressed: _pasteAddress,
+            child: Icon(
               Icons.content_paste,
               shadows: HaoTheme.legibilityShadows(context),
             ),
-            tooltip: '从剪贴板粘贴地址',
-            onPressed: _pasteAddress,
           ),
         ],
       ),
@@ -907,13 +900,12 @@ class _EmbyFallbackLinesPageState extends State<_EmbyFallbackLinesPage> {
         // Same opaque grouped background as the connect page: the
         // scaffold is transparent while a wallpaper is active.
         backgroundColor: theme.scaffoldBackground,
-        appBar: AppBar(
-          title: const Text('备用线路'),
-          centerTitle: true,
+        appBar: HaoNavBar(
+          title: '备用线路',
           actions: [
-            TextButton(
+            HaoNavBarTextButton(
+              label: '完成',
               onPressed: () => Navigator.of(context).pop(_lines),
-              child: const Text('完成'),
             ),
           ],
         ),

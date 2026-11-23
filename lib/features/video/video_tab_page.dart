@@ -164,10 +164,14 @@ class _VideoTabPageState extends State<VideoTabPage> {
               ),
             ),
             // Aggregated continue-watching (1.1.6, browse A3 §4): one
-            // cross-source bar above the CMS/Emby segments. It reads
-            // the shared store unfiltered — the per-source bars inside
-            // each page stay as they are.
-            const AggregatedContinueBar(),
+            // bar above the CMS/Emby segments, filtered by the current
+            // mode — CMS rows in 影视源 mode, nothing in Emby mode
+            // (chen 2026-11-23: "emby是emby的 影视源是影视源的").
+            // Emby's own row below (server resume first) is the only
+            // resume row there; the shared bar must not repeat it.
+            // The CMS home's own 继续观看 section is gone for the same
+            // reason (build 30 audit): one work in one row only.
+            AggregatedContinueBar(mode: _mode),
             Expanded(
               child: _mode == VideoTabMode.cms
                   ? const _CmsHomePage()
@@ -207,7 +211,6 @@ class _CmsHomePageState extends State<_CmsHomePage> {
 
   VideoHomeData? _home;
   List<VideoItem> _daily = [];
-  List<WatchHistoryEntry> _history = [];
   bool _loading = true;
   bool _failed = false;
   bool _stale = false;
@@ -268,15 +271,13 @@ class _CmsHomePageState extends State<_CmsHomePage> {
   void initState() {
     super.initState();
     HaoScrollToTop.register(HaoScrollToTop.videoTab, _scrollController);
-    // (1) Immediate render from cache + local history — never a bare
-    // spinner while data exists. CMS rows only: Emby rows are shown
-    // on the Emby page (shared store, per-source filter).
+    // (1) Immediate render from cache — never a bare spinner while
+    // data exists. The home has no own 继续观看 row any more (build
+    // 30 audit): the AggregatedContinueBar above the segments is the
+    // single CMS resume row, so this page no longer reads history.
     final cachedHome = _homeService.loadCached();
     _home = cachedHome == null ? null : _patchedHome(cachedHome);
-    _history = VideoHistoryStore.getAll()
-        .where((e) => e.sourceKey != EmbyClient.sourceId)
-        .toList();
-    _loading = _home == null && _history.isEmpty;
+    _loading = _home == null;
     // (2) Fresh data in the background.
     unawaited(_refreshHome());
     unawaited(_refreshDaily());
@@ -339,26 +340,6 @@ class _CmsHomePageState extends State<_CmsHomePage> {
     _patchMissing();
   }
 
-  void _openDetail(VideoItem item, {bool autoResume = false}) {
-    // 1.1.6: shared routing (audit P0) — the third call site
-    // (history page + favourites page are the other two). Emby rows
-    // can reach this page through the aggregated bar's cards.
-    openVideoDetail<void>(
-      context,
-      source: item.source,
-      vodId: item.vodId,
-      preload: item,
-      autoResume: autoResume,
-    ).then((_) {
-      if (mounted) {
-        setState(() => _history = VideoHistoryStore.getAll()
-            .where((e) => e.sourceKey != EmbyClient.sourceId)
-            .toList());
-      }
-      _bumpContinueRefresh();
-    });
-  }
-
   void _openType(String name) {
     Navigator.of(context).push(
       CupertinoPageRoute<void>(
@@ -391,19 +372,17 @@ class _CmsHomePageState extends State<_CmsHomePage> {
           ),
         )
         .then((_) {
-          // History may have been cleared or advanced while away.
-          // CMS rows only (see initState).
-          if (mounted) {
-            setState(() => _history = VideoHistoryStore.getAll()
-                .where((e) => e.sourceKey != EmbyClient.sourceId)
-                .toList());
-          }
+          // History may have been cleared or advanced while away —
+          // the aggregated bar above re-reads via _continueRefresh.
           _bumpContinueRefresh();
         });
   }
 
-  Set<String> get _watchedKeys => _history
-      .where((e) => e.isFinished)
+  /// Finished CMS rows, for the poster's watched badge. Read live
+  /// from the store (no cached _history field any more — the home's
+  /// own 继续观看 row is gone, build 30 audit).
+  Set<String> get _watchedKeys => VideoHistoryStore.getAll()
+      .where((e) => e.sourceKey != EmbyClient.sourceId && e.isFinished)
       .map((e) => e.identityKey)
       .toSet();
 
@@ -583,55 +562,6 @@ class _CmsHomePageState extends State<_CmsHomePage> {
                                           row: row,
                                           onTap: () =>
                                               _openType(row.name),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                              // Continue Watching first (Infuse H5).
-                              if (_history.isNotEmpty) ...[
-                                _SectionHead(
-                                  title: '继续观看',
-                                  onMore: _openHistory,
-                                ),
-                                // 2026-11-17 (v1.0.6 phone bug: 第21集被切掉一半):
-                                // card content is 16:9 poster 139.5 +
-                                // 6 gap + title ~19 + subtitle ~17 =
-                                // ~182 — the old 172 container clipped
-                                // the subtitle's bottom half. Same bug
-                                // class as the v1.0.5 _CollectionCard
-                                // fix (196 -> 212).
-                                SizedBox(
-                                  height: 186,
-                                  child: ListView.builder(
-                                    scrollDirection: Axis.horizontal,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    itemCount: _history.length,
-                                    itemBuilder: (context, i) {
-                                      final h = _history[i];
-                                      return Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 12),
-                                        child: _ContinueCard(
-                                          entry: h,
-                                          onTap: () => _openDetail(
-                                            VideoItem(
-                                              source: h.source,
-                                              sourceName: '',
-                                              vodId: h.vodId,
-                                              name: h.title,
-                                              pic: h.pic,
-                                              picAlt: h.picAlt,
-                                            ),
-                                            // Same "continue watching"
-                                            // action as the history
-                                            // page: resume at the saved
-                                            // position, no extra tap.
-                                            autoResume: true,
-                                          ),
                                         ),
                                       );
                                     },
@@ -1019,8 +949,18 @@ class _CollectionCard extends StatelessWidget {
 /// (old rows without `nextEpName` stay out until re-recorded).
 /// Reads the store on every build + on [_continueRefresh], so a
 /// return from any detail/history navigation re-reads it.
+/// The single CMS resume row (build 30 audit): the CMS home's own
+/// 继续观看 section is gone, so this bar — above the 影视源/Emby
+/// segments — is the only place a CMS work resumes from. Per-mode:
+/// 影视源 shows CMS rows only; Emby hides entirely (chen 2026-11-23:
+/// "emby是emby的 影视源是影视源的") — the Emby page's own row, server
+/// resume first, is the only resume row there, and a local-history
+/// copy of the same work would duplicate it.
 class AggregatedContinueBar extends StatefulWidget {
-  const AggregatedContinueBar({super.key, this.onOpen});
+  const AggregatedContinueBar({super.key, this.onOpen, this.mode = VideoTabMode.cms});
+
+  /// Current tab mode: [VideoTabMode.emby] renders nothing.
+  final VideoTabMode mode;
 
   /// Test seam: replaces navigation when provided (the real path
   /// routes through `openHistoryDetail`).
@@ -1065,10 +1005,20 @@ class _AggregatedContinueBarState extends State<AggregatedContinueBar> {
 
   @override
   Widget build(BuildContext context) {
+    // Emby mode: the Emby page's own resume row (server first) is
+    // the only one — this bar stays out of the way entirely.
+    if (widget.mode == VideoTabMode.emby) {
+      return const SizedBox.shrink();
+    }
     return ValueListenableBuilder<int>(
       valueListenable: _continueRefresh,
       builder: (context, _, _) {
-        final split = splitContinueWatching(VideoHistoryStore.getAll());
+        // CMS rows only: Emby rows resume on the Emby page.
+        final split = splitContinueWatching(
+          VideoHistoryStore.getAll()
+              .where((e) => e.sourceKey != EmbyClient.sourceId)
+              .toList(),
+        );
         if (split.watching.isEmpty && split.nextUp.isEmpty) {
           return const SizedBox.shrink();
         }

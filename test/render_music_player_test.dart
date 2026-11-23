@@ -52,6 +52,21 @@ Future<void> _loadCjkFont() async {
 ThemeData _cjkTheme(ThemeData base) {
   final text = base.textTheme.apply(fontFamily: 'NotoSansSC');
   final primary = base.primaryTextTheme.apply(fontFamily: 'NotoSansSC');
+
+  // Button themes carry their own textStyle WITHOUT a fontFamily, and
+  // a button's DefaultTextStyle shadows the ambient one — so button
+  // labels would render in the Ahem test font (tofu) unless the
+  // family is forced here too. On a real device the system font
+  // covers them; this is test-only.
+  ButtonStyle cjkButton(ButtonStyle? style) {
+    final resolved = style?.textStyle?.resolve({});
+    return (style ?? const ButtonStyle()).copyWith(
+      textStyle: WidgetStatePropertyAll(
+        (resolved ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC'),
+      ),
+    );
+  }
+
   return base.copyWith(
     cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
@@ -60,6 +75,18 @@ ThemeData _cjkTheme(ThemeData base) {
       titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
         fontFamily: 'NotoSansSC',
       ),
+    ),
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: cjkButton(base.textButtonTheme.style),
     ),
   );
 }

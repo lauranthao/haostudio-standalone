@@ -306,6 +306,11 @@ void main() {
     tester,
   ) async {
     final controller = await pumpHome(tester);
+    // The large title (build 30 audit) pushes the 最近播放 section
+    // ~52pt down: 播放全部 sits below the fold at rest, so scroll
+    // it into view first (same pattern as the 富士山下 row below).
+    await tester.ensureVisible(find.text('播放全部'));
+    await tester.pump();
     await tester.tap(find.text('播放全部'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

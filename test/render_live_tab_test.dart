@@ -97,6 +97,9 @@ ThemeData _cjkTheme(ThemeData base) {
     filledButtonTheme: FilledButtonThemeData(
       style: cjkButton(base.filledButtonTheme.style),
     ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: cjkButton(base.textButtonTheme.style),
     ),

@@ -102,63 +102,57 @@ class _LiveTabPageState extends State<LiveTabPage> {
     // The body already rebuilds via ListenableBuilder / setState /
     // InheritedWidget, so nothing here needs an Obx.
     return Scaffold(
-      // No AppBar (chen 2026-11-21, screenshot): the title is a big
-      // bold header at the top-left of the page body (26 w800), with
-      // the actions on the same row — like his 我的片库 screenshot.
-      // The header carries the status-bar inset itself (MediaQuery),
-      // so the page needs no AppBar and no SafeArea.
+      // Large title (build 30 audit): the hand-written 26 w800
+      // header (chen 2026-11-21) is now the native
+      // CupertinoSliverNavigationBar — 34 bold at rest, collapsing
+      // to the 17 semibold middle title on scroll. The six header
+      // actions stay as a row under the bar (too many for the bar's
+      // trailing slot); the chip rows and the grid are slivers in
+      // the same scroll view, so the whole page collapses together.
+      // The scroll controller is unchanged (tab-tap scroll-to-top
+      // + load-more extentAfter still drive it).
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
-          return Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  MediaQuery.of(context).padding.top + 8,
-                  4,
-                  4,
+          return CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              CupertinoSliverNavigationBar(
+                // Only largeTitle — no middle (see music_tab_page:
+                // passing both shows two titles at rest).
+                largeTitle: Text(
+                  '直播',
+                  style: TextStyle(
+                    shadows: HaoTheme.legibilityShadows(context),
+                    color: theme.textPrimary,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Text(
-                      '直播',
-                      style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                        color: theme.textPrimary,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.search),
-                      tooltip: '搜索直播间',
-                      onPressed: () => Get.to(
-                        () => LiveSearchPage(
-                          initialPlatform: _controller.platform,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link),
-                      tooltip: '粘贴链接进房',
-                      onPressed: () => showLiveLinkSheet(
-                        context: context,
-                        onOpenRoom: (room) => Get.to(
-                          () => LiveRoomPage(
-                            room: room,
-                            playlist: _controller.rooms,
+                backgroundColor: theme.surface,
+                border: Border(
+                  bottom: BorderSide(color: theme.hairline, width: 0.5),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 4, 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.search),
+                        tooltip: '搜索直播间',
+                        onPressed: () => Get.to(
+                          () => LiveSearchPage(
+                            initialPlatform: _controller.platform,
                           ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.grid_view),
-                      tooltip: '多画面同看',
-                      onPressed: () => Get.to(
-                        () => LiveMultiViewPage(
-                          rooms: _controller.rooms,
-                          onOpenSingle: (room) => Get.to(
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.link),
+                        tooltip: '粘贴链接进房',
+                        onPressed: () => showLiveLinkSheet(
+                          context: context,
+                          onOpenRoom: (room) => Get.to(
                             () => LiveRoomPage(
                               room: room,
                               playlist: _controller.rooms,
@@ -166,38 +160,57 @@ class _LiveTabPageState extends State<LiveTabPage> {
                           ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.video_library_outlined),
-                      tooltip: '录制中心',
-                      onPressed: () => Get.to(
-                        () => const LiveRecordingCenterPage(),
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.grid_view),
+                        tooltip: '多画面同看',
+                        onPressed: () => Get.to(
+                          () => LiveMultiViewPage(
+                            rooms: _controller.rooms,
+                            onOpenSingle: (room) => Get.to(
+                              () => LiveRoomPage(
+                                room: room,
+                                playlist: _controller.rooms,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.history),
-                      tooltip: '直播历史',
-                      onPressed: () => Get.to(() => const LiveHistoryPage()),
-                    ),
-                    IconButton(
-                      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.favorite_border),
-                      tooltip: '我的关注',
-                      onPressed: () => Get.to(() => const LiveFollowsPage()),
-                    ),
-                  ],
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.video_library_outlined),
+                        tooltip: '录制中心',
+                        onPressed: () => Get.to(
+                          () => const LiveRecordingCenterPage(),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.history),
+                        tooltip: '直播历史',
+                        onPressed: () => Get.to(() => const LiveHistoryPage()),
+                      ),
+                      IconButton(
+                        icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.favorite_border),
+                        tooltip: '我的关注',
+                        onPressed: () => Get.to(() => const LiveFollowsPage()),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              _PlatformRow(
-                platform: _controller.platform,
-                onSelect: _controller.selectPlatform,
+              SliverToBoxAdapter(
+                child: _PlatformRow(
+                  platform: _controller.platform,
+                  onSelect: _controller.selectPlatform,
+                ),
               ),
               if (_controller.categories.isNotEmpty)
-                _CategoryRow(
-                  categories: _controller.categories,
-                  selected: _controller.selectedArea,
-                  onSelect: _controller.selectCategory,
+                SliverToBoxAdapter(
+                  child: _CategoryRow(
+                    categories: _controller.categories,
+                    selected: _controller.selectedArea,
+                    onSelect: _controller.selectCategory,
+                  ),
                 ),
-              Expanded(child: _buildBody(theme)),
+              ..._buildBodySlivers(theme),
             ],
           );
         },
@@ -205,67 +218,75 @@ class _LiveTabPageState extends State<LiveTabPage> {
     );
   }
 
-  Widget _buildBody(HaoTheme theme) {
+  /// Body as slivers (the nav bar + chip rows above are slivers in
+  /// the same scroll view). Loading / error / empty fill the
+  /// remaining viewport; ready is the refresh control + grid.
+  List<Widget> _buildBodySlivers(HaoTheme theme) {
     switch (_controller.status) {
       case LiveTabStatus.loading:
-        return const _SkeletonGrid();
+        return const [SliverFillRemaining(child: _SkeletonGrid())];
       case LiveTabStatus.error:
-        return _StateView(
-          icon: Icons.cloud_off_outlined,
-          title: '加载失败',
-          subtitle: '请检查网络后重试',
-          actionLabel: '重试',
-          onAction: _controller.retry,
-        );
-      case LiveTabStatus.empty:
-        return _StateView(
-          icon: Icons.live_tv_outlined,
-          title: '暂无直播间',
-          actionLabel: '重新加载',
-          onAction: _controller.retry,
-        );
-      case LiveTabStatus.ready:
-        return CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            CupertinoSliverRefreshControl(
-              onRefresh: _controller.refresh,
+        return [
+          SliverFillRemaining(
+            child: _StateView(
+              icon: Icons.cloud_off_outlined,
+              title: '加载失败',
+              subtitle: '请检查网络后重试',
+              actionLabel: '重试',
+              onAction: _controller.retry,
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 14,
-                  childAspectRatio: 16 / 10,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-              if (i >= _controller.rooms.length) return _buildFooter(theme);
-              final room = _controller.rooms[i];
-              return _RoomCard(
-                room: room,
-                onTap: () {
-                  // L01: entering a room records a history entry.
-                  unawaited(LiveHistoryStore.record(room));
-                  // L04: the room's source list feeds the switch-room
-                  // panel's "当前列表" group.
-                  Get.to(
-                    () => LiveRoomPage(
-                      room: room,
-                      playlist: _controller.rooms,
-                    ),
+          ),
+        ];
+      case LiveTabStatus.empty:
+        return [
+          SliverFillRemaining(
+            child: _StateView(
+              icon: Icons.live_tv_outlined,
+              title: '暂无直播间',
+              actionLabel: '重新加载',
+              onAction: _controller.retry,
+            ),
+          ),
+        ];
+      case LiveTabStatus.ready:
+        return [
+          CupertinoSliverRefreshControl(
+            onRefresh: _controller.refresh,
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 14,
+                childAspectRatio: 16 / 10,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  if (i >= _controller.rooms.length) return _buildFooter(theme);
+                  final room = _controller.rooms[i];
+                  return _RoomCard(
+                    room: room,
+                    onTap: () {
+                      // L01: entering a room records a history entry.
+                      unawaited(LiveHistoryStore.record(room));
+                      // L04: the room's source list feeds the switch-room
+                      // panel's "当前列表" group.
+                      Get.to(
+                        () => LiveRoomPage(
+                          room: room,
+                          playlist: _controller.rooms,
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-                  },
-                  childCount: _controller.rooms.length + _footerItemCount,
-                ),
+                childCount: _controller.rooms.length + _footerItemCount,
               ),
             ),
-          ],
-        );
+          ),
+        ];
     }
   }
 
@@ -313,8 +334,11 @@ class _PlatformRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Row height 41: the ~33pt chips sit centred with 4pt slack top
+    // and bottom, so the platform -> category chip gap is 8pt and
+    // the category -> grid gap is 4 + 12 (sliver top) = 16pt.
     return SizedBox(
-      height: 48,
+      height: 41,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -335,7 +359,10 @@ class _PlatformRow extends StatelessWidget {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
               labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                color: selected ? theme.accent : theme.textSecondary,
+                // Selected text is textPrimary, not accent (same
+                // dark-mode inversion as the settings chips: dark
+                // appleGlass accent is dimmer than secondary).
+                color: selected ? theme.textPrimary : theme.textSecondary,
                 fontSize: 13,
                 fontWeight:
                     selected ? FontWeight.w600 : FontWeight.w500,
@@ -365,8 +392,10 @@ class _CategoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
+    // Same 41pt row height as _PlatformRow (see there for the
+    // spacing math): chips centred, 4pt slack each side.
     return SizedBox(
-      height: 40,
+      height: 41,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -406,7 +435,7 @@ class _CategoryRow extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         labelStyle: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-          color: isSelected ? theme.accent : theme.textSecondary,
+          color: isSelected ? theme.textPrimary : theme.textSecondary,
           fontSize: 13,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         ),

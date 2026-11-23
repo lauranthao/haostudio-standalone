@@ -57,6 +57,21 @@ Future<void> _loadCjkFont() async {
 ThemeData _cjkTheme(ThemeData base) {
   final text = base.textTheme.apply(fontFamily: 'NotoSansSC');
   final primary = base.primaryTextTheme.apply(fontFamily: 'NotoSansSC');
+
+  // Button themes carry their own textStyle WITHOUT a fontFamily, and
+  // a button's DefaultTextStyle shadows the ambient one — so button
+  // labels would render in the Ahem test font (tofu) unless the
+  // family is forced here too. On a real device the system font
+  // covers them; this is test-only.
+  ButtonStyle cjkButton(ButtonStyle? style) {
+    final resolved = style?.textStyle?.resolve({});
+    return (style ?? const ButtonStyle()).copyWith(
+      textStyle: WidgetStatePropertyAll(
+        (resolved ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC'),
+      ),
+    );
+  }
+
   return base.copyWith(
     cupertinoOverrideTheme: haoCupertinoThemeWithFont('NotoSansSC'),
     textTheme: text,
@@ -65,6 +80,18 @@ ThemeData _cjkTheme(ThemeData base) {
       titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
         fontFamily: 'NotoSansSC',
       ),
+    ),
+    segmentedButtonTheme: base.segmentedButtonTheme.copyWith(
+      style: cjkButton(base.segmentedButtonTheme.style),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: cjkButton(base.textButtonTheme.style),
     ),
   );
 }
@@ -208,7 +235,7 @@ void main() {
     // Scroll the list to the bottom so song rows (cover + text) sit
     // behind the floating tab bar when the shot is taken. The drag
     // clamps at the max extent if the list is shorter than this.
-    await tester.drag(find.byType(ListView), const Offset(0, -1000));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pump();
     // Rows scrolled into view start their stagger then; wait for the
     // longest one (0.4s delay + 0.25s settle) before the shot.
@@ -239,12 +266,12 @@ void main() {
 
   // Top-of-page shot (no scroll): the feature shelf (P0-1) is above
   // the fold and invisible in the scrolled shots above, so it gets
-  // its own goldens. (The greeting large title used to be here too —
-  // removed 2026-11-19 clean pass; the shelf is the anchor now.)
+  // its own goldens. The large title (CupertinoSliverNavigationBar,
+  // build 30 audit) sits above the shelf at rest.
   Future<void> pumpHomeTop(WidgetTester tester, ThemeData theme) async {
     await pumpHome(tester, theme);
     // pumpHome scrolled to the bottom; scroll back to the top.
-    await tester.drag(find.byType(ListView), const Offset(0, 1000));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 1000));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 800));
   }

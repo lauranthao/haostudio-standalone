@@ -1824,7 +1824,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     IconButton(
       icon: Icon(
         shadows: HaoTheme.legibilityShadows(context),
-        _playing ? Icons.pause : Icons.play_arrow,
+        _playing ? CupertinoIcons.pause : CupertinoIcons.play_arrow,
         color: color,
       ),
       tooltip: _playing ? '暂停' : '播放',
@@ -1834,7 +1834,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       },
     ),
     IconButton(
-      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.refresh, color: color),
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.refresh, color: color),
       tooltip: '刷新',
       onPressed: () {
         HaoHaptics.tap();
@@ -1844,7 +1844,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     IconButton(
       icon: Icon(
         shadows: HaoTheme.legibilityShadows(context),
-        _danmakuVisible ? Icons.chat_bubble_outline : Icons.chat_bubble,
+        _danmakuVisible ? CupertinoIcons.chat_bubble : CupertinoIcons.chat_bubble_fill,
         color: color,
       ),
       tooltip: _danmakuVisible ? '关闭弹幕' : '打开弹幕',
@@ -1858,7 +1858,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     // bar, so it shows in portrait (below the video) and in
     // fullscreen alike. The tools sheet (I 组) is untouched.
     IconButton(
-      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.settings, color: color),
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.settings, color: color),
       tooltip: '直播设置',
       onPressed: () {
         HaoHaptics.tap();
@@ -1909,7 +1909,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     }),
     const Spacer(),
     IconButton(
-      icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.lock_open, color: color),
+      icon: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.lock_open, color: color),
       tooltip: '锁定控制条',
       onPressed: () {
         HaoHaptics.tap();
@@ -1921,8 +1921,8 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         () => Icon(
           shadows: HaoTheme.legibilityShadows(context),
           _fullscreen.isFullscreen.value
-              ? Icons.fullscreen_exit
-              : Icons.fullscreen,
+              ? CupertinoIcons.fullscreen_exit
+              : CupertinoIcons.fullscreen,
           color: color,
         ),
       ),
@@ -2563,7 +2563,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
               ? null
               : HaoNavBar(
                 title: _room.title.isEmpty ? '直播间' : _room.title,
-                actions: [HaoNavBarButton(tooltip: '直播工具', onPressed: _openToolsSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.tune)), HaoNavBarButton(tooltip: '切换直播间', onPressed: _openSwitchPanel,child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.swap_horiz)), HaoNavBarButton(tooltip: '全屏', onPressed: () => _fullscreen.toggleFullscreen(),child: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.fullscreen))],
+                actions: [HaoNavBarButton(tooltip: '直播工具', onPressed: _openToolsSheet,child: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.slider_horizontal_3)), HaoNavBarButton(tooltip: '切换直播间', onPressed: _openSwitchPanel,child: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.arrow_2_squarepath)), HaoNavBarButton(tooltip: '全屏', onPressed: () => _fullscreen.toggleFullscreen(),child: Icon(shadows: HaoTheme.legibilityShadows(context), CupertinoIcons.fullscreen))],
               ),
           body: Column(
             children: [

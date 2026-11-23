@@ -822,12 +822,14 @@ void main() {
     Future<void> pumpBar(
       WidgetTester tester, {
       List<(WatchHistoryEntry, String?)>? calls,
+      VideoTabMode mode = VideoTabMode.cms,
     }) async {
       await tester.pumpWidget(
         GetMaterialApp(
           theme: HaoThemes.of(HaoThemeId.appleGlass).light,
           home: Scaffold(
             body: AggregatedContinueBar(
+              mode: mode,
               onOpen: calls == null
                   ? null
                   : (entry, {startEpName}) async {
@@ -840,17 +842,21 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('CMS + Emby rows aggregate; the two bars stay separate',
+    // chen 2026-11-23 ("emby是emby的 影视源是影视源的"): the bar is
+    // per-mode — CMS mode shows CMS rows only, Emby mode hides
+    // entirely (the Emby page's own server-resume row is the only
+    // one there). One work in one row only.
+    testWidgets('CMS mode shows CMS rows only; Emby rows stay out',
         (tester) async {
       await tester.runAsync(seedHistory);
       await pumpBar(tester);
-      // Watching bar: A + B (C is finished). Next bar: C only — B's
-      // episode is still unfinished, so it stays out of 下一集 (b29:
-      // one work, one bar).
+      // Watching bar: A only (C is finished; B is Emby, filtered
+      // out). Next bar: C only — B's episode is still unfinished,
+      // so it stays out of 下一集 (b29: one work, one bar).
       expect(find.text('继续观看'), findsOneWidget);
       expect(find.text('下一集'), findsOneWidget);
       expect(find.text('在看无下一集'), findsOneWidget);
-      expect(find.text('在看有下一集'), findsOneWidget);
+      expect(find.text('在看有下一集'), findsNothing);
       expect(find.text('看完有下一集'), findsOneWidget);
       expect(find.text('下一集 · 第2集'), findsNothing);
       expect(find.text('下一集 · 第4集'), findsOneWidget);
@@ -858,6 +864,17 @@ void main() {
       // ReadWriteSync queue stuck for the next test (see
       // hive_test_setup.dart — a stuck queue hangs the next test's
       // first Hive write forever, even through runAsync).
+      await drainHiveWrites(tester);
+    });
+
+    testWidgets('Emby mode hides the bar entirely', (tester) async {
+      await tester.runAsync(seedHistory);
+      await pumpBar(tester, mode: VideoTabMode.emby);
+      expect(find.text('继续观看'), findsNothing);
+      expect(find.text('下一集'), findsNothing);
+      expect(find.text('在看无下一集'), findsNothing);
+      expect(find.text('在看有下一集'), findsNothing);
+      expect(find.text('看完有下一集'), findsNothing);
       await drainHiveWrites(tester);
     });
 

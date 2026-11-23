@@ -157,6 +157,7 @@ class PlayQueuePanel extends StatelessWidget {
                         ),
                         IconButton(
                           icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.close, color: theme.textSecondary),
+                          tooltip: '关闭',
                           onPressed: onClose,
                         ),
                       ],
@@ -347,6 +348,7 @@ class PlayQueuePanel extends StatelessWidget {
                                       Icons.arrow_upward,
                                       size: 18,
                                     ),
+                                    tooltip: '上移',
                                     color: theme.textSecondary,
                                     disabledColor: theme.textMuted.withValues(
                                       alpha: 0.35,
@@ -365,6 +367,7 @@ class PlayQueuePanel extends StatelessWidget {
                                       Icons.arrow_downward,
                                       size: 18,
                                     ),
+                                    tooltip: '下移',
                                     color: theme.textSecondary,
                                     disabledColor: theme.textMuted.withValues(
                                       alpha: 0.35,

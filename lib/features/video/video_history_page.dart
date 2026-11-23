@@ -24,7 +24,14 @@ import '../../widgets/hao_nav_bar.dart';
 import '../../widgets/hao_swipe_actions.dart';
 
 class VideoHistoryPage extends StatefulWidget {
-  const VideoHistoryPage({super.key});
+  const VideoHistoryPage({super.key, this.sourceKey});
+
+  /// Show only rows from this source ('emby' for the Emby resume
+  /// row's 查看全部 — build 30 audit §16: "emby是emby的"). Null =
+  /// all sources. When filtered, the 清空 button hides: clearing is
+  /// a whole-history action, and a filtered page must never wipe
+  /// the other source's rows.
+  final String? sourceKey;
 
   @override
   State<VideoHistoryPage> createState() => _VideoHistoryPageState();
@@ -65,12 +72,15 @@ class _VideoHistoryPageState extends State<VideoHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = HaoTheme.of(context);
-    final history = VideoHistoryStore.getAll();
+    final all = VideoHistoryStore.getAll();
+    final history = widget.sourceKey == null
+        ? all
+        : all.where((e) => e.sourceKey == widget.sourceKey).toList();
     return Scaffold(
       appBar: HaoNavBar(
         title: '历史记录',
         scrollController: _scrollController,
-        actions: [if (history.isNotEmpty) HaoNavBarButton(tooltip: '清空历史记录', onPressed: _confirmClear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),))],
+        actions: [if (widget.sourceKey == null && history.isNotEmpty) HaoNavBarButton(tooltip: '清空历史记录', onPressed: _confirmClear,child: Icon(Icons.delete_outline, shadows: HaoTheme.legibilityShadows(context),))],
       ),
       body: history.isEmpty
           ? Center(

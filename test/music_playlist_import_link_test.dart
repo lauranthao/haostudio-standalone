@@ -3,7 +3,7 @@
 //
 // Bug: chen pasted his NetEase share
 //   "分享LaurantHAo的歌单《LaurantHAo喜欢的音乐》https://163cn.tv/blpA29jW (@网易云音乐)"
-// into the import box and got "导入失败：请粘贴网易云 / QQ / 酷我公开歌单链接".
+// into the import box and got "导入失败：请粘贴歌单链接".
 // Root cause: `importFromLink` only recognised
 // `music.163.com/(#/)?playlist?id=<digits>` — the short link 163cn.tv
 // matched nothing, and its resolved form (y.music.163.com/m/playlist?

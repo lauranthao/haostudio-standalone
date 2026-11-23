@@ -158,6 +158,7 @@ class _ArtistDetailPageState extends State<ArtistDetailPage> {
                       actions: [
                         IconButton(
                           icon: Icon(shadows: HaoTheme.legibilityShadows(context), Icons.share),
+                          tooltip: '分享',
                           onPressed: _share,
                         ),
                       ],

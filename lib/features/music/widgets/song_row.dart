@@ -215,9 +215,11 @@ class SongRow extends StatelessWidget {
                 ],
               ),
             ),
-            // Fixed-width action area: heart + play only.
+            // Fixed-width action area: heart + play only. 104pt wide:
+            // two 44pt hit targets (the 44pt iOS floor) + 8pt gap to
+            // the row edge; the icons themselves stay 22/26pt.
             SizedBox(
-              width: 96,
+              width: 104,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -227,14 +229,15 @@ class SongRow extends StatelessWidget {
                       color: isFav ? theme.accent : theme.textMuted,
                       size: 22,
                     ),
+                    tooltip: isFav ? '取消收藏' : '收藏',
                     onPressed: () {
                       HaoHaptics.tap();
                       onToggleFav();
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
+                      minWidth: 44,
+                      minHeight: 44,
                     ),
                   ),
                   IconButton(
@@ -243,14 +246,15 @@ class SongRow extends StatelessWidget {
                       color: theme.textPrimary,
                       size: 26,
                     ),
+                    tooltip: '播放',
                     onPressed: () {
                       HaoHaptics.tap();
                       onPlay();
                     },
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                      minWidth: 40,
-                      minHeight: 40,
+                      minWidth: 44,
+                      minHeight: 44,
                     ),
                   ),
                 ],

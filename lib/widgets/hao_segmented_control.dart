@@ -4,7 +4,9 @@
 // `GlassSegmentedControl` on iOS; the previous Flutter sliding-pill
 // control below is the off-iOS fallback (same labels, same haptic,
 // same colours), so the 6 call sites change nothing. Segment labels
-// are 13pt Semibold; selected label is the theme accent, the rest
+// are 13pt Semibold; selected label is textPrimary (not accent:
+// dark appleGlass accent is dimmer than secondary, so an accent
+// selected label reads dimmer than the unselected ones), the rest
 // secondary. Tapping a segment fires HaoHaptics.select() (N-13 —
 // the control owns the haptic, so no call site can forget it).
 //
@@ -143,7 +145,7 @@ class _FallbackSegmentedControl<T> extends StatelessWidget {
                               // the control self-sufficient).
                               shadows: HaoTheme.legibilityShadows(context),
                               color: segment.value == value
-                                  ? theme.accent
+                                  ? theme.textPrimary
                                   : theme.textSecondary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,

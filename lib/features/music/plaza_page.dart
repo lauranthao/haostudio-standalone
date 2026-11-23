@@ -148,13 +148,10 @@ class _PlazaPageState extends State<PlazaPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text(
-              '各大音乐平台的热门歌单，点进去就能听，也能一键导入到我的歌单',
-              style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textSecondary, fontSize: 13),
-            ),
-          ),
+          // No intro copy here (chen: clean like Notes — cut the
+          // hint text, fix the layout instead). 12pt above the
+          // filter row.
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -167,6 +164,30 @@ class _PlazaPageState extends State<PlazaPage> {
                       value: _platform,
                       isExpanded: true,
                       underline: const SizedBox.shrink(),
+                      // Closed state shows the 2-char badge name
+                      // (badgeName: 网易/QQ/酷狗/酷我); the menu keeps
+                      // the full displayName. The old closed state
+                      // showed the full name in a Flexible and the
+                      // 390pt header row truncated it to one char
+                      // ("网…") — the sort chips leave no room.
+                      selectedItemBuilder: (context) => [
+                        for (final pf in kPlazaPlatforms)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              PlatformLogo(platform: pf, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                pf.badgeName,
+                                style: TextStyle(
+                                  shadows: HaoTheme.legibilityShadows(
+                                    context,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                       items: [
                         for (final pf in kPlazaPlatforms)
                           DropdownMenuItem(
@@ -178,11 +199,13 @@ class _PlazaPageState extends State<PlazaPage> {
                                 // the closed button shows the same row.
                                 PlatformLogo(platform: pf, size: 20),
                                 const SizedBox(width: 8),
-                                // Flexible + ellipsis: the header row is
-                                // tight at 390pt; a 3-char name overflowed
-                                // 4.5px, 4-char names 21px (the logo added
-                                // 28px to the button). The name must shrink
-                                // instead of overflowing the button.
+                                // Flexible + ellipsis: the menu is
+                                // narrow at 390pt; a 3-char name
+                                // overflowed 4.5px, 4-char names 21px
+                                // (the logo added 28px). The name must
+                                // shrink instead of overflowing. The
+                                // CLOSED button does not use this row —
+                                // selectedItemBuilder shows badgeName.
                                 Flexible(
                                   child: Text(
                                     pf.displayName,
@@ -317,9 +340,15 @@ class _PlazaPageState extends State<PlazaPage> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     if (p.playCount > 0)
-                                      PlayCountBadge(count: p.playCount),
-                                    if (p.playCount > 0)
-                                      const SizedBox(width: 8),
+                                      PlayCountBadge(count: p.playCount)
+                                    else
+                                      // No count: same-shape "–" pill so
+                                      // the tail doesn't collapse — the
+                                      // row without a badge left the
+                                      // chevron ~55pt closer to the title
+                                      // than every other row.
+                                      const _NoCountPill(),
+                                    const SizedBox(width: 8),
                                     Icon(
                                       shadows: HaoTheme.legibilityShadows(ctx),
                                       Icons.chevron_right,
@@ -372,6 +401,35 @@ class _PlazaPageState extends State<PlazaPage> {
             child: const Text('重试'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "–" pill for rows without a play count: same DarkGlass capsule
+/// geometry as PlayCountBadge (radius 999, 7 / 3.5 padding, white
+/// 10pt semibold), so the row tail stays occupied and the chevron
+/// doesn't jump left on count-less rows.
+class _NoCountPill extends StatelessWidget {
+  const _NoCountPill();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = HaoTheme.of(context);
+    return DarkGlass(
+      radius: 999,
+      sigma: theme.glassBlurSigma,
+      color: Colors.black.withValues(alpha: 0.65),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+        child: Text(
+          '–',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }

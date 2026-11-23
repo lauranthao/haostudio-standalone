@@ -189,7 +189,7 @@ void main() {
   });
 
   group('T2 Views filter', () {
-    test('only movies/tvshows libraries survive', () async {
+    test('all libraries survive (build 30 audit §17)', () async {
       final fetcher = CannedEmbyFetcher({
         '/Views': okJson({
           'Items': [
@@ -203,7 +203,24 @@ void main() {
       });
       final client = EmbyClient(config: _config, fetcher: fetcher.call);
       final libs = await client.libraries();
-      expect(libs.map((l) => l.id), ['m1', 't1']);
+      // No type filter any more: the tab page's inventory line must
+      // show every library the server has (mixed/music/… included),
+      // and a mixed library can be pinned.
+      expect(libs.map((l) => l.id), ['m1', 't1', 'mu1', 'p1', 'x1']);
+    });
+
+    test('libraryItemCount reads TotalRecordCount with Limit=1', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items': okJson({'Items': [], 'TotalRecordCount': 42}),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      expect(await client.libraryItemCount('lib-m'), 42);
+      expect(
+        fetcher.seenUrls.any(
+          (u) => u.contains('parentId=lib-m') && u.contains('Limit=1'),
+        ),
+        isTrue,
+      );
     });
   });
 
@@ -217,13 +234,17 @@ void main() {
             embyItem(id: 'b', type: 'Series'),
             embyItem(id: 'c', type: 'Trailer'),
             embyItem(id: 'd', type: 'Weird'),
+            // 'Video' is a loose video file: visible now (build 30
+            // audit §17). 'BoxSet' stays out — no children page yet.
+            embyItem(id: 'e', type: 'Video', name: '散片'),
+            embyItem(id: 'f', type: 'BoxSet', name: '合集'),
           ],
-          'TotalRecordCount': 4,
+          'TotalRecordCount': 6,
         }),
       });
       final client = EmbyClient(config: _config, fetcher: fetcher.call);
       final page = await client.movies();
-      expect(page.items.map((i) => i.vodId), ['a', 'b']);
+      expect(page.items.map((i) => i.vodId), ['a', 'b', 'e']);
       expect(page.items.first.pic, contains('maxWidth=400'));
       expect(page.items.first.pic, contains('tag-a'));
       final bare = page.items[1];
@@ -275,6 +296,27 @@ void main() {
         ['第一集', '第二集', '彩蛋'],
       );
       expect(detail.lines[1].episodes, isEmpty);
+      expect(detail.usable, isTrue);
+    });
+
+    test('Video => same single 直链 line, mediaType Movie', () async {
+      final fetcher = CannedEmbyFetcher({
+        '/Items/video-1': okJson(
+          embyItem(
+            id: 'video-1',
+            type: 'Video',
+            name: '散片',
+            year: 2023,
+            runTimeTicks: 600000000 * 90,
+          ),
+        ),
+      });
+      final client = EmbyClient(config: _config, fetcher: fetcher.call);
+      final detail = await client.detail('video-1');
+      expect(detail.lines.length, 1);
+      expect(detail.lines.first.name, '直链');
+      expect(detail.lines.first.episodes.first.name, '正片');
+      expect(detail.mediaType, 'Movie');
       expect(detail.usable, isTrue);
     });
   });

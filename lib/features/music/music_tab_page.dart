@@ -94,6 +94,7 @@ import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 // Playlist card count = tracks.length (audit P0-1) — never a stored
 // count field. The import box lives inside the 我的歌单 section.
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/hao_pressable.dart';
 import '../../widgets/hao_scroll_to_top.dart';
@@ -422,7 +423,7 @@ class _MusicTabPageState extends State<MusicTabPage>
       if (r == null || r.tracks.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('导入失败：请粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接')),
+          const SnackBar(content: Text('导入失败：请粘贴歌单链接')),
         );
         return;
       }
@@ -677,78 +678,107 @@ class _MusicTabPageState extends State<MusicTabPage>
             AppearanceController.ensure().backgroundActive.value
                 ? Colors.transparent
                 : null,
-        // P0-4: no AppBar — the tab bar already says 音乐; the feature
-        // shelf below is the page's visual anchor.
-        body: SafeArea(
-          top: true,
-          bottom: false,
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  controller: _scrollController,
-                  children: [
-                    _featureShelf(theme),
-                    // Gap arithmetic (Kumone sectionSpacing 20):
-                    // shelf bottom padding 6 + 4 + head top padding 10.
-                    // The shelf is the page's visual anchor now — the
-                    // greeting/date header was removed 2026-11-19
-                    // (clean pass); homeDateText itself stays, it is
-                    // still used by daily_page.dart:159.
-                    const SizedBox(height: 4),
-                    CollapsibleSection(
-                      title: '我的歌单',
-                      expanded: _playlistsExpanded,
-                      onToggle: _togglePlaylists,
-                      showLeadingChevron: false,
-                      horizontalPadding: 24,
-                      verticalPadding: 10,
-                      titleStyle: TextStyle(
+        // P0-4 (revised, build 30 audit): the tab bar already says
+        // 音乐, but a top-level page gets the iOS large title anyway
+        // (CupertinoSliverNavigationBar): 34 bold at rest, collapsing
+        // to the 17 semibold middle title on scroll — the native
+        // pattern, not a hand-written header. The sliver bar owns
+        // the status-bar inset, so there is no SafeArea on top here;
+        // the scroll controller is unchanged (tab-tap scroll-to-top
+        // still drives it).
+        body: Column(
+          children: [
+            Expanded(
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  CupertinoSliverNavigationBar(
+                    // Only largeTitle — no middle: the framework moves
+                    // this same widget into the middle slot when the
+                    // bar collapses (and resizes it via DefaultTextStyle),
+                    // so passing both shows two titles at rest. The
+                    // style sets colour + legibility shadow only; size
+                    // (34 bold expanded / 17 semibold collapsed) and
+                    // weight come from the framework's DefaultTextStyle
+                    // per state — an explicit size here would stick at
+                    // 34pt in the collapsed bar.
+                    largeTitle: Text(
+                      '音乐',
+                      style: TextStyle(
                         shadows: HaoTheme.legibilityShadows(context),
                         color: theme.textPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
                       ),
-                      child: _playlistsBody(theme),
                     ),
-                    // Gap arithmetic: body bottom (no trailing spacer) +
-                    // 10 + next head top padding 10 = sectionSpacing 20.
-                    const SizedBox(height: 10),
-                    _fmRow(theme),
-                    // Same 10 + 10 arithmetic before the next section.
-                    const SizedBox(height: 10),
-                    CollapsibleSection(
-                      title: '最近播放',
-                      expanded: _recentExpanded,
-                      onToggle: _toggleRecent,
-                      showLeadingChevron: false,
-                      horizontalPadding: 24,
-                      verticalPadding: 10,
-                      titleStyle: TextStyle(
-                        shadows: HaoTheme.legibilityShadows(context),
-                        color: theme.textPrimary,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      trailing: _CapsuleButton(
-                        icon: Icons.play_arrow,
-                        label: '播放全部',
-                        enabled: _recent.isNotEmpty,
-                        onTap: _playAllRecent,
-                      ),
-                      child: _recentBody(theme),
+                    backgroundColor: theme.surface,
+                    border: Border(
+                      bottom:
+                          BorderSide(color: theme.hairline, width: 0.5),
                     ),
-                    // Kumone bottom padding: contentInset - 8 = 16.
-                    const SizedBox(height: 16),
-                  ],
-                ),
+                  ),
+                  SliverList(
+                    delegate: SliverChildListDelegate([
+                      _featureShelf(theme),
+                      // Gap arithmetic (Kumone sectionSpacing 20):
+                      // shelf bottom padding 6 + 4 + head top padding 10.
+                      // The shelf is the page's visual anchor now — the
+                      // greeting/date header was removed 2026-11-19
+                      // (clean pass); homeDateText itself stays, it is
+                      // still used by daily_page.dart:159.
+                      const SizedBox(height: 4),
+                      CollapsibleSection(
+                        title: '我的歌单',
+                        expanded: _playlistsExpanded,
+                        onToggle: _togglePlaylists,
+                        showLeadingChevron: false,
+                        horizontalPadding: 24,
+                        verticalPadding: 10,
+                        titleStyle: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
+                          color: theme.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        child: _playlistsBody(theme),
+                      ),
+                      // Gap arithmetic: body bottom (no trailing spacer) +
+                      // 10 + next head top padding 10 = sectionSpacing 20.
+                      const SizedBox(height: 10),
+                      _fmRow(theme),
+                      // Same 10 + 10 arithmetic before the next section.
+                      const SizedBox(height: 10),
+                      CollapsibleSection(
+                        title: '最近播放',
+                        expanded: _recentExpanded,
+                        onToggle: _toggleRecent,
+                        showLeadingChevron: false,
+                        horizontalPadding: 24,
+                        verticalPadding: 10,
+                        titleStyle: TextStyle(
+                          shadows: HaoTheme.legibilityShadows(context),
+                          color: theme.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        trailing: _CapsuleButton(
+                          icon: Icons.play_arrow,
+                          label: '播放全部',
+                          enabled: _recent.isNotEmpty,
+                          onTap: _playAllRecent,
+                        ),
+                        child: _recentBody(theme),
+                      ),
+                      // Kumone bottom padding: contentInset - 8 = 16.
+                      const SizedBox(height: 16),
+                    ]),
+                  ),
+                ],
               ),
-              MiniPlayerBar(
-                key: const ValueKey('homeMiniPlayer'),
-                onOpenPlayer: _openPlayerFromBar,
-              ),
-            ],
-          ),
+            ),
+            MiniPlayerBar(
+              key: const ValueKey('homeMiniPlayer'),
+              onOpenPlayer: _openPlayerFromBar,
+            ),
+          ],
         ),
       ),
     );
@@ -1146,7 +1176,7 @@ class _MusicTabPageState extends State<MusicTabPage>
                 child: TextField(
                   controller: _importController,
                   decoration: InputDecoration(
-                    hintText: '粘贴网易云 / QQ / 酷我 / 酷狗公开歌单链接',
+                    hintText: '粘贴歌单链接',
                     hintStyle: TextStyle(
                       shadows: HaoTheme.legibilityShadows(context),
                       color: theme.textMuted,

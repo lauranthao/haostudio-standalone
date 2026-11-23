@@ -260,27 +260,40 @@ class _PlayerExpandTransitionState extends State<_PlayerExpandTransition>
     final fullRect = Offset.zero & size;
     final animation = widget.animation;
     final isClosing = animation.status == AnimationStatus.reverse;
+    // Reduce Motion (same pattern as _StaggerIn in music_tab_page):
+    // no rect morph, no spring slide — the page fades in / out.
+    // The gesture zones (edge swipe, top swipe-down) are untouched:
+    // finger-following drags are user-driven, not animation.
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     // Slide on close (0 in every other state). The drag offset is
     // added on top so a finger-released pop starts exactly where the
     // finger left the page — no snap back to full-screen first.
     // Right for chevron / system back / edge swipe, down for a
     // top-bar swipe-down (see [_closingDown]).
-    final closeT = isClosing
-        ? const HaoSettleSpringCurve().transform(
-            (1 - animation.value).clamp(0.0, 1.0),
-          )
-        : 0.0;
+    final closeT = reduceMotion
+        ? 0.0
+        : isClosing
+            ? const HaoSettleSpringCurve().transform(
+                (1 - animation.value).clamp(0.0, 1.0),
+              )
+            : 0.0;
     final slide = _closingDown ? 0.0 : closeT * size.width;
     final slideDown = _closingDown ? closeT * size.height : 0.0;
 
     Widget content;
     if (isClosing) {
-      content = widget.child;
+      content = reduceMotion
+          ? Opacity(opacity: animation.value, child: widget.child)
+          : widget.child;
     } else {
       // Expand: spring drives the rect, linear time drives the fades.
-      final t = const HaoSettleSpringCurve()
-          .transform(animation.value.clamp(0.0, 1.0));
+      // Reduce Motion: t = 1 from the first frame (full rect, square
+      // corners) and the child fades in linearly — no morph.
+      final t = reduceMotion
+          ? 1.0
+          : const HaoSettleSpringCurve()
+              .transform(animation.value.clamp(0.0, 1.0));
       final rect = Rect.lerp(widget.fromRect, fullRect, t)!;
       // Capsule (999, rendered as half the bar height) → ~60
       // mid-flight → 0 at rest. (1-t)^4 falls off fast enough that
@@ -288,17 +301,23 @@ class _PlayerExpandTransitionState extends State<_PlayerExpandTransition>
       // (video frame 010: ~60px corners on a ~625px sheet).
       final oneMinusT = 1 - t;
       final radius = 999 * oneMinusT * oneMinusT * oneMinusT * oneMinusT;
-      final childOpacity = const Interval(
-        0.15,
-        0.75,
-        curve: Curves.easeOut,
-      ).transform(animation.value.clamp(0.0, 1.0));
-      final barOpacity = 1.0 -
-          const Interval(
-            0.0,
-            0.35,
-            curve: Curves.easeOut,
-          ).transform(animation.value.clamp(0.0, 1.0));
+      final childOpacity = reduceMotion
+          ? animation.value.clamp(0.0, 1.0)
+          : const Interval(
+              0.15,
+              0.75,
+              curve: Curves.easeOut,
+            ).transform(animation.value.clamp(0.0, 1.0));
+      // The bar copy masks the morph; with no morph there is nothing
+      // to mask, so it stays hidden under Reduce Motion.
+      final barOpacity = reduceMotion
+          ? 0.0
+          : 1.0 -
+              const Interval(
+                0.0,
+                0.35,
+                curve: Curves.easeOut,
+              ).transform(animation.value.clamp(0.0, 1.0));
 
       content = Stack(
         fit: StackFit.expand,

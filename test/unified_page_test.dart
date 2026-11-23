@@ -20,6 +20,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -255,7 +257,7 @@ void main() {
       expect(pillTopLeft.dy, 4.5);
       // Selected tab label = accent, unselected = primary at 0.8.
       expect(
-        tester.widget<Text>(find.text('直播')).style?.color,
+        tester.widget<Text>(find.text('直播').first).style?.color,
         theme.accent,
       );
       expect(
@@ -305,20 +307,24 @@ void main() {
       await appearance(tester);
       final themeController = Get.put(ThemeController());
       themeController.loadFromBox(HiveStore.box);
+      tester.view.physicalSize = const Size(780, 1688);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await pumpThemed(
         tester,
         const SettingsTabPage(),
         HaoThemes.of(HaoThemeId.appleGlass).light,
       );
       await tester.pumpAndSettle();
-      // No AppBar (chen 2026-11-21, screenshot): the title is a big
-      // bold header in the list itself, so the top area IS the page
-      // background — there is no bar widget to be opaque.
+      // No AppBar (chen 2026-11-21, screenshot); the big title is
+      // the native sliver large title now (build 30 audit), not the
+      // hand-written 34 bold header. Its size/weight come from the
+      // framework's nav-large-title DefaultTextStyle (34 w700);
+      // the widget's own style carries only colour.
       expect(find.byType(AppBar), findsNothing);
-      final title = tester.widget<Text>(find.text('设置'));
-      expect(title.style?.fontSize, 34);
-      // Apple large title: 34pt bold (w700), not the old 26/w800.
-      expect(title.style?.fontWeight, FontWeight.w700);
+      expect(find.byType(CupertinoSliverNavigationBar), findsOneWidget);
+      final title = tester.widget<Text>(find.text('设置').first);
       expect(
         title.style?.color,
         HaoThemes.of(HaoThemeId.appleGlass)
@@ -326,11 +332,23 @@ void main() {
             .extension<HaoTheme>()!
             .textPrimary,
       );
+      // The framework inserts the largeTitle widget in two places
+      // during the collapse transition (expanded 34 + middle 17), so
+      // assert on the resolved sizes across all copies, not one.
+      final sizes = find.text('设置').evaluate().map((e) {
+        final ro = e.renderObject as RenderParagraph;
+        return ro.text.style?.fontSize;
+      }).toList();
+      expect(sizes, contains(34.0));
     });
 
     testWidgets('live has no AppBar; big title sits on the page background',
         (tester) async {
       await appearance(tester);
+      tester.view.physicalSize = const Size(780, 1688);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       await pumpThemed(
         tester,
         LiveTabPage(
@@ -339,12 +357,14 @@ void main() {
         HaoThemes.of(HaoThemeId.appleGlass).light,
       );
       await tester.pumpAndSettle();
-      // No AppBar (chen 2026-11-21, screenshot): the title is a big
-      // bold header in the page body, actions on the same row.
+      // No AppBar (chen 2026-11-21, screenshot); the big title is
+      // the native sliver large title now (build 30 audit), not the
+      // hand-written 26 w800 header. Its size/weight come from the
+      // framework's nav-large-title DefaultTextStyle (34 w700);
+      // the widget's own style carries only colour.
       expect(find.byType(AppBar), findsNothing);
-      final title = tester.widget<Text>(find.text('直播'));
-      expect(title.style?.fontSize, 26);
-      expect(title.style?.fontWeight, FontWeight.w800);
+      expect(find.byType(CupertinoSliverNavigationBar), findsOneWidget);
+      final title = tester.widget<Text>(find.text('直播').first);
       expect(
         title.style?.color,
         HaoThemes.of(HaoThemeId.appleGlass)
@@ -352,6 +372,13 @@ void main() {
             .extension<HaoTheme>()!
             .textPrimary,
       );
+      // Same two-copy note as the settings test above: the
+      // framework inserts largeTitle twice during transition.
+      final sizes = find.text('直播').evaluate().map((e) {
+        final ro = e.renderObject as RenderParagraph;
+        return ro.text.style?.fontSize;
+      }).toList();
+      expect(sizes, contains(34.0));
     });
 
     testWidgets('wallpaper on: no opaque top bar on the settings page',

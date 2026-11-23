@@ -426,7 +426,10 @@ class _PresetCard extends StatelessWidget {
                       Text(
                         store.currentPresetName,
                         style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                          color: theme.accent,
+                          // Current-selection value in textPrimary, not
+                          // accent: dark appleGlass accent (#76767A) is
+                          // dimmer than the label next to it.
+                          color: theme.textPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -435,7 +438,7 @@ class _PresetCard extends StatelessWidget {
                       Icon(shadows: HaoTheme.legibilityShadows(context),
                         CupertinoIcons.chevron_up_chevron_down,
                         size: 10,
-                        color: theme.accent,
+                        color: theme.textPrimary,
                       ),
                     ],
                   ),
@@ -547,6 +550,7 @@ class _PresetCard extends StatelessWidget {
                   IconButton(
                     onPressed: () =>
                         unawaited(store.deleteCustomPreset(preset)),
+                    tooltip: '删除预设',
                     icon: Icon(shadows: HaoTheme.legibilityShadows(context),
                       Icons.delete_outline,
                       size: 12,
@@ -580,13 +584,13 @@ class _PresetCard extends StatelessWidget {
                         Icon(shadows: HaoTheme.legibilityShadows(context),
                           Icons.download,
                           size: 14,
-                          color: theme.accent,
+                          color: theme.textPrimary,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           '保存当前预设',
                           style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                            color: theme.accent,
+                            color: theme.textPrimary,
                             fontSize: 12.5,
                             fontWeight: FontWeight.w500,
                           ),
@@ -682,7 +686,7 @@ class _PresetCard extends StatelessWidget {
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(controller.text),
-                  child: Text('保存', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.accent)),
+                  child: Text('保存', style: TextStyle(shadows: HaoTheme.legibilityShadows(context), color: theme.textPrimary)),
                 ),
               ],
             ),
@@ -742,7 +746,7 @@ class _AutoEqCard extends StatelessWidget {
                 Text(
                   store.selectedAutoEqName!,
                   style: TextStyle(shadows: HaoTheme.legibilityShadows(context),
-                    color: theme.accent,
+                    color: theme.textPrimary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),

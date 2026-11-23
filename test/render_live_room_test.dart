@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -107,6 +108,9 @@ ThemeData _cjkTheme(ThemeData base) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: cjkButton(base.filledButtonTheme.style),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: cjkButton(base.outlinedButtonTheme.style),
     ),
     textButtonTheme: TextButtonThemeData(
       style: cjkButton(base.textButtonTheme.style),
@@ -364,7 +368,7 @@ void main() {
         .extension<HaoTheme>()!
         .textPrimary;
     final swapThemes = find.ancestor(
-      of: find.byIcon(Icons.swap_horiz),
+      of: find.byIcon(CupertinoIcons.arrow_2_squarepath),
       matching: find.byType(IconTheme),
     );
     expect(
