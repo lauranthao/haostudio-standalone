@@ -90,6 +90,9 @@ let package = Package(
                 // Tests/SettingsUITests/ until the S7 Xcode test
                 // target, same as MusicFeaturesTests.
                 "Features/My/SettingsLogic.swift",
+                // Autoresume: music resume checkpoints are pure
+                // logic (Foundation-only) — tested by SettingsTests.
+                "Features/Music/MusicResumeLogic.swift",
                 // S6: backup engine + update checker (Foundation-only).
                 // The SwiftUI backup/update flow (BackupUpdateViews)
                 // lives in the app target only; its UI tests stay

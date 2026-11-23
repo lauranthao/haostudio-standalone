@@ -111,6 +111,18 @@ final class MusicPlayerViewModel: ObservableObject {
     private var heardSeconds: Double = 0
     private var heardTrackKey = ""
 
+    // MARK: - Auto-resume checkpoints (chen 2026-11-23:
+    // save every 10 s while playing + on entering background,
+    // local only — iOS has no reliable kill callback).
+    /// Launch-time resume seek, applied once the player
+    /// reports a duration. Nil when there is no checkpoint
+    /// or after it has been applied / dropped.
+    private var pendingResume: (key: String, seconds: Int)?
+    /// Last checkpoint actually written to the resume file.
+    private var lastResumeSaveAt: Date?
+    private var lastResumeSavedKey: String?
+    private var lastResumeSavedSeconds: Int = 0
+
     init(coordinator: PlaybackCoordinator) {
         self.coordinator = coordinator
         self.lyricOffsetMs = MusicLibraryStore.lyricOffsetMs()
@@ -149,14 +161,22 @@ final class MusicPlayerViewModel: ObservableObject {
         // 上次歌曲" switch is on, start the restored queue at its
         // restored index once per launch. Deferred to the next
         // runloop turn (Flutter's post-frame callback) so init
-        // finishes before playback starts. The resume POSITION is
-        // NOT applied: Swift never saves the kill-time position
-        // (MusicLibraryStore.saveResume has no writer), so the
-        // track starts at 0 — see the wiring report.
+        // finishes before playback starts.
+        //
+        // Resume POSITION (autoresume leg): the stored checkpoint
+        // for the restored song, if any. The player has no
+        // start-position parameter, so the seek happens once the
+        // player reports a duration (see the duration sink).
+        // An invalid checkpoint starts from 0.
         if AutoResumeDecision.resumeIndex(
             autoResumeEnabled: UserDefaults.standard.bool(forKey: SettingsStore.autoResumeKey),
             queueCount: queue.tracks.count,
-            currentIndex: queue.index) != nil {
+            currentIndex: queue.index) != nil,
+           let song = currentSong {
+            let stored = MusicLibraryStore.resumeSeconds(for: song.identityKey)
+            if stored > 0 {
+                pendingResume = (key: song.identityKey, seconds: stored)
+            }
             DispatchQueue.main.async { [weak self] in
                 self?.startPlayback()
             }
@@ -189,6 +209,11 @@ final class MusicPlayerViewModel: ObservableObject {
             // pause mid-track): a natural completion.
             if was && !value && self.duration > 0 && self.position >= self.duration - 1.0 {
                 if let song = self.currentSong { self.noteNaturalCompletion(completed: song) }
+            } else if was && !value {
+                // User paused (or playback stopped mid-track):
+                // capture the position now — the app can be killed
+                // without any further callback.
+                self.saveResumeNow()
             }
         }.store(in: &cancellables)
         player.$position.sink { [weak self] value in
@@ -205,6 +230,13 @@ final class MusicPlayerViewModel: ObservableObject {
                 if let song = self.currentSong { self.noteNaturalCompletion(completed: song) }
             }
             self.lastPosition = value
+            // Auto-resume checkpoint: while playing, save the
+            // position every 10 s. The gate in MusicResumeLogic
+            // skips writes that have not moved, so the resume
+            // file is rewritten at most ~6 times a minute.
+            // `value` is the fresh player position (self.position
+            // freezes while scrubbing).
+            self.saveResumeCheckpointIfDue(position: value)
             if self.scrubSeconds == nil {
                 self.position = value
                 if let song = self.currentSong {
@@ -219,6 +251,7 @@ final class MusicPlayerViewModel: ObservableObject {
         }.store(in: &cancellables)
         player.$duration.sink { [weak self] value in
             self?.duration = value
+            self?.applyPendingResumeSeek()
         }.store(in: &cancellables)
         player.$playMode.sink { [weak self] mode in
             guard let self = self else { return }
@@ -356,6 +389,69 @@ final class MusicPlayerViewModel: ObservableObject {
         MusicLibraryStore.saveQueue(queue.toQueueData())
     }
 
+    // MARK: - Auto-resume checkpoints
+
+    /// Periodic checkpoint, called from the position sink.
+    /// Writes at most once per 10 s of playback, only when
+    /// the position has moved since the last write.
+    private func saveResumeCheckpointIfDue(position value: Double) {
+        guard let song = currentSong else { return }
+        guard MusicResumeLogic.shouldSaveCheckpoint(
+            isPlaying: isPlaying,
+            position: value,
+            now: Date(),
+            lastSavedAt: lastResumeSaveAt,
+            lastSavedKey: lastResumeSavedKey,
+            lastSavedSeconds: lastResumeSavedSeconds,
+            currentKey: song.identityKey
+        ) else { return }
+        writeResumeCheckpoint(song: song, seconds: Int(value))
+    }
+
+    /// Immediate checkpoint: pause + entering background.
+    /// Captures the latest position; skips only an identical
+    /// checkpoint. Called from the app's scenePhase handler,
+    /// so it must stay internal (not private).
+    func saveResumeNow() {
+        guard let song = currentSong else { return }
+        guard MusicResumeLogic.shouldSaveNow(
+            position: position,
+            lastSavedKey: lastResumeSavedKey,
+            lastSavedSeconds: lastResumeSavedSeconds,
+            currentKey: song.identityKey
+        ) else { return }
+        writeResumeCheckpoint(song: song, seconds: Int(position))
+    }
+
+    private func writeResumeCheckpoint(song: MusicSong, seconds: Int) {
+        // Never checkpoint the end of a track: a finished
+        // song resumes from 0 (its checkpoint is cleared by
+        // noteNaturalCompletion, and the restore validator
+        // rejects end positions too).
+        if duration > 0, Double(seconds) >= duration - 1.0 { return }
+        MusicLibraryStore.saveResume(song.identityKey, seconds: seconds)
+        lastResumeSaveAt = Date()
+        lastResumeSavedKey = song.identityKey
+        lastResumeSavedSeconds = seconds
+    }
+
+    /// One-shot launch-time resume seek, applied once the
+    /// restored track has loaded (duration > 0). Drops the
+    /// checkpoint when the song changed, the load failed, or
+    /// the stored position is past the end.
+    private func applyPendingResumeSeek() {
+        guard let pending = pendingResume else { return }
+        guard let song = currentSong, song.identityKey == pending.key else {
+            pendingResume = nil
+            return
+        }
+        guard duration > 0 else { return }
+        pendingResume = nil
+        guard let target = MusicResumeLogic.validatedResumeSeconds(
+            stored: pending.seconds, duration: duration) else { return }
+        player.seek(to: Double(target)) { _ in }
+    }
+
     func togglePlayPause() {
         player.toggle()
         hapticTick()
@@ -406,6 +502,9 @@ final class MusicPlayerViewModel: ObservableObject {
     func seek(to seconds: Double) {
         let target = min(max(0, seconds), max(0, duration))
         scrubSeconds = nil
+        // A manual seek wins over a pending launch-time
+        // resume seek: the user just chose where to listen.
+        pendingResume = nil
         player.seek(to: target) { [weak self] ok in
             guard let self = self else { return }
             if !ok { self.handleSeekFailed() }
@@ -556,6 +655,11 @@ final class MusicPlayerViewModel: ObservableObject {
         }
         lastCompletionKey = key
         lastCompletionAt = now
+        // A finished track leaves no resume point: the next
+        // play of this song starts from 0 (and a pending
+        // launch-time seek for it is dropped too).
+        if pendingResume?.key == key { pendingResume = nil }
+        MusicLibraryStore.clearResume(key)
         if heardTrackKey == key && heardSeconds >= 5 {
             MusicLibraryStore.recordListenEvent(ListenEvent(
                 json: [
