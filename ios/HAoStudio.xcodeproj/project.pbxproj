@@ -14,7 +14,7 @@
 		000000000000000000000009 /* GlassTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000A /* GlassTabBar.swift */; };
 		00000000000000000000000B /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000C /* MiniPlayerBar.swift */; };
 		00000000000000000000000D /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000000E /* MainTabView.swift */; };
-		00000000000000000000000F /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000010 /* PlaceholderViews.swift */; };
+		0000000000000000000001D1 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D2 /* HomeView.swift */; };
 		000000000000000000000011 /* PlaybackCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000012 /* PlaybackCoordinator.swift */; };
 		000000000000000000000013 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000014 /* LocalStore.swift */; };
 		00000000000000000000006A /* MigrationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000006B /* MigrationStore.swift */; };
@@ -231,7 +231,7 @@
 		00000000000000000000000A /* GlassTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassTabBar.swift; sourceTree = "<group>"; };
 		00000000000000000000000C /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
 		00000000000000000000000E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
-		000000000000000000000010 /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViews.swift; sourceTree = "<group>"; };
+		0000000000000000000001D2 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		000000000000000000000012 /* PlaybackCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackCoordinator.swift; sourceTree = "<group>"; };
 		000000000000000000000014 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
 		00000000000000000000006B /* MigrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrationStore.swift; sourceTree = "<group>"; };
@@ -485,7 +485,6 @@
 				00000000000000000000000A /* GlassTabBar.swift */,
 				00000000000000000000000C /* MiniPlayerBar.swift */,
 				00000000000000000000000E /* MainTabView.swift */,
-				000000000000000000000010 /* PlaceholderViews.swift */,
 			); path = App; sourceTree = "<group>"; };
 		00000000000000000000005F /* Playback */ = {isa = PBXGroup; children = (
 				0000000000000000000000EA /* AVPlayerBackend.swift */,
@@ -613,6 +612,7 @@
 				0000000000000000000001D3 /* Home */,
 			); path = Features; sourceTree = "<group>"; };
 		0000000000000000000001D3 /* Home */ = {isa = PBXGroup; children = (
+				0000000000000000000001D2 /* HomeView.swift */,
 				0000000000000000000001D5 /* HomeViewModel.swift */,
 			); path = Home; sourceTree = "<group>"; };
 		000000000000000000000172 /* My */ = {isa = PBXGroup; children = (
@@ -843,6 +843,7 @@
 				000000000000000000000009 /* GlassTabBar.swift in Sources */,
 				000000000000000000000001 /* HAoStudioApp.swift in Sources */,
 				000000000000000000000003 /* HaoTheme.swift in Sources */,
+				0000000000000000000001D1 /* HomeView.swift in Sources */,
 				0000000000000000000000FF /* IJKPlayerBackend.swift in Sources */,
 				000000000000000000000136 /* LiveDanmakuSettingsSheet.swift in Sources */,
 				000000000000000000000138 /* LiveDanmakuView.swift in Sources */,
@@ -909,7 +910,6 @@
 				0000000000000000000000C9 /* MusicSleepTimer.swift in Sources */,
 				000000000000000000000089 /* MusicTrack.swift in Sources */,
 				000000000000000000000075 /* NativeMusicPlayer.swift in Sources */,
-				00000000000000000000000F /* PlaceholderViews.swift in Sources */,
 				000000000000000000000011 /* PlaybackCoordinator.swift in Sources */,
 				00000000000000000000010B /* PlayerKernel.swift in Sources */,
 				00000000000000000000008B /* ResolverPolicy.swift in Sources */,

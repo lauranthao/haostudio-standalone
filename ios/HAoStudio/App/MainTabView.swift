@@ -145,7 +145,7 @@ struct MainTabView: View {
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
-        case .home: HomePlaceholderView()
+        case .home: HomeView()
         case .music: MusicHomeView()
         case .movies: VideoTabView()
         case .live: LiveTabView()
