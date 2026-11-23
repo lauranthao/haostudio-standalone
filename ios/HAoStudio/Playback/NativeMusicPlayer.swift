@@ -153,6 +153,9 @@ func musicPrevTrackIndex(
         return current == 0 ? -1 : current - 1
     case .listLoop, .singleLoop:
         return (current - 1 + length) % length
+    case .shuffle:
+        // Unreachable: shuffle returns above. Exhaustiveness only.
+        return current
     }
 }
 
@@ -780,7 +783,7 @@ final class MusicEqualizer {
     }
 
     private static let tapFinalize: MTAudioProcessingTapFinalizeCallback = { tap in
-        guard let raw = MTAudioProcessingTapGetStorage(tap) else { return }
+        let raw = MTAudioProcessingTapGetStorage(tap)
         let context = Unmanaged<TapContext>.fromOpaque(raw).takeRetainedValue()
         if context.sampleCount > 0 {
             let meanSquare = context.sumSquares / Double(context.sampleCount)
@@ -794,7 +797,7 @@ final class MusicEqualizer {
     }
 
     private static let tapPrepare: MTAudioProcessingTapPrepareCallback = { tap, _, format in
-        guard let raw = MTAudioProcessingTapGetStorage(tap) else { return }
+        let raw = MTAudioProcessingTapGetStorage(tap)
         let context = Unmanaged<TapContext>.fromOpaque(raw).takeUnretainedValue()
         let channels = max(1, Int(format.pointee.mChannelsPerFrame))
         let rate = format.pointee.mSampleRate
@@ -811,7 +814,7 @@ final class MusicEqualizer {
     private static let tapUnprepare: MTAudioProcessingTapUnprepareCallback = { _ in }
 
     private static let tapProcess: MTAudioProcessingTapProcessCallback = { tap, numberFrames, _, bufferListInOut, numberFramesOut, flagsOut in
-        guard let raw = MTAudioProcessingTapGetStorage(tap) else { return }
+        let raw = MTAudioProcessingTapGetStorage(tap)
         let context = Unmanaged<TapContext>.fromOpaque(raw).takeUnretainedValue()
         let _ = MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut, flagsOut, nil, numberFramesOut)
         // Live settings change: rebuild filters from the fresh

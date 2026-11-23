@@ -103,7 +103,7 @@ final class MusicDiscoveryViewModel: ObservableObject {
             let artist = event.artist.isEmpty ? "—" : event.artist
             let song = MusicSong(
                 songId: event.songId, title: event.title, artist: event.artist,
-                platform: event.platform, cover: event.cover, dur: event.totalDur
+                cover: event.cover, platform: event.platform, dur: event.totalDur
             )
             byArtist[artist, default: []].append(song)
         }
@@ -168,7 +168,7 @@ final class MusicDiscoveryViewModel: ObservableObject {
             let key = "\(event.platform.rawValue)|\(event.songId)"
             let song = MusicSong(
                 songId: event.songId, title: event.title, artist: event.artist,
-                platform: event.platform, cover: event.cover, dur: event.totalDur
+                cover: event.cover, platform: event.platform, dur: event.totalDur
             )
             if let existing = bySong[key] {
                 bySong[key] = (song: existing.song, plays: existing.plays + 1)

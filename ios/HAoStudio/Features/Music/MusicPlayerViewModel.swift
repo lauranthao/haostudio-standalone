@@ -103,16 +103,21 @@ final class MusicPlayerViewModel: ObservableObject {
         self.lyricOffsetMs = MusicLibraryStore.lyricOffsetMs()
         self.playMode = MusicQueueMode.fromCode(MusicLibraryStore.playModeCode())
         self.playbackSpeed = MusicLibraryStore.speed()
-        self.sleepTimer = MusicSleepTimer(onFire: { [weak self] in
+        // Handlers are attached AFTER the timer exists: capturing
+        // self inside its own initializer is a compile error
+        // (self.sleepTimer is not initialized yet at that point).
+        self.sleepTimer = MusicSleepTimer(onFire: {})
+        sleepTimer.onFire = { [weak self] in
             guard let self = self else { return }
             self.player.pause()
             self.sleepActive = false
             self.sleepRemainingText = ""
-        }, onChanged: { [weak self] in
+        }
+        sleepTimer.onChanged = { [weak self] in
             guard let self = self else { return }
             self.sleepActive = self.sleepTimer.isActive
             self.sleepRemainingText = self.sleepTimer.remainingText
-        })
+        }
         // Restore the persisted queue (the player restores playback
         // state itself; this only restores the queue list + index).
         // Lyrics are NOT fetched here: only the cache is read, so
@@ -301,7 +306,7 @@ final class MusicPlayerViewModel: ObservableObject {
         let next = playMode.next
         playMode = next
         MusicLibraryStore.setPlayModeCode(next.code)
-        player.setMode(next.toContract())
+        player.setPlayMode(next.toContract())
         hapticTick()
     }
 
@@ -431,7 +436,7 @@ final class MusicPlayerViewModel: ObservableObject {
         }
         let track = MusicTrack(
             id: song.songId, title: song.title, artist: song.artist,
-            album: song.album, coverURL: song.cover, duration: song.dur,
+            album: song.album, coverURL: URL(string: song.cover), duration: TimeInterval(song.dur),
             sourceID: song.platform.rawValue
         )
         MusicLyricsAPI.shared.fetchLyrics(for: track) { [weak self] result in

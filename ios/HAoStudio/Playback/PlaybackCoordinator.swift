@@ -82,14 +82,24 @@ struct PlaybackItem: Identifiable, Equatable {
     /// the player shows title/artist without artwork then. Added by
     /// the S2 music leg with a default so existing constructions keep
     /// compiling.
-    let coverURL: URL? = nil
+    let coverURL: URL?
 
     /// Local file to play directly (downloads / local music). When
     /// set, the coordinator returns this URL without asking the LX
     /// resolver — local files never go through network resolution.
-    let localFileURL: URL? = nil
+    let localFileURL: URL?
 
     var subtitle: String { artist ?? kindSubtitle }
+
+    init(id: String, kind: PlaybackKind, title: String, artist: String?,
+         coverURL: URL? = nil, localFileURL: URL? = nil) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.artist = artist
+        self.coverURL = coverURL
+        self.localFileURL = localFileURL
+    }
 
     private var kindSubtitle: String {
         switch kind {

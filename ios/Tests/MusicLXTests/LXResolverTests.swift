@@ -170,26 +170,37 @@ final class LXResolverTests: XCTestCase {
     func testThreeFailuresCoolTheJobAcrossResolves() {
         var invocations = 0
         let cooldown = ResolverCooldown(documentsDirectory: docs)
+        // Phase 2 adds a healthy job; the provider reads the flag.
+        var includeGood = false
         let resolver = makeResolver(
             jobs: {
-                [
+                var list = [
                     self.job(key: "flaky") { _, done in
                         invocations += 1
                         done(.error)
                     },
-                    self.job(key: "good") { _, done in
-                        done(.url("https://example.com/good.mp3", nil))
-                    },
                 ]
+                if includeGood {
+                    list.append(self.job(key: "good") { _, done in
+                        done(.url("https://example.com/good.mp3", nil))
+                    })
+                }
+                return list
             },
             cooldown: cooldown)
         // Three failing resolves: the flaky job runs each time.
-        // (Distinct songIds: the 1 h cache would otherwise answer
-        // resolves 2-4 without invoking any job.)
-        for i in 0..<3 { _ = resolve(resolver, songId: "cool-\(i)") }
+        // (.standard128 has no lower tier, so one invocation per
+        // resolve; distinct songIds, so the 1 h cache never answers
+        // without invoking a job.)
+        for i in 0..<3 { _ = resolve(resolver, quality: .standard128, songId: "cool-\(i)") }
         XCTAssertEqual(invocations, 3)
-        // Fourth resolve: the flaky job is cooled and skipped.
-        _ = resolve(resolver, songId: "cool-3")
+        XCTAssertTrue(cooldown.isCoolingDown("flaky"))
+        // Fourth resolve, now with a healthy job: a cooled job sorts
+        // last (Flutter parity — cooled jobs are still tried when
+        // reached, never skipped outright), so the healthy job wins
+        // the race and the flaky job is not reached.
+        includeGood = true
+        _ = resolve(resolver, quality: .standard128, songId: "cool-3")
         XCTAssertEqual(invocations, 3)
         XCTAssertTrue(cooldown.isCoolingDown("flaky"))
     }
