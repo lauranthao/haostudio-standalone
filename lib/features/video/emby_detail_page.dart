@@ -169,6 +169,19 @@ class _EmbyDetailPageState extends State<EmbyDetailPage> {
         _errorMessage = e.message;
       });
       return;
+    } catch (_) {
+      // A parse throw from client.detail (malformed server JSON —
+      // e.g. a wrong-typed field) is neither Dio nor Emby: without
+      // this it escapes the unawaited _load() as an unhandled async
+      // error and the page sits on the spinner forever. Show the
+      // error card instead, like every other load failure.
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+        _errorMessage = 'Emby 返回的数据有问题，请稍后重试';
+      });
+      return;
     }
     if (!mounted) return;
     _applyDetail(detail);

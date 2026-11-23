@@ -74,4 +74,22 @@ class FullscreenController extends GetxController {
     }
     super.onClose();
   }
+
+  /// Dispose a locally-owned controller.
+  ///
+  /// Player pages own their FullscreenController outright (constructed
+  /// directly, never shared through a bare `Get.put`): Get keeps ONE
+  /// registration per type, so a second player pushed on top of the
+  /// first would silently reuse the first room's controller —
+  /// fullscreen state leaks across rooms, and the first room's
+  /// dispose would delete the controller out from under the second.
+  /// Pages may ALSO register their instance in Get as the
+  /// widget-test seam (see live_room_page.dart), but they always
+  /// dispose their own instance here. Call this from the owning
+  /// page's dispose.
+  @override
+  void dispose() {
+    onClose();
+    super.dispose();
+  }
 }

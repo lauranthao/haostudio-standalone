@@ -312,7 +312,20 @@ class _LiveRoomPageState extends State<LiveRoomPage>
           _session.frameCapableBackend?.captureFrameJpeg(),
       isFrameCapable: () => _session.frameCapableBackend != null,
     );
-    _fullscreen = Get.put(FullscreenController());
+    // Page-owned controller (never shared): Get keeps ONE registration
+    // per type, so a second player pushed on top of the first would
+    // silently reuse the first room's controller — fullscreen state
+    // would leak across rooms and the first room's dispose would
+    // delete the controller out from under the second. Production
+    // reads _fullscreen directly; the Get registration below exists
+    // ONLY as the widget-test seam (the room tests flip isFullscreen
+    // via Get.find because the real [ ] tap's SystemChrome awaits
+    // never complete in a widget test), so register only when nothing
+    // is registered yet.
+    _fullscreen = FullscreenController();
+    if (!Get.isRegistered<FullscreenController>()) {
+      Get.put(_fullscreen);
+    }
     // Entering fullscreen re-shows the bars and restarts the 5 s
     // auto-hide from that moment: the portrait bar is page chrome
     // (always visible when unlocked), so a hidden _controlsVisible
@@ -2060,7 +2073,16 @@ class _LiveRoomPageState extends State<LiveRoomPage>
     unawaited(_danmakuTransport?.stop());
     _recovery.dispose();
     unawaited(_session.dispose());
-    Get.delete<FullscreenController>();
+    // Delete the Get registration only when it is THIS page's
+    // controller: a stacked room's dispose must not delete the room
+    // underneath's registration (the old bug — the second room kept
+    // a disposed controller and the last pop left the app stuck in
+    // landscape). The page's own controller is always disposed.
+    if (Get.isRegistered<FullscreenController>() &&
+        identical(Get.find<FullscreenController>(), _fullscreen)) {
+      Get.delete<FullscreenController>();
+    }
+    _fullscreen.dispose();
     super.dispose();
   }
 

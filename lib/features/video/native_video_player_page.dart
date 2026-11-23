@@ -463,7 +463,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
           _session.frameCapableBackend?.captureFrameJpeg(),
       isFrameCapable: () => _session.frameCapableBackend != null,
     );
-    _fullscreen = Get.put(FullscreenController());
+    // Page-owned controller — see live_room_page.dart initState for
+    // why this is constructed directly and only registered in Get
+    // when nothing is registered yet (widget-test seam only).
+    _fullscreen = FullscreenController();
+    if (!Get.isRegistered<FullscreenController>()) {
+      Get.put(_fullscreen);
+    }
     _rate = VideoPlaybackSettings.playbackRate;
     unawaited(_session.setRate(_rate));
     // I-影视: read the VOD-only prefs once at open (settings is
@@ -3307,9 +3313,13 @@ class _NativeVideoPlayerPageState extends State<NativeVideoPlayerPage>
     unawaited(_saveProgress());
     unawaited(_reportEmbyProgress(isExit: true));
     unawaited(_session.dispose());
-    try {
+    // Owner-checked delete (see live_room_page.dart dispose): only
+    // delete the Get registration when it is this page's controller.
+    if (Get.isRegistered<FullscreenController>() &&
+        identical(Get.find<FullscreenController>(), _fullscreen)) {
       Get.delete<FullscreenController>();
-    } catch (_) {}
+    }
+    _fullscreen.dispose();
     super.dispose();
   }
 
