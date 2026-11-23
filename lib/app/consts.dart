@@ -11,7 +11,7 @@
 const String kAppVersion = '1.1.6';
 
 /// Current build number (CFBundleVersion).
-const int kAppBuild = 31;
+const int kAppBuild = 32;
 
 /// Online-update manifest (primary). Gitee raw, hosted in mainland China,
 /// so the check works from chen's phone — the shop server (Railway US)

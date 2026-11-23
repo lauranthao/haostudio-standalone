@@ -25,6 +25,7 @@ import 'app/consts.dart';
 import 'core/logging/app_log.dart';
 import 'core/storage/hive_store.dart';
 import 'core/storage/local_paths.dart';
+import 'core/storage/migration_snapshot.dart';
 import 'core/theme/appearance_store.dart';
 import 'core/theme/liquid_glass_theme.dart';
 import 'core/theme/screen_capture.dart';
@@ -145,6 +146,12 @@ Future<void> _warmUpAfterFirstFrame(
   // Runtime log: in-memory ring + persisted file (Settings → 日志).
   await AppLog.init();
   AppLog.info('HAo Studio 启动（版本 $kAppVersion build $kAppBuild）');
+
+  // 路 A 迁移快照 (Swift 2.0 §5.3,Flutter 1.1.6.x 先发):启动后把
+  // app_settings 全量导出到 Documents/migration_snapshot.json,
+  // Swift 2.0 首次启动读它迁移。后台写 (不阻塞启动)、失败静默
+  // (只记日志,下次启动再写),绝不弹提示、绝不碰 Hive box。
+  unawaited(MigrationSnapshot.writeAfterStartup());
 
   final lastCrashStage = LiveBreadcrumb.current;
   if (lastCrashStage.isNotEmpty) {
