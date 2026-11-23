@@ -17,6 +17,8 @@
 		00000000000000000000000F /* PlaceholderViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000010 /* PlaceholderViews.swift */; };
 		000000000000000000000011 /* PlaybackCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000012 /* PlaybackCoordinator.swift */; };
 		000000000000000000000013 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000014 /* LocalStore.swift */; };
+		00000000000000000000006A /* MigrationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000006B /* MigrationStore.swift */; };
+		00000000000000000000006C /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000006D /* KeychainStore.swift */; };
 		000000000000000000000015 /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000016 /* SplashView.swift */; };
 		00000000000000000000004D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000004E /* Assets.xcassets */; };
 		00000000000000000000004F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000050 /* LaunchScreen.storyboard */; };
@@ -69,6 +71,8 @@
 		000000000000000000000010 /* PlaceholderViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViews.swift; sourceTree = "<group>"; };
 		000000000000000000000012 /* PlaybackCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackCoordinator.swift; sourceTree = "<group>"; };
 		000000000000000000000014 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
+		00000000000000000000006B /* MigrationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrationStore.swift; sourceTree = "<group>"; };
+		00000000000000000000006D /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		000000000000000000000016 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 		00000000000000000000004E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000050 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -158,6 +162,8 @@
 			); path = Playback; sourceTree = "<group>"; };
 		000000000000000000000060 /* Storage */ = {isa = PBXGroup; children = (
 				000000000000000000000014 /* LocalStore.swift */,
+				00000000000000000000006B /* MigrationStore.swift */,
+				00000000000000000000006D /* KeychainStore.swift */,
 			); path = Storage; sourceTree = "<group>"; };
 		000000000000000000000061 /* Splash */ = {isa = PBXGroup; children = (
 				000000000000000000000016 /* SplashView.swift */,
@@ -243,6 +249,8 @@
 				00000000000000000000000F /* PlaceholderViews.swift in Sources */,
 				000000000000000000000011 /* PlaybackCoordinator.swift in Sources */,
 				000000000000000000000013 /* LocalStore.swift in Sources */,
+				00000000000000000000006A /* MigrationStore.swift in Sources */,
+				00000000000000000000006C /* KeychainStore.swift in Sources */,
 				000000000000000000000015 /* SplashView.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */

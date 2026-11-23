@@ -10,8 +10,18 @@ import SwiftUI
 
 @main
 struct HAoStudioApp: App {
-    @StateObject private var themeStore = ThemeStore()
-    @StateObject private var coordinator = PlaybackCoordinator()
+    @StateObject private var themeStore: ThemeStore
+    @StateObject private var coordinator: PlaybackCoordinator
+
+    init() {
+        // S1: the snapshot migration runs before anything reads
+        // settings, so the first frame already uses the migrated
+        // theme and preferences. It is synchronous, idempotent, and
+        // skips quietly when there is no snapshot to migrate from.
+        _ = MigrationStore.runIfNeeded()
+        _themeStore = StateObject(wrappedValue: ThemeStore())
+        _coordinator = StateObject(wrappedValue: PlaybackCoordinator())
+    }
 
     /// The splash covers the first frame; it fades out at 1.5s
     /// (animation #4) once the app reports ready. Foundation: ready

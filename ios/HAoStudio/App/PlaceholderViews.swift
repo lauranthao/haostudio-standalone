@@ -64,6 +64,13 @@ struct MyPlaceholderView: View {
     @EnvironmentObject private var themeStore: ThemeStore
     @Environment(\.haoTheme) private var theme
 
+    /// S1: shown when the 1.1.6 snapshot migration never completed,
+    /// so the user knows their old data was not found and a backup
+    /// file can still be imported. Text only: the backup import
+    /// itself lands in S6, so there is no button that leads nowhere.
+    /// The dismiss button is real: it hides this section for good.
+    @State private var showMigrationNotice = MigrationStore.migrationNoticeNeeded()
+
     /// Bundle version (Info.plist CFBundleShortVersionString / build).
     /// version.json is aligned with the bundle in S0 (1.0.3 / build 4,
     /// minOs 17.0); the 2.0.0 label is NOT written until RC (plan §十).
@@ -82,6 +89,18 @@ struct MyPlaceholderView: View {
         // used NavigationView while the target was iOS 15.)
         NavigationStack {
             List {
+                if showMigrationNotice {
+                    Section("旧版数据") {
+                        Text("未找到旧版数据，可从备份文件导入。")
+                            .font(.system(size: 14))
+                            .foregroundStyle(theme.textSecondary)
+                        Button("不再提示") {
+                            MigrationStore.dismissMigrationNotice()
+                            showMigrationNotice = false
+                        }
+                        .font(.system(size: 14))
+                    }
+                }
                 Section("主题") {
                     Picker("主题", selection: $themeStore.themeID) {
                         ForEach(HaoThemeID.allCases) { id in
