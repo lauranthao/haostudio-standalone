@@ -477,6 +477,10 @@ struct MusicPlayerView: View {
                             showMore = false
                             showAddToPlaylistSong = song
                         }
+                        Button("下载") {
+                            showMore = false
+                            playerVM.downloadCurrent()
+                        }
                     }
                     Button("查看评论（只读）") {
                         showMore = false

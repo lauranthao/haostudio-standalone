@@ -413,4 +413,52 @@ final class MusicSearchAPI {
             completion(nil)
         }
     }
+
+    // MARK: - NetEase charts (排行榜)
+
+    /// NetEase charts (Flutter `neteaseCharts` parity): GET
+    /// https://music.163.com/api/toplist, 15 s timeout, UA
+    /// MusicUA.value. There is NO QQ/Kugou/Kuwo chart source in
+    /// this app — charts are NetEase toplist ids only. A chart IS
+    /// a playlist id: the charts page opens it through the existing
+    /// `importWyPlaylist` path, no new detail page. Empty on any
+    /// failure (the page shows its empty state).
+    func neteaseCharts(completion: @escaping ([PlaylistSummary]) -> Void) {
+        client.getJson(
+            "https://music.163.com/api/toplist",
+            headers: ["User-Agent": MusicUA.value],
+            timeout: 15
+        ) { json in
+            guard let json = json else {
+                completion([])
+                return
+            }
+            completion(MusicSearchAPI.parseNeteaseCharts(json))
+        }
+    }
+
+    /// Parse the toplist payload: 65 charts; the four canonical
+    /// ones (飙升/新歌/原创/热歌) are pinned first in that order,
+    /// the rest keep API order. Entries without an id or a name
+    /// are dropped.
+    static func parseNeteaseCharts(_ json: [String: Any]) -> [PlaylistSummary] {
+        let pinned = ["飙升榜", "新歌榜", "原创榜", "热歌榜"]
+        var all = MusicAPIJSON.asList(json["list"]).map { chart in
+            PlaylistSummary(
+                id: MusicAPIJSON.asString(chart["id"]),
+                name: MusicAPIJSON.asString(chart["name"]),
+                cover: MusicAPIJSON.asString(chart["coverImgUrl"]),
+                trackCount: MusicAPIJSON.asInt(chart["trackCount"]),
+                desc: MusicAPIJSON.asString(chart["updateFrequency"]),
+                platform: .wy
+            )
+        }.filter { !$0.id.isEmpty && !$0.name.isEmpty }
+        var head: [PlaylistSummary] = []
+        for name in pinned {
+            if let index = all.firstIndex(where: { $0.name == name }) {
+                head.append(all.remove(at: index))
+            }
+        }
+        return head + all
+    }
 }

@@ -201,6 +201,8 @@ final class MusicAlbumAPI {
             }
             let songs = MusicAPIJSON.asList(json["songs"])
             let firstAlbum = songs.isEmpty ? [:] : (MusicAPIJSON.asMap(songs[0]["al"]) ?? [:])
+            let album = MusicAPIJSON.asMap(json["album"]) ?? [:]
+            let publishTime = MusicAPIJSON.asInt(album["publishTime"] != nil ? album["publishTime"] : firstAlbum["publishTime"])
             let detail = AlbumDetail(
                 name: MusicAPIJSON.asString(firstAlbum["name"]),
                 pic: MusicText.coverHi(MusicAPIJSON.asString(firstAlbum["picUrl"]), platform: "wy"),
@@ -217,7 +219,8 @@ final class MusicAlbumAPI {
                         coverURL: URL(string: MusicText.coverHi(MusicAPIJSON.asString(album?["picUrl"]), platform: "wy")),
                         duration: (Double(durMs) / 1000.0).rounded(),
                         sourceID: "wy")
-                })
+                },
+                publishTime: publishTime)
             completion(detail)
         }
     }
@@ -256,9 +259,23 @@ final class MusicAlbumAPI {
                         sourceID: "tx")
                     guard !track.id.isEmpty, !track.title.isEmpty else { return nil }
                     return track
-                })
+                },
+                publishTime: MusicAlbumAPI.qqDateToMillis(MusicAPIJSON.asString(data["aDate"])))
             completion(detail)
         }
+    }
+
+    /// QQ album date (`data.aDate`, "yyyy-MM-dd") → milliseconds
+    /// since epoch, 0 when absent or unparseable.
+    static func qqDateToMillis(_ dateString: String) -> Int {
+        let trimmed = dateString.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return 0 }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: trimmed) else { return 0 }
+        return Int(date.timeIntervalSince1970 * 1000)
     }
 
     /// Kuwo has no public album-track endpoint — search the album

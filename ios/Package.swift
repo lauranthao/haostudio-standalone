@@ -60,6 +60,8 @@ let package = Package(
                 "Services/LXEngine",
                 "Services/MusicResolvers",
                 "Services/MusicAPI",
+                "Services/Video",
+                "Services/DownloadEngine",
                 "Playback/PlaybackCoordinator.swift",
                 "Storage/LocalStore.swift",
                 "Storage/KeychainStore.swift",
@@ -72,6 +74,19 @@ let package = Package(
             name: "MusicLXTests",
             dependencies: ["MusicLX"],
             path: "Tests/MusicLXTests"
+        ),
+        // S3: video services (CMS / Douban / Emby / danmaku) and the
+        // shared download engine live in MusicLX too — SwiftPM
+        // forbids one source file in two targets (build #18: the
+        // MusicLX/MigrationCore Storage overlap), so no separate
+        // VideoServices target is created here. At leg merge the
+        // coordinator moves these two dirs onto AppCore (the merged
+        // MusicLX + MigrationCore target from the music branch,
+        // 09b05e4) and re-points this test target at AppCore.
+        .testTarget(
+            name: "VideoServicesTests",
+            dependencies: ["MusicLX"],
+            path: "Tests/VideoServicesTests"
         ),
     ]
 )

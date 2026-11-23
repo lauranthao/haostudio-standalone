@@ -1,0 +1,531 @@
+// HAo Studio 2.0 — VOD danmaku client (S3 leg B).
+//
+// Swift port of the Flutter `vod_danmaku_client.dart`
+// (standalone-app-merge23). Two-hop FongMi-compatible fetch
+// against the danmu-api service. No token, no login, anonymous
+// GETs. Read-only: the app never sends danmaku.
+//
+//   Hop 1  GET /api/v2/fongmi/danmaku?name=<title>&episode=<ep>
+//          -> JSON array of candidates, best match first
+//          (server-side score). Only the top-1 passing the
+//          client-side dual check is ever used; candidates are
+//          never merged.
+//   Hop 2  GET <candidate.url> with format=xml rewritten to
+//          format=json -> {"count": N, "comments": [{cid, p, m, t}]}
+//          where `t` is the media-time axis (seconds) and `m` the
+//          text.
+//
+// Rules (Flutter audit b28-audit-danmaku.md §2-§3, as fixed in
+// build 29):
+// - Dual validation of a candidate: title gate (the normalised
+//   candidate name must contain the normalised query title —
+//   compared on a match key with whitespace and Chinese numerals
+//   folded, so `庆余年 第2季` matches `庆余年第二季(2024)…` and
+//   vice versa) + year gate (a year in the candidate name that
+//   disagrees with the detail's year rejects it; no year in the
+//   name passes). The season numeral is part of the key, never
+//   stripped: an S1 candidate must NOT match an S2 query.
+// - Every failure mode is silent: empty result, 404, timeout,
+//   network error -> [], never an exception to the player, never
+//   a prompt. But silence is not surrender: a 429 or 5xx is
+//   retried with backoff (Retry-After honoured, capped at 30 s),
+//   and an empty hop-1 200 is retried once — the audit saw a
+//   cold fetch occasionally return empty once, and "no danmaku"
+//   is never cached as a permanent answer.
+// - Per-hop budgets: hop 1 gets 60 s, hop 2 gets 30 s. The audit
+//   measured hop 1 cold start at 24.6 s — the old single 10 s
+//   budget killed every cold start outright.
+// - The full timeline loads by default; `maxTimelineItems`
+//   (uniform sampling across the time axis, never first-N) is
+//   only the escape hatch if real-device frame rate proves full
+//   load too heavy — it defaults to off.
+//
+// The protocol only passes a PlayEpisode, which has no title —
+// so the client is constructed per detail with the title + year
+// (C leg constructs it). Completion handlers only, no
+// async/await, no `any` (Swift 5.0).
+
+import Foundation
+
+// MARK: - Types
+
+/// One candidate episode returned by hop 1.
+struct VodDanmakuCandidate: Equatable {
+    /// Human-readable label, e.g. `狂飙(2023)from iqiyi - 狂飙第1集 …`.
+    let name: String
+    /// Hop-2 address (arrives with `format=xml`; rewritten to json).
+    let url: String
+}
+
+/// One comment from hop 2 (`{cid, p, m, t}`).
+struct VodDanmakuComment: Equatable {
+    /// Media time in seconds (`t`; also the first field of `p`).
+    let time: Double
+    /// Text (`m`).
+    let text: String
+    /// RGB colour from the 3rd field of `p` (e.g. 16777215 = white).
+    let colorRgb: Int?
+    /// `p` type 1 = scroll, 4 = top-fixed, 5 = bottom-fixed.
+    /// Swift's DanmakuItem has no bottom case, so bottom maps to
+    /// scroll on the way out (see `toDanmakuItem`).
+    enum Kind {
+        case scroll
+        case top
+        case bottom
+    }
+    let kind: Kind
+
+    func toDanmakuItem() -> DanmakuItem {
+        DanmakuItem(
+            text: text,
+            timeSeconds: time,
+            colorHex: colorRgb.map { String(format: "%06x", $0) } ?? "",
+            isTop: kind == .top
+        )
+    }
+}
+
+/// Raw HTTP result handed to the client by the fetcher.
+/// `statusCode == 0` means a transport failure (refused / DNS /
+/// timeout). `body` is nil for any non-2xx response.
+struct VodDanmakuHTTPResult {
+    let body: String?
+    let statusCode: Int
+    let retryAfterSeconds: Double?
+}
+
+/// Raw body fetcher (test seam). Production uses the shared
+/// URLSession.
+typealias VodDanmakuFetcher = (URL, TimeInterval, @escaping (VodDanmakuHTTPResult) -> Void) -> Void
+
+// MARK: - Parsers (pure, static — unit-tested without network)
+
+enum VodDanmakuParsers {
+    /// Parse hop-1's JSON array into candidates. Non-list /
+    /// malformed entries are dropped, never thrown.
+    static func parseCandidates(_ decoded: Any?) -> [VodDanmakuCandidate] {
+        guard let list = decoded as? [Any] else { return [] }
+        var out: [VodDanmakuCandidate] = []
+        for entry in list {
+            guard let map = entry as? [String: Any] else { continue }
+            let name = VideoJSON.asString(map["name"])
+            let url = VideoJSON.asString(map["url"])
+            if !name.isEmpty && !url.isEmpty {
+                out.append(VodDanmakuCandidate(name: name, url: url))
+            }
+        }
+        return out
+    }
+
+    /// Year embedded in a candidate name (`狂飙(2023)…`), or nil.
+    static func candidateYear(_ candidateName: String) -> Int? {
+        guard let re = try? NSRegularExpression(pattern: "(19|20)\\d{2}", options: []),
+              let m = re.firstMatch(in: candidateName, options: [], range: NSRange(candidateName.startIndex..., in: candidateName)),
+              let r = Range(m.range, in: candidateName) else { return nil }
+        return Int(candidateName[r])
+    }
+
+    /// Match key for the title gate: `videoNormTitle`, then all
+    /// whitespace folded out and Chinese numerals folded to Arabic
+    /// digits — so `庆余年 第2季`, `庆余年第二季` and `庆余年 第二季`
+    /// all key the same, while the season number itself is
+    /// preserved (an S1 key never contains an S2 key). Applied to
+    /// both sides, so a conversion can never match a title against
+    /// itself only.
+    static func matchKey(_ s: String) -> String {
+        let norm = videoNormTitle(s)
+        let noSpace = norm.components(separatedBy: .whitespaces).joined()
+        return foldChineseNumerals(noSpace)
+    }
+
+    private static let cnDigits: [Character: Int] = [
+        "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+        "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+    ]
+
+    /// Fold runs of Chinese numerals (`二`, `十二`, `二十一`,
+    /// `一百零三`) to Arabic digits. Non-numeral characters pass
+    /// through untouched. A run that cannot be parsed falls back
+    /// to digit-per-character, which still keeps both sides equal.
+    static func foldChineseNumerals(_ s: String) -> String {
+        let chars = Array(s)
+        var out = ""
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+            if cnDigits[ch] == nil && ch != "十" && ch != "百" && ch != "千" {
+                out.append(ch)
+                i += 1
+                continue
+            }
+            var j = i
+            while j < chars.count && (cnDigits[chars[j]] != nil || chars[j] == "十" || chars[j] == "百" || chars[j] == "千") {
+                j += 1
+            }
+            out.append(String(parseChineseNumeral(String(chars[i..<j]))))
+            i = j
+        }
+        return out
+    }
+
+    /// Standard positional parse: 十=10, 百=100, 千=1000 as units.
+    static func parseChineseNumeral(_ run: String) -> Int {
+        var total = 0
+        var current = 0
+        var seenAny = false
+        for ch in run {
+            if let digit = cnDigits[ch] {
+                current = digit
+                seenAny = true
+                continue
+            }
+            let unit: Int
+            switch ch {
+            case "十": unit = 10
+            case "百": unit = 100
+            default: unit = 1000
+            }
+            total += (current == 0 ? 1 : current) * unit
+            current = 0
+            seenAny = true
+        }
+        if !seenAny { return 0 }
+        return total + current
+    }
+
+    /// Dual validation: title gate + year gate.
+    ///
+    /// - Title gate: the match key of the normalised query title
+    ///   must appear in the match key of the normalised candidate
+    ///   name.
+    /// - Year gate: when the candidate name carries a year and
+    ///   `year` (VideoMeta.year) is known, a mismatch rejects the
+    ///   candidate. A candidate without a year passes.
+    static func candidatePasses(_ candidate: VodDanmakuCandidate, queryTitle: String, year: String = "") -> Bool {
+        let queryNorm = matchKey(queryTitle)
+        if queryNorm.isEmpty { return false }
+        let candidateNorm = matchKey(candidate.name)
+        if !candidateNorm.contains(queryNorm) { return false }
+        if let candidateYear = candidateYear(candidate.name), !year.isEmpty,
+           let wantYear = Int(year), candidateYear != wantYear {
+            return false
+        }
+        return true
+    }
+
+    /// First candidate at or after `startIndex` that passes the
+    /// dual validation, or nil. The caller keeps the full list so
+    /// "换弹幕源" can scan forward from the current index.
+    static func selectCandidate(_ candidates: [VodDanmakuCandidate], queryTitle: String, year: String = "", startIndex: Int = 0) -> VodDanmakuCandidate? {
+        var i = startIndex
+        while i < candidates.count {
+            if candidatePasses(candidates[i], queryTitle: queryTitle, year: year) {
+                return candidates[i]
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    /// Parse hop-2's JSON body (`{"count": N, "comments": [...]}`)
+    /// into comments. Entries with missing/illegal time or empty
+    /// text are dropped. An unparseable body returns [] instead of
+    /// throwing into the caller.
+    static func parseCommentsJson(_ body: String) -> [VodDanmakuComment] {
+        guard let data = body.data(using: .utf8),
+              let decoded = VideoJSON.decode(data) as? [String: Any],
+              let raw = decoded["comments"] as? [Any] else { return [] }
+        var out: [VodDanmakuComment] = []
+        for entry in raw {
+            guard let map = entry as? [String: Any] else { continue }
+            let text = VideoJSON.asString(map["m"])
+            if text.isEmpty { continue }
+            var time: Double?
+            if let t = map["t"] as? NSNumber {
+                time = t.doubleValue
+            } else if let t = map["t"] as? String {
+                time = Double(t)
+            }
+            if time == nil {
+                time = timeFromP(VideoJSON.asString(map["p"]))
+            }
+            guard let time = time, !time.isNaN, time >= 0 else { continue }
+            var kind: VodDanmakuComment.Kind = .scroll
+            var colorRgb: Int?
+            let p = VideoJSON.asString(map["p"])
+            if !p.isEmpty {
+                let parts = p.split(separator: ",", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count > 1, let typeRaw = Int(parts[1]) {
+                    switch typeRaw {
+                    case 4: kind = .top
+                    case 5: kind = .bottom
+                    default: kind = .scroll
+                    }
+                }
+                if parts.count > 2, let rgb = Int(parts[2]), rgb >= 0 && rgb <= 0xFFFFFF {
+                    colorRgb = rgb
+                }
+            }
+            out.append(VodDanmakuComment(time: time, text: text, colorRgb: colorRgb, kind: kind))
+        }
+        return out
+    }
+
+    private static func timeFromP(_ p: String) -> Double? {
+        if p.isEmpty { return nil }
+        let first = p.split(separator: ",", omittingEmptySubsequences: false).first.map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+        return Double(first)
+    }
+
+    /// Rewrite a hop-2 URL to JSON: `format=xml` -> `format=json`
+    /// (added when absent). Relative URLs resolve against
+    /// `baseUrl`.
+    static func rewriteCommentUrlToJson(_ rawUrl: String, baseUrl: String) -> URL? {
+        let trimmed = rawUrl.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return nil }
+        var url: URL?
+        if let parsed = URL(string: trimmed), parsed.scheme != nil {
+            url = parsed
+        } else if let base = URL(string: baseUrl) {
+            url = URL(string: trimmed, relativeTo: base)?.absoluteURL
+        }
+        guard let url = url, var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
+        var items = components.queryItems ?? []
+        items.removeAll { $0.name == "format" }
+        items.append(URLQueryItem(name: "format", value: "json"))
+        components.queryItems = items
+        return components.url
+    }
+
+    /// Uniformly sample `items` down to `maxCount`, evenly spaced
+    /// across the whole timeline — never just the first N, which
+    /// would front-load the episode and starve the rest.
+    static func uniformSampleTimeline(_ items: [DanmakuItem], maxCount: Int) -> [DanmakuItem] {
+        if maxCount <= 0 { return [] }
+        if items.count <= maxCount { return items }
+        var out: [DanmakuItem] = []
+        for i in 0..<maxCount {
+            out.append(items[(i * items.count / maxCount)])
+        }
+        return out
+    }
+}
+
+// MARK: - Client
+
+/// VOD danmaku provider (protocol conformance in
+/// VideoServiceContracts.swift). Constructed per detail with the
+/// title + year — the protocol only passes a PlayEpisode, which
+/// has no title.
+final class VodDanmakuClient: VodDanmakuProvider {
+    /// danmu-api host. Public API, no token.
+    static let defaultBaseUrl = "https://danmu-api-production-60e143e3.up.railway.app"
+
+    private let title: String
+    private let year: String
+    private let baseUrl: String
+    private let fetcher: VodDanmakuFetcher
+
+    /// Hop-1 budget (60 s): the server cold-starts in ~25 s, so a
+    /// 10 s budget killed every cold start outright.
+    let hop1Timeout: TimeInterval
+    /// Hop-2 budget (30 s): the comment payload is multi-MB.
+    let hop2Timeout: TimeInterval
+    /// Retries after a transient failure (429 / 5xx), on top of the
+    /// first attempt. Total attempts = 1 + maxRetries.
+    let maxRetries: Int
+    /// Base backoff between retries: attempt n waits
+    /// retryBaseDelay * 2^n — unless the server sent Retry-After,
+    /// which is honoured instead (capped at 30 s).
+    let retryBaseDelay: TimeInterval
+    /// Delay before the single re-try of an empty hop-1 200.
+    let emptyRetryDelay: TimeInterval
+    /// Escape hatch: when set, timelines longer than this are
+    /// uniformly sampled. Nil = full load.
+    let maxTimelineItems: Int?
+
+    private let workQueue = DispatchQueue(label: "com.haostudio.voddanmaku", qos: .utility)
+
+    init(title: String, year: String = "", baseUrl: String = VodDanmakuClient.defaultBaseUrl, fetcher: VodDanmakuFetcher? = nil, hop1Timeout: TimeInterval = 60, hop2Timeout: TimeInterval = 30, maxRetries: Int = 2, retryBaseDelay: TimeInterval = 1, emptyRetryDelay: TimeInterval = 2, maxTimelineItems: Int? = nil) {
+        self.title = title
+        self.year = year
+        self.baseUrl = baseUrl
+        self.fetcher = fetcher ?? VodDanmakuClient.defaultFetcher
+        self.hop1Timeout = hop1Timeout
+        self.hop2Timeout = hop2Timeout
+        self.maxRetries = maxRetries
+        self.retryBaseDelay = retryBaseDelay
+        self.emptyRetryDelay = emptyRetryDelay
+        self.maxTimelineItems = maxTimelineItems
+    }
+
+    /// Production fetcher over the shared URLSession. A 429 / 5xx
+    /// rides in the result (with Retry-After when present) so the
+    /// caller can retry; any other failure is a transport failure
+    /// (status 0) and stays silent.
+    static func defaultFetcher(url: URL, timeout: TimeInterval, completion: @escaping (VodDanmakuHTTPResult) -> Void) {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if error != nil {
+                completion(VodDanmakuHTTPResult(body: nil, statusCode: 0, retryAfterSeconds: nil))
+                return
+            }
+            let http = response as? HTTPURLResponse
+            let status = http?.statusCode ?? 0
+            var retryAfter: Double?
+            if status == 429, let raw = http?.value(forHTTPHeaderField: "Retry-After")?.trimmingCharacters(in: .whitespaces),
+               let seconds = Double(raw), seconds >= 0 {
+                retryAfter = seconds
+            }
+            guard status >= 200 && status < 300,
+                  let data = data,
+                  let body = String(data: data, encoding: .utf8) else {
+                completion(VodDanmakuHTTPResult(body: nil, statusCode: status, retryAfterSeconds: retryAfter))
+                return
+            }
+            completion(VodDanmakuHTTPResult(body: body, statusCode: status, retryAfterSeconds: retryAfter))
+        }
+        task.resume()
+    }
+
+    // MARK: VodDanmakuProvider
+
+    func fetchDanmaku(for episode: PlayEpisode, completion: @escaping ([DanmakuItem]) -> Void) {
+        fetchCandidates(title: title, episode: episode.name) { [weak self] candidates in
+            guard let self = self else {
+                completion([])
+                return
+            }
+            guard let candidates = candidates,
+                  let candidate = VodDanmakuParsers.selectCandidate(candidates, queryTitle: self.title, year: self.year) else {
+                completion([])
+                return
+            }
+            self.fetchComments(for: candidate) { comments in
+                guard let comments = comments else {
+                    completion([])
+                    return
+                }
+                let items = comments.map { $0.toDanmakuItem() }.sorted { $0.timeSeconds < $1.timeSeconds }
+                if let cap = self.maxTimelineItems, items.count > cap {
+                    completion(VodDanmakuParsers.uniformSampleTimeline(items, maxCount: cap))
+                    return
+                }
+                completion(items)
+            }
+        }
+    }
+
+    // MARK: Hop 1 — candidates
+
+    /// Candidate list for `title` + `episode` (episode name as
+    /// shown by the CMS, e.g. `第1集`). Nil on any failure / empty.
+    /// An empty 200 is retried once after `emptyRetryDelay`: a cold
+    /// fetch occasionally returns empty once, and "no danmaku" is
+    /// never a permanent answer.
+    func fetchCandidates(title: String, episode: String, completion: @escaping ([VodDanmakuCandidate]?) -> Void) {
+        guard var components = URLComponents(string: baseUrl) else {
+            completion(nil)
+            return
+        }
+        components.path = "/api/v2/fongmi/danmaku"
+        components.queryItems = [
+            URLQueryItem(name: "name", value: title),
+            URLQueryItem(name: "episode", value: episode),
+        ]
+        guard let url = components.url else {
+            completion(nil)
+            return
+        }
+        var attempt = 0
+        func step() {
+            fetchWithRetry(url: url, timeout: hop1Timeout) { result in
+                guard let result = result else {
+                    completion(nil)
+                    return
+                }
+                var list: [VodDanmakuCandidate]?
+                if let body = result.body, !body.isEmpty,
+                   let data = body.data(using: .utf8),
+                   let decoded = VideoJSON.decode(data) {
+                    list = VodDanmakuParsers.parseCandidates(decoded)
+                } else if result.body == nil {
+                    // Transport already failed (and already retried
+                    // what was retryable) — return immediately
+                    // without waiting.
+                    completion(nil)
+                    return
+                }
+                if let list = list, !list.isEmpty {
+                    completion(list)
+                    return
+                }
+                // Empty result (empty body or `[]`): one delayed
+                // re-try for the cold-fetch glitch.
+                if attempt == 0 {
+                    attempt += 1
+                    self.workQueue.asyncAfter(deadline: .now() + self.emptyRetryDelay) {
+                        step()
+                    }
+                    return
+                }
+                completion(nil)
+            }
+        }
+        step()
+    }
+
+    // MARK: Hop 2 — comments
+
+    /// All comments for `candidate`. Nil on any failure / empty.
+    func fetchComments(for candidate: VodDanmakuCandidate, completion: @escaping ([VodDanmakuComment]?) -> Void) {
+        guard let url = VodDanmakuParsers.rewriteCommentUrlToJson(candidate.url, baseUrl: baseUrl) else {
+            completion(nil)
+            return
+        }
+        fetchWithRetry(url: url, timeout: hop2Timeout) { result in
+            guard let body = result?.body, !body.isEmpty else {
+                completion(nil)
+                return
+            }
+            let comments = VodDanmakuParsers.parseCommentsJson(body)
+            completion(comments.isEmpty ? nil : comments)
+        }
+    }
+
+    // MARK: Retry wrapper
+
+    /// One attempt plus `maxRetries` retries on transient failures
+    /// (429 / 5xx). Anything else — timeout, 404, DNS, unparseable
+    /// — returns nil immediately: still silent, still no danmaku,
+    /// but a rate-limit no longer kills the episode outright.
+    private func fetchWithRetry(url: URL, timeout: TimeInterval, completion: @escaping (VodDanmakuHTTPResult?) -> Void) {
+        var attempt = 0
+        func step() {
+            fetcher(url, timeout) { result in
+                if result.statusCode == 429 || result.statusCode >= 500 {
+                    if attempt >= self.maxRetries {
+                        completion(nil)
+                        return
+                    }
+                    var delay = self.retryBaseDelay * pow(2.0, Double(attempt))
+                    if let retryAfter = result.retryAfterSeconds, retryAfter > 0 {
+                        delay = min(retryAfter, 30)
+                    }
+                    attempt += 1
+                    self.workQueue.asyncAfter(deadline: .now() + delay) {
+                        step()
+                    }
+                    return
+                }
+                if result.statusCode == 0 {
+                    completion(nil)
+                    return
+                }
+                completion(result)
+            }
+        }
+        step()
+    }
+}
