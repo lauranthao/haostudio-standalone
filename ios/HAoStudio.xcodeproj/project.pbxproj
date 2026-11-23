@@ -221,7 +221,7 @@
 		0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001B9 /* MusicSleepTimerTests.swift */; };
 		0000000000000000000001BC /* LiveDriverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BB /* LiveDriverTests.swift */; };
 		0000000000000000000001BE /* VideoPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001BD /* VideoPlayerTests.swift */; };
-		0000000000000000000001D5 /* WiringFollowupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001D6 /* WiringFollowupTests.swift */; };
+		0000000000000000000001DC /* WiringFollowupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0000000000000000000001DD /* WiringFollowupTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -424,7 +424,7 @@
 		0000000000000000000001B9 /* MusicSleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSleepTimerTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001BB /* LiveDriverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriverTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001BD /* VideoPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerTests.swift; sourceTree = "<group>"; };
-		0000000000000000000001D6 /* WiringFollowupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiringFollowupTests.swift; sourceTree = "<group>"; };
+		0000000000000000000001DD /* WiringFollowupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WiringFollowupTests.swift; sourceTree = "<group>"; };
 		0000000000000000000001BF /* HAoStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HAoStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0000000000000000000001C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -758,7 +758,7 @@
 		0000000000000000000001C4 /* VideoPlayerTests */ = {isa = PBXGroup; children = (
 				0000000000000000000001BB /* LiveDriverTests.swift */,
 				0000000000000000000001BD /* VideoPlayerTests.swift */,
-				0000000000000000000001D6 /* WiringFollowupTests.swift */,
+				0000000000000000000001DD /* WiringFollowupTests.swift */,
 			); path = VideoPlayerTests; sourceTree = "<group>"; };
 		0000000000000000000001C5 /* HAoStudioTests */ = {isa = PBXGroup; children = (
 				0000000000000000000001C0 /* Info.plist */,
@@ -994,7 +994,7 @@
 				0000000000000000000001BA /* MusicSleepTimerTests.swift in Sources */,
 				0000000000000000000001BC /* LiveDriverTests.swift in Sources */,
 				0000000000000000000001BE /* VideoPlayerTests.swift in Sources */,
-				0000000000000000000001D5 /* WiringFollowupTests.swift in Sources */,
+				0000000000000000000001DC /* WiringFollowupTests.swift in Sources */,
 			); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
