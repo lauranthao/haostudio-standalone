@@ -700,6 +700,11 @@ final class LiveDriver: NSObject, ObservableObject, LivePlaybackDriver {
         recomputePlayingState()
         finish(.success(()))
         onRoomStarted?(item)
+        // S5-A: the open verified playback on this engine — record
+        // it once, here, as the last-used engine. (The AVPlayer
+        // reopen path also lands here, so a soft-decode fallback
+        // records AVPlayer, not the engine that failed.)
+        VideoEngineReporter.shared.noteUsed(backend.engine)
     }
 
     private func stopBackendForNewRequest() {

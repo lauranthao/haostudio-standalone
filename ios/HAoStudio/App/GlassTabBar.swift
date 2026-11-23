@@ -51,6 +51,9 @@ struct GlassTabBar: View {
     /// Called when the already-selected tab is tapped again. Foundation:
     /// no-op (placeholder pages have nothing to scroll to top yet).
     var onReselect: (HaoTab) -> Void = { _ in }
+    /// Selected-tab colour override (S5-C): the user's chosen tab
+    /// accent from Settings; nil keeps the theme default.
+    var tabAccent: Color? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.haoTheme) private var theme
@@ -61,7 +64,8 @@ struct GlassTabBar: View {
             selection: $selection,
             onReselect: onReselect,
             theme: theme,
-            colorScheme: colorScheme
+            colorScheme: colorScheme,
+            tabAccent: tabAccent
         )
         .frame(height: HaoLayout.tabBarContentHeight)
         .padding(HaoLayout.tabBarInnerInset)
@@ -79,6 +83,7 @@ private struct SystemTabBar: UIViewRepresentable {
     var onReselect: (HaoTab) -> Void
     let theme: HaoThemePalette
     let colorScheme: ColorScheme
+    let tabAccent: Color? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -121,7 +126,7 @@ private struct SystemTabBar: UIViewRepresentable {
 
         // Selected icon + label: theme.tabSelected (black / white).
         // Never red, never the theme accent.
-        tabBar.tintColor = UIColor(theme.tabSelected)
+        tabBar.tintColor = tabAccent.map(UIColor.init) ?? UIColor(theme.tabSelected)
         // Unselected: primary at 80%.
         tabBar.unselectedItemTintColor = UIColor.label.withAlphaComponent(0.8)
 

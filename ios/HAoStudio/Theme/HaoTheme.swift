@@ -22,6 +22,7 @@
 //   readability comes from blur, never from darkening the background.
 
 import SwiftUI
+import UIKit
 
 /// The four HAo Studio themes.
 enum HaoThemeID: String, CaseIterable, Identifiable {
@@ -76,6 +77,40 @@ struct HaoThemePalette {
     /// readability reasoning the Flutter baseline uses for its dark
     /// accents (#76767A instead of black).
     let tabSelected: Color
+
+    /// S5-A: apply the settings-owned overrides on top of a resolved
+    /// base palette, without touching the base values:
+    /// - glassIntensity scales the glass: `surface` / `surfaceStrong`
+    ///   alpha (Color.opacity multiplies the existing alpha) and
+    ///   `glassBlurSigma`. 1.0 = today's full glass.
+    /// - accentOverride replaces `accent` (both modes); `accentSoft`
+    ///   is the override at 0.14 alpha and `onAccent` follows the
+    ///   Flutter `_onAccentFor` rule (white on dark accents,
+    ///   near-black on light ones). liveRed, text colours and
+    ///   surfaces never move — only accent-role usages do (same
+    ///   rule as Flutter `HaoThemes.of(accentOverride:)`).
+    func applying(glassIntensity: Double, accentOverride: Color?) -> HaoThemePalette {
+        let intensity = min(1.0, max(0.3, glassIntensity))
+        let accent = accentOverride ?? self.accent
+        let onAccent = accentOverride == nil ? self.onAccent : haoOnAccentFor(accent)
+        return HaoThemePalette(
+            accent: accent,
+            onAccent: onAccent,
+            accentSoft: accent.opacity(0.14),
+            surface: surface.opacity(intensity),
+            surfaceStrong: surfaceStrong.opacity(intensity),
+            surfaceSolid: surfaceSolid,
+            hairline: hairline,
+            textPrimary: textPrimary,
+            textSecondary: textSecondary,
+            textMuted: textMuted,
+            liveRed: liveRed,
+            glassBlurSigma: glassBlurSigma * CGFloat(intensity),
+            scaffoldBackground: scaffoldBackground,
+            colorScheme: colorScheme,
+            tabSelected: tabSelected
+        )
+    }
 
     /// All four themes, each with light + dark. No purple anywhere.
     static func palette(for id: HaoThemeID, scheme: ColorScheme) -> HaoThemePalette {
@@ -214,6 +249,84 @@ extension Color {
             blue: Double(hex & 0xFF) / 255
         )
     }
+
+    /// ARGB 0xAARRGGBB, matching the Flutter `Color(int)` value the
+    /// settings sheet stores under `hao_tabbar_accent` (the pick
+    /// keeps its opacity; the theme takes the opaque form).
+    init(argb: UInt32) {
+        self.init(
+            red: Double((argb >> 16) & 0xFF) / 255,
+            green: Double((argb >> 8) & 0xFF) / 255,
+            blue: Double(argb & 0xFF) / 255,
+            opacity: Double((argb >> 24) & 0xFF) / 255
+        )
+    }
+
+    /// The opaque form of this colour (alpha forced to 0xFF), the
+    /// form the theme accent uses. Only valid for colours built
+    /// from an ARGB int; other colours keep their components.
+    var opaqueARGB: UInt32 {
+        let ui = UIColor(self)
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let ri = UInt32((r * 255).rounded())
+        let gi = UInt32((g * 255).rounded())
+        let bi = UInt32((b * 255).rounded())
+        return (0xFF << 24) | (ri << 16) | (gi << 8) | bi
+    }
+}
+
+/// Hue guard (Flutter `clampAccentHue`, P1-U6): no purple/magenta
+/// custom accent. Hues in the 260°–320° band clamp to the 260° blue
+/// boundary — the blue side (the 320° side is magenta-pink, so it
+/// is not a landing spot). Applied wherever a custom accent is
+/// stored or loaded, so a stored purple is corrected on next launch.
+func haoClampAccentHue(_ color: Color) -> Color {
+    let ui = UIColor(color)
+    var h: CGFloat = 0
+    var s: CGFloat = 0
+    var b: CGFloat = 0
+    var a: CGFloat = 0
+    guard ui.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return color }
+    let degrees = h * 360
+    if degrees > 260 && degrees < 320 {
+        return Color(UIColor(hue: 260.0 / 360.0, saturation: s, brightness: b, alpha: a))
+    }
+    return color
+}
+
+/// ARGB form of the hue guard: same correction as
+/// `haoClampAccentHue`, but the stored ALPHA is preserved — the
+/// sheet stores the pick with its opacity, only the hue is wrong.
+/// Returns the input unchanged when no correction applies.
+func haoClampedAccentARGB(_ argb: UInt32) -> UInt32 {
+    let clamped = haoClampAccentHue(Color(argb: argb))
+    if clamped.opaqueARGB == Color(argb: argb).opaqueARGB { return argb }
+    let alpha = argb & 0xFF000000
+    return alpha | (clamped.opaqueARGB & 0x00FFFFFF)
+}
+
+/// Text/icon colour on top of a custom accent (Flutter
+/// `_onAccentFor`): white on dark accents, near-black on light
+/// ones. The light/dark split is Flutter's
+/// `ThemeData.estimateBrightnessForColor` — relative luminance L
+/// (linearised sRGB) with (L + 0.05)^2 > 0.15 meaning light.
+func haoOnAccentFor(_ accent: Color) -> Color {
+    let ui = UIColor(accent)
+    var r: CGFloat = 0
+    var g: CGFloat = 0
+    var b: CGFloat = 0
+    var a: CGFloat = 0
+    guard ui.getRed(&r, green: &g, blue: &b, alpha: &a) else { return .white }
+    func linearised(_ c: CGFloat) -> CGFloat {
+        return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+    }
+    let luminance = 0.2126 * linearised(r) + 0.7152 * linearised(g) + 0.0722 * linearised(b)
+    let light = (luminance + 0.05) * (luminance + 0.05) > 0.15
+    return light ? Color(hex: 0x0B0B0F) : .white
 }
 
 // MARK: - Environment

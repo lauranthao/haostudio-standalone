@@ -1,0 +1,476 @@
+// HAo Studio 2.0 — settings store (S5, leg A: engine only, no UI).
+//
+// The single source of truth for every Settings switch / picker the
+// B-leg UI binds to. Every @Published value writes straight to
+// UserDefaults (injected `defaults`, `.standard` in production, an
+// isolated suite in tests) under the key the S1 migration table
+// (`Storage/MigrationStore.swift`) already promises — no key is
+// invented here for a value the migration already owns.
+//
+// Key rules:
+// - MigrationStore-mapped keys are used verbatim. New keys are only
+//   `hao_glass_intensity` (owned by ThemeStore, forwarded here),
+//   `hao_profile_nickname`, `hao_video_last_engine` (owned by
+//   VideoEngineReporter) and `settingsSectionExpanded_<id>`.
+// - Theme-owned state lives ONLY in ThemeStore (see its header):
+//   `glassIntensity`, `tabAccentHex` and `accentOverrideHex` are
+//   computed forwards to the ThemeStore this store is built with.
+//   HAoStudioApp creates the ThemeStore first, then
+//   `SettingsStore(themeStore:)` with it.
+// - Defaults are the Flutter `settings_tab_page.dart` /
+//   `VideoPlaybackSettings` defaults where one was found
+//   (mixWithOthers false, autoResume false, autoUpdateCheck true,
+//   lowMemoryMode "auto", dvP8Downgrade true, autoNextEpisode true,
+//   skipIntroMode "off"); the rest are documented at each property.
+//
+// Engine-key bridge (S5-A decision): the Flutter migration table
+// calls the engine preference `videoPlayerKey`, but the Swift
+// kernel (`Playback/PlayerKernel.swift`) reads
+// `hao_video_player_key` and the two were never bridged. On first
+// read, when the Swift key is absent and a migrated `videoPlayerKey`
+// value exists, the migrated value is adopted once (written into
+// the Swift key). From then on only the Swift key is read.
+// `enginePreference` reads/writes the Swift key through the
+// injected `defaults`; in production (`defaults == .standard`)
+// that IS `PlayerKernel.preferred`'s storage, so the drivers see
+// the same value.
+//
+// Swift 5.0: completion handlers only, no async/await, no `any`.
+
+import SwiftUI
+
+@MainActor
+final class SettingsStore: ObservableObject {
+    // MARK: - Keys (verbatim from the S1 migration table)
+
+    static let musicQualityKey = "musicQuality"
+    static let mixWithOthersKey = "audioMixWithOthers"
+    static let autoResumeKey = "autoResumeLastPlayback"
+    static let autoUpdateCheckKey = "autoUpdateCheck"
+    /// The Swift engine-preference key (PlayerKernel).
+    static let enginePreferenceKey = "hao_video_player_key"
+    /// The Flutter/migrated engine-preference key. Read once, see
+    /// the header note; never written after the first adoption.
+    static let legacyEngineKey = "videoPlayerKey"
+    static let autoNextEpisodeKey = "hao_video_auto_next"
+    static let doubleTapSecondsKey = "hao_vod_double_tap_seconds"
+    static let dialogueBoostKey = "hao_vod_dialogue_boost"
+    static let hideSynopsisKey = "hao_vod_spoiler_hide_synopsis"
+    static let blurUnwatchedPostersKey = "hao_vod_spoiler_blur_unwatched"
+    static let audioOnlyBackgroundKey = "hao_vod_audio_only"
+    static let videoFitKey = "hao_vod_video_fit"
+    static let superResolutionKey = "hao_vod_super_resolution"
+    static let interpolationKey = "hao_vod_interpolation"
+    static let sdrToHDRKey = "hao_vod_sdr_to_hdr"
+    static let dvP8DowngradeKey = "hao_vod_dv_p8_downgrade"
+    static let skipIntroModeKey = "hao_vod_skip_intro_mode"
+    static let subtitleFontSizeKey = "hao_vod_subtitle_font_size"
+    static let subtitleColorKey = "hao_vod_subtitle_color"
+    static let subtitlePositionKey = "hao_vod_subtitle_position"
+    static let lowMemoryModeKey = "hao_low_memory_mode"
+    static let cellularDowngradeKey = "hao_live_cellular_downgrade"
+    static let normalizationEnabledKey = "hao_music_normalization_enabled"
+    static let normalizationStrengthKey = "hao_music_normalization_strength"
+    static let wallpaperEnabledKey = "hao_wallpaper_enabled"
+    static let wallpaperCurrentKey = "hao_wallpaper_current"
+    static let bgColorEnabledKey = "hao_bgcolor_enabled"
+    static let bgColorHexKey = "hao_bgcolor_hex"
+    /// New key (S5-A): the profile nickname. No migration — a fresh
+    /// install starts with an empty nickname.
+    static let nicknameKey = "hao_profile_nickname"
+    static let sectionExpandedKeyPrefix = "settingsSectionExpanded_"
+
+    /// Skip-intro modes, copied verbatim from Flutter
+    /// `settings_tab_page.dart` (`_skipIntroOrder` /
+    /// `_skipIntroLabels`): stored value -> label.
+    static let skipIntroModes = ["off", "manual", "auto3s", "autoNow"]
+    static let skipIntroLabels: [String: String] = [
+        "off": "关",
+        "manual": "手动",
+        "auto3s": "自动延时 3 秒",
+        "autoNow": "自动立即",
+    ]
+
+    // MARK: - Music
+
+    /// Target audio-quality tier. Default `.hiRes` — the same
+    /// default S2's PlaybackCoordinator uses when nothing is
+    /// stored (a migrated Flutter "hires" string does not match
+    /// the Swift raw value "hiRes" and also falls back to hiRes).
+    @Published var musicQuality: AudioQuality {
+        didSet { defaults.set(musicQuality.rawValue, forKey: Self.musicQualityKey) }
+    }
+
+    /// Haptics on/off. Stored through MusicLibraryStore (key
+    /// `hapticsEnabled`, default true) — no second copy of the key.
+    @Published var hapticsEnabled: Bool {
+        didSet { MusicLibraryStore.setHapticsEnabled(hapticsEnabled, defaults: defaults) }
+    }
+
+    /// Mix this app's audio with other apps' audio (Flutter
+    /// default false).
+    @Published var mixWithOthers: Bool {
+        didSet { defaults.set(mixWithOthers, forKey: Self.mixWithOthersKey) }
+    }
+
+    /// Resume the last playback on launch (Flutter default false).
+    @Published var autoResume: Bool {
+        didSet { defaults.set(autoResume, forKey: Self.autoResumeKey) }
+    }
+
+    /// Automatic update check on launch (Flutter default true).
+    /// Only the switch lives here — the check itself is S6's.
+    @Published var autoUpdateCheck: Bool {
+        didSet { defaults.set(autoUpdateCheck, forKey: Self.autoUpdateCheckKey) }
+    }
+
+    /// Music loudness normalisation on/off.
+    @Published var normalizationEnabled: Bool {
+        didSet { defaults.set(normalizationEnabled, forKey: Self.normalizationEnabledKey) }
+    }
+
+    /// Normalisation strength, 0...2 (0 weak, 2 strong). Clamped
+    /// on every write; default 1.
+    @Published var normalizationStrength: Int {
+        didSet {
+            let clamped = min(2, max(0, normalizationStrength))
+            if clamped != normalizationStrength {
+                normalizationStrength = clamped
+                return
+            }
+            defaults.set(normalizationStrength, forKey: Self.normalizationStrengthKey)
+        }
+    }
+
+    // MARK: - Video engine (VOD + live)
+
+    /// Preferred video engine (MPV / IJK / AVPlayer). A preference,
+    /// not a command: the kernel's capability gate still wins per
+    /// stream. See the header note for the `videoPlayerKey` bridge.
+    @Published var enginePreference: VideoEngine {
+        didSet { defaults.set(enginePreference.rawValue, forKey: Self.enginePreferenceKey) }
+    }
+
+    /// Auto-advance to the next episode when one ends. Default true.
+    @Published var autoNextEpisode: Bool {
+        didSet { defaults.set(autoNextEpisode, forKey: Self.autoNextEpisodeKey) }
+    }
+
+    /// Double-tap seek step in seconds (5...30). Default 10.
+    @Published var doubleTapSeconds: Int {
+        didSet {
+            let clamped = min(30, max(5, doubleTapSeconds))
+            if clamped != doubleTapSeconds {
+                doubleTapSeconds = clamped
+                return
+            }
+            defaults.set(doubleTapSeconds, forKey: Self.doubleTapSecondsKey)
+        }
+    }
+
+    /// Dialogue boost (centre-channel lift on MPV).
+    @Published var dialogueBoost: Bool {
+        didSet { defaults.set(dialogueBoost, forKey: Self.dialogueBoostKey) }
+    }
+
+    /// Hide the synopsis (spoiler guard).
+    @Published var hideSynopsis: Bool {
+        didSet { defaults.set(hideSynopsis, forKey: Self.hideSynopsisKey) }
+    }
+
+    /// Blur posters of unwatched titles (spoiler guard).
+    @Published var blurUnwatchedPosters: Bool {
+        didSet { defaults.set(blurUnwatchedPosters, forKey: Self.blurUnwatchedPostersKey) }
+    }
+
+    /// Keep audio playing with video off (VOD background audio).
+    @Published var audioOnlyBackground: Bool {
+        didSet { defaults.set(audioOnlyBackground, forKey: Self.audioOnlyBackgroundKey) }
+    }
+
+    /// Picture fit (适应 / 裁剪 / 拉伸). Default `.aspectFit`
+    /// (Flutter `VideoFitMode.auto` = contain).
+    @Published var videoFit: VideoFit {
+        didSet { defaults.set(videoFit.rawValue, forKey: Self.videoFitKey) }
+    }
+
+    /// MPV super-resolution upscaling.
+    @Published var superResolution: Bool {
+        didSet { defaults.set(superResolution, forKey: Self.superResolutionKey) }
+    }
+
+    /// MPV frame interpolation.
+    @Published var interpolation: Bool {
+        didSet { defaults.set(interpolation, forKey: Self.interpolationKey) }
+    }
+
+    /// SDR → HDR tone mapping.
+    @Published var sdrToHDR: Bool {
+        didSet { defaults.set(sdrToHDR, forKey: Self.sdrToHDRKey) }
+    }
+
+    /// Dolby Vision profile 8 downgrade to HDR (AVPlayer can play
+    /// the base layer). Default true (Flutter, decided 2026-11-22).
+    @Published var dvP8Downgrade: Bool {
+        didSet { defaults.set(dvP8Downgrade, forKey: Self.dvP8DowngradeKey) }
+    }
+
+    /// Skip-intro mode: one of `skipIntroModes` ("off" / "manual" /
+    /// "auto3s" / "autoNow"). Unknown stored values fall back to
+    /// "off". Default "off".
+    @Published var skipIntroMode: String {
+        didSet {
+            if !Self.skipIntroModes.contains(skipIntroMode) {
+                skipIntroMode = "off"
+                return
+            }
+            defaults.set(skipIntroMode, forKey: Self.skipIntroModeKey)
+        }
+    }
+
+    /// Subtitle font size / colour / position. Raw strings, cycled
+    /// by the settings UI; no single Flutter default constant was
+    /// found, so the Swift defaults are "medium" / "white" /
+    /// "bottom" (the position default matches Flutter's
+    /// `_subPositionOrder` first entry).
+    @Published var subtitleFontSize: String {
+        didSet { defaults.set(subtitleFontSize, forKey: Self.subtitleFontSizeKey) }
+    }
+
+    @Published var subtitleColor: String {
+        didSet { defaults.set(subtitleColor, forKey: Self.subtitleColorKey) }
+    }
+
+    @Published var subtitlePosition: String {
+        didSet { defaults.set(subtitlePosition, forKey: Self.subtitlePositionKey) }
+    }
+
+    /// Low-memory mode: "auto" / "on" / "off" (Flutter
+    /// `LowMemoryMode`, default "auto").
+    @Published var lowMemoryMode: String {
+        didSet { defaults.set(lowMemoryMode, forKey: Self.lowMemoryModeKey) }
+    }
+
+    // MARK: - Live
+
+    /// Drop to a lower line on cellular (live).
+    @Published var cellularDowngrade: Bool {
+        didSet { defaults.set(cellularDowngrade, forKey: Self.cellularDowngradeKey) }
+    }
+
+    // MARK: - Appearance (wallpaper / background colour)
+
+    @Published var wallpaperEnabled: Bool {
+        didSet { defaults.set(wallpaperEnabled, forKey: Self.wallpaperEnabledKey) }
+    }
+
+    /// Relative wallpaper name (`wallpapers/<file>` or a bare
+    /// file name), "" = none. The file list itself lives in the
+    /// `hao_wallpaper_paths` collection via WallpaperStore.
+    @Published var wallpaperCurrent: String {
+        didSet { defaults.set(wallpaperCurrent, forKey: Self.wallpaperCurrentKey) }
+    }
+
+    /// Wallpaper file list, mirrored from WallpaperStore. Kept in
+    /// sync by `reloadWallpapers()` after an import/delete done
+    /// through WallpaperStore directly.
+    @Published var wallpaperPaths: [String] {
+        didSet { WallpaperStore.saveList(wallpaperPaths, documentsURL: documentsURL) }
+    }
+
+    /// The wallpaper image to show behind the UI, or nil when the
+    /// switch is off, no wallpaper is picked, or the file is gone.
+    var wallpaperBackgroundURL: URL? {
+        guard wallpaperEnabled, !wallpaperCurrent.isEmpty else { return nil }
+        return WallpaperStore.fileURL(for: wallpaperCurrent, documentsURL: documentsURL)
+    }
+
+    @Published var bgColorEnabled: Bool {
+        didSet { defaults.set(bgColorEnabled, forKey: Self.bgColorEnabledKey) }
+    }
+
+    /// Custom background colour as a hex string ("#RRGGBB"), "" =
+    /// none. Empty by default; the switch decides whether it applies.
+    @Published var bgColorHex: String {
+        didSet { defaults.set(bgColorHex, forKey: Self.bgColorHexKey) }
+    }
+
+    // MARK: - Profile
+
+    /// Display nickname (new key, no migration). "" = unset.
+    @Published var nickname: String {
+        didSet { defaults.set(nickname, forKey: Self.nicknameKey) }
+    }
+
+    // MARK: - Theme-owned state (forwarded to ThemeStore)
+
+    /// The ThemeStore this store forwards theme state to. Owned by
+    /// HAoStudioApp and created before this store — never nil, and
+    /// never a second ThemeStore (two stores over the same keys
+    /// would fight).
+    let themeStore: ThemeStore
+
+    /// Liquid-glass intensity, forwarded to ThemeStore (the only
+    /// @Published copy). 1.0 = full glass, 0.3 = faintest.
+    var glassIntensity: Double {
+        get { themeStore.glassIntensity }
+        set {
+            objectWillChange.send()
+            themeStore.glassIntensity = newValue
+        }
+    }
+
+    /// Tab-bar accent (stored ARGB int with opacity), or nil for
+    /// the default. Forwarded to ThemeStore.
+    var tabAccentHex: Int? {
+        get { themeStore.tabAccentHex }
+        set {
+            objectWillChange.send()
+            themeStore.tabAccentHex = newValue
+        }
+    }
+
+    /// Custom accent override (opaque form of `tabAccentHex`), or
+    /// nil for the per-theme accent. Forwarded to ThemeStore. See
+    /// ThemeStore's header: Flutter has no separate accent key —
+    /// this shares `hao_tabbar_accent`, no `hao_accent_override`
+    /// key is introduced.
+    var accentOverrideHex: Int? {
+        get { themeStore.accentOverrideHex }
+        set {
+            objectWillChange.send()
+            themeStore.accentOverrideHex = newValue
+        }
+    }
+
+    /// The stored custom accent as a Color, or nil for the default.
+    /// The tab-bar palette reads this and writes through it (the
+    /// setter stores the opaque ARGB form under the shared
+    /// `hao_tabbar_accent` key — same single source of truth as
+    /// `tabAccentHex`). Coordinator addition (S5 merge): the B-leg
+    /// UI assigns this, and the A-leg file only had a getter.
+    var tabAccentColor: Color? {
+        get { themeStore.tabAccentColor }
+        set {
+            objectWillChange.send()
+            if let color = newValue {
+                themeStore.tabAccentHex = Int(color.opaqueARGB)
+            } else {
+                themeStore.tabAccentHex = nil
+            }
+        }
+    }
+
+    /// Custom accent override as a Color (the ColorPicker binding),
+    /// or nil for the per-theme accent. Same single stored key as
+    /// `tabAccentHex` — the opaque ARGB form — so the picker and
+    /// the tab-bar palette never disagree. Coordinator addition
+    /// (S5 merge): the B-leg UI binds `accentOverride: Color?`;
+    /// the A-leg file only had the `accentOverrideHex: Int?` view.
+    var accentOverride: Color? {
+        get { accentOverrideHex.map { Color(argb: UInt32(truncatingIfNeeded: $0)) } }
+        set {
+            objectWillChange.send()
+            accentOverrideHex = newValue.map { Int($0.opaqueARGB) }
+        }
+    }
+
+    // MARK: - Storage
+
+    private let defaults: UserDefaults
+    /// Test seam: Documents override for wallpaper files. Nil in
+    /// production (the real container). LocalStore itself has no
+    /// directory injection, so the wallpaper/profile stores take
+    /// the override through here instead.
+    private let documentsURL: URL?
+
+    init(defaults: UserDefaults = .standard, themeStore: ThemeStore, documentsURL: URL? = nil) {
+        self.defaults = defaults
+        self.themeStore = themeStore
+        self.documentsURL = documentsURL
+
+        let savedQuality = defaults.string(forKey: Self.musicQualityKey)
+        self.musicQuality = AudioQuality(rawValue: savedQuality ?? "") ?? .hiRes
+        self.hapticsEnabled = MusicLibraryStore.hapticsEnabled(defaults: defaults)
+        self.mixWithOthers = SettingsStore.boolValue(defaults, key: Self.mixWithOthersKey, default: false)
+        self.autoResume = SettingsStore.boolValue(defaults, key: Self.autoResumeKey, default: false)
+        self.autoUpdateCheck = SettingsStore.boolValue(defaults, key: Self.autoUpdateCheckKey, default: true)
+        self.normalizationEnabled = SettingsStore.boolValue(defaults, key: Self.normalizationEnabledKey, default: false)
+        self.normalizationStrength = SettingsStore.intValue(defaults, key: Self.normalizationStrengthKey, default: 1, range: 0...2)
+
+        // Engine preference, with the one-time `videoPlayerKey` bridge.
+        if defaults.object(forKey: Self.enginePreferenceKey) == nil,
+           let migrated = defaults.string(forKey: Self.legacyEngineKey) {
+            let engine = VideoEngine.from(raw: migrated)
+            self.enginePreference = engine
+            defaults.set(engine.rawValue, forKey: Self.enginePreferenceKey)
+        } else {
+            self.enginePreference = VideoEngine.from(raw: defaults.string(forKey: Self.enginePreferenceKey))
+        }
+        self.autoNextEpisode = SettingsStore.boolValue(defaults, key: Self.autoNextEpisodeKey, default: true)
+        self.doubleTapSeconds = SettingsStore.intValue(defaults, key: Self.doubleTapSecondsKey, default: 10, range: 5...30)
+        self.dialogueBoost = SettingsStore.boolValue(defaults, key: Self.dialogueBoostKey, default: false)
+        self.hideSynopsis = SettingsStore.boolValue(defaults, key: Self.hideSynopsisKey, default: false)
+        self.blurUnwatchedPosters = SettingsStore.boolValue(defaults, key: Self.blurUnwatchedPostersKey, default: false)
+        self.audioOnlyBackground = SettingsStore.boolValue(defaults, key: Self.audioOnlyBackgroundKey, default: false)
+        let savedFit = defaults.string(forKey: Self.videoFitKey)
+        self.videoFit = VideoFit(rawValue: savedFit ?? "") ?? .aspectFit
+        self.superResolution = SettingsStore.boolValue(defaults, key: Self.superResolutionKey, default: false)
+        self.interpolation = SettingsStore.boolValue(defaults, key: Self.interpolationKey, default: false)
+        self.sdrToHDR = SettingsStore.boolValue(defaults, key: Self.sdrToHDRKey, default: false)
+        self.dvP8Downgrade = SettingsStore.boolValue(defaults, key: Self.dvP8DowngradeKey, default: true)
+        let savedSkip = defaults.string(forKey: Self.skipIntroModeKey) ?? "off"
+        self.skipIntroMode = Self.skipIntroModes.contains(savedSkip) ? savedSkip : "off"
+        self.subtitleFontSize = defaults.string(forKey: Self.subtitleFontSizeKey) ?? "medium"
+        self.subtitleColor = defaults.string(forKey: Self.subtitleColorKey) ?? "white"
+        self.subtitlePosition = defaults.string(forKey: Self.subtitlePositionKey) ?? "bottom"
+        self.lowMemoryMode = defaults.string(forKey: Self.lowMemoryModeKey) ?? "auto"
+
+        self.cellularDowngrade = SettingsStore.boolValue(defaults, key: Self.cellularDowngradeKey, default: false)
+
+        self.wallpaperEnabled = SettingsStore.boolValue(defaults, key: Self.wallpaperEnabledKey, default: false)
+        self.wallpaperCurrent = defaults.string(forKey: Self.wallpaperCurrentKey) ?? ""
+        self.wallpaperPaths = WallpaperStore.list(documentsURL: documentsURL)
+        self.bgColorEnabled = SettingsStore.boolValue(defaults, key: Self.bgColorEnabledKey, default: false)
+        self.bgColorHex = defaults.string(forKey: Self.bgColorHexKey) ?? ""
+
+        self.nickname = defaults.string(forKey: Self.nicknameKey) ?? ""
+    }
+
+    // MARK: - Helpers
+
+    private static func boolValue(_ defaults: UserDefaults, key: String, default defaultValue: Bool) -> Bool {
+        guard defaults.object(forKey: key) != nil else { return defaultValue }
+        return defaults.bool(forKey: key)
+    }
+
+    private static func intValue(_ defaults: UserDefaults, key: String, default defaultValue: Int, range: ClosedRange<Int>) -> Int {
+        guard let number = defaults.object(forKey: key) as? NSNumber else { return defaultValue }
+        return min(range.upperBound, max(range.lowerBound, number.intValue))
+    }
+
+    // MARK: - Section expansion (B leg)
+
+    /// Whether a settings section is expanded. Default true.
+    /// Stored per section under `settingsSectionExpanded_<id>`.
+    func sectionExpanded(_ id: String) -> Bool {
+        let key = Self.sectionExpandedKeyPrefix + id
+        guard defaults.object(forKey: key) != nil else { return true }
+        return defaults.bool(forKey: key)
+    }
+
+    func setSectionExpanded(_ expanded: Bool, for id: String) {
+        defaults.set(expanded, forKey: Self.sectionExpandedKeyPrefix + id)
+    }
+
+    /// Re-read the wallpaper list from WallpaperStore (after an
+    /// import/delete done through WallpaperStore directly).
+    func reloadWallpapers() {
+        wallpaperPaths = WallpaperStore.list(documentsURL: documentsURL)
+    }
+
+    /// The display label for the current skip-intro mode.
+    var skipIntroLabel: String {
+        Self.skipIntroLabels[skipIntroMode] ?? "关"
+    }
+}

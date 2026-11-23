@@ -22,9 +22,12 @@
 import SwiftUI
 
 /// One poster cell: 2:3 artwork + title + `year · type` meta line.
+/// `isEmby` routes the artwork through EmbyPosterImage (token in
+/// the request header); CMS posters keep plain AsyncImage.
 struct VideoPosterCard: View {
     var item: VideoItem
     var isWatched: Bool = false
+    var isEmby: Bool = false
     var onTap: () -> Void
 
     @Environment(\.haoTheme) private var theme
@@ -81,7 +84,9 @@ struct VideoPosterCard: View {
 
     private var posterImage: some View {
         Group {
-            if let url = item.coverURL {
+            if isEmby {
+                EmbyPosterImage(urlString: item.coverURL?.absoluteString ?? "")
+            } else if let url = item.coverURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
@@ -117,9 +122,11 @@ struct VideoPosterCard: View {
 
 /// A poster grid that fits three columns with the card's own
 /// metrics (never a hardcoded child aspect ratio elsewhere).
+/// `isEmby` forwards to every card (Emby token header loading).
 struct VideoPosterGrid: View {
     var items: [VideoItem]
     var watchedKeys: Set<String> = []
+    var isEmby: Bool = false
     var onTap: (VideoItem) -> Void
 
     private let columns = [
@@ -135,6 +142,7 @@ struct VideoPosterGrid: View {
                     item: item,
                     isWatched: watchedKeys.contains(
                         VideoResumeKey.key(title: item.title, year: item.year)),
+                    isEmby: isEmby,
                     onTap: { onTap(item) }
                 )
             }

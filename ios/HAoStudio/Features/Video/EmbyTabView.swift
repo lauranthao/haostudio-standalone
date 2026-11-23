@@ -114,7 +114,7 @@ struct EmbyTabView: View {
                             )
                             .padding(.horizontal, 24)
                         } else {
-                            VideoPosterGrid(items: viewModel.items) { item in
+                            VideoPosterGrid(items: viewModel.items, isEmby: true) { item in
                                 onSelect(item)
                             }
                             .padding(.horizontal, 24)
