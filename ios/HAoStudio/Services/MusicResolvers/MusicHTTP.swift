@@ -152,9 +152,13 @@ enum MusicText {
     /// whitespace removed, common punctuation stripped.
     static func normalizeName(_ name: String) -> String {
         let lowered = name.lowercased()
-        let noSpace = lowered.components(separatedBy: .whitespacesAndNewlines).joined()
-        let stripped = noSpace.components(separatedBy: CharacterSet(charactersIn: "()[]{}<>「」『』《》\"'·・-–—_")).joined()
-        return stripped
+        let stripped = lowered.components(separatedBy: CharacterSet(charactersIn: "()[]{}<>「」『』《》\"'·・-–—_")).joined()
+        // Collapse whitespace runs to one space (and trim): "  Hello
+        // World  " -> "hello world". Callers compare normalized
+        // names, so both sides get the same treatment.
+        let collapsed = stripped.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        return collapsed
     }
 
     /// Strip version/parenthetical suffixes from a title for search

@@ -82,9 +82,13 @@ final class LXKeyRegressionTests: XCTestCase {
             XCTAssertTrue(code.hasPrefix("/*!") || code.hasPrefix("/**"),
                           "\(id): leading doc comment (header tags) must survive de-keying")
             XCTAssertTrue(code.contains("@name"), "\(id): @name header tag missing")
-            // Syntax check in a throwaway context (no prelude, no
-            // network): a broken script must fail here, not on device.
+            // Syntax check in a throwaway context (real prelude
+            // installed, no network): a broken script must fail here,
+            // not on device. The prelude is required: every bundled
+            // script destructures `globalThis.lx` at load time.
             let context = JSContext()
+            context?.evaluateScript(LXPrelude.source)
+            XCTAssertNil(context?.exception, "prelude must install cleanly")
             context?.evaluateScript(code)
             XCTAssertNil(context?.exception, "\(id): script must parse cleanly")
         }
