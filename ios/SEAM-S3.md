@@ -105,6 +105,22 @@ S3 完成后不单独发包；协调员合三腿 → 注册进 Xcode 工程 → 
   `lib/features/video/video_home_service.dart`、
   `lib/features/video/video_history_store.dart`。
 
+### Package.swift（B 腿唯一可改，构建 #18 后的定稿）
+
+- SwiftPM 不许一个源文件属于两个 target（构建 #18：MigrationCore
+  占整个 Storage 目录，MusicLX 又单列了 LocalStore + KeychainStore）。
+  music 分支已修成一个 AppCore（09b05e4）；S3 完成后协调员把 music
+  分支合并进 video 分支带过来。
+- B 腿不许新建 VideoServices target，更不许在新 target 里列
+  PlaybackCoordinator.swift 或任何 Storage 文件。只做两件事：
+  MusicLX target 的 sources 加上 `"Services/Video"` 与
+  `"Services/DownloadEngine"`；加一个 VideoServicesTests testTarget
+  （path `Tests/VideoServicesTests`，dependencies `["MusicLX"]`）。
+  合腿时协调员把该 testTarget 改指 AppCore，并把两个目录补进
+  AppCore 的 sources。
+- 不许动 MigrationCore、不许动 MusicLX 已有的 Storage 两条、不许
+  改名、不许改 defaultLocalization（已在 669ea87）。
+
 ### C 腿 — 功能 UI（clone `standalone-app-2.0-s3-features`）
 
 拥有：`Features/Video/` 全部、`Features/Music/` 的评论/专辑/歌手/
