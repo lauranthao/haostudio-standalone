@@ -902,3 +902,30 @@ final class VideoDriver: NSObject, ObservableObject, VideoPlaybackDriver {
         }
     }
 }
+
+// MARK: - VideoPlayerEngine (C-leg player page seam)
+//
+// The player page (Features/Video) talks to the driver only
+// through this protocol. Every member already exists on the
+// driver; this extension only names the conformance and adapts
+// the two play entry points to the page's (detail, lineIndex,
+// episodeIndex, startPosition) shape.
+extension VideoDriver: VideoPlayerEngine {
+    var positionSeconds: Double { position }
+    var durationSeconds: Double { duration }
+
+    func play(detail: VideoDetail, lineIndex: Int, episodeIndex: Int, startPositionSeconds: Double) {
+        guard detail.lines.indices.contains(lineIndex) else { return }
+        let line = detail.lines[lineIndex]
+        guard let episode = line.episode(at: episodeIndex) else { return }
+        playEpisode(detail: detail, line: line, episode: episode, resumeFrom: startPositionSeconds)
+    }
+
+    func playEpisode(lineIndex: Int, episodeIndex: Int, startPositionSeconds: Double) {
+        guard let detail = currentDetail,
+              detail.lines.indices.contains(lineIndex) else { return }
+        let line = detail.lines[lineIndex]
+        guard let episode = line.episode(at: episodeIndex) else { return }
+        playEpisode(detail: detail, line: line, episode: episode, resumeFrom: startPositionSeconds)
+    }
+}

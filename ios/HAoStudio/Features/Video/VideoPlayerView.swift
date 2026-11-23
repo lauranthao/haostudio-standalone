@@ -14,20 +14,20 @@
 // - Auto-advance to the next episode follows the stored
 //   `hao_video_auto_next` preference (default on, Flutter parity).
 //
-// A-leg seam — VideoPlayerEngine:
+// A-leg engine — VideoPlayerEngine:
 // The player CORE (MPV / IJK / AVPlayer via PlayerKernel,
 // episode/line state, resume, hard-decode verification) is A
-// leg's VideoDriver / VodPlayerViewModel. This page talks to it
-// ONLY through VideoPlayerEngine below. At merge, A leg makes its
-// driver conform (a small extension: the driver already owns
-// position / duration / episode state internally) or the
-// coordinator adds a thin adapter. Until then `engine` is nil and
-// the page drives playback through the seam-defined coordinator
-// path (requestVodPlay / driver seek) with the progress bar fed
-// by the engine once attached — no fake position is ever shown.
-// The native video SURFACE itself is also A leg's: VideoPlayerSurface
-// below is the marked mount point the A leg replaces with its
-// native player view at merge.
+// leg's VideoDriver, conformed to VideoPlayerEngine at merge
+// (extension in Playback/VideoDriver.swift). This page talks to
+// it ONLY through the protocol below. The coordinator path
+// (requestVodPlay / driver seek) remains as the fallback when the
+// engine is not attached, and the driver is configured before
+// every such call — its resolver reads the context from
+// configure, so an unconfigured request plays nothing. No fake
+// position is ever shown. The native video SURFACE embeds the
+// driver's video view (VideoDriverSurfaceView below); the danmaku
+// overlay (A-leg layer, B-leg client) and the settings sheet
+// (A-leg VodSettingsSheet) are wired in this file.
 
 import SwiftUI
 import UIKit
@@ -35,14 +35,21 @@ import UIKit
 /// What the video player UI needs from the A-leg player core.
 /// Position / duration are the driver's live values; play calls
 /// carry the resume position so a line switch resumes at the same
-/// spot and an episode switch starts clean.
+/// spot and an episode switch starts clean. `videoView` is the
+/// native surface the page embeds; `currentEngine` + `diagnostics`
+/// feed the settings sheet; `setVideoFit` applies the sheet's
+/// picture-fit choice.
 protocol VideoPlayerEngine: AnyObject {
     var positionSeconds: Double { get }
     var durationSeconds: Double { get }
     var isPlaying: Bool { get }
+    var videoView: UIView? { get }
+    var currentEngine: VideoEngine? { get }
+    var diagnostics: VideoPlaybackDiagnostics { get }
     func play(detail: VideoDetail, lineIndex: Int, episodeIndex: Int, startPositionSeconds: Double)
     func playEpisode(lineIndex: Int, episodeIndex: Int, startPositionSeconds: Double)
     func setSpeed(_ speed: Double)
+    func setVideoFit(_ fit: VideoFit)
     func seek(to seconds: Double, completion: @escaping (Bool) -> Void)
     func pause()
     func resume()
@@ -60,6 +67,14 @@ final class VideoPlayerViewModel: ObservableObject {
     @Published private(set) var isDoubleSpeed = false
     @Published private(set) var seekFailed = false
     @Published var dragPosition: Double?
+    /// Player settings (picture fit / speed / danmaku), persisted
+    /// by VodSettingsState. Applied to the engine on attach and on
+    /// every change (see applySettings).
+    @Published var settings = VodSettingsState.load()
+    /// Danmaku overlay state (A leg). Loaded per episode from the
+    /// B-leg client; empty until then, never fake rows.
+    let danmaku = VodDanmakuLayerState()
+    private var danmakuProvider: VodDanmakuProvider?
 
     /// The A-leg engine, attached by the player view from
     /// `coordinator.vodDriver` (cast to VideoPlayerEngine at merge).
@@ -91,6 +106,34 @@ final class VideoPlayerViewModel: ObservableObject {
     }
 
     var isEngineAttached: Bool { engine != nil }
+
+    /// Engine + diagnostics for the settings sheet (nil / .empty
+    /// until the engine attaches).
+    var currentEngine: VideoEngine? { engine?.currentEngine }
+    var diagnostics: VideoPlaybackDiagnostics { engine?.diagnostics ?? .empty }
+
+    /// Push the settings to the engine + danmaku layer and persist
+    /// them. Called on engine attach and on every settings change.
+    /// Audio / subtitle track picks and dialogue boost have state
+    /// bits in the driver but no backend wiring yet (MPV aid/sid/af
+    /// — A-leg known gap), so those two rows persist only.
+    func applySettings() {
+        settings.persist()
+        guard let engine = engine else { return }
+        engine.setSpeed(settings.playbackSpeed)
+        engine.setVideoFit(settings.videoFit)
+        danmaku.isEnabled = settings.danmakuEnabled
+        danmaku.opacity = settings.danmakuOpacity
+    }
+
+    /// Seam path only (engine not attached): the driver's resolver
+    /// reads its context from `configure` — a requestVodPlay without
+    /// it resolves to nil and plays nothing. The engine path never
+    /// needs this (its play calls carry detail/line/episode).
+    private func configureDriver(detail: VideoDetail, line: PlayLine, episode: PlayEpisode, resumeFrom: Double) {
+        (coordinator.vodDriver as? VideoDriver)?.configure(
+            detail: detail, line: line, episode: episode, resumeFrom: resumeFrom)
+    }
 
     /// PlaybackItem id for the current episode (resume key —
     /// the coordinator, history and resume all use this string).
@@ -132,11 +175,17 @@ final class VideoPlayerViewModel: ObservableObject {
         position = startPosition
         duration = resume?.durationSeconds ?? 0
         recordHistory(position: startPosition)
+        // Danmaku for this title (B-leg client, read-only). The
+        // layer no-ops on a re-load of the same episode.
+        danmakuProvider = VodDanmakuClient(title: detail.item.title, year: detail.item.year ?? "")
+        danmaku.load(for: episode, provider: danmakuProvider)
         if let engine = engine {
             engine.play(
                 detail: detail, lineIndex: lineIndex, episodeIndex: episodeIndex,
                 startPositionSeconds: startPosition)
         } else {
+            guard let line = currentLine else { return }
+            configureDriver(detail: detail, line: line, episode: episode, resumeFrom: startPosition)
             coordinator.requestVodPlay(playbackItem(for: detail, episode: episode))
         }
         startPolling()
@@ -147,7 +196,10 @@ final class VideoPlayerViewModel: ObservableObject {
     /// the position poll.
     func attachEngine(_ newEngine: VideoPlayerEngine?) {
         engine = newEngine
-        if newEngine != nil { startPolling() }
+        if newEngine != nil {
+            applySettings()
+            startPolling()
+        }
     }
 
     /// Switch episodes (starts at 0). The previous episode's
@@ -160,8 +212,12 @@ final class VideoPlayerViewModel: ObservableObject {
         position = 0
         if let engine = engine {
             engine.playEpisode(lineIndex: lineIndex, episodeIndex: index, startPositionSeconds: 0)
-        } else if let episode = currentEpisode {
+        } else if let episode = currentEpisode, let line = currentLine {
+            configureDriver(detail: detail, line: line, episode: episode, resumeFrom: 0)
             coordinator.requestVodPlay(playbackItem(for: detail, episode: episode))
+        }
+        if let episode = currentEpisode {
+            danmaku.load(for: episode, provider: danmakuProvider)
         }
         recordHistory(position: 0)
     }
@@ -181,6 +237,7 @@ final class VideoPlayerViewModel: ObservableObject {
                 lineIndex: index, episodeIndex: episodeIndex,
                 startPositionSeconds: resumePosition)
         } else if let episode = currentEpisode {
+            configureDriver(detail: detail, line: detail.lines[index], episode: episode, resumeFrom: resumePosition)
             coordinator.requestVodPlay(playbackItem(for: detail, episode: episode))
         }
     }
@@ -253,6 +310,7 @@ final class VideoPlayerViewModel: ObservableObject {
     /// stops the driver and clears the current item.
     func close() {
         saveCurrentPosition()
+        danmaku.clear()
         pollTimer?.invalidate()
         pollTimer = nil
         if let engine = engine {
@@ -324,12 +382,16 @@ struct VideoPlayerView: View {
 
     @State private var controlsVisible = true
     @State private var showingEpisodes = false
+    @State private var showingSettings = false
 
     var body: some View {
         ZStack {
             Color.black
                 .ignoresSafeArea()
             VideoPlayerSurface()
+            // Danmaku overlay (A-leg layer, B-leg client). Above
+            // the video, below the chrome; never intercepts taps.
+            VodDanmakuLayer(state: videoPlayer.danmaku, position: videoPlayer.position)
             // Gesture layer, UNDER the chrome: a tap toggles the
             // controls, a long press is 2x (VOD only). Chrome buttons
             // sit above it and keep their own taps.
@@ -386,6 +448,16 @@ struct VideoPlayerView: View {
         .sheet(isPresented: $showingEpisodes) {
             VideoPlayerEpisodeSheet()
         }
+        .sheet(isPresented: $showingSettings) {
+            VodSettingsSheet(
+                state: $videoPlayer.settings,
+                engine: videoPlayer.currentEngine ?? .avplayer,
+                diagnostics: videoPlayer.diagnostics
+            )
+        }
+        .onChange(of: videoPlayer.settings) { _, _ in
+            videoPlayer.applySettings()
+        }
         .statusBarHidden(true)
     }
 
@@ -417,6 +489,14 @@ struct VideoPlayerView: View {
                     .lineLimit(1)
             }
             Spacer()
+            Button(action: { showingSettings = true }) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.black.opacity(0.45), in: Circle())
+            }
+            .buttonStyle(.plain)
             Button("选集") { showingEpisodes = true }
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
@@ -613,18 +693,19 @@ struct VideoPlayerEpisodeSheet: View {
 
 // MARK: - Video surface (A-leg mount point)
 
-/// The video frame. SEAM(A): replace this body with the native
-/// player view (A leg's VideoDriver / VodPlayerViewModel video
-/// layer) at merge. Until then the episode cover rides dimmed as
-/// the backdrop and the page states the core is not attached yet —
-/// never a fake frame.
+/// The video frame. The A-leg driver's native surface
+/// (MPV / IJK / AVPlayer view) is embedded here; before the first
+/// open the episode cover rides dimmed as the backdrop and the
+/// page states the core is not attached yet — never a fake frame.
 struct VideoPlayerSurface: View {
     @EnvironmentObject private var videoPlayer: VideoPlayerViewModel
 
     var body: some View {
         ZStack {
             Color.black
-            if let url = videoPlayer.detail?.item.coverURL {
+            if let videoView = videoPlayer.engine?.videoView {
+                VideoDriverSurfaceView(view: videoView)
+            } else if let url = videoPlayer.detail?.item.coverURL {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
@@ -644,6 +725,30 @@ struct VideoPlayerSurface: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Hosts the driver's UIView (MPV / IJK / AVPlayer surface) in
+/// SwiftUI. The view is owned by the backend; this wrapper only
+/// embeds it and resizes it to the container. The backend may swap
+/// its view on an engine change, so updateUIView re-syncs the
+/// subview instead of assuming makeUIView ran with the new view.
+private struct VideoDriverSurfaceView: UIViewRepresentable {
+    let view: UIView
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .black
+        return container
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if uiView.subviews.first !== view {
+            uiView.subviews.forEach { $0.removeFromSuperview() }
+            view.frame = uiView.bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            uiView.addSubview(view)
+        }
     }
 }
 
