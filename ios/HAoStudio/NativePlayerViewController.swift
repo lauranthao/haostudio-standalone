@@ -188,15 +188,22 @@ final class NativePlayerViewController: UIViewController {
     // MPV). Recreated (shutdown + new instance) on every stream switch
     // and every engine change; the UI never re-presents.
     private var backend: PlayerBackend?
-    // Set when the current engine cannot play this URL at all
-    // (AVPlayer + FLV live): the retry button then switches the engine
-    // to MPV instead of retrying a combination that can never work.
-    private var engineUnsupported = false
+    // Pure Live RecoveryLadder (`nextBackend` rung): engines still
+    // untried for the CURRENT stream URL, in the order they will be
+    // tried. Built by startBackendPlayback from
+    // PlayerKernel.candidates (preferred engine first if it can play
+    // this format, then the remaining capable engines in Pure Live
+    // registration priority). An engine that fails is replaced by the
+    // next one on the list instead of showing "播放失败" — the player
+    // only dies after every capable engine has failed on this URL.
+    private var engineCandidates: [PlayerEngineKey] = []
     // VOD resume position for an engine rebuild while this player is
     // open (Settings switch): the new backend seeks here once prepared.
     private var resumePosition: Double?
-    // Accepted from the web page for compatibility; ijkplayer plays
-    // both formats, so this never picks an engine.
+    // Declared stream format from the web page ('hls'/'flv' for live,
+    // "" for VOD). Pure Live matches the DECLARED format first
+    // (formatMatches) — it drives engine selection via
+    // PlayerKernel.candidates, with the URL extension as fallback.
     private var streamFormat: String
     // Playback state tracked for the spinner / retry / ended UI.
     private var playFailed = false
@@ -509,12 +516,24 @@ final class NativePlayerViewController: UIViewController {
         self.modalPresentationStyle = .fullScreen
     }
 
-    convenience init(streamURL: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "") {
+    convenience init(streamURL: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "", startLandscape: Bool = false) {
         var config = NativePlayerConfig(url: streamURL, title: title, platform: platform, kind: "live", startPosition: 0, danmaku: danmaku, qualities: qualities, format: format)
         config.coverURL = coverURL
         config.roomId = roomId
         config.themeAccent = accent
+        // [ ] fullscreen re-post (ViewController passes the web's
+        // startLandscape flag): present ALREADY landscape. Room entry
+        // passes false and stays portrait.
+        config.startLandscape = startLandscape
         self.init(config: config)
+    }
+
+    // Called by ViewController when a 'live' message arrives with
+    // startLandscape while this player is already on screen (the web
+    // [ ] button re-posting while the modal is up): rotate the whole
+    // app to landscape. No-op when already landscape.
+    func requestFullscreenLandscape() {
+        setFullscreenLandscape(true)
     }
 
     required init?(coder: NSCoder) {
@@ -1431,22 +1450,41 @@ final class NativePlayerViewController: UIViewController {
         lastAdvanceDate = Date()
         liveAutoRetried = false
         stallLineSwitched = false
-        // AVPlayer cannot decode FLV (Huya / Douyu live): show a clear
-        // message instead of a generic failure. The retry button
-        // switches the engine to MPV and retries (see retryCurrentStream).
-        // Do NOT call onLiveFailed here — retrying the same FLV URL on
-        // another line cannot help.
-        guard PlayerKernel.supports(url: streamURL) else {
-            engineUnsupported = true
+        // Pure Live RecoveryLadder: (re)build the candidate queue for
+        // the current URL — preferred engine first if it can play this
+        // format, then the remaining capable engines (PlayerKernel
+        // .candidates). Called for a new stream, an engine switch, or
+        // a manual retry; the ladder itself (handlePlaybackError)
+        // advances the queue without rebuilding it.
+        engineCandidates = PlayerKernel.candidates(for: streamURL, declaredFormat: streamFormat)
+        tryNextEngine()
+    }
+
+    // Try the next engine on the ladder for the current URL. If the
+    // queue is empty, every capable engine has failed on this URL:
+    // show the failure UI (live: onLiveFailed asks the web page for a
+    // fresh URL / next line — a dead URL cannot be fixed by trying
+    // another engine).
+    private func tryNextEngine() {
+        guard let engine = engineCandidates.first else {
             playFailed = true
             spinner.stopAnimating()
-            statusLabel.text = "系统播放器不支持 FLV 直播，点 ▶ 切到 MPV 播放"
+            statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
             statusLabel.isHidden = false
             updateStatusActions()
+            if !isVod { onLiveFailed?() }
             return
         }
-        engineUnsupported = false
-        let backend = PlayerKernel.makeBackend()
+        engineCandidates.removeFirst()
+        // The engine actually used is the one that plays: keep the
+        // Settings value truthful (same as the old FLV-retry
+        // behaviour — the web setting follows via
+        // onPlayerEngineChanged so Settings shows the same engine).
+        if engine != PlayerKernel.current {
+            PlayerKernel.current = engine
+            onPlayerEngineChanged?(engine.rawValue)
+        }
+        let backend = PlayerKernel.makeBackend(engine: engine)
         backend.playbackRate = playbackSpeed
         backend.onEvent = { [weak self] event in self?.handleBackendEvent(event) }
         backend.view.frame = videoView.bounds
@@ -1454,15 +1492,13 @@ final class NativePlayerViewController: UIViewController {
         videoView.addSubview(backend.view)
         self.backend = backend
         showLoadingUI()
-        guard backend.open(url: streamURL, headers: PlayerKernel.httpHeaders(platform: platform)) else {
-            playFailed = true
-            spinner.stopAnimating()
-            statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
-            statusLabel.isHidden = false
-            updateStatusActions()
-            // Backend could not even be created (bad URL object): same
-            // fresh-URL path as a playback error.
-            if !isVod { onLiveFailed?() }
+        guard backend.open(url: streamURL, headers: PlayerKernel.httpHeaders(platform: platform), isLive: !isVod, format: PlayerKernel.formatOf(url: streamURL, declaredFormat: streamFormat)) else {
+            // Backend could not even be created (bad URL object):
+            // try the next engine on the ladder.
+            backend.view.removeFromSuperview()
+            backend.shutdown()
+            self.backend = nil
+            tryNextEngine()
             return
         }
         // Crash breadcrumb: the backend object exists past here.
@@ -1594,18 +1630,24 @@ final class NativePlayerViewController: UIViewController {
 
     // Engine gave up on this URL (was ijkPlaybackDidFinish .playbackError).
     private func handlePlaybackError() {
-        // Live streams often drop once on a flaky network; retry
-        // automatically once instead of leaving "playback failed"
-        // on screen. VOD failures are usually a dead source, so
-        // they still show the manual retry immediately.
+        // Pure Live RecoveryLadder: an engine that failed on this URL
+        // is replaced by the next CAPABLE engine (same URL) before the
+        // stream is declared dead. The failed engine has nothing left
+        // to preserve — the ladder tries each remaining engine once.
+        if !engineCandidates.isEmpty {
+            teardownBackend()
+            showLoadingUI()
+            tryNextEngine()
+            return
+        }
+        // Every capable engine failed on this URL (e.g. a Huya FLV
+        // anti-code expired): live streams get one automatic fresh-URL
+        // attempt instead of retrying the same dead URL on the same
+        // engines. VOD failures are usually a dead source, so they
+        // show the manual retry immediately.
         if !isVod, !liveAutoRetried {
-            retryCurrentStream()
-            // startBackendPlayback() (called inside retry) resets
-            // liveAutoRetried, so re-arm it AFTER the retry:
-            // the retried stream gets no further same-URL
-            // auto-retry — its failure goes to onLiveFailed
-            // (fresh URL) instead of looping forever.
             liveAutoRetried = true
+            onLiveFailed?()
             return
         }
         playFailed = true
@@ -1659,7 +1701,20 @@ final class NativePlayerViewController: UIViewController {
         center.changePlaybackPositionCommand.removeTarget(self)
         center.skipForwardCommand.removeTarget(self)
         center.skipBackwardCommand.removeTarget(self)
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        // Do NOT wipe the shared Now Playing slot when music is still
+        // playing in the background (fix 2026-11-16: Dynamic Island /
+        // Control Center / Lock Screen tap did not open the app). The
+        // native music player owns the slot then; nil-ing it here
+        // drops the app as the now-playing app until the music
+        // player's 1s tick re-asserts it, and in that window the
+        // system has no app to open from the three surfaces. Instead
+        // re-assert the music info now. Only nil when nothing is
+        // playing at all.
+        if NativeMusicPlayer.shared.isActive {
+            NativeMusicPlayer.shared.refreshNowPlaying()
+        } else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        }
     }
 
     // Title / artist / artwork / duration / elapsed / rate. Live has
@@ -1974,11 +2029,12 @@ final class NativePlayerViewController: UIViewController {
         // Clear the old room's danmaku so it doesn't float over the new room.
         danmakuView.subviews.forEach { $0.removeFromSuperview() }
         laneBusyUntil.removeAll()
-        // `format` is accepted for compatibility with the web
-        // postMessage contract; the selected backend plays both HLS
-        // and FLV (except AVPlayer, which cannot play FLV — see
-        // startBackendPlayback), so the player is simply recreated
-        // with the new URL in the same view and UI.
+        // The web page's declared format for the new URL ('hls'/'flv'):
+        // it drives engine selection for the new stream (Pure Live
+        // formatMatches — declared format first, URL extension as
+        // fallback). A new URL rebuilds the engine candidate ladder
+        // in startBackendPlayback below.
+        if !format.isEmpty { streamFormat = format }
         streamURL = url
         if let t = title { streamTitle = t; titleLabel?.text = t.isEmpty ? platformName + "直播" : t }
         if let p = platform { self.platform = p }
@@ -2339,13 +2395,17 @@ final class NativePlayerViewController: UIViewController {
                 p.play()
                 playPauseButton.setImage(playPauseImage(named: "pause.fill"), for: .normal)
             } else {
-                // Live ended (room went offline): retry the same URL.
-                retryCurrentStream()
+                // Live ended: the URL that kept EOFing is likely
+                // expired, not the room going offline — ask the web
+                // for the next line / a fresh URL instead of the
+                // same dead one. (If the room really is offline the
+                // fresh fetch finds no URL and the failure UI returns.)
+                retryLiveWithFreshURL()
             }
             return
         }
         if playFailed {
-            retryCurrentStream()
+            if isLive { retryLiveWithFreshURL() } else { retryCurrentStream() }
             return
         }
         if p.isPlaying {
@@ -2364,18 +2424,49 @@ final class NativePlayerViewController: UIViewController {
         }
     }
 
+    // Live manual retry (status "重试" / refresh / play button when
+    // failed): ask the web page for the NEXT CDN line / a FRESH URL
+    // instead of retrying the same URL. Live URLs expire (Huya's
+    // anti-code ~5 min, shared across all lines) — retrying the same
+    // expired URL can never work, and the old code did exactly that,
+    // so a Huya failure looped on a dead URL. The web's
+    // __nativeLiveFailed tries the next line first, then a fresh URL
+    // (throttled 60s). VOD keeps the same-URL retry (episode URLs do
+    // not expire the same way). If the web does not re-post a new
+    // stream within 10s (no lines left + fresh fetch throttled), the
+    // failure UI comes back so the user is not stuck on a spinner.
+    private func retryLiveWithFreshURL() {
+        guard let onLiveFailed = onLiveFailed else {
+            retryCurrentStream()
+            return
+        }
+        let oldURL = streamURL
+        // Loading state while the web fetches the next line / fresh
+        // URL. showLoadingUI re-shows the failure buttons (playFailed
+        // is still true), so hide them explicitly until the new stream
+        // lands or the 10s fallback brings the failure UI back.
+        showLoadingUI()
+        statusActionsStack?.isHidden = true
+        statusDimView?.isHidden = true
+        onLiveFailed()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self = self, self.playFailed, !self.hasStartedPlaying, !self.didStop else { return }
+            guard self.streamURL == oldURL else { return }
+            self.spinner.stopAnimating()
+            self.statusLabel.text = "播放失败，请检查网络后点 ▶ 重试"
+            self.statusLabel.isHidden = false
+            self.updateStatusActions()
+            self.playPauseButton.setImage(self.playPauseImage(named: "play.fill"), for: .normal)
+        }
+    }
+
     // Retry a failed stream by recreating the player with the same
     // URL (no backend has "re-attach media" on a live player).
+    // startBackendPlayback rebuilds the engine candidate ladder, so a
+    // manual retry tries the full ladder again from the preferred
+    // engine — an incapable engine (AVPlayer + FLV) is skipped by
+    // the ladder itself, never retried.
     private func retryCurrentStream() {
-        // FLV + system player: the retry switches the engine to MPV
-        // (the only way this URL can play) instead of retrying a
-        // combination that can never work. The web setting follows via
-        // onPlayerEngineChanged so Settings shows the same engine.
-        if engineUnsupported {
-            engineUnsupported = false
-            PlayerKernel.current = .mpv
-            onPlayerEngineChanged?("mpv")
-        }
         playFailed = false
         didEnd = false
         hasStartedPlaying = false
@@ -3005,7 +3096,10 @@ final class NativePlayerViewController: UIViewController {
     }
 
     @objc private func statusRetryTapped() {
-        retryCurrentStream()
+        // Live: a failure usually means the URL expired — ask the web
+        // for the next line / a fresh URL, never the same dead one.
+        // VOD: the episode URL does not expire, same-URL retry is right.
+        if isLive { retryLiveWithFreshURL() } else { retryCurrentStream() }
     }
 
     @objc private func statusLineTapped() {
@@ -3028,7 +3122,7 @@ final class NativePlayerViewController: UIViewController {
 
     @objc private func refreshTapped() {
         scheduleControlsHide()
-        retryCurrentStream()
+        if isLive { retryLiveWithFreshURL() } else { retryCurrentStream() }
     }
 
     @objc private func followTapped() {

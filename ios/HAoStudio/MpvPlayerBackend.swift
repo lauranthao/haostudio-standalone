@@ -124,7 +124,7 @@ final class MpvPlayerBackend: NSObject, PlayerBackend {
     // MARK: - Open / play / pause / seek / shutdown
 
     @discardableResult
-    func open(url: URL, headers: [String: String]) -> Bool {
+    func open(url: URL, headers: [String: String], isLive: Bool, format: String) -> Bool {
         shutdown()
         isShutdown = false
         didEmitFirstFrame = false
@@ -156,6 +156,21 @@ final class MpvPlayerBackend: NSObject, PlayerBackend {
         setOption(handle, "demuxer-donate-buffer", "no")
         setOption(handle, "demuxer-readahead-secs", "2")
         setOption(handle, "network-timeout", "15")
+        // Pure Live 3.x MediaKitLiveProperties.sourceProperties,
+        // applied per source in beforeOpen: a live stream (progressive
+        // FLV or an HLS playlist) is NOT seekable and must NOT
+        // cache-pause. mpv's cache-pause defaults to yes, which makes
+        // a live stream play ~2s, then pause to buffer, then resume
+        // ("plays then pauses then loads") — Pure Live 3.x fixed
+        // exactly this by setting cache-pause=no for live. VOD keeps
+        // the base force-seekable=yes and the default cache-pause.
+        if isLive {
+            setOption(handle, "cache-pause", "no")
+            setOption(handle, "force-seekable", "no")
+            if format == "hls" {
+                setOption(handle, "demuxer-lavf-format", "hls")
+            }
+        }
         if let ua = headers["User-Agent"] { setOption(handle, "user-agent", ua) }
         if let referer = headers["Referer"] { setOption(handle, "http-header-fields", "Referer: \(referer)") }
         guard mpv_initialize(handle) >= 0 else {
@@ -211,6 +226,14 @@ final class MpvPlayerBackend: NSObject, PlayerBackend {
         // mpv_wait_event so the loop thread exits on its own.
         if let ctx = renderContext {
             mpv_render_context_set_update_callback(ctx, nil, nil)
+            // Drain the render queue before freeing the context: a
+            // render already in flight on renderQueue holds `ctx`
+            // and would use it after free (use-after-free crash on
+            // room switch / close / engine rebuild). renderQueue is
+            // serial and never blocks on the caller, and shutdown is
+            // never called from renderQueue, so this sync drain
+            // cannot deadlock.
+            renderQueue.sync {}
             mpv_render_context_free(ctx)
             renderContext = nil
         }
@@ -253,13 +276,24 @@ final class MpvPlayerBackend: NSObject, PlayerBackend {
         // Software renderer (media_kit TextureSW): "sw" + the four
         // SW_* params at render time. Must run on the main thread
         // (the display layer lives there).
+        // The API-type string must stay alive while mpv reads it:
+        // ("sw" as NSString).utf8String points into a temporary
+        // NSString that dies at the end of the statement, leaving a
+        // dangling pointer for mpv_render_context_create to read
+        // (a live-open crash vector — the read can hit freed memory).
+        // Hold the NSString in a local and extend its lifetime
+        // across the create call.
         var ctx: OpaquePointer?
-        let api = UnsafeMutableRawPointer(mutating: ("sw" as NSString).utf8String)
+        let apiString = "sw" as NSString
+        let api = UnsafeMutableRawPointer(mutating: apiString.utf8String)
         var params: [mpv_render_param] = [
             mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: api),
             mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil),
         ]
-        guard mpv_render_context_create(&ctx, handle, &params) >= 0, let ctx = ctx else { return false }
+        let created = withExtendedLifetime(apiString) {
+            mpv_render_context_create(&ctx, handle, &params)
+        }
+        guard created >= 0, let ctx = ctx else { return false }
         renderContext = ctx
         mpv_render_context_set_update_callback(ctx, { cb in
             guard let cb = cb else { return }

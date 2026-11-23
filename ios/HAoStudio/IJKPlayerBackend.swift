@@ -57,7 +57,7 @@ final class IJKPlayerBackend: NSObject, PlayerBackend {
     }
 
     @discardableResult
-    func open(url: URL, headers: [String: String]) -> Bool {
+    func open(url: URL, headers: [String: String], isLive: Bool, format: String) -> Bool {
         shutdown()
         streamURL = url
         guard let p = IJKFFMoviePlayerController(contentURL: url, with: makeIJKOptions(headers: headers)) else {

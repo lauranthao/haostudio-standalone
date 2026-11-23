@@ -89,7 +89,13 @@ protocol PlayerBackend: AnyObject {
     // created (bad URL object) — the player shows the failure UI then.
     // headers: HTTP headers for the stream (User-Agent + Referer; see
     // PlayerKernel.httpHeaders(platform:)). Live + VOD both go through here.
-    @discardableResult func open(url: URL, headers: [String: String]) -> Bool
+    // isLive + format: Pure Live's source carries its declared format
+    // and live flag (MediaKitLiveProperties.sourceProperties) — the
+    // engine applies per-source options from them (MPV: live streams
+    // must not cache-pause and are not seekable; HLS playlists get
+    // demuxer-lavf-format=hls). IJK/AVPlayer accept them for the
+    // contract and play both formats natively.
+    @discardableResult func open(url: URL, headers: [String: String], isLive: Bool, format: String) -> Bool
     func play()
     func pause()
     // VOD only (live has no seek). Clamped to [0, duration] by the player.
@@ -152,9 +158,68 @@ enum PlayerKernel {
 
     // Can this engine play this URL at all? Only the AVPlayer/FLV gap
     // is known up front; everything else is discovered by trying.
-    static func supports(url: URL, engine: PlayerEngineKey = current) -> Bool {
-        if !engine.supportsFLV, url.pathExtension.lowercased() == "flv" { return false }
-        return true
+    // Declared format wins over the URL extension (Pure Live
+    // `formatMatches`: "The enum can be present while the URI has no
+    // extension"); an unknown format excludes nothing.
+    static func supports(url: URL, engine: PlayerEngineKey = current, declaredFormat: String = "") -> Bool {
+        let fmt = formatOf(url: url, declaredFormat: declaredFormat)
+        guard !fmt.isEmpty else { return true }
+        return supportedFormats(for: engine).contains(fmt)
+    }
+
+    // MARK: - Format capabilities (Pure Live:
+    // PlayerAdapterCapabilities.supportedFormats, media_core)
+    //
+    // Each engine DECLARES the formats it can play; an engine that
+    // cannot play a format is never selected for it, and the
+    // RecoveryLadder (candidates() below) walks the remaining
+    // capable engines on failure instead of dying on a dead engine.
+    //   - MPV (MediaKitFormats) and IJK (IjkFormats) declare FLV.
+    //   - AVPlayer (BetterPlayerFormats) does NOT contain 'flv':
+    //     AVFoundation has no FLV demuxer, so even Pure Live cannot
+    //     play FLV on its AVPlayer-based engine. The fix is automatic
+    //     fallback to a capable engine, not making AVPlayer decode FLV.
+    static func supportedFormats(for engine: PlayerEngineKey) -> Set<String> {
+        switch engine {
+        case .mpv, .ijk:
+            return ["flv", "hls", "mp4", "m3u8", "ts", "mov", "mkv", "webm", "avi"]
+        case .avplayer:
+            return ["hls", "mp4", "m3u8", "ts", "mov", "mkv", "webm", "avi"]
+        }
+    }
+
+    /// Format of a stream: the web page's DECLARED format first
+    /// (live posts format 'hls'/'flv'; VOD posts none, so the URL
+    /// extension decides — .m3u8/.mp4 from Apple CMS).
+    static func formatOf(url: URL, declaredFormat: String = "") -> String {
+        let d = declaredFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if d == "flv" || d == "hls" { return d }
+        if d == "m3u8" { return "hls" }
+        if d == "mp4" || d == "mov" { return "mp4" }
+        let ext = url.pathExtension.lowercased()
+        if ext == "flv" { return "flv" }
+        if ext == "m3u8" { return "hls" }
+        if ext == "mp4" || ext == "mov" { return "mp4" }
+        return ""
+    }
+
+    /// Pure Live RecoveryLadder (`nextBackend` rung) + selector
+    /// priority: the user's preferred engine first IF it can play
+    /// this format (a preference wins, but only among capable
+    /// engines), then the remaining capable engines in Pure Live
+    /// registration priority (media_kit 100, ijk 90, better_player
+    /// 80). An incapable engine (AVPlayer + FLV) never appears in
+    /// the list, so it can never be selected or retried for that
+    /// stream — the player falls through to one that can play it.
+    static func candidates(for url: URL, declaredFormat: String = "") -> [PlayerEngineKey] {
+        let priority: [PlayerEngineKey] = [.mpv, .ijk, .avplayer]
+        let capable = priority.filter { supports(url: url, engine: $0, declaredFormat: declaredFormat) }
+        var ordered = capable
+        if capable.contains(current) {
+            ordered.removeAll { $0 == current }
+            ordered.insert(current, at: 0)
+        }
+        return ordered
     }
 
     // HTTP headers every engine sends for a stream (the ijkplayer

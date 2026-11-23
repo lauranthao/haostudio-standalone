@@ -359,12 +359,25 @@ final class NativeMusicPlayer: NSObject {
         center.pauseCommand.addTarget(self, action: #selector(remotePause))
         center.togglePlayPauseCommand.addTarget(self, action: #selector(remoteToggle))
         center.changePlaybackPositionCommand.addTarget(self, action: #selector(remoteSeek(_:)))
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
-        center.skipForwardCommand.addTarget(self, action: #selector(remoteSkipForward(_:)))
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
-        center.skipBackwardCommand.addTarget(self, action: #selector(remoteSkipBackward(_:)))
+        // NO skipForward/skipBackward here — deliberately. Music is
+        // track-based (moveTrack mode): the Lock Screen / Control
+        // Center / Dynamic Island prev/next slots are SHARED with the
+        // ±N s skip buttons, and enabling skip makes iOS show the
+        // ±10 s buttons INSTEAD of prev/next (chen 2026-11-16: Control
+        // Center showed only ↻10 + pause, no prev/next). Skip is a
+        // podcast/audiobook mode; a music player shows prev/next.
         center.nextTrackCommand.addTarget(self, action: #selector(remoteNext))
         center.previousTrackCommand.addTarget(self, action: #selector(remotePrevious))
+        updateNowPlayingInfo()
+    }
+
+    // Re-assert the music Now Playing info (e.g. after the native
+    // video/live player tore the shared center down on close while
+    // music keeps playing in the background — fix 2026-11-16).
+    // Idempotent: setup is guarded, and update simply rewrites the dict.
+    func refreshNowPlaying() {
+        guard isActive else { return }
+        setupNowPlaying()
         updateNowPlayingInfo()
     }
 
@@ -376,8 +389,6 @@ final class NativeMusicPlayer: NSObject {
         center.pauseCommand.removeTarget(self)
         center.togglePlayPauseCommand.removeTarget(self)
         center.changePlaybackPositionCommand.removeTarget(self)
-        center.skipForwardCommand.removeTarget(self)
-        center.skipBackwardCommand.removeTarget(self)
         center.nextTrackCommand.removeTarget(self)
         center.previousTrackCommand.removeTarget(self)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -432,20 +443,6 @@ final class NativeMusicPlayer: NSObject {
 
     @objc private func remoteSeek(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
         seek(to: event.positionTime)
-        return .success
-    }
-
-    @objc private func remoteSkipForward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard let p = player else { return .commandFailed }
-        let pos = CMTimeGetSeconds(p.currentTime())
-        if pos.isFinite { seek(to: pos + event.interval) }
-        return .success
-    }
-
-    @objc private func remoteSkipBackward(_ event: MPSkipIntervalCommandEvent) -> MPRemoteCommandHandlerStatus {
-        guard let p = player else { return .commandFailed }
-        let pos = CMTimeGetSeconds(p.currentTime())
-        if pos.isFinite { seek(to: max(0, pos - event.interval)) }
         return .success
     }
 

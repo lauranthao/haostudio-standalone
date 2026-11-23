@@ -6,10 +6,10 @@
 //
 // What it plays: HLS (.m3u8) and MP4 — i.e. Bilibili live (HLS), VOD
 // movies/episodes (HLS/MP4). What it CANNOT play: FLV (Huya / Douyu
-// live are FLV) — AVFoundation has no FLV demuxer. The player UI checks
-// PlayerKernel.supports(url:) before opening and shows a clear message
-// for FLV instead of a generic failure; the retry button then switches
-// the engine to MPV and retries.
+// live are FLV) — AVFoundation has no FLV demuxer. The player never
+// selects it for FLV: PlayerKernel.candidates excludes it from the
+// engine ladder for FLV streams, so playback falls through to MPV
+// or IJK instead of failing.
 // Background audio: AVPlayer keeps its audio going in the background
 // with the app's .playback audio session (same as ijkplayer's
 // setPauseInBackground(false)); the video layer simply stops drawing.
@@ -104,7 +104,7 @@ final class AVPlayerBackend: NSObject, PlayerBackend {
     }
 
     @discardableResult
-    func open(url: URL, headers: [String: String]) -> Bool {
+    func open(url: URL, headers: [String: String], isLive: Bool, format: String) -> Bool {
         shutdown()
         currentURL = url
         didEmitFirstFrame = false

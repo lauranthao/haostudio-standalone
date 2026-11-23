@@ -11,6 +11,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         haoLock120Hz()
+        // Now Playing tap-to-open (fix 2026-11-16: Dynamic Island /
+        // Control Center / Lock Screen tap did not open the app):
+        // register this app to receive remote control events so the
+        // system routes the Now Playing surfaces to it. The actual
+        // commands are handled by MPRemoteCommandCenter targets
+        // (NativeMusicPlayer / NativePlayerViewController /
+        // WebNowPlayingMirror); this call only makes sure the app is
+        // in the remote-control responder chain at all.
+        application.beginReceivingRemoteControlEvents()
         return true
     }
 

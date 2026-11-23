@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import AVFoundation
+import MediaPlayer
 
 class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     // Whole-app landscape (chen 2026-11-16): the web UI NEVER rotates
@@ -35,6 +36,10 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var clearCacheHandler: ClearCacheMessageHandler?
     private var nativeMusicHandler: NativeMusicMessageHandler?
     private var haoUpdateHandler: HaoUpdateMessageHandler?
+    // Native Now Playing mirror for the web <audio> path (fix
+    // 2026-11-16: Dynamic Island / Control Center / Lock Screen tap
+    // did not open the app). See WebNowPlayingMirror below.
+    private var webNowPlayingMirror: WebNowPlayingMirror?
     // Standalone v1: zero server connection. The frontend is bundled
     // (HAoStudio/web/index.html) and loaded with loadFileURL; there is
     // no shop URL, no login, no /api/* calls of any kind.
@@ -223,6 +228,14 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         // The native music player posts position/state back into this
         // web view (progress bar, lyrics, play state).
         NativeMusicPlayer.shared.webView = webView
+        // Native Now Playing mirror for the web <audio> fallback path
+        // (fix 2026-11-16): when the native AVPlayer does not own the
+        // track, this publishes the web track into MPNowPlayingInfoCenter
+        // so the system Now Playing (Dynamic Island / Control Center /
+        // Lock Screen) is app-attributed and tapping it opens this app.
+        let nowPlayingMirror = WebNowPlayingMirror()
+        nowPlayingMirror.webView = webView
+        self.webNowPlayingMirror = nowPlayingMirror
         // Keep-screen: re-apply the idle timer whenever the native
         // music play state changes (play / pause / lock-screen pause /
         // interruption), so a paused track lets the screen lock again.
@@ -541,13 +554,13 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     // the same view). `format` is 'hls' or 'flv' from the web page; it
     // is accepted for compatibility but no longer picks an engine —
     // ijkplayer plays both.
-    func presentNativePlayer(url: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "") {
+    func presentNativePlayer(url: URL, title: String, platform: String, qualities: [LiveQuality] = [], format: String = "", coverURL: URL? = nil, danmaku: DanmakuConfig? = nil, roomId: String = "", accent: String = "", startLandscape: Bool = false) {
         // UIKit presentation must run on the main thread; the web
         // bridge normally calls on main, but a background retry path
         // presenting here used to be a crash risk — bounce to main.
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in
-                self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+                self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent, startLandscape: startLandscape)
             }
             return
         }
@@ -558,7 +571,7 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
                 // a room at once). Don't drop the request — retry after the
                 // dismiss animation finishes so the new room actually opens.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent, startLandscape: startLandscape)
                 }
                 return
             }
@@ -568,6 +581,9 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             if let d = danmaku { existing.applyDanmakuSettings(d) }
             existing.applyThemeAccent(accent)
             existing.updateStream(url: url, qualities: qualities, format: format, title: title, platform: platform, roomId: roomId)
+            // [ ] fullscreen re-post while the player is already up:
+            // the web asked for landscape, so rotate the whole app.
+            if startLandscape { existing.requestFullscreenLandscape() }
             return
         }
         if let existing = presentedViewController as? NativePlayerViewController {
@@ -577,16 +593,16 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
             // on screen fails silently in UIKit.
             if existing.isBeingDismissed {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent, startLandscape: startLandscape)
                 }
             } else {
                 existing.dismiss(animated: true) { [weak self] in
-                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+                    self?.presentNativePlayer(url: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent, startLandscape: startLandscape)
                 }
             }
             return
         }
-        let playerVC = NativePlayerViewController(streamURL: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent)
+        let playerVC = NativePlayerViewController(streamURL: url, title: title, platform: platform, qualities: qualities, format: format, coverURL: coverURL, danmaku: danmaku, roomId: roomId, accent: accent, startLandscape: startLandscape)
         // When the live player closes, tell the web page so it clears
         // the native-post dedupe key — otherwise reopening the same
         // room within 10s is blocked and the room "can't be entered".
@@ -739,13 +755,35 @@ class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
         } else if UIApplication.shared.applicationState == .active && Date().timeIntervalSince(lastEnteredForegroundAt) > 2.0 {
             wasPlayingBeforeBackground = false
         }
+        // Native Now Playing mirror for the web <audio> fallback path
+        // (fix 2026-11-16: Dynamic Island / Control Center / Lock
+        // Screen tap did not open the app). The web page posts this
+        // message on every play/pause/track change with the full track
+        // state — but until now the native side threw it away (the
+        // `_ = (title, artist, playing)` discard) and published
+        // nothing, so on the web path the ONLY Now Playing publisher
+        // was the WKWebView Media Session. iOS attributes a web
+        // Media Session to an ambiguous web-content identity (WebKit
+        // bug 267810: tapping the lock screen Now Playing title opens
+        // the wrong app or nothing), so the system had no app to open.
+        // The mirror publishes the same track natively, making this
+        // app the unambiguous Now Playing owner — tapping Dynamic
+        // Island / Control Center / Lock Screen opens the app. When
+        // the native AVPlayer owns the track, it already publishes
+        // (NativeMusicPlayer) and the mirror stays off so the two can
+        // never fight over the shared center.
         // NOTE (standalone v1): the shop build mirrored the track into
         // the App Group for the home-screen widget. The widget is not
-        // shipped in v1, so there is no mirror here — the nowPlaying
-        // message still drives wasPlayingBeforeBackground above, which
-        // the foreground-resume path depends on.
-        _ = (cover, songId)
-        _ = (title, artist, playing)
+        // shipped in v1, so there is no App Group mirror — this is a
+        // Now Playing mirror instead.
+        _ = songId
+        if NativeMusicPlayer.shared.isActive {
+            webNowPlayingMirror?.clear()
+        } else {
+            let position = (body["position"] as? NSNumber)?.doubleValue ?? 0
+            let duration = (body["duration"] as? NSNumber)?.doubleValue ?? 0
+            webNowPlayingMirror?.update(title: title, artist: artist, cover: cover, playing: playing, position: position, duration: duration)
+        }
     }
 
     // Called from the web page (online video / VOD) when the user taps the
@@ -1207,8 +1245,15 @@ private final class NativePlayerMessageHandler: NSObject, WKScriptMessageHandler
         // on next launch to see how far live entry got (live-msg ->
         // live-present -> live-viewDidLoad -> live-ijk-ok ->
         // live-playing -> live-closed).
+        // [ ] fullscreen on the web room page re-posts 'live' to
+        // reopen the native player: the web sends startLandscape
+        // (see reopenLiveNative) so the player presents ALREADY in
+        // whole-app landscape. Without it the re-post opens portrait
+        // again — the "tap [ ] stays portrait" bug (2026-11-16).
+        // Room entry sends no flag, so it stays portrait as required.
+        let startLandscape = Self.dmBool(body["startLandscape"], default: false)
         UserDefaults.standard.set("live-msg", forKey: "hao_live_entry_stage")
-        viewController?.presentNativePlayer(url: url, title: title, platform: platform, qualities: parseLiveQualities(body["qualities"]), format: body["format"] as? String ?? "", coverURL: coverURL, danmaku: liveDanmaku, roomId: Self.dmString(body["roomId"], default: Self.dmString(body["room"], default: "")), accent: accent)
+        viewController?.presentNativePlayer(url: url, title: title, platform: platform, qualities: parseLiveQualities(body["qualities"]), format: body["format"] as? String ?? "", coverURL: coverURL, danmaku: liveDanmaku, roomId: Self.dmString(body["roomId"], default: Self.dmString(body["room"], default: "")), accent: accent, startLandscape: startLandscape)
     }
 
     // A stream URL must be an absolute http(s) URL with a host.
@@ -1469,6 +1514,197 @@ private final class NativeMusicMessageHandler: NSObject, WKScriptMessageHandler 
         default:
             break
         }
+    }
+}
+
+// Native Now Playing mirror for the web <audio> fallback path (fix
+// 2026-11-16: Dynamic Island / Control Center / Lock Screen tap did
+// not open the app).
+//
+// ROOT CAUSE: when music plays through the web <audio> element (the
+// native AVPlayer did not take over within 1.5s, or errored and the
+// web fell back), the ONLY Now Playing publisher was the WKWebView
+// Media Session (navigator.mediaSession, app.js updateMediaSession).
+// The native side received the full track state on every play/pause
+// (postNowPlaying -> handleNowPlayingMessage) but deliberately
+// discarded it (`_ = (title, artist, playing)`) and published
+// nothing. iOS attributes a web Media Session to an ambiguous
+// web-content identity, not to this app (WebKit bug 267810: tapping
+// the lock screen Now Playing title opens the wrong app or nothing;
+// the same system session drives Dynamic Island and Control Center),
+// so the system had no app to open from any of the three surfaces.
+// The native AVPlayer path was never affected — NativeMusicPlayer
+// already publishes app-attributed Now Playing + remote commands.
+//
+// This mirror publishes the web track natively (same title / artist /
+// cover / duration / elapsed / rate the web would show) and registers
+// MPRemoteCommandCenter handlers that drive the web <audio> element,
+// so the system Now Playing is always app-attributed and tapping it
+// opens this app. It is a MIRROR only: it never plays audio itself,
+// never changes the queue, and never pauses anything on its own.
+// Ownership rule: it is active ONLY while the native AVPlayer does
+// NOT own the track (NativeMusicPlayer.isActive == false); the
+// moment native takes over, handleNowPlayingMessage clears it.
+// Remote commands: play / pause / toggle / seek / next / previous
+// are all registered natively. Next / previous were first left out
+// on the assumption that WebKit bridges the web Media Session's
+// nexttrack / previoustrack handlers — that assumption was WRONG
+// (chen 2026-11-16: Control Center showed only ↻10 + pause, no
+// prev/next, although the web registers both handlers in
+// registerMediaHandlers, app.js:6901). iOS ignores Media Session
+// handlers registered before the audio element became the Now
+// Playing item and falls back to default 10 s skip buttons, so the
+// bridge never delivers prev/next here. The mirror therefore owns
+// next/previous natively (window.nextTrack/prevTrack, same as
+// NativeMusicPlayer) and nulls the web's nexttrack/previoustrack
+// handlers on every update, so a press can never fire twice.
+// Play / pause / seek are idempotent (calling audio.play() or
+// setting audio.currentTime twice with the same value is a no-op),
+// so a double fire there is harmless.
+final class WebNowPlayingMirror: NSObject {
+    weak var webView: WKWebView?
+
+    private var active = false
+    private var isPlaying = false
+    private var currentCoverURL = ""
+    private var artwork: MPMediaItemArtwork?
+
+    // Publish (or refresh) the web track as the system Now Playing.
+    // Called from handleNowPlayingMessage on every play/pause/track
+    // change. Idempotent: re-registering the commands is guarded by
+    // `active`, and the info dict is simply rewritten.
+    func update(title: String, artist: String, cover: String, playing: Bool, position: Double, duration: Double) {
+        guard !title.isEmpty else { return }
+        isPlaying = playing
+        if !active {
+            active = true
+            let center = MPRemoteCommandCenter.shared()
+            center.playCommand.addTarget(self, action: #selector(remotePlay))
+            center.pauseCommand.addTarget(self, action: #selector(remotePause))
+            center.togglePlayPauseCommand.addTarget(self, action: #selector(remoteToggle))
+            center.changePlaybackPositionCommand.addTarget(self, action: #selector(remoteSeek(_:)))
+            center.nextTrackCommand.addTarget(self, action: #selector(remoteNext))
+            center.previousTrackCommand.addTarget(self, action: #selector(remotePrevious))
+        }
+        var info: [String: Any] = [:]
+        info[MPMediaItemPropertyTitle] = title
+        info[MPMediaItemPropertyArtist] = artist
+        info[MPMediaItemPropertyAlbumTitle] = "HAo Studio"
+        if duration.isFinite, duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = duration }
+        if position.isFinite, position >= 0 { info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position }
+        info[MPNowPlayingInfoPropertyPlaybackRate] = playing ? 1.0 : 0.0
+        if let art = artwork { info[MPMediaItemPropertyArtwork] = art }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // Own next/previous natively and disable the web Media Session
+        // bridge for them, so a press can never fire twice (see the
+        // class comment). Runs on every update because the web page
+        // re-registers its handlers on every play/pause/track change
+        // (updateMediaSession), i.e. after each re-registration.
+        postJS("try{if(navigator.mediaSession){navigator.mediaSession.setActionHandler('nexttrack',null);navigator.mediaSession.setActionHandler('previoustrack',null);}}catch(e){}")
+        fetchArtworkIfNeeded(coverURL: cover)
+    }
+
+    // Stop mirroring and give the shared Now Playing slot back. Only
+    // clears the info when the native player is not active — the
+    // caller (handleNowPlayingMessage) already guards that, but the
+    // check here makes a stray clear unable to wipe the native
+    // player's session.
+    func clear() {
+        guard active else { return }
+        active = false
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.removeTarget(self)
+        center.pauseCommand.removeTarget(self)
+        center.togglePlayPauseCommand.removeTarget(self)
+        center.changePlaybackPositionCommand.removeTarget(self)
+        center.nextTrackCommand.removeTarget(self)
+        center.previousTrackCommand.removeTarget(self)
+        if !NativeMusicPlayer.shared.isActive {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        }
+        currentCoverURL = ""
+        artwork = nil
+    }
+
+    private func fetchArtworkIfNeeded(coverURL: String) {
+        guard coverURL != currentCoverURL, let url = URL(string: coverURL), !coverURL.isEmpty else { return }
+        currentCoverURL = coverURL
+        artwork = nil
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self, let data = data, let image = UIImage(data: data) else { return }
+            let art = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            DispatchQueue.main.async {
+                // Only apply if this is still the current cover and
+                // the mirror is still the owner (native may have taken
+                // over meanwhile).
+                guard self.active, self.currentCoverURL == coverURL, !NativeMusicPlayer.shared.isActive else { return }
+                self.artwork = art
+                if var info = MPNowPlayingInfoCenter.default().nowPlayingInfo {
+                    info[MPMediaItemPropertyArtwork] = art
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                }
+            }
+        }.resume()
+    }
+
+    private func postJS(_ js: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    // Remote commands from Lock Screen / Control Center / headphones.
+    // They drive the web <audio> element — the web owns the queue and
+    // the play state; these only forward the user's intent. Next /
+    // previous are owned natively here (the web's nexttrack /
+    // previoustrack handlers are nulled on every update, see update(),
+    // so a press can never fire twice). Play / pause / seek may also
+    // fire through the web's own Media Session handlers (WebKit
+    // bridges them to the same command center); calling audio.play() /
+    // audio.pause() / setting currentTime twice with the same value
+    // is idempotent, so a double fire there is harmless.
+    // `audio` is the web page's implicit-global <audio> element
+    // (app.js line 37), so bare `audio` resolves in evaluateJavaScript.
+    @objc private func remotePlay() -> MPRemoteCommandHandlerStatus {
+        isPlaying = true
+        postJS("try{audio.play().catch(function(){});}catch(e){}")
+        return .success
+    }
+
+    @objc private func remotePause() -> MPRemoteCommandHandlerStatus {
+        isPlaying = false
+        postJS("try{audio.pause();}catch(e){}")
+        return .success
+    }
+
+    @objc private func remoteToggle() -> MPRemoteCommandHandlerStatus {
+        // The web does not register a Media Session 'toggle' action,
+        // so this is the only toggle handler. The stored playing flag
+        // is refreshed on every postNowPlaying (play/pause/track
+        // change), so it tracks the web state.
+        if isPlaying { return remotePause() }
+        return remotePlay()
+    }
+
+    @objc private func remoteSeek(_ event: MPChangePlaybackPositionCommandEvent) -> MPRemoteCommandHandlerStatus {
+        let pos = event.positionTime
+        guard pos.isFinite, pos >= 0 else { return .commandFailed }
+        let posStr = String(format: "%.3f", pos)
+        postJS("try{audio.currentTime=\(posStr);}catch(e){}")
+        return .success
+    }
+
+    @objc private func remoteNext() -> MPRemoteCommandHandlerStatus {
+        // The web page owns the queue: ask it to advance (it will post
+        // the next track back here via postNowPlaying). Same callback
+        // NativeMusicPlayer uses on the native path.
+        postJS("if(window.nextTrack){window.nextTrack();}")
+        return .success
+    }
+
+    @objc private func remotePrevious() -> MPRemoteCommandHandlerStatus {
+        postJS("if(window.prevTrack){window.prevTrack();}")
+        return .success
     }
 }
 
