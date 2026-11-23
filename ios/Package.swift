@@ -43,13 +43,6 @@ let package = Package(
         .target(
             name: "AppCore",
             path: "HAoStudio",
-            sources: [
-                "Services/LXEngine",
-                "Services/MusicResolvers",
-                "Services/MusicAPI",
-                "Playback/PlaybackCoordinator.swift",
-                "Storage",
-            ],
             // The 13 LX scripts live under Services/LXEngine, which is
             // a sources dir, so SwiftPM tries to build rules for the
             // .js files: "unexpected input file" without a resource
@@ -58,8 +51,17 @@ let package = Package(
             // one). Excluding the dir removes them from the build
             // graph entirely; the tests locate the scripts on disk
             // via #file, which the checkout still has.
+            // NOTE: exclude must come BEFORE sources in this
+            // initializer (build #21 failed on the order).
             exclude: [
                 "Services/LXEngine/Scripts",
+            ],
+            sources: [
+                "Services/LXEngine",
+                "Services/MusicResolvers",
+                "Services/MusicAPI",
+                "Playback/PlaybackCoordinator.swift",
+                "Storage",
             ],
             linkerSettings: [
                 .linkedFramework("Security"),
