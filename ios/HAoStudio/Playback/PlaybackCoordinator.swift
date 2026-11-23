@@ -79,6 +79,10 @@ struct PlaybackItem: Identifiable, Equatable {
     let kind: PlaybackKind
     let title: String
     let artist: String?
+    /// the player shows title/artist without artwork then. Added by
+    /// the S2 music leg with a default so existing constructions keep
+    /// compiling.
+    let coverURL: URL? = nil
 
     var subtitle: String { artist ?? kindSubtitle }
 
@@ -126,6 +130,39 @@ final class PlaybackCoordinator: ObservableObject {
     /// project keeps SWIFT_VERSION = 5.0 from the old project.)
     var resolver: SourceResolver?
 
+    /// The music player driver, installed by the app entry once the
+    /// player slice exists. Wiring (not a public API change): the
+    /// driver resolves URLs through `resolver`, reports track starts
+    /// so `currentItem` stays in sync with the player's current
+    /// track, and reports failures so a failed track never stays
+    /// recorded as playing. When no driver is installed the
+    /// foundation behaviour below still applies.
+    var musicDriver: MusicPlaybackDriver? {
+        didSet {
+            musicDriver?.resolveURL = { [weak self] item, _, completion in
+                guard let self = self else {
+                    completion(nil, nil)
+                    return
+                }
+                if let resolver = self.resolver {
+                    resolver.resolveFirstPlayable(for: item, targetQuality: self.targetQuality) { url in
+                        DispatchQueue.main.async { completion(url, nil) }
+                    }
+                } else {
+                    completion(nil, nil)
+                }
+            }
+            musicDriver?.onTrackStarted = { [weak self] item in
+                DispatchQueue.main.async { self?.currentItem = item }
+            }
+            musicDriver?.onTrackFailed = { [weak self] item, _ in
+                DispatchQueue.main.async {
+                    if self?.currentItem?.id == item.id { self?.currentItem = nil }
+                }
+            }
+        }
+    }
+
     static let targetQualityKey = "hao.audio.targetQuality"
 
     private let defaults: UserDefaults
@@ -140,17 +177,33 @@ final class PlaybackCoordinator: ObservableObject {
     /// request ONLY when a resolver is plugged in (player slice). Until
     /// then this is a no-op by design — recording an item with no engine
     /// would show a mini player for playback that is not happening.
-    /// The player slice implements: stop current first (rule 1), resolve
-    /// serially (rule 4), then set `currentItem` and start the engine.
+    /// With a music driver installed (player slice): stop the current
+    /// playback first (rule 1, one sound at a time), then let the
+    /// driver resolve serially (rule 4) and open the URL; `currentItem`
+    /// is set by the driver's onTrackStarted callback, only once the
+    /// track really starts. Tapping the song that is already playing
+    /// does not restart it.
     func requestPlay(_ item: PlaybackItem) {
-        guard resolver != nil else { return }
-        currentItem = item
+        guard let driver = musicDriver else {
+            guard resolver != nil else { return }
+            currentItem = item
+            return
+        }
+        if let current = driver.currentTrack, current.id == item.id {
+            if driver.isPlaying { return }
+            driver.resume()
+            currentItem = item
+            return
+        }
+        driver.stop()
+        driver.play(item: item)
     }
 
     /// Stop everything. Clears the current item; the player slice also
     /// stops the engine here (rule 1: starting anything else stops the
     /// current playback first).
     func stop() {
+        musicDriver?.stop()
         currentItem = nil
     }
 }
