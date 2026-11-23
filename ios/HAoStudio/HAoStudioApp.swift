@@ -22,6 +22,14 @@ struct HAoStudioApp: App {
     /// observe the same episode/line state). Created here, next to
     /// the coordinator it observes — never one instance per page.
     @StateObject private var videoPlayer: VideoPlayerViewModel
+    /// S4-C: one shared live player view model for the whole app
+    /// (room page, portrait + landscape, all observe the same
+    /// room/quality/line/danmaku state). Created here, next to
+    /// the coordinator it observes — never one instance per page.
+    /// A leg owns the type (Playback/LivePlayerViewModel.swift);
+    /// its init takes the live driver, mirroring the VOD view
+    /// model shape.
+    @StateObject private var livePlayer: LivePlayerViewModel
 
     init() {
         // S1: the snapshot migration runs before anything reads
@@ -45,9 +53,18 @@ struct HAoStudioApp: App {
         let vodDriver = VideoDriver()
         vodDriver.playURLResolver = CmsClient.shared
         coordinator.vodDriver = vodDriver
+        // S4-C: wire the live engine behind the coordinator. The
+        // driver (A leg, Playback/LiveDriver.swift) owns engines +
+        // room/quality/line state; room resolution is the B-leg
+        // LiveSiteResolver, which answers the seam contract. The
+        // coordinator wires onRoomStarted / onRoomFailed itself in
+        // the liveDriver didSet — nothing else to do here.
+        let liveDriver = LiveDriver()
+        coordinator.liveDriver = liveDriver
         _coordinator = StateObject(wrappedValue: coordinator)
         _musicPlayer = StateObject(wrappedValue: MusicPlayerViewModel(coordinator: coordinator))
         _videoPlayer = StateObject(wrappedValue: VideoPlayerViewModel(coordinator: coordinator))
+        _livePlayer = StateObject(wrappedValue: LivePlayerViewModel(driver: liveDriver))
     }
 
     /// The splash covers the first frame; it fades out at 1.5s
@@ -73,6 +90,7 @@ struct HAoStudioApp: App {
             .environmentObject(coordinator)
             .environmentObject(musicPlayer)
             .environmentObject(videoPlayer)
+            .environmentObject(livePlayer)
         }
     }
 }

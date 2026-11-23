@@ -82,12 +82,16 @@ struct MainTabView: View {
             // S2-C: a music item opens the real full player.
             // S3-C: a VOD item re-opens the video player (tap-play
             // on the detail page presents it directly; the mini
-            // player re-opens it here). Live keeps the foundation
-            // placeholder until S4.
+            // player re-opens it here). S4: a live item re-opens
+            // the room page, rebuilt from the playing item.
             if coordinator.currentItem?.kind == .music {
                 MusicPlayerView()
             } else if coordinator.currentItem?.kind == .vod {
                 VideoPlayerView()
+            } else if coordinator.currentItem?.kind == .live,
+                      let item = coordinator.currentItem,
+                      let room = MainTabView.liveRoom(from: item) {
+                LiveRoomView(room: room, playlist: [room])
             } else {
                 FullPlayerPlaceholderView()
             }
@@ -101,8 +105,26 @@ struct MainTabView: View {
         case .home: HomePlaceholderView()
         case .music: MusicHomeView()
         case .movies: VideoTabView()
-        case .live: LivePlaceholderView()
+        case .live: LiveTabView()
         case .my: MyPlaceholderView()
         }
+    }
+
+    /// Rebuild a room from the playing live item: the id is
+    /// "platform:roomId" (LiveDriver.playbackItem), the title /
+    /// artist / cover come from the item. The room page fetches
+    /// roomInfo on entry for the transport credentials and the
+    /// watching count, so a minimal room is enough to re-enter.
+    /// Nil when the id is not a live room id.
+    static func liveRoom(from item: PlaybackItem) -> LiveRoom? {
+        let parts = item.id.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2,
+              let platform = LivePlatform(rawValue: String(parts[0])) else {
+            return nil
+        }
+        return LiveRoom(
+            roomId: String(parts[1]), platform: platform,
+            title: item.title, streamer: item.artist ?? "",
+            cover: item.coverURL?.absoluteString ?? "")
     }
 }
