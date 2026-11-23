@@ -71,7 +71,7 @@ struct HaoThemePalette {
     let scaffoldBackground: Color
     let colorScheme: ColorScheme
     /// Tab-bar selected-item colour. Chen's rule: selected is BLACK, not
-    /// Kumone's red and not the theme accent. In dark mode black on dark
+    /// red and not the theme accent. In dark mode black on dark
     /// glass is invisible, so the dark counterpart is white — the same
     /// readability reasoning the Flutter baseline uses for its dark
     /// accents (#76767A instead of black).

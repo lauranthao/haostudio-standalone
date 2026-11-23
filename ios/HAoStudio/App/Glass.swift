@@ -5,11 +5,9 @@
 // equivalent). The fallback is a real material, not a solid colour, so the
 // app still reads as frosted glass on older systems.
 //
-// Sizing / spring values are copied from the Kumone reference
-// (~/workspace/research/kumone/Sources/Kumone/Features/GlassTabBar.swift):
-// spring response 0.35, dampingFraction 0.82; stroke white 0.22 light /
-// 0.08 dark, 0.5pt; shadow black 0.10 / 0.28, radius 12, y 4;
-// bottomMargin 6; content height 56 + 4pt inset.
+// Sizing / spring values (spring response 0.35, dampingFraction 0.82;
+// stroke white 0.22 light / 0.08 dark, 0.5pt; shadow black 0.10 / 0.28,
+// radius 12, y 4; bottomMargin 6; content height 56 + 4pt inset).
 
 import SwiftUI
 
@@ -18,11 +16,11 @@ import SwiftUI
 /// from these in one place so the bar and the mini player can never
 /// overlap each other or the content.
 enum HaoLayout {
-    /// Glass tab bar content height (Kumone: 56).
+    /// Glass tab bar content height (56).
     static let tabBarContentHeight: CGFloat = 56
-    /// Inner inset around the tab bar content (Kumone: 4; total 64pt).
+    /// Inner inset around the tab bar content (4; total 64pt).
     static let tabBarInnerInset: CGFloat = 4
-    /// Distance from the safe-area bottom edge (Kumone: bottomMargin 6).
+    /// Distance from the safe-area bottom edge (bottomMargin 6).
     static let tabBarBottomMargin: CGFloat = 6
     /// Horizontal margin of the floating capsule.
     static let tabBarHorizontalMargin: CGFloat = 12
@@ -30,7 +28,7 @@ enum HaoLayout {
     static let miniPlayerHeight: CGFloat = 56
     /// Gap between the mini player strip and the tab bar.
     static let floatingStackSpacing: CGFloat = 8
-    /// Settle spring for the tab-bar selection pill (Kumone).
+    /// Settle spring for the tab-bar selection pill.
     static let settleSpring = Animation.spring(response: 0.35, dampingFraction: 0.82)
 }
 
