@@ -136,6 +136,18 @@ vj = json.loads((REPO / "version.json").read_text())
 check("4i. version.json aligned (1.0.3 / build 4 / minOs 17.0)",
       vj.get("version") == "1.0.3" and vj.get("build") == 4 and vj.get("minOs") == "17.0",
       f"{vj.get('version')} / build {vj.get('build')} / minOs {vj.get('minOs')}")
+# --- 4j. project.pbxproj parses: braces/parens balanced ------------------
+# (2026-11-23: Codemagic build #10 failed with "project is damaged, parse
+# error" — 4 XCBuildConfiguration lines were missing the closing brace of
+# buildSettings. Preflight passed then because it never checked pbxproj.)
+pbx = (REPO / "ios/HAoStudio.xcodeproj/project.pbxproj").read_text()
+check("4j. project.pbxproj braces/parens balanced",
+      pbx.count("{") == pbx.count("}") and pbx.count("(") == pbx.count(")"),
+      f"{{ {pbx.count('{')} {pbx.count('}')} ( {pbx.count('(')} {pbx.count(')')}")
+check("4k. every XCBuildConfiguration closes buildSettings before name",
+      all("}; name = " in ln for ln in pbx.splitlines()
+          if "XCBuildConfiguration; buildSettings = {" in ln),
+      "each config line must contain '}; name = '")
 
 # --- 5. Swift sources: balance + forbidden leftovers ----------------------
 swift_files = sorted(APP_DIR.rglob("*.swift"))
