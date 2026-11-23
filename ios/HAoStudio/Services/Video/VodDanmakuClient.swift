@@ -144,15 +144,24 @@ enum VodDanmakuParsers {
     ]
 
     /// Fold runs of Chinese numerals (`二`, `十二`, `二十一`,
-    /// `一百零三`) to Arabic digits. Non-numeral characters pass
-    /// through untouched. A run that cannot be parsed falls back
-    /// to digit-per-character, which still keeps both sides equal.
+    /// `一百零三`) to Arabic digits. An ordinal 第 before a numeral
+    /// run is dropped, so 第二季 and 第2季 fold to the same
+    /// canonical "2季". Non-numeral characters pass through
+    /// untouched. A run that cannot be parsed falls back to
+    /// digit-per-character, which still keeps both sides equal.
     static func foldChineseNumerals(_ s: String) -> String {
         let chars = Array(s)
         var out = ""
         var i = 0
         while i < chars.count {
             let ch = chars[i]
+            // Ordinal 第 before a numeral run: skip it, the run
+            // itself is folded by the branch below.
+            if ch == "第", i + 1 < chars.count,
+               cnDigits[chars[i + 1]] != nil || chars[i + 1] == "十" || chars[i + 1] == "百" || chars[i + 1] == "千" || chars[i + 1].isNumber {
+                i += 1
+                continue
+            }
             if cnDigits[ch] == nil && ch != "十" && ch != "百" && ch != "千" {
                 out.append(ch)
                 i += 1
@@ -291,8 +300,19 @@ enum VodDanmakuParsers {
         }
         guard let url = url, var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
         var items = components.queryItems ?? []
-        items.removeAll { $0.name == "format" }
-        items.append(URLQueryItem(name: "format", value: "json"))
+        // Replace format in place (keeping its position); only
+        // append when absent. Rebuilding the query with format
+        // moved to the end changes the URL string for no reason.
+        var replaced = false
+        items = items.compactMap { item in
+            guard item.name == "format" else { return item }
+            if replaced { return nil }
+            replaced = true
+            return URLQueryItem(name: "format", value: "json")
+        }
+        if !replaced {
+            items.append(URLQueryItem(name: "format", value: "json"))
+        }
         components.queryItems = items
         return components.url
     }

@@ -107,6 +107,12 @@ final class DownloadEngine: NSObject {
         /// Set by pause/cancel; the delegate / copy loop checks it
         /// between chunks.
         var stopRequested = false
+        /// Generation of the current copy attempt. A resume starts
+        /// a new attempt while the old loop may still be alive (it
+        /// only notices the stop between chunks); the old loop must
+        /// not write progress, bytes, or a terminal state for the
+        /// new attempt — it checks this every iteration and on exit.
+        var attempt: Int = 0
 
         init(info: DownloadTaskInfo) {
             self.info = info
@@ -148,7 +154,10 @@ final class DownloadEngine: NSObject {
         for bad in ["/", "\\", ":"] {
             name = name.replacingOccurrences(of: bad, with: "_")
         }
-        while name.hasPrefix(".") { name = String(name.dropFirst()) }
+        // Strip leading dots AND underscores: the separator
+        // replacement above turns "../evil.mp3" into ".._evil.mp3",
+        // and the leading "_" must go too.
+        while name.hasPrefix(".") || name.hasPrefix("_") { name = String(name.dropFirst()) }
         if name.isEmpty { return "\(fallbackKey).bin" }
         return name
     }
@@ -438,6 +447,10 @@ final class DownloadEngine: NSObject {
         let part = partURL(for: request)
         let source = request.sourceURL
         let delay = testChunkDelay
+        // New attempt: bump the generation on syncQueue so any
+        // still-running older loop becomes stale.
+        record.attempt += 1
+        let attempt = record.attempt
         workQueue.async {
             let sourceSize = (try? FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber)?.int64Value ?? -1
             var existing: Int64 = 0
@@ -477,25 +490,28 @@ final class DownloadEngine: NSObject {
             _ = writer.seekToEndOfFile()
             var downloaded = existing
             while true {
-                let stop = self.syncQueue.sync { record.stopRequested }
-                if stop { break }
+                let (stop, stale) = self.syncQueue.sync { (record.stopRequested, record.attempt != attempt) }
+                if stop || stale { break }
                 let chunk = reader.readData(ofLength: 64 * 1024)
                 if chunk.isEmpty { break }
                 writer.write(chunk)
                 downloaded += Int64(chunk.count)
-                let progress = self.syncQueue.sync { record.progress }
+                let (progress, current) = self.syncQueue.sync { (record.progress, record.attempt == attempt) }
                 let total = sourceSize
-                if let progress = progress {
+                if let progress = progress, current {
                     DispatchQueue.main.async { progress(downloaded, total) }
                 }
                 self.syncQueue.async {
-                    record.info.downloadedBytes = downloaded
+                    if record.attempt == attempt { record.info.downloadedBytes = downloaded }
                 }
                 if delay > 0 { Thread.sleep(forTimeInterval: delay) }
             }
             reader.closeFile()
             writer.closeFile()
             self.syncQueue.async {
+                // A newer attempt owns the record now; this stale
+                // loop must not persist, fail, or complete anything.
+                guard record.attempt == attempt else { return }
                 if record.stopRequested {
                     if record.info.state == .paused {
                         self.persistLocked()
